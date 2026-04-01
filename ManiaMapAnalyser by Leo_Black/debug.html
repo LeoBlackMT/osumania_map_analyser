@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MapAnalysis Debug</title>
+    <style>
+        :root {
+            --bg: #0f1424;
+            --panel: rgba(23, 31, 54, 0.82);
+            --border: rgba(255, 255, 255, 0.18);
+            --text: #eef2ff;
+            --soft: #b8c2e6;
+            --ok: #82efb3;
+            --warn: #ffd36c;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(1200px 700px at 10% 0%, #263863, #0d1220 60%);
+            color: var(--text);
+            font-family: "Consolas", "Courier New", monospace;
+            min-height: 100%;
+        }
+
+        main {
+            width: min(1200px, 96vw);
+            margin: 18px auto;
+            padding: 14px;
+            border-radius: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(6px);
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 22px;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--soft);
+            font-size: 13px;
+        }
+
+        .badge.ok {
+            color: var(--ok);
+        }
+
+        .badge.warn {
+            color: var(--warn);
+        }
+
+        button {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 10px;
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.45;
+            font-size: 13px;
+            max-height: 72vh;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.28);
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>MapAnalysis api_v2 Debug</h1>
+        <div class="row">
+            <span id="conn" class="badge warn">Connecting...</span>
+            <span id="count" class="badge">Messages: 0</span>
+            <button id="pause-btn" type="button">Pause</button>
+            <button id="clear-btn" type="button">Clear</button>
+        </div>
+        <pre id="payload">Waiting for websocket data...</pre>
+    </main>
+
+    <script type="module">
+        import WebSocketManager from "./js/socket.js";
+
+        const payloadEl = document.getElementById("payload");
+        const connEl = document.getElementById("conn");
+        const countEl = document.getElementById("count");
+        const pauseBtn = document.getElementById("pause-btn");
+        const clearBtn = document.getElementById("clear-btn");
+
+        let paused = false;
+        let messageCount = 0;
+
+        function setConnectionState(kind, text) {
+            connEl.className = `badge ${kind}`.trim();
+            connEl.textContent = text;
+        }
+
+        function updateCount() {
+            countEl.textContent = `Messages: ${messageCount}`;
+        }
+
+        pauseBtn.addEventListener("click", () => {
+            paused = !paused;
+            pauseBtn.textContent = paused ? "Resume" : "Pause";
+        });
+
+        clearBtn.addEventListener("click", () => {
+            payloadEl.textContent = "Cleared.";
+            messageCount = 0;
+            updateCount();
+        });
+
+        const socket = new WebSocketManager("127.0.0.1:24050");
+        setConnectionState("warn", "Connecting...");
+
+        socket.api_v2((data) => {
+            setConnectionState("ok", "Connected");
+            if (paused) {
+                return;
+            }
+            messageCount += 1;
+            updateCount();
+            payloadEl.textContent = JSON.stringify(data, null, 2);
+        });
+
+        window.addEventListener("error", (event) => {
+            setConnectionState("warn", "Runtime Error");
+            payloadEl.textContent = `Error: ${event.message}`;
+        });
+    </script>
+</body>
+
+</html>

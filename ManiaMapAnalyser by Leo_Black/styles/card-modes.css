@@ -1,0 +1,147 @@
+.main-card {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 8px;
+    width: 475px;
+    height: 540px;
+    min-width: 475px;
+    max-width: 475px;
+    min-height: 540px;
+    max-height: 540px;
+    overflow: hidden;
+}
+
+.main-card.bars-pattern {
+    height: 575px;
+    min-height: 575px;
+    max-height: 575px;
+}
+
+.main-card.bars-pattern .cluster-bars {
+    overflow-y: auto;
+}
+
+.main-card.bars-graph {
+    grid-template-rows: auto auto auto;
+    align-content: start;
+    gap: 6px;
+    height: 396px;
+    min-height: 396px;
+    max-height: 396px;
+}
+
+.main-card.bars-graph .cluster-bars,
+.main-card.bars-graph .ett-skill-bars {
+    display: none;
+}
+
+.main-card.bars-graph .body-graph-wrap {
+    margin-bottom: 18px;
+}
+
+.main-card.bars-none {
+    grid-template-rows: auto auto;
+    height: 248px;
+    min-height: 248px;
+    max-height: 248px;
+    gap: 4px;
+    padding: 10px 10px 30px 10px;
+}
+
+.main-card.bars-none .cluster-bars,
+.main-card.bars-none .ett-skill-bars {
+    display: none;
+}
+
+.main-card.bars-none .status-row {
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.main-card.bars-none .title-icon {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    flex: 0 0 28px;
+}
+
+.main-card.bars-none .title-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.main-card.bars-none .status {
+    font-size: 16px;
+}
+
+.main-card.bars-none .star-block {
+    gap: 8px;
+}
+
+.main-card.bars-none .star-left {
+    gap: 2px;
+    padding-bottom: 2px;
+}
+
+.main-card.bars-none .star-value {
+    font-size: 52px;
+    padding: 2px 10px;
+    border-radius: 16px;
+}
+
+.main-card.bars-none .star-subtitle {
+    font-size: 28px;
+}
+
+.main-card.bars-none .star-caption {
+    font-size: 11px;
+}
+
+.main-card.bars-none .star-meta {
+    font-size: 15px;
+    line-height: 1.3;
+}
+
+.main-card.bars-none .star-value.category-mode {
+    font-size: 24px;
+    line-height: 1.2;
+    max-width: 240px;
+}
+
+.main-card.bars-etterna {
+    height: 540px;
+    min-height: 540px;
+    max-height: 540px;
+}
+
+.main-card.bars-etterna.bars-etterna-compact {
+    height: 500px;
+    min-height: 500px;
+    max-height: 500px;
+}
+
+.main-card.bars-etterna .cluster-bars {
+    display: none;
+}
+
+.main-card.bars-etterna .star-value {
+    font-size: 48px;
+}
+
+.main-card.bars-etterna .star-subtitle {
+    font-size: 24px;
+}
+
+.main-card.bars-etterna .star-caption {
+    font-size: 11px;
+}
+
+.main-card.bars-etterna .star-value.category-mode {
+    font-family: "Outfit", sans-serif;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+    max-width: 250px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

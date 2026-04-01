@@ -1,0 +1,124 @@
+@keyframes fill-grow-fast {
+    from {
+        transform: scaleX(0);
+        opacity: 0.58;
+    }
+    to {
+        transform: scaleX(1);
+        opacity: 1;
+    }
+}
+
+@keyframes item-float-in {
+    from {
+        opacity: 0;
+        transform: translateY(7px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes star-pop {
+    0% {
+        transform: scale(0.92);
+        opacity: 0.25;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes shimmer {
+    100% {
+        transform: translateX(120%);
+    }
+}
+
+@keyframes graph-line-loading {
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 0.85;
+    }
+}
+
+@keyframes graph-line-loading-dash {
+    to {
+        stroke-dashoffset: -28;
+    }
+}
+
+@keyframes graph-fill-loading {
+    0%,
+    100% {
+        opacity: 0.16;
+    }
+    50% {
+        opacity: 0.28;
+    }
+}
+
+@keyframes graph-reveal-line {
+    from {
+        clip-path: inset(0 100% 0 0);
+        opacity: 0.35;
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+    }
+}
+
+@keyframes graph-reveal-fill {
+    from {
+        clip-path: inset(0 100% 0 0);
+        opacity: 0.24;
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+    }
+}
+
+@keyframes graph-reveal-cursor {
+    0%,
+    55% {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes graph-reveal-dot {
+    0%,
+    55% {
+        opacity: 0;
+        transform: scale(0.36);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes graph-reveal-pause-marker {
+    0%,
+    55% {
+        opacity: 0;
+    }
+    to {
+        opacity: 0.96;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

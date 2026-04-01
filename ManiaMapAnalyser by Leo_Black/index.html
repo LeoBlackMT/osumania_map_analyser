@@ -1,0 +1,79 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>MapAnalysis</title>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="styles/main.css" />
+</head>
+
+<body>
+    <main class="dashboard">
+        <section class="card main-card">
+            <div class="status-row">
+                <span class="title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" role="img" focusable="false">
+                        <path d="M12 3.2l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.5 6.8 19.2l1-5.8L3.6 9.3l5.8-.8L12 3.2z"></path>
+                    </svg>
+                </span>
+                <p id="status" class="status">Waiting to load beatmap file...</p>
+            </div>
+
+            <div class="star-block" id="rework">
+                <div class="star-left">
+                    <div class="star-value" id="rework-star">-</div>
+                    <div class="star-meta" id="rework-meta">LN%: -<br/>Keys: -</div>
+                </div>
+                <div class="star-right">
+                    <div class="top-right-capsule" id="rework-right-capsule" hidden>-</div>
+                    <div class="star-subtitle" id="rework-diff">-</div>
+                    <div class="star-graph-wrap" id="rework-diff-graph-wrap" hidden>
+                        <svg id="rework-diff-graph" class="star-graph" viewBox="0 0 260 86" preserveAspectRatio="none" aria-label="Difficulty graph" role="img">
+                            <path id="rework-diff-graph-fill" class="star-graph-fill" d=""></path>
+                            <path id="rework-diff-graph-line" class="star-graph-line" d=""></path>
+                            <g id="rework-diff-graph-pause-markers"></g>
+                            <line id="rework-diff-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86" hidden></line>
+                            <circle id="rework-diff-graph-cursor-dot" class="star-graph-cursor-dot" cx="0" cy="0" r="2.8" hidden></circle>
+                        </svg>
+                        <div id="rework-diff-graph-error" class="star-graph-error" hidden>Graph unavailable</div>
+                    </div>
+                    <div class="star-caption" id="est-diff-caption">Estimate Difficulty</div>
+                </div>
+            </div>
+
+            <ol id="pattern-clusters" class="cluster-bars">
+                <li class="cluster-item empty">No data</li>
+            </ol>
+
+            <ol id="ett-skill-bars" class="ett-skill-bars" hidden>
+                <li class="ett-skill-item empty">No data</li>
+            </ol>
+
+            <div class="body-graph-wrap" id="body-graph-wrap" hidden>
+                <svg id="body-graph" class="body-graph" viewBox="0 0 260 86" preserveAspectRatio="xMidYMid meet" aria-label="Body difficulty graph" role="img">
+                    <path id="body-graph-fill" class="star-graph-fill" d=""></path>
+                    <path id="body-graph-line" class="star-graph-line" d=""></path>
+                    <g id="body-graph-pause-markers"></g>
+                    <line id="body-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86" hidden></line>
+                    <circle id="body-graph-cursor-dot" class="star-graph-cursor-dot" cx="0" cy="0" r="2.8" hidden></circle>
+                </svg>
+                <div id="body-graph-error" class="star-graph-error" hidden>Graph unavailable</div>
+            </div>
+
+            <span id="mode-tag" class="mode-tag mode-mix">Mix</span>
+            <div id="pause-count" class="pause-count" hidden></div>
+
+            <div id="card-overlay" class="card-overlay" hidden>
+                <div id="overlay-spinner" class="overlay-spinner" aria-hidden="true"></div>
+                <p id="overlay-title" class="overlay-title">Loading</p>
+                <pre id="overlay-message" class="overlay-message"></pre>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="index.js"></script>
+</body>
+
+</html>

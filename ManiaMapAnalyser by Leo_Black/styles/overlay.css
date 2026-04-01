@@ -1,0 +1,55 @@
+.card-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    background: var(--overlay);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    text-align: center;
+    padding: 18px;
+}
+
+.card-overlay[hidden] {
+    display: none !important;
+}
+
+.card-overlay.error {
+    background: rgba(55, 16, 20, 0.68);
+    border-color: rgba(255, 146, 146, 0.4);
+    backdrop-filter: blur(8px);
+}
+
+.card-overlay.error .overlay-message {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.overlay-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 3px solid rgba(255, 255, 255, 0.24);
+    border-top-color: #8de6ff;
+    animation: spin 0.9s linear infinite;
+    margin-bottom: 10px;
+}
+
+.overlay-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.overlay-message {
+    font-family: "Outfit", sans-serif;
+    font-size: 15px;
+    color: #f5d7d7;
+    max-width: 92%;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}

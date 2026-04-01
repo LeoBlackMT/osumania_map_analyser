@@ -1,0 +1,138 @@
+.star-value {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 48px;
+    font-weight: 800;
+    line-height: 1;
+    color: #f6fbff;
+    background: rgba(38, 50, 84, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 20px;
+    display: inline-block;
+    padding: 4px 10px;
+    text-shadow: none;
+    transition: color 260ms ease, background-color 260ms ease, transform 260ms ease;
+    animation: star-pop 560ms cubic-bezier(0.25, 0.95, 0.35, 1);
+}
+
+.main-card:not(.bars-none) .star-value:not(.category-mode) {
+    font-size: 52px;
+    padding: 5px 12px;
+    border-radius: 22px;
+}
+
+.star-value.has-unit {
+    position: relative;
+}
+
+.star-value.has-unit::after {
+    content: attr(data-unit);
+    position: absolute;
+    right: -20px;
+    bottom: -2px;
+    font-family: "Outfit", sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    opacity: 0.9;
+    color: currentColor;
+    background: rgba(20, 28, 47, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 2px 4px;
+    text-shadow: none;
+    pointer-events: none;
+}
+
+.star-value.has-unit.unit-badge-light::after {
+    color: #f6fbff;
+}
+
+.star-value.category-mode {
+    font-family: "Outfit", sans-serif;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+    max-width: 250px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.star-value.high-contrast {
+    color: #f6fbff !important;
+    text-shadow: 0 0 24px rgba(246, 251, 255, 0.65), 0 2px 18px rgba(0, 0, 0, 0.45);
+}
+
+.star-block {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+.star-left {
+    min-width: 0;
+    flex: 0 1 auto;
+    display: grid;
+    gap: 4px;
+}
+
+.star-right {
+    text-align: right;
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+    margin-bottom: 2px;
+    min-width: 0;
+    max-width: 56%;
+    flex: 1 1 56%;
+}
+
+.star-subtitle {
+    font-size: 27px;
+    font-weight: 700;
+    line-height: 1;
+    color: #e9efff;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.star-caption {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #bfc8e7;
+    opacity: 0.9;
+}
+
+.top-right-capsule {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    color: #f6fbff;
+    background: rgba(38, 50, 84, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 18px;
+    padding: 4px 10px;
+    justify-self: end;
+    text-align: right;
+    transform: translateY(-2px);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.top-right-capsule.numeric-mode {
+    font-size: 52px;
+    border-radius: 22px;
+    padding: 5px 12px;
+}
+
+.top-right-capsule.category-mode {
+    font-family: "Outfit", sans-serif;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+}

@@ -1,0 +1,139 @@
+[
+	{
+		"uniqueID":"hVisual",
+		"type":"header",
+		"title":"Visual Customization",
+		"description":"",
+		"options":[],
+		"value":""
+	},
+	{
+		"uniqueID": "contentBar",
+		"type": "options",
+		"title": "Card Body Content",
+		"description": "Select what to show in the card body.",
+		"options": [
+			"None",
+			"Auto",
+			"Pattern",
+			"Etterna",
+			"Graph"
+		],
+		"value": "Pattern"
+	},
+	{
+		"uniqueID": "srText",
+		"type": "options",
+		"title": "Top-left Capsule Text",
+		"description": "Select what to show in the top-left capsule.",
+		"options": [
+			"Auto",
+			"ReworkSR",
+			"MSD",
+			"Pattern"
+		],
+		"value": "ReworkSR"
+	},
+	{
+		"uniqueID": "diffText",
+		"type": "options",
+		"title": "Top-right Content",
+		"description": "Select what to show at top-right of the card.",
+		"options": [
+			"None",
+			"Graph",
+			"Difficulty",
+			"MSD",
+			"Pattern",
+			"ReworkSR"
+		],
+		"value": "Difficulty"
+	},
+	{
+		"uniqueID": "showModeTagCapsule",
+		"type": "checkbox",
+		"title": "Mode Tag Capsule",
+		"description": "Show the mode tag capsule (HB/RC/LN/Mix) at bottom-left.",
+		"options": [],
+		"value": true
+	},
+	{
+		"uniqueID": "enableEtternaRainbowBars",
+		"type": "checkbox",
+		"title": "Rainbow Bars",
+		"description": "Enable multi-color bars in Etterna mode.",
+		"options": [],
+		"value": true
+	},
+
+
+	{
+		"uniqueID":"hFunctions",
+		"type":"header",
+		"title":"Functionality Options",
+		"description":"",
+		"options":[],
+		"value":""
+	},
+	{
+		"uniqueID": "enablePauseDetection",
+		"type": "checkbox",
+		"title": "Pause Detection",
+		"description": "Recommended: Count pauses and draw pause markers on the graph when playing.",
+		"options": [],
+		"value": true
+	},
+	{
+		"uniqueID": "VibroDetection",
+		"type": "checkbox",
+		"title": "Vibro Detection",
+		"description": "Recommended: Detect vibro maps and apply vibro fallback handling when needed.",
+		"options": [],
+		"value": true
+	},
+	{
+		"uniqueID": "estimatorAlgorithm",
+		"type": "options",
+		"title": "Estimator Algorithm",
+		"description": "Select estimator algorithm. Rework is the default estimator, Daniel uses Daniel 4K estimator (non-4K falls back automatically).",
+		"options": [
+			"Rework",
+			"Daniel"
+		],
+		"value": "Rework"
+	},
+	{
+		"uniqueID":"danielLink",
+		"type":"button",
+		"title":"Daniel Estimator Link",
+		"description":"",
+		"options":[],
+		"value":"https://thebagelofman.github.io/Daniel/"
+	},
+
+
+	{
+		"uniqueID":"hDebug",
+		"type":"header",
+		"title":"Debug Options",
+		"description":"",
+		"options":[],
+		"value":""
+	},
+	{
+		"uniqueID": "debugUseAmount",
+		"type": "checkbox",
+		"title": "Use Amount For Category",
+		"description": "Sort categories by amount and use the top pattern amount for category fallback.",
+		"options": [],
+		"value": false
+	},
+	{
+		"uniqueID": "debugUseSvDetection",
+		"type": "checkbox",
+		"title": "SV Detection",
+		"description": "Allow SV-based mode tag/category detection logic.",
+		"options": [],
+		"value": false
+	}
+]
