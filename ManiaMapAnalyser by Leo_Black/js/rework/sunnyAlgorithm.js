@@ -1,4 +1,4 @@
-﻿import { OsuFileParser } from "./osuFileParser.js";
+﻿import { OsuFileParser } from "../file/osuFileParser.js";
 
 const BREAK_ZERO_THRESHOLD_MS = 400;
 const GRAPH_RESAMPLE_INTERVAL_MS = 100;

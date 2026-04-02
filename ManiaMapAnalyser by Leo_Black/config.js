@@ -1,12 +1,12 @@
 export const APP_CONFIG = {
-    endpoint: "http://127.0.0.1:24050/files/beatmap/file",
-    socketHost: "127.0.0.1:24050",
+    endpoint: "http://localhost:24050/files/beatmap/file",
+    socketHost: "localhost:24050",
 
     options: {
         contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph"],
         srText: ["Auto", "ReworkSR", "MSD", "Pattern"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR"],
-        estimatorAlgorithm: ["Rework", "Daniel"],
+        estimatorAlgorithm: ["Sunny", "Daniel"],
         modeTag: ["RC", "LN", "HB", "Mix", "SV"],
     },
 
@@ -40,7 +40,7 @@ export const APP_CONFIG = {
 
     etterna: {
         maxSkillValue: 41.0,
-        vibroJackspeedRatioThreshold: 0.9,
+        vibroJackspeedRatioThreshold: 0.93,
     },
 
     graph: {
@@ -69,7 +69,7 @@ export const APP_CONFIG = {
     defaults: {
         autoMode: false,
         useDanielAlgorithm: false,
-        estimatorAlgorithm: "Rework",
+        estimatorAlgorithm: "Sunny",
         pauseDetectionEnabled: true,
         enableEtternaRainbowBars: true,
         vibroDetection: true,

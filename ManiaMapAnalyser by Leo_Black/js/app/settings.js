@@ -187,7 +187,7 @@ export function applyDiffTextSetting(value) {
 }
 
 export function applyEstimatorAlgorithmSetting(value) {
-    const next = normalizeEstimatorAlgorithmValue(value) || "Rework";
+    const next = normalizeEstimatorAlgorithmValue(value) || "Sunny";
     const changed = state.estimatorAlgorithm !== next;
     state.estimatorAlgorithm = next;
     return changed;

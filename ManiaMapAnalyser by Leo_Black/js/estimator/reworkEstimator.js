@@ -1,6 +1,6 @@
 ﻿import { SR_INTERVALS } from "./intervals.js";
-import { calculate as calculateXxy } from "./xxyAlgorithm.js";
-import { calculateDaniel } from "./danielAlgorithm.js";
+import { calculate as calculateXxy } from "../rework/sunnyAlgorithm.js";
+import { calculateDaniel } from "../rework/danielAlgorithm.js";
 
 export function estDiff(sr, lnRatio, columnCount) {
     if (columnCount === 4) {

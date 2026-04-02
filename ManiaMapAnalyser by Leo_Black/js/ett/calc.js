@@ -1,5 +1,5 @@
-import { OsuFileParser } from "../rework/osuFileParser.js";
-import createMinaCalcModule from "./minacalc-wasm.js";
+import { OsuFileParser } from "../file/osuFileParser.js";
+import createMinaCalcModule from "./version/minaclac-74.0.js";
 
 const DEFAULT_SCORE_GOAL = 0.93;
 const SUPPORTED_KEYS = new Set([4, 6, 7]);
@@ -94,7 +94,7 @@ function makeZeroValues() {
 async function getWasmModule() {
     if (!wasmModulePromise) {
         wasmModulePromise = createMinaCalcModule({
-            locateFile: (path) => new URL(path, import.meta.url).toString(),
+            locateFile: (path) => new URL(`./version/${path}`, import.meta.url).toString(),
         });
     }
     return wasmModulePromise;

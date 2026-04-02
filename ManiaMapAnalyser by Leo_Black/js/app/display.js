@@ -295,11 +295,14 @@ export function showNumericStarValue(starValue) {
 
 function animateNumericCapsuleValue(element, targetValue) {
     if (!element) return;
-    if (!Number.isFinite(targetValue)) {
+    const numericTarget = Number(targetValue);
+    if (!Number.isFinite(numericTarget)) {
         numericAnimationTokens.delete(element);
         element.textContent = "-";
         return;
     }
+
+    const clampedTarget = Math.max(0, numericTarget);
     const token = Symbol("numeric-animation");
     numericAnimationTokens.set(element, token);
     const startTs = performance.now();
@@ -307,7 +310,9 @@ function animateNumericCapsuleValue(element, targetValue) {
         if (numericAnimationTokens.get(element) !== token) return;
         const progress = Math.min(1, (now - startTs) / NUMERIC_ANIMATION_DURATION_MS);
         const eased = 1 - ((1 - progress) ** 3);
-        element.textContent = (Math.max(0, targetValue) * eased).toFixed(2);
+        const animatedValue = clampedTarget * eased;
+        const safeDisplayValue = animatedValue <= 0.0005 ? 0 : animatedValue;
+        element.textContent = safeDisplayValue.toFixed(2);
         if (progress < 1) {
             requestAnimationFrame(tick);
         }

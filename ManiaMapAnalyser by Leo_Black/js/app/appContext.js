@@ -1,4 +1,4 @@
-import WebSocketManager from "../socket.js";
+import WebSocketManager from "./socket.js";
 import { DISPLAY_SKILLSET_ORDER } from "../ett/index.js";
 import { APP_CONFIG } from "../../config.js";
 import { createSettingsParsers } from "./settingsParsers.js";
