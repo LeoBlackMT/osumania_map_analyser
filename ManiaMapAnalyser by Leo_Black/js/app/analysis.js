@@ -1,6 +1,6 @@
-import { runReworkFromText } from "../rework/rework.js";
+import { runReworkFromText } from "../estimator/reworkEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
-import { OsuFileParser } from "../rework/osuFileParser.js";
+import { OsuFileParser } from "../file/osuFileParser.js";
 import {
     analyzeEtternaFromText,
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
@@ -266,7 +266,10 @@ export async function fetchBeatmapFile(reason) {
                     cvtFlag: state.cvtFlag,
                 });
 
+                const reworkStarValue = Number(rework?.star);
+                const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
                 isVibroMap = state.vibroDetection
+                    && vibroEligible
                     && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
 
                 if (state.contentBar === "Etterna") {
@@ -331,31 +334,29 @@ export async function fetchBeatmapFile(reason) {
             }
         }
 
-        setLeftCapsuleUnitBadge(
-            state.srText === "MSD"
-                ? "MSD"
-                : (state.srText === "ReworkSR" ? "SR" : ""),
-        );
-
-        if (rework) {
-            if (state.srText === "Pattern") {
+        let leftCapsuleUnit = "";
+        if (state.srText === "Pattern") {
+            if (rework) {
                 showCategoryValue(patternReport?.Category || "-");
-            } else if (state.srText === "MSD") {
-                const overallValue = Number(ettResult?.values?.Overall);
-                if (Number.isFinite(overallValue)) {
-                    showMsdValue(overallValue);
-                } else {
-                    showNumericStarValue(rework.star);
-                }
-            } else {
-                showNumericStarValue(rework.star);
             }
         } else if (state.srText === "MSD") {
             const overallValue = Number(ettResult?.values?.Overall);
             if (Number.isFinite(overallValue)) {
                 showMsdValue(overallValue);
+                leftCapsuleUnit = "MSD";
+            } else if (rework) {
+                // Fallback to ReworkSR when MSD value is unavailable.
+                showNumericStarValue(rework.star);
+                leftCapsuleUnit = "SR";
+            }
+        } else if (rework) {
+            showNumericStarValue(rework.star);
+            if (state.srText === "ReworkSR") {
+                leftCapsuleUnit = "SR";
             }
         }
+
+        setLeftCapsuleUnitBadge(leftCapsuleUnit);
 
         renderRightCapsule(
             state.diffText,

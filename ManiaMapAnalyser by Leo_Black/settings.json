@@ -95,12 +95,12 @@
 		"uniqueID": "estimatorAlgorithm",
 		"type": "options",
 		"title": "Estimator Algorithm",
-		"description": "Select estimator algorithm. Rework is the default estimator, Daniel uses Daniel 4K estimator (non-4K falls back automatically).",
+		"description": "Select estimator algorithm. Sunny is the default estimator, Daniel uses Daniel 4K estimator (non-4K falls back automatically).",
 		"options": [
-			"Rework",
+			"Sunny",
 			"Daniel"
 		],
-		"value": "Rework"
+		"value": "Sunny"
 	},
 	{
 		"uniqueID":"danielLink",

@@ -35,8 +35,9 @@ export function normalizeEstimatorAlgorithmValue(value) {
     }
 
     const lowered = value.trim().toLowerCase();
-    if (lowered === "rework") return "Rework";
-    if (lowered === "direct") return "Rework";
+    if (lowered === "sunny") return "Sunny";
+    if (lowered === "rework") return "Sunny";
+    if (lowered === "direct") return "Sunny";
     if (lowered === "daniel") return "Daniel";
     return null;
 }
@@ -184,7 +185,7 @@ export function createSettingsParsers(appConfig) {
 
         const legacyValue = extractSettingValue(settingsPayload, "useDanielAlgorithm");
         if (legacyValue !== undefined && legacyValue !== null) {
-            return normalizeBooleanSetting(legacyValue, false) ? "Daniel" : "Rework";
+            return normalizeBooleanSetting(legacyValue, false) ? "Daniel" : "Sunny";
         }
 
         const fallback = normalizeEstimatorAlgorithmValue(appConfig.defaults.estimatorAlgorithm);
@@ -192,7 +193,7 @@ export function createSettingsParsers(appConfig) {
             return fallback;
         }
 
-        return "Rework";
+        return "Sunny";
     }
 
     function parseEnablePauseDetectionValue(settingsPayload) {
