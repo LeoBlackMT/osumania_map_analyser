@@ -8,6 +8,15 @@ export { APP_CONFIG };
 export const ENDPOINT = APP_CONFIG.endpoint;
 export const SOCKET_HOST = APP_CONFIG.socketHost;
 
+export function getSocketHost() {
+    const host = typeof state.wsEndpoint === "string" ? state.wsEndpoint.trim() : "";
+    return host || SOCKET_HOST;
+}
+
+export function getEndpoint() {
+    return `http://${getSocketHost()}/files/beatmap/file`;
+}
+
 export const STAR_BG_STOPS = APP_CONFIG.starStops.background;
 export const STAR_TEXT_STOPS = APP_CONFIG.starStops.text;
 
@@ -86,6 +95,7 @@ export const state = {
     settingsRequested: false,
     settingsReceivedFromCommand: false,
     initialSettingsResolver: null,
+    wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
 };
 
 export const MODE_TAG_OPTIONS = APP_CONFIG.options.modeTag;
@@ -112,7 +122,7 @@ export const PAUSE_DETECT_EPSILON_MS = APP_CONFIG.timing.pauseDetectEpsilonMs;
 export const SOCKET_RECALC_LAZY_DELAY_MS = APP_CONFIG.timing.socketRecalcLazyDelayMs;
 export const SETTINGS_COMMAND_TIMEOUT_MS = APP_CONFIG.timing.settingsCommandTimeoutMs;
 
-export const socket = new WebSocketManager(SOCKET_HOST);
+export const socket = new WebSocketManager(getSocketHost());
 
 export const GRAPH_SUPPORTED_KEY_SET = new Set([4, 6, 7]);
 
@@ -137,6 +147,7 @@ export const {
     parseEnableEtternaRainbowBarsValue,
     parseShowModeTagCapsuleValue,
     parseSvDetectionValue,
+    parseWsEndpointValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export const GRAPH_VIEW_DEFS = [

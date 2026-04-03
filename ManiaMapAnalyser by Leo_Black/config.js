@@ -67,6 +67,7 @@ export const APP_CONFIG = {
     },
 
     defaults: {
+        wsEndpoint: "localhost:24050",
         autoMode: false,
         useDanielAlgorithm: false,
         estimatorAlgorithm: "Sunny",
