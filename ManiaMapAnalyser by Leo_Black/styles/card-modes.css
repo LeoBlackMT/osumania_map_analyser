@@ -89,6 +89,12 @@
     border-radius: 16px;
 }
 
+.main-card.bars-none .top-right-capsule.numeric-mode {
+    font-size: 52px;
+    padding: 2px 10px;
+    border-radius: 16px;
+}
+
 .main-card.bars-none .star-subtitle {
     font-size: 28px;
 }
@@ -126,6 +132,12 @@
 
 .main-card.bars-etterna .star-value {
     font-size: 48px;
+}
+
+.main-card.bars-etterna .top-right-capsule.numeric-mode {
+    font-size: 48px;
+    padding: 4px 10px;
+    border-radius: 18px;
 }
 
 .main-card.bars-etterna .star-subtitle {

@@ -191,6 +191,23 @@ function trimSeriesStartToFirstObject(series) {
     };
 }
 
+function formatEstimateDifficultyCaption() {
+    const base = "Estimate Difficulty";
+    if (!state.enableNumericDifficulty) {
+        return base;
+    }
+
+    if (Number.isFinite(state.numericDifficulty)) {
+        return `${base}(${state.numericDifficulty.toFixed(2)})`;
+    }
+
+    if (typeof state.numericDifficultyHint === "string" && state.numericDifficultyHint.trim().length > 0) {
+        return `${base}(${state.numericDifficultyHint.trim()})`;
+    }
+
+    return base;
+}
+
 export function clearPauseMarkersDom(view = null) {
     if (view) {
         if (view.pauseMarkersEl) {
@@ -573,7 +590,7 @@ export function updateDiffTextVisibility() {
                 estDiffCaptionEl.textContent = "";
         }
     } else {
-        estDiffCaptionEl.textContent = "Estimate Difficulty";
+        estDiffCaptionEl.textContent = formatEstimateDifficultyCaption();
     }
 
     if (!hasAnyGraphModeEnabled()) {
@@ -584,5 +601,26 @@ export function updateDiffTextVisibility() {
 
     if (!showRightCapsule && reworkRightCapsuleEl) {
         reworkRightCapsuleEl.textContent = "-";
+        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast");
+        reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
+        reworkRightCapsuleEl.style.color = "#f6fbff";
+        reworkRightCapsuleEl.style.textShadow = "none";
+    }
+}
+
+export function setNumericDifficultyValue(value, hint = null) {
+    if (value === null || value === undefined || value === "") {
+        state.numericDifficulty = null;
+    } else {
+        const numericValue = Number(value);
+        state.numericDifficulty = Number.isFinite(numericValue) ? numericValue : null;
+    }
+
+    state.numericDifficultyHint = Number.isFinite(state.numericDifficulty)
+        ? null
+        : (typeof hint === "string" && hint.trim().length > 0 ? hint.trim() : null);
+
+    if (state.diffText === "Difficulty") {
+        updateDiffTextVisibility();
     }
 }

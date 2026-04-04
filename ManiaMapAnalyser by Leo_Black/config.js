@@ -76,6 +76,8 @@ export const APP_CONFIG = {
         disableVibroDetection: false,
         svDetection: false,
         showModeTagCapsule: true,
+        enableNumericDifficulty: false,
+        hideCardDuringPlay: false,
         contentBar: "Pattern",
         srText: "ReworkSR",
         diffText: "Difficulty",
@@ -83,7 +85,7 @@ export const APP_CONFIG = {
     },
 
     mods: {
-        knownCodes: ["DA", "NC", "DT", "HT", "HR", "EZ", "DC", "IN", "HO"],
+        knownCodes: ["DA", "NC", "DT", "HT", "HR", "EZ", "DC", "IN", "HO", "MR"],
         bitFlags: {
             EZ: 2,
             HR: 16,

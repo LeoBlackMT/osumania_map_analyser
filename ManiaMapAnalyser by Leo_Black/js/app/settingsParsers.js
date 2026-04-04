@@ -229,6 +229,16 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.showModeTagCapsule);
     }
 
+    function parseEnableNumericDifficultyValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableNumericDifficulty");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableNumericDifficulty);
+    }
+
+    function parseHideCardDuringPlayValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "hideCardDuringPlay");
+        return normalizeBooleanSetting(value, appConfig.defaults.hideCardDuringPlay);
+    }
+
     function parseSvDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "debugUseSvDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.svDetection);
@@ -248,6 +258,8 @@ export function createSettingsParsers(appConfig) {
         parseVibroDetectionValue,
         parseEnableEtternaRainbowBarsValue,
         parseShowModeTagCapsuleValue,
+        parseEnableNumericDifficultyValue,
+        parseHideCardDuringPlayValue,
         parseSvDetectionValue,
     };
 }
