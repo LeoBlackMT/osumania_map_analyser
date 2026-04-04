@@ -23,6 +23,7 @@ import {
     resetPauseRuntime,
     updateGraphCursor,
 } from "./graph.js";
+import { updateCardPlayVisibility } from "./hud.js";
 import { scheduleRecompute } from "./scheduler.js";
 
 function getModData(data) {
@@ -139,6 +140,7 @@ export function setupSocketListener() {
 
             state.clientStateName = normalizedClientStateName;
             state.isInPlayState = nextInPlayState;
+            updateCardPlayVisibility();
 
             if (enteredPlayState || (leftPlayState && !nextIsResultScreen)) {
                 resetPauseRuntime(true);
@@ -169,23 +171,24 @@ export function setupSocketListener() {
             return Number.isFinite(num) ? String(num) : "";
         };
 
+        const beatmapId = normalizeNumberText(beatmap?.id);
+        const beatmapHash = normalizeText(beatmap?.md5 || beatmap?.checksum);
+        const beatmapPath = normalizeText(data?.files?.beatmap || data?.directPath?.beatmapFile);
+        const beatmapTitleKey = [
+            normalizeText(beatmap?.artist),
+            normalizeText(beatmap?.title),
+            normalizeText(beatmap?.version),
+            normalizeText(beatmap?.mapper),
+        ].join("::");
+
         const beatmapKey = [
-            normalizeNumberText(beatmap?.id),
-            normalizeText(data?.files?.beatmap),
-            normalizeText(data?.directPath?.beatmapFile),
-            normalizeText(beatmap?.md5 || beatmap?.checksum),
-            [
-                normalizeText(beatmap?.artist),
-                normalizeText(beatmap?.title),
-                normalizeText(beatmap?.version),
-                normalizeText(beatmap?.mapper),
-            ].join("::"),
-            normalizeNumberText(beatmap?.time?.firstObject),
-            normalizeNumberText(beatmap?.time?.lastObject),
-            normalizeNumberText(beatmap?.stats?.od?.original),
+            beatmapId,
+            beatmapHash,
+            beatmapPath,
+            beatmapTitleKey,
         ].join("|");
 
-        if (beatmapKey.replace(/\|/g, "").length === 0) return;
+        if (beatmapKey.replace(/[|:]/g, "").length === 0) return;
 
         const key = `${beatmapKey}|${state.modSignature}`;
 

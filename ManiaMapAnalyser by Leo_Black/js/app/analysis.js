@@ -37,6 +37,7 @@ import {
     clearAllPauseMarkers,
     clearDiffGraph,
     renderDiffGraph,
+    setNumericDifficultyValue,
     showDiffGraphError,
     setGraphLoading,
 } from "./graph.js";
@@ -105,12 +106,16 @@ function setLeftCapsuleUnitBadge(unitText) {
 }
 
 export function resetReworkDisplay() {
+    setNumericDifficultyValue(null);
     reworkStarEl.textContent = "-";
     reworkStarEl.classList.remove("category-mode");
     reworkDiffEl.textContent = "-";
     if (reworkRightCapsuleEl) {
         reworkRightCapsuleEl.textContent = "-";
-        reworkRightCapsuleEl.classList.remove("category-mode");
+        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast");
+        reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
+        reworkRightCapsuleEl.style.color = "#f6fbff";
+        reworkRightCapsuleEl.style.textShadow = "none";
     }
     clearDiffGraph();
     clearAllPauseMarkers();
@@ -129,6 +134,10 @@ export function resetReworkDisplay() {
 }
 
 export async function fetchBeatmapFile(reason) {
+    const requestSeq = (state.analysisRequestSeq || 0) + 1;
+    state.analysisRequestSeq = requestSeq;
+    const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+
     setStatus(`Loading beatmap file (${reason})...`, "loading");
     hideOverlay();
 
@@ -145,12 +154,14 @@ export async function fetchBeatmapFile(reason) {
             method: "GET",
             cache: "no-store",
         });
+        if (isStaleRequest()) return;
 
         if (!response.ok) {
             throw new Error(`Request failed with status ${response.status}`);
         }
 
         const rawText = await response.text();
+        if (isStaleRequest()) return;
         if (!rawText || !rawText.trim()) {
             throw new Error("Empty beatmap content.");
         }
@@ -194,8 +205,10 @@ export async function fetchBeatmapFile(reason) {
                 withGraph: state.diffText === "Graph" || state.contentBar === "Graph",
                 useDanielAlgorithm: currentUseDanielAlgorithm(),
             });
+            if (isStaleRequest()) return;
 
             showNumericStarValue(rework.star);
+            setNumericDifficultyValue(rework.numericDifficulty, rework.numericDifficultyHint);
 
             const diffText = GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)
                 ? formatDiffForDisplay(rework.estDiff)
@@ -265,6 +278,7 @@ export async function fetchBeatmapFile(reason) {
                     scoreGoal: ETT_DEFAULT_SCORE_GOAL,
                     cvtFlag: state.cvtFlag,
                 });
+                if (isStaleRequest()) return;
 
                 const reworkStarValue = Number(rework?.star);
                 const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
@@ -378,6 +392,7 @@ export async function fetchBeatmapFile(reason) {
             hideOverlay();
         }
     } catch (error) {
+        if (isStaleRequest()) return;
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
         resetReworkDisplay();
         patternClustersEl.innerHTML = state.contentBar === "Pattern"
@@ -393,6 +408,7 @@ export async function fetchBeatmapFile(reason) {
             showSpinner: false,
         });
     } finally {
+        if (isStaleRequest()) return;
         reworkMetaEl.classList.remove("loading");
     }
 }

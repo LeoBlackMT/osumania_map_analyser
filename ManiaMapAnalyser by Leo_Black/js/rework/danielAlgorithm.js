@@ -221,8 +221,9 @@ function preprocessDaniel(osuText, speedRate, _odFlag) {
         };
     }
 
-    // Keep Daniel port consistent with the original algorithm.py: OD is read directly.
-    const od = Number(parsed.od) || 0;
+    // Keep Daniel port consistent with the original osu_file_parser.py used by Daniel-main.
+    // That parser effectively keeps OD fixed to 9 for this algorithm branch.
+    const od = 9;
 
     const timeScale = speedRate !== 0 ? 1 / speedRate : 1;
 
@@ -468,15 +469,13 @@ function computeXbar(K, x, noteSeqByColumn, activeColumns, baseCorners) {
             const delta = 0.001 * (end - start);
             let val = 0.16 * (Math.max(x, delta) ** -2);
 
-            const li = Math.max(0, Math.min(leftIdx, activeColumns.length - 1));
-            const ri = Math.max(0, Math.min(rightIdx, activeColumns.length - 1));
+            const leftCols = activeColumns[leftIdx] || [];
+            const rightCols = activeColumns[rightIdx] || [];
 
-            const leftInactive = (k - 1) >= 0
-                && !activeColumns[li]?.includes(k - 1)
-                && !activeColumns[ri]?.includes(k - 1);
-            const rightInactive = k < K
-                && !activeColumns[li]?.includes(k)
-                && !activeColumns[ri]?.includes(k);
+            const leftInactive = !leftCols.includes(k - 1)
+                && !rightCols.includes(k - 1);
+            const rightInactive = !leftCols.includes(k)
+                && !rightCols.includes(k);
 
             if (leftInactive || rightInactive) {
                 val *= 1 - (crossCoeff[k] ?? 0);

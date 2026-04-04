@@ -144,7 +144,6 @@ export function getModData(data, { sortedKnownModCodes, modBitFlagEntries }) {
     }
 
     const modSignature = [
-        client || "unknown",
         Number(speedRate).toFixed(5),
         odFlag == null ? "none" : String(odFlag),
         cvtFlag == null ? "none" : String(cvtFlag),

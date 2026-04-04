@@ -61,7 +61,11 @@ export const state = {
     estimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
     pauseDetectionEnabled: APP_CONFIG.defaults.pauseDetectionEnabled,
     enableEtternaRainbowBars: APP_CONFIG.defaults.enableEtternaRainbowBars,
+    enableNumericDifficulty: APP_CONFIG.defaults.enableNumericDifficulty,
+    hideCardDuringPlay: APP_CONFIG.defaults.hideCardDuringPlay,
     vibroDetection: APP_CONFIG.defaults.vibroDetection,
+    numericDifficulty: null,
+    numericDifficultyHint: null,
     showModeTagCapsule: APP_CONFIG.defaults.showModeTagCapsule,
     currentModeTag: "Mix",
     etternaTechnicalHidden: false,
@@ -86,6 +90,7 @@ export const state = {
     settingsRequested: false,
     settingsReceivedFromCommand: false,
     initialSettingsResolver: null,
+    analysisRequestSeq: 0,
 };
 
 export const MODE_TAG_OPTIONS = APP_CONFIG.options.modeTag;
@@ -136,6 +141,8 @@ export const {
     parseVibroDetectionValue,
     parseEnableEtternaRainbowBarsValue,
     parseShowModeTagCapsuleValue,
+    parseEnableNumericDifficultyValue,
+    parseHideCardDuringPlayValue,
     parseSvDetectionValue,
 } = createSettingsParsers(APP_CONFIG);
 

@@ -76,8 +76,14 @@
         font-size: 11px;
     }
 
-    .top-right-capsule.numeric-mode {
+    .main-card:not(.bars-none) .top-right-capsule.numeric-mode {
         font-size: 44px;
+        padding: 4px 10px;
+        border-radius: 18px;
+    }
+
+    .main-card.bars-none .top-right-capsule.numeric-mode {
+        font-size: 40px;
         padding: 4px 10px;
         border-radius: 18px;
     }

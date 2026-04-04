@@ -125,6 +125,12 @@
 }
 
 .top-right-capsule.numeric-mode {
+    font-size: 48px;
+    border-radius: 22px;
+    padding: 5px 12px;
+}
+
+.main-card:not(.bars-none):not(.bars-etterna) .top-right-capsule.numeric-mode {
     font-size: 52px;
     border-radius: 22px;
     padding: 5px 12px;
