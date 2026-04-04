@@ -4,6 +4,27 @@
     this.sockets = {};
     }
 
+    setHost(host, reconnect = true) {
+    const normalized = typeof host === "string" ? host.trim() : "";
+    if (!normalized || normalized === this.host) {
+            return false;
+    }
+
+    this.host = normalized;
+
+    if (reconnect) {
+            for (const socket of Object.values(this.sockets)) {
+        try {
+                    socket.close();
+        } catch {
+                    // Ignore close errors and rely on reconnect loop.
+        }
+            }
+    }
+
+    return true;
+    }
+
     createConnection(url, callback, filters) {
     let reconnectTimer = null;
 
