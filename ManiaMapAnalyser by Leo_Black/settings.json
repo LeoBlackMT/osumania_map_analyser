@@ -65,6 +65,22 @@
 		"options": [],
 		"value": true
 	},
+	{
+		"uniqueID": "enableNumericDifficulty",
+		"type": "checkbox",
+		"title": "Numeric Difficulty",
+		"description": "Show numeric difficulty values.",
+		"options": [],
+		"value": false
+	},
+	{
+		"uniqueID": "hideCardDuringPlay",
+		"type": "checkbox",
+		"title": "Hide During Play",
+		"description": "Hide the whole card when playing.",
+		"options": [],
+		"value": false
+	},
 
 
 	{

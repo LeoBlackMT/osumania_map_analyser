@@ -1,4 +1,5 @@
 import {
+    mainCardEl,
     modeTagEl,
     MODE_TAG_OPTIONS,
     overlayEl,
@@ -59,6 +60,16 @@ export function updatePauseCountVisibility() {
     pauseCountEl.textContent = "Pause Detection Enabled";
     pauseCountEl.classList.add("idle");
     pauseCountEl.hidden = false;
+}
+
+export function updateCardPlayVisibility() {
+    if (!mainCardEl) {
+        return;
+    }
+
+    const shouldHide = state.hideCardDuringPlay && state.clientStateName === "play";
+    mainCardEl.classList.toggle("card-hidden-by-play", shouldHide);
+    mainCardEl.setAttribute("aria-hidden", shouldHide ? "true" : "false");
 }
 
 export function showOverlay({

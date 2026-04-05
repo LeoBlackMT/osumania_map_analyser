@@ -11,6 +11,8 @@ import {
     parseEnableEtternaRainbowBarsValue,
     parseEnablePauseDetectionValue,
     parseEstimatorAlgorithmValue,
+    parseEnableNumericDifficultyValue,
+    parseHideCardDuringPlayValue,
     parseShowModeTagCapsuleValue,
     parseSrTextValue,
     parseSvDetectionValue,
@@ -36,7 +38,11 @@ import {
     setGraphCursorVisible,
     updateDiffTextVisibility,
 } from "./graph.js";
-import { updateModeTagVisibility, updatePauseCountVisibility } from "./hud.js";
+import {
+    updateCardPlayVisibility,
+    updateModeTagVisibility,
+    updatePauseCountVisibility,
+} from "./hud.js";
 import { resolveAutoDisplayProfile } from "./modeLogic.js";
 import { scheduleRecompute } from "./scheduler.js";
 
@@ -249,6 +255,22 @@ export function applyShowModeTagCapsuleSetting(value) {
     return changed;
 }
 
+export function applyEnableNumericDifficultySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableNumericDifficulty);
+    const changed = state.enableNumericDifficulty !== next;
+    state.enableNumericDifficulty = next;
+    updateDiffTextVisibility();
+    return changed;
+}
+
+export function applyHideCardDuringPlaySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.hideCardDuringPlay);
+    const changed = state.hideCardDuringPlay !== next;
+    state.hideCardDuringPlay = next;
+    updateCardPlayVisibility();
+    return changed;
+}
+
 function extractSettingsPayloadFromCommandPacket(packet) {
     if (Array.isArray(packet)) {
         return packet;
@@ -285,6 +307,8 @@ export function setupSettingsCommandListener() {
         const rainbowChanged = applyEnableEtternaRainbowBarsSetting(parseEnableEtternaRainbowBarsValue(payload));
         const vibroChanged = applyVibroDetectionSetting(parseVibroDetectionValue(payload));
         const modeTagVisibilityChanged = applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(payload));
+        const numericDifficultyChanged = applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(payload));
+        const hideCardDuringPlayChanged = applyHideCardDuringPlaySetting(parseHideCardDuringPlayValue(payload));
         const svChanged = applyDebugUseSvDetectionSetting(parseSvDetectionValue(payload));
 
         const legacyAutoMode = parseAutoModeValue(payload);
@@ -304,6 +328,19 @@ export function setupSettingsCommandListener() {
             || rainbowChanged
             || vibroChanged
             || modeTagVisibilityChanged
+            || numericDifficultyChanged
+            || hideCardDuringPlayChanged
+            || svChanged;
+
+        const recomputeNeeded = contentBarChanged
+            || srTextChanged
+            || debugChanged
+            || diffTextChanged
+            || estimatorChanged
+            || pauseChanged
+            || rainbowChanged
+            || vibroChanged
+            || modeTagVisibilityChanged
             || svChanged;
 
         if (typeof state.initialSettingsResolver === "function") {
@@ -312,8 +349,10 @@ export function setupSettingsCommandListener() {
             resolve();
         }
 
-        if (changed) {
+        if (recomputeNeeded) {
             scheduleRecompute("settings changed", true);
+        } else if (changed) {
+            // Caption-only changes (like numeric display toggle) are applied immediately.
         }
     });
 
@@ -374,6 +413,8 @@ export async function loadSettings() {
         applyEnableEtternaRainbowBarsSetting(parseEnableEtternaRainbowBarsValue(settings));
         applyVibroDetectionSetting(parseVibroDetectionValue(settings));
         applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(settings));
+        applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(settings));
+        applyHideCardDuringPlaySetting(parseHideCardDuringPlayValue(settings));
         applyDebugUseSvDetectionSetting(parseSvDetectionValue(settings));
     } catch {
         applyWsEndpointSetting(APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost);
@@ -386,6 +427,8 @@ export async function loadSettings() {
         applyEnableEtternaRainbowBarsSetting(APP_CONFIG.defaults.enableEtternaRainbowBars);
         applyVibroDetectionSetting(APP_CONFIG.defaults.vibroDetection);
         applyShowModeTagCapsuleSetting(APP_CONFIG.defaults.showModeTagCapsule);
+        applyEnableNumericDifficultySetting(APP_CONFIG.defaults.enableNumericDifficulty);
+        applyHideCardDuringPlaySetting(APP_CONFIG.defaults.hideCardDuringPlay);
         applyDebugUseSvDetectionSetting(APP_CONFIG.defaults.svDetection);
     }
 }

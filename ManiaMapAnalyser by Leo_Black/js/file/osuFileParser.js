@@ -178,9 +178,11 @@ export class OsuFileParser {
 
     try {
             const x = stringToInt(params[0]);
-            const columnWidth = this.columnCount > 0 ? Math.trunc(512 / this.columnCount) : 1;
-            let column = Math.trunc(x / columnWidth);
+            let column = 0;
             if (this.columnCount > 0) {
+        // Keep lane mapping proportional to 512 width to avoid skew on keymodes
+        // where 512 is not divisible by key count.
+        column = Math.trunc((x * this.columnCount) / 512);
         column = Math.min(this.columnCount - 1, Math.max(0, column));
             }
             this.columns.push(column);
@@ -301,9 +303,20 @@ export class OsuFileParser {
             }
 
             locations.sort((a, b) => a - b);
-            for (let i = 0; i < locations.length - 1; i += 1) {
-        const startTime = locations[i];
-        const nextTime = locations[i + 1];
+
+            const uniqueLocations = [];
+            for (const loc of locations) {
+        if (!uniqueLocations.length || uniqueLocations[uniqueLocations.length - 1] !== loc) {
+                    uniqueLocations.push(loc);
+        }
+            }
+
+            for (let i = 0; i < uniqueLocations.length - 1; i += 1) {
+        const startTime = uniqueLocations[i];
+        const nextTime = uniqueLocations[i + 1];
+        if (nextTime <= startTime) {
+                    continue;
+        }
         let duration = nextTime - startTime;
         const beatLength = this.getBeatLengthAt(nextTime);
         duration = Math.max(duration / 2, duration - beatLength / 4);
