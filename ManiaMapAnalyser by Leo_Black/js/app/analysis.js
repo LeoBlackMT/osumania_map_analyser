@@ -1,6 +1,13 @@
-import { runReworkFromText } from "../estimator/reworkEstimator.js";
+import { runSunnyEstimatorFromText } from "../estimator/sunnyEstimator.js";
+import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
+import {
+    applyCompanellaToMixedResult,
+    runMixedEstimatorFromText,
+} from "../estimator/mixedEstimator.js";
+import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
+import { calculateInterludeStar } from "../interlude/index.js";
 import { analyzePatternFromText } from "../patterns/service.js";
-import { OsuFileParser } from "../file/osuFileParser.js";
+import { OsuFileParser } from "../parser/osuFileParser.js";
 import {
     analyzeEtternaFromText,
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
@@ -28,11 +35,18 @@ import {
     renderPatternClusters,
     renderRightCapsule,
     showCategoryValue,
+    showInterludeValue,
     showMsdValue,
     showNumericStarValue,
 } from "./display.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
-import { hideOverlay, setModeTag, setStatus, showOverlay } from "./hud.js";
+import {
+    hideOverlay,
+    setModeTag,
+    setStatus,
+    setSvTagVisible,
+    showOverlay,
+} from "./hud.js";
 import {
     clearAllPauseMarkers,
     clearDiffGraph,
@@ -42,7 +56,7 @@ import {
     setGraphLoading,
 } from "./graph.js";
 import {
-    currentUseDanielAlgorithm,
+    currentEstimatorAlgorithm,
     isAutoDisplayEnabledNow,
     refreshAutoDisplayProfile,
 } from "./settings.js";
@@ -105,6 +119,15 @@ function setLeftCapsuleUnitBadge(unitText) {
     reworkStarEl.setAttribute("data-unit", normalized);
 }
 
+function buildEtternaAnalyzeOptions(etternaVersion) {
+    return {
+        musicRate: state.speedRate,
+        scoreGoal: ETT_DEFAULT_SCORE_GOAL,
+        cvtFlag: state.cvtFlag,
+        etternaVersion,
+    };
+}
+
 export function resetReworkDisplay() {
     setNumericDifficultyValue(null);
     reworkStarEl.textContent = "-";
@@ -112,7 +135,8 @@ export function resetReworkDisplay() {
     reworkDiffEl.textContent = "-";
     if (reworkRightCapsuleEl) {
         reworkRightCapsuleEl.textContent = "-";
-        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast");
+        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast", "has-unit");
+        reworkRightCapsuleEl.removeAttribute("data-unit");
         reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
         reworkRightCapsuleEl.style.color = "#f6fbff";
         reworkRightCapsuleEl.style.textShadow = "none";
@@ -124,6 +148,7 @@ export function resetReworkDisplay() {
     }
     reworkMetaEl.innerHTML = "LN%: -<br/>Keys: -";
     setModeTag("Mix");
+    setSvTagVisible(false);
     reworkMetaEl.classList.remove("loading");
     reworkStarEl.style.color = "#f6fbff";
     reworkStarEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
@@ -167,53 +192,80 @@ export async function fetchBeatmapFile(reason) {
         }
 
         const parsedInfo = parseMetadataFromBeatmap(rawText);
-
-        if (isAutoDisplayEnabledNow()) {
-            const predictedModeTag = modeTagFromLnRatio(Number(parsedInfo.lnRatio));
-            refreshAutoDisplayProfile(predictedModeTag);
-
-            if (state.diffText === "Graph" || state.contentBar === "Graph") {
-                setGraphLoading(true);
-            } else {
-                clearDiffGraph();
-            }
-
-            renderContentSkeleton();
-        }
+        const autoDisplayEnabled = isAutoDisplayEnabledNow();
 
         const errors = [];
         let rework = null;
         let patternResult = null;
         let patternReport = null;
         let ettResult = null;
+        let interludeStar = Number.NaN;
         let isVibroMap = false;
+        let resolvedEstDiff = null;
+        let resolvedNumericDifficulty = null;
+        let resolvedNumericDifficultyHint = null;
+        let pendingCompanellaEstimate = false;
+        let pendingMixedCompanellaContext = null;
+
+        const estimatorAlgorithm = currentEstimatorAlgorithm();
+        const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
+            || estimatorAlgorithm === "Mixed";
 
         const needPatternAnalysis = state.contentBar === "Pattern"
             || state.srText === "Pattern"
             || state.diffText === "Pattern"
-            || state.debugUseSvDetection;
+            || state.debugUseSvDetection
+            || autoDisplayEnabled;
         const needMsdValue = state.srText === "MSD" || state.diffText === "MSD";
+        const needInterludeValue = state.srText === "InterludeSR"
+            || state.diffText === "InterludeSR"
+            || estimatorNeedsCompanellaData;
         const needVibroDetection = state.vibroDetection;
-        const needEtternaAnalysis = state.contentBar === "Etterna" || needMsdValue || needVibroDetection;
-        const shouldReportEtternaError = state.contentBar === "Etterna" || needMsdValue;
+        const needEtternaAnalysis = state.contentBar === "Etterna"
+            || needMsdValue
+            || needVibroDetection
+            || estimatorNeedsCompanellaData;
+        const shouldReportEtternaError = state.contentBar === "Etterna"
+            || needMsdValue
+            || estimatorNeedsCompanellaData;
 
         try {
-            rework = runReworkFromText(rawText, {
+            const estimatorOptions = {
                 speedRate: state.speedRate,
                 odFlag: state.odFlag,
                 cvtFlag: state.cvtFlag,
                 withGraph: state.diffText === "Graph" || state.contentBar === "Graph",
-                useDanielAlgorithm: currentUseDanielAlgorithm(),
-            });
+            };
+
+            const sunnyBaseline = runSunnyEstimatorFromText(rawText, estimatorOptions);
+            let selectedRework = sunnyBaseline;
+            let nextEstDiff = sunnyBaseline.estDiff;
+            let nextNumericDifficulty = sunnyBaseline.numericDifficulty;
+            let nextNumericDifficultyHint = sunnyBaseline.numericDifficultyHint;
+
+            if (estimatorAlgorithm === "Daniel") {
+                selectedRework = runDanielEstimatorFromText(rawText, estimatorOptions);
+                nextEstDiff = selectedRework.estDiff;
+                nextNumericDifficulty = selectedRework.numericDifficulty;
+                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+            } else if (estimatorAlgorithm === "Companella") {
+                selectedRework = sunnyBaseline;
+                pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
+            } else if (estimatorAlgorithm === "Mixed") {
+                selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
+                nextEstDiff = selectedRework.estDiff;
+                nextNumericDifficulty = selectedRework.numericDifficulty;
+                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                pendingMixedCompanellaContext = selectedRework.mixedCompanellaPlan || null;
+            }
+
+            rework = selectedRework;
             if (isStaleRequest()) return;
 
             showNumericStarValue(rework.star);
-            setNumericDifficultyValue(rework.numericDifficulty, rework.numericDifficultyHint);
-
-            const diffText = GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)
-                ? formatDiffForDisplay(rework.estDiff)
-                : "Unsupported Keys";
-            reworkDiffEl.textContent = diffText;
+            resolvedEstDiff = nextEstDiff;
+            resolvedNumericDifficulty = nextNumericDifficulty;
+            resolvedNumericDifficultyHint = nextNumericDifficultyHint;
 
             if (state.diffText === "Graph" || state.contentBar === "Graph") {
                 if (!GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)) {
@@ -237,6 +289,15 @@ export async function fetchBeatmapFile(reason) {
                 showDiffGraphError("Graph unavailable");
             }
             errors.push(`Rework failed: ${error.message}`);
+        }
+
+        if (needInterludeValue) {
+            try {
+                interludeStar = await calculateInterludeStar(rawText, state.speedRate, state.cvtFlag);
+                if (isStaleRequest()) return;
+            } catch (error) {
+                errors.push(`Interlude analyze failed: ${error.message}`);
+            }
         }
 
         if (needPatternAnalysis) {
@@ -273,11 +334,10 @@ export async function fetchBeatmapFile(reason) {
 
         if (needEtternaAnalysis) {
             try {
-                ettResult = await analyzeEtternaFromText(rawText, {
-                    musicRate: state.speedRate,
-                    scoreGoal: ETT_DEFAULT_SCORE_GOAL,
-                    cvtFlag: state.cvtFlag,
-                });
+                ettResult = await analyzeEtternaFromText(
+                    rawText,
+                    buildEtternaAnalyzeOptions(state.etternaVersion),
+                );
                 if (isStaleRequest()) return;
 
                 const reworkStarValue = Number(rework?.star);
@@ -306,15 +366,78 @@ export async function fetchBeatmapFile(reason) {
             ettSkillBarsEl.innerHTML = "";
         }
 
+        if (rework) {
+            const shouldRunCompanella = Number(rework.columnCount) === 4
+                && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
+
+            if (shouldRunCompanella) {
+                let companellaMsdValues = ettResult?.values;
+                const companellaEtternaVersion = String(
+                    state.companellaEtternaVersion || state.etternaVersion,
+                ).trim() || state.etternaVersion;
+
+                if (state.etternaVersion !== companellaEtternaVersion) {
+                    try {
+                        const forcedCompanellaEtterna = await analyzeEtternaFromText(
+                            rawText,
+                            buildEtternaAnalyzeOptions(companellaEtternaVersion),
+                        );
+                        if (isStaleRequest()) return;
+
+                        companellaMsdValues = forcedCompanellaEtterna?.values;
+                    } catch (error) {
+                        errors.push(`Companella Etterna (${companellaEtternaVersion}) analyze failed: ${error.message}`);
+                    }
+                }
+
+                try {
+                    const companellaResult = await classifyCompanellaDifficulty({
+                        msdValues: companellaMsdValues,
+                        interludeStar,
+                        sunnyStar: Number(rework.star),
+                    });
+                    if (isStaleRequest()) return;
+
+                    if (pendingCompanellaEstimate) {
+                        resolvedEstDiff = companellaResult.estDiff;
+                        resolvedNumericDifficulty = companellaResult.numericDifficulty;
+                        resolvedNumericDifficultyHint = companellaResult.numericDifficultyHint;
+                    }
+
+                    if (pendingMixedCompanellaContext) {
+                        const mixedAfterCompanella = applyCompanellaToMixedResult({
+                            estDiff: resolvedEstDiff,
+                            numericDifficulty: resolvedNumericDifficulty,
+                            numericDifficultyHint: resolvedNumericDifficultyHint,
+                            mixedCompanellaPlan: pendingMixedCompanellaContext,
+                        }, companellaResult);
+
+                        resolvedEstDiff = mixedAfterCompanella.estDiff;
+                        resolvedNumericDifficulty = mixedAfterCompanella.numericDifficulty;
+                        resolvedNumericDifficultyHint = mixedAfterCompanella.numericDifficultyHint;
+                        pendingMixedCompanellaContext = null;
+                    }
+                } catch (error) {
+                    errors.push(`Companella estimate failed: ${error.message}`);
+                }
+            }
+
+            const diffText = GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)
+                ? formatDiffForDisplay(resolvedEstDiff)
+                : "Unsupported Keys";
+            reworkDiffEl.textContent = diffText;
+        }
+
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
         let resolvedModeTag = (state.contentBar === "None")
             ? fallbackModeTag
             : (patternResult?.report?.ModeTag || fallbackModeTag);
+        let shouldShowSvTag = false;
 
         if (state.debugUseSvDetection) {
             const svAmount = Number(patternReport?.SVAmount);
             if (Number.isFinite(svAmount) && svAmount >= PATTERNS_CONFIG.SV_AMOUNT_THRESHOLD) {
-                resolvedModeTag = "SV";
+                shouldShowSvTag = true;
                 if (patternReport && typeof patternReport === "object") {
                     patternReport.Category = "SV";
                 }
@@ -322,8 +445,13 @@ export async function fetchBeatmapFile(reason) {
         }
 
         setModeTag(resolvedModeTag);
+        setSvTagVisible(shouldShowSvTag);
 
-        if (isAutoDisplayEnabledNow()) {
+        if (rework) {
+            setNumericDifficultyValue(resolvedNumericDifficulty, resolvedNumericDifficultyHint);
+        }
+
+        if (autoDisplayEnabled) {
             const beforeContent = state.contentBar;
             const beforeSrText = state.srText;
             const profileChanged = refreshAutoDisplayProfile(resolvedModeTag);
@@ -353,6 +481,14 @@ export async function fetchBeatmapFile(reason) {
             if (rework) {
                 showCategoryValue(patternReport?.Category || "-");
             }
+        } else if (state.srText === "InterludeSR") {
+            if (Number.isFinite(interludeStar)) {
+                showInterludeValue(interludeStar);
+                leftCapsuleUnit = "ISR";
+            } else if (rework) {
+                showNumericStarValue(rework.star);
+                leftCapsuleUnit = "SR";
+            }
         } else if (state.srText === "MSD") {
             const overallValue = Number(ettResult?.values?.Overall);
             if (Number.isFinite(overallValue)) {
@@ -377,6 +513,7 @@ export async function fetchBeatmapFile(reason) {
             Number(rework?.star),
             patternReport?.Category || "-",
             Number(ettResult?.values?.Overall),
+            Number(interludeStar),
         );
 
         if (isVibroMap && state.diffText === "Difficulty") {

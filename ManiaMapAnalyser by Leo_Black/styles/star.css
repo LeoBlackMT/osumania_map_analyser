@@ -1,5 +1,6 @@
 .star-value {
     font-family: "Space Grotesk", sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
     font-size: 48px;
     font-weight: 800;
     line-height: 1;
@@ -86,7 +87,8 @@
     margin-bottom: 2px;
     min-width: 0;
     max-width: 56%;
-    flex: 1 1 56%;
+    width: 56%;
+    flex: 0 0 56%;
 }
 
 .star-subtitle {
@@ -109,6 +111,7 @@
 
 .top-right-capsule {
     font-family: "Space Grotesk", sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
     font-size: 30px;
     font-weight: 800;
     line-height: 1;
@@ -124,16 +127,32 @@
     overflow-wrap: anywhere;
 }
 
-.top-right-capsule.numeric-mode {
-    font-size: 48px;
-    border-radius: 22px;
-    padding: 5px 12px;
+.top-right-capsule.has-unit {
+    position: relative;
 }
 
-.main-card:not(.bars-none):not(.bars-etterna) .top-right-capsule.numeric-mode {
-    font-size: 52px;
-    border-radius: 22px;
-    padding: 5px 12px;
+.top-right-capsule.has-unit::after {
+    content: attr(data-unit);
+    position: absolute;
+    right: -20px;
+    bottom: -2px;
+    font-family: "Outfit", sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    opacity: 0.9;
+    color: currentColor;
+    background: rgba(20, 28, 47, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 2px 4px;
+    text-shadow: none;
+    pointer-events: none;
+}
+
+.top-right-capsule.numeric-mode {
+    display: inline-block;
 }
 
 .top-right-capsule.category-mode {

@@ -1,5 +1,8 @@
-import { OsuFileParser } from "../file/osuFileParser.js";
-import createMinaCalcModule from "./version/minaclac-74.0.js";
+import { OsuFileParser } from "../parser/osuFileParser.js";
+import {
+    DEFAULT_ETTERNA_VERSION,
+    resolveEtternaVersionLoader,
+} from "./versions/index.js";
 
 const DEFAULT_SCORE_GOAL = 0.93;
 const SUPPORTED_KEYS = new Set([4, 6, 7]);
@@ -25,7 +28,12 @@ const DISPLAY_SKILLSET_ORDER = [
     "Overall",
 ];
 
-let wasmModulePromise = null;
+const OOB_RETRY_SOURCE_VERSION = "0.70.0";
+const OOB_RETRY_TARGET_VERSION = "0.72.0";
+
+const wasmModulePromiseByVersion = new Map();
+const fallbackWarningShownByRequestedVersion = new Set();
+const runtimeFallbackWarningShownByRequestedVersion = new Set();
 
 function resolveKeycount(parsedCount, override) {
     if (Number.isFinite(override) && SUPPORTED_KEYS.has(override)) {
@@ -91,13 +99,32 @@ function makeZeroValues() {
     return out;
 }
 
-async function getWasmModule() {
-    if (!wasmModulePromise) {
-        wasmModulePromise = createMinaCalcModule({
-            locateFile: (path) => new URL(`./version/${path}`, import.meta.url).toString(),
-        });
+async function getWasmModule(requestedVersion = DEFAULT_ETTERNA_VERSION) {
+    const {
+        requestedVersion: normalizedRequestedVersion,
+        version,
+        loader,
+        fallbackReason,
+    } = resolveEtternaVersionLoader(requestedVersion);
+
+    if (normalizedRequestedVersion !== version
+        && fallbackReason
+        && !fallbackWarningShownByRequestedVersion.has(normalizedRequestedVersion)) {
+        fallbackWarningShownByRequestedVersion.add(normalizedRequestedVersion);
+        console.warn(`Etterna version ${normalizedRequestedVersion} is unavailable; falling back to ${version}. Reason: ${fallbackReason}`);
     }
-    return wasmModulePromise;
+
+    if (!wasmModulePromiseByVersion.has(version)) {
+        wasmModulePromiseByVersion.set(version, loader({
+            locateFile: (path) => new URL(`./versions/${path}`, import.meta.url).toString(),
+        }));
+    }
+    return {
+        requestedVersion: normalizedRequestedVersion,
+        version,
+        fallbackReason,
+        module: await wasmModulePromiseByVersion.get(version),
+    };
 }
 
 function mapOutputValues(rawEight) {
@@ -106,6 +133,11 @@ function mapOutputValues(rawEight) {
         out[OFFICIAL_OUTPUT_ORDER[i]] = Number(rawEight[i]) || 0;
     }
     return out;
+}
+
+function isMemoryOutOfBoundsError(error) {
+    const text = String(error?.message || error || "").toLowerCase();
+    return text.includes("memory access out of bounds") || text.includes("out of bounds");
 }
 
 function runOfficialWasm(module, {
@@ -156,6 +188,7 @@ export async function analyzeEtternaFromText(osuText, {
     scoreGoal = DEFAULT_SCORE_GOAL,
     keyOverride = null,
     cvtFlag = null,
+    etternaVersion = DEFAULT_ETTERNA_VERSION,
 } = {}) {
     const chart = new OsuFileParser(osuText);
     chart.process();
@@ -177,19 +210,55 @@ export async function analyzeEtternaFromText(osuText, {
         };
     }
 
-    const module = await getWasmModule();
-    const values = runOfficialWasm(module, {
-        keycount,
-        musicRate,
-        scoreGoal,
-        rowMasks: masks,
-        rowTimes: seconds,
-    });
+    const moduleInfo = await getWasmModule(etternaVersion);
+    let resolvedVersion = moduleInfo.version;
+    let resolvedFallbackReason = moduleInfo.fallbackReason;
+    let values;
+
+    try {
+        values = runOfficialWasm(moduleInfo.module, {
+            keycount,
+            musicRate,
+            scoreGoal,
+            rowMasks: masks,
+            rowTimes: seconds,
+        });
+    } catch (error) {
+        const shouldRetryForOob = moduleInfo.version === OOB_RETRY_SOURCE_VERSION
+            && isMemoryOutOfBoundsError(error);
+        if (!shouldRetryForOob) {
+            throw error;
+        }
+
+        const retryInfo = await getWasmModule(OOB_RETRY_TARGET_VERSION);
+        values = runOfficialWasm(retryInfo.module, {
+            keycount,
+            musicRate,
+            scoreGoal,
+            rowMasks: masks,
+            rowTimes: seconds,
+        });
+
+        resolvedVersion = retryInfo.version;
+        const runtimeFallbackReason = `Etterna ${moduleInfo.version} runtime out-of-bounds; fell back to ${retryInfo.version}`;
+        resolvedFallbackReason = [moduleInfo.fallbackReason, runtimeFallbackReason]
+            .filter(Boolean)
+            .join("; ");
+
+        const warningKey = `${moduleInfo.requestedVersion}|${moduleInfo.version}->${retryInfo.version}`;
+        if (!runtimeFallbackWarningShownByRequestedVersion.has(warningKey)) {
+            runtimeFallbackWarningShownByRequestedVersion.add(warningKey);
+            console.warn(runtimeFallbackReason);
+        }
+    }
 
     return {
         keycount,
         lnRatio: chart.lnRatio,
         metadata: chart.metaData,
+        requestedEtternaVersion: moduleInfo.requestedVersion,
+        etternaVersion: resolvedVersion,
+        etternaVersionFallbackReason: resolvedFallbackReason,
         values,
     };
 }

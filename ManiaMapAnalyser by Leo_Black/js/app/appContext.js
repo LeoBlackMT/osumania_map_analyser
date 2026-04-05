@@ -51,9 +51,12 @@ export const overlayTitleEl = document.getElementById("overlay-title");
 export const overlayMessageEl = document.getElementById("overlay-message");
 export const mainCardEl = document.querySelector(".main-card");
 export const modeTagEl = document.getElementById("mode-tag");
+export const svTagEl = document.getElementById("sv-tag");
 
 export const state = {
     lastBeatmapKey: "",
+    lastBeatmapIdentity: "",
+    lastBeatmapIdentitySource: "",
     client: "",
     speedRate: 1.0,
     odFlag: null,
@@ -68,14 +71,20 @@ export const state = {
     debugUseSvDetection: APP_CONFIG.defaults.svDetection,
     diffText: APP_CONFIG.defaults.diffText,
     estimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
+    etternaVersion: APP_CONFIG.defaults.etternaVersion,
+    companellaEtternaVersion: APP_CONFIG.defaults.companellaEtternaVersion,
     pauseDetectionEnabled: APP_CONFIG.defaults.pauseDetectionEnabled,
     enableEtternaRainbowBars: APP_CONFIG.defaults.enableEtternaRainbowBars,
+    enableStatusMarquee: APP_CONFIG.defaults.enableStatusMarquee,
     enableNumericDifficulty: APP_CONFIG.defaults.enableNumericDifficulty,
     hideCardDuringPlay: APP_CONFIG.defaults.hideCardDuringPlay,
     vibroDetection: APP_CONFIG.defaults.vibroDetection,
     numericDifficulty: null,
     numericDifficultyHint: null,
     showModeTagCapsule: APP_CONFIG.defaults.showModeTagCapsule,
+    showSvTag: false,
+    statusText: "",
+    statusKind: "loading",
     currentModeTag: "Mix",
     etternaTechnicalHidden: false,
     graphSeries: null,
@@ -146,10 +155,13 @@ export const {
     parseAutoModeValue,
     parseUseDanielAlgorithmValue,
     parseEstimatorAlgorithmValue,
+    parseEtternaVersionValue,
+    parseCompanellaEtternaVersionValue,
     parseEnablePauseDetectionValue,
     parseDisableVibroDetectionValue,
     parseVibroDetectionValue,
     parseEnableEtternaRainbowBarsValue,
+    parseEnableStatusMarqueeValue,
     parseShowModeTagCapsuleValue,
     parseEnableNumericDifficultyValue,
     parseHideCardDuringPlayValue,

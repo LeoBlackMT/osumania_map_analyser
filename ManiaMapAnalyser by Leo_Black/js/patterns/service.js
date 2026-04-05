@@ -1,4 +1,4 @@
-﻿import { parseOsuManiaFromText } from "./osuParser.js";
+﻿import { parseOsuManiaFromText } from "../parser/patternOsuParser.js";
 import { fromChart } from "./summary.js";
 
 export function analyzePatternFromText(osuText, rate = 1.0) {

@@ -38,12 +38,14 @@ export async function analyzeEtternaFromText(osuText, {
     scoreGoal = DEFAULT_SCORE_GOAL,
     keyOverride = null,
     cvtFlag = null,
+    etternaVersion = null,
 } = {}) {
     const normalizedOptions = {
         musicRate: Number.isFinite(Number(musicRate)) ? Number(musicRate) : 1.0,
         scoreGoal: Number.isFinite(Number(scoreGoal)) ? Number(scoreGoal) : DEFAULT_SCORE_GOAL,
         keyOverride: normalizeKeyOverride(keyOverride),
         cvtFlag,
+        etternaVersion,
     };
 
     return requestWasmCalc(osuText, normalizedOptions);

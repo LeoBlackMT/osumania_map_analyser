@@ -29,6 +29,7 @@
 		"options": [
 			"Auto",
 			"ReworkSR",
+			"InterludeSR",
 			"MSD",
 			"Pattern"
 		],
@@ -45,15 +46,24 @@
 			"Difficulty",
 			"MSD",
 			"Pattern",
-			"ReworkSR"
+			"ReworkSR",
+			"InterludeSR"
 		],
 		"value": "Difficulty"
 	},
 	{
 		"uniqueID": "showModeTagCapsule",
 		"type": "checkbox",
-		"title": "Mode Tag Capsule",
-		"description": "Show the mode tag capsule (HB/RC/LN/Mix) at bottom-left.",
+		"title": "Map Tag Capsule",
+		"description": "Show the Map tag capsule (HB/RC/LN/Mix) at bottom-left.",
+		"options": [],
+		"value": true
+	},
+	{
+		"uniqueID": "enableStatusMarquee",
+		"type": "checkbox",
+		"title": "Metadata Marquee",
+		"description": "Enable horizontal marquee scrolling for long metadata text.",
 		"options": [],
 		"value": true
 	},
@@ -69,7 +79,7 @@
 		"uniqueID": "enableNumericDifficulty",
 		"type": "checkbox",
 		"title": "Numeric Difficulty",
-		"description": "Show numeric difficulty values.",
+		"description": "Show numeric difficulty values in RC algorithms.",
 		"options": [],
 		"value": false
 	},
@@ -111,20 +121,40 @@
 		"uniqueID": "estimatorAlgorithm",
 		"type": "options",
 		"title": "Estimator Algorithm",
-		"description": "Select estimator algorithm. Sunny is the default estimator, Daniel uses Daniel 4K estimator (non-4K falls back automatically).",
+		"description": "Select estimator algorithm.",
 		"options": [
+			"Mixed",
 			"Sunny",
-			"Daniel"
+			"Daniel",
+			"Companella"
 		],
-		"value": "Sunny"
+		"value": "Mixed"
 	},
 	{
-		"uniqueID":"danielLink",
-		"type":"button",
-		"title":"Daniel Estimator Link",
-		"description":"",
-		"options":[],
-		"value":"https://thebagelofman.github.io/Daniel/"
+		"uniqueID": "etternaVersion",
+		"type": "options",
+		"title": "Global Etterna Version",
+		"description": "Select Etterna's MinaCalc version used by MSD and related metrics.",
+		"options": [
+			"0.68.0-Unofficial",
+			"0.72.0",
+			"0.72.3",
+			"0.74.0"
+		],
+		"value": "0.72.3"
+	},
+	{
+		"uniqueID": "companellaEtternaVersion",
+		"type": "options",
+		"title": "Companella Etterna Version",
+		"description": "Select Etterna's MinaCalc version specifically used for Companella Estimator.",
+		"options": [
+			"0.68.0-Unofficial",
+			"0.72.0",
+			"0.72.3",
+			"0.74.0"
+		],
+		"value": "0.74.0"
 	},
 
 	{
@@ -163,9 +193,9 @@
 	{
 		"uniqueID": "debugUseSvDetection",
 		"type": "checkbox",
-		"title": "SV Detection",
+		"title": "SV Detection(experimental)",
 		"description": "Allow SV-based mode tag/category detection logic.",
 		"options": [],
-		"value": false
+		"value": true
 	}
 ]

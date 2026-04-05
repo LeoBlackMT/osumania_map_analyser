@@ -192,6 +192,22 @@ function syncLeftUnitBadgeContrast(textColor) {
     reworkStarEl.classList.toggle("unit-badge-light", shouldUseLightUnitBadgeText(textColor));
 }
 
+function setRightCapsuleUnitBadge(unitText) {
+    if (!reworkRightCapsuleEl) {
+        return;
+    }
+
+    const normalized = typeof unitText === "string" ? unitText.trim() : "";
+    if (!normalized) {
+        reworkRightCapsuleEl.classList.remove("has-unit");
+        reworkRightCapsuleEl.removeAttribute("data-unit");
+        return;
+    }
+
+    reworkRightCapsuleEl.classList.add("has-unit");
+    reworkRightCapsuleEl.setAttribute("data-unit", normalized);
+}
+
 function formatClusterSpecificTypes(specificTypes) {
     if (!specificTypes || !specificTypes.length) {
         return "-";
@@ -344,6 +360,14 @@ function overallToStarValue(overallValue) {
     return normalized * 10.0;
 }
 
+export function interludeToSrColorValue(interludeStarValue) {
+    const isr = Number(interludeStarValue);
+    if (!Number.isFinite(isr)) {
+        return Number.NaN;
+    }
+    return (isr * 10.0) / 15.0;
+}
+
 export function showMsdValue(overallValue) {
     reworkStarEl.classList.remove("category-mode");
     animateNumericCapsuleValue(reworkStarEl, overallValue);
@@ -358,13 +382,28 @@ export function showMsdValue(overallValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
-function showRightCapsuleNumericValue(targetValue, mappedStarValue) {
+export function showInterludeValue(interludeStarValue) {
+    reworkStarEl.classList.remove("category-mode");
+    animateNumericCapsuleValue(reworkStarEl, interludeStarValue);
+    const mappedStar = interludeToSrColorValue(interludeStarValue);
+    const starBg = starColorFor(mappedStar);
+    const preferredText = starTextColorFor(mappedStar);
+    const starText = pickReadableTextColor(mappedStar, starBg, preferredText);
+    reworkStarEl.style.backgroundColor = starBg;
+    reworkStarEl.style.color = starText;
+    reworkStarEl.style.textShadow = "none";
+    reworkStarEl.classList.remove("high-contrast");
+    syncLeftUnitBadgeContrast(starText);
+}
+
+function showRightCapsuleNumericValue(targetValue, mappedStarValue, unitText = "") {
     if (!reworkRightCapsuleEl) {
         return;
     }
     reworkRightCapsuleEl.classList.remove("category-mode");
     reworkRightCapsuleEl.classList.add("numeric-mode");
     reworkRightCapsuleEl.classList.remove("high-contrast");
+    setRightCapsuleUnitBadge(unitText);
     animateNumericCapsuleValue(reworkRightCapsuleEl, targetValue);
 
     if (!Number.isFinite(mappedStarValue)) {
@@ -390,13 +429,14 @@ function showRightCapsuleCategoryValue(categoryText) {
     reworkRightCapsuleEl.classList.remove("numeric-mode");
     reworkRightCapsuleEl.classList.add("category-mode");
     reworkRightCapsuleEl.classList.remove("high-contrast");
+    setRightCapsuleUnitBadge("");
     reworkRightCapsuleEl.textContent = sanitizeCategoryText(categoryText);
     reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
     reworkRightCapsuleEl.style.color = "#f6fbff";
     reworkRightCapsuleEl.style.textShadow = "none";
 }
 
-export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryText, etternaOverallValue) {
+export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryText, etternaOverallValue, interludeStarValue) {
     if (!reworkRightCapsuleEl) {
         return;
     }
@@ -412,6 +452,12 @@ export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryTex
         return;
     }
 
+    if (diffMode === "InterludeSR") {
+        const mappedStar = interludeToSrColorValue(interludeStarValue);
+        showRightCapsuleNumericValue(interludeStarValue, mappedStar, "");
+        return;
+    }
+
     if (diffMode === "Pattern") {
         showRightCapsuleCategoryValue(patternCategoryText);
         return;
@@ -420,6 +466,7 @@ export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryTex
     reworkRightCapsuleEl.classList.remove("category-mode");
     reworkRightCapsuleEl.classList.remove("numeric-mode");
     reworkRightCapsuleEl.classList.remove("high-contrast");
+    setRightCapsuleUnitBadge("");
     numericAnimationTokens.delete(reworkRightCapsuleEl);
     reworkRightCapsuleEl.textContent = "-";
     reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";

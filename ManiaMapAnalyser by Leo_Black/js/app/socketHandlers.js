@@ -30,6 +30,8 @@ function getModData(data) {
     return getModDataFromPayload(data, {
         sortedKnownModCodes: SORTED_KNOWN_MOD_CODES,
         modBitFlagEntries: MOD_BIT_FLAG_ENTRIES,
+        fallbackClient: state.client,
+        preferPlayMods: state.isInPlayState,
     });
 }
 
@@ -150,11 +152,9 @@ export function setupSocketListener() {
         }
 
         const modData = getModData(data);
-        state.client = modData.client;
-        state.speedRate = modData.speedRate;
-        state.odFlag = modData.odFlag;
-        state.cvtFlag = modData.cvtFlag;
-        state.modSignature = modData.modSignature;
+        if (modData.client) {
+            state.client = modData.client;
+        }
 
         updateSongTimeState(data);
 
@@ -181,18 +181,64 @@ export function setupSocketListener() {
             normalizeText(beatmap?.mapper),
         ].join("::");
 
-        const beatmapKey = [
-            beatmapId,
-            beatmapHash,
-            beatmapPath,
-            beatmapTitleKey,
-        ].join("|");
+        const previousBeatmapIdentity = state.lastBeatmapIdentity || "";
+        const parsedPreviousIdentitySource = typeof previousBeatmapIdentity === "string"
+            ? String(previousBeatmapIdentity).split(":")[0]
+            : "";
+        const previousIdentitySource = state.lastBeatmapIdentitySource || parsedPreviousIdentitySource;
+        const previousModSignature = state.modSignature || "";
 
-        if (beatmapKey.replace(/[|:]/g, "").length === 0) return;
+        const hasMetadataIdentity = beatmapTitleKey.replace(/[:]/g, "").length > 0;
+        const identityValueBySource = {
+            id: beatmapId,
+            hash: beatmapHash,
+            path: beatmapPath,
+            meta: hasMetadataIdentity ? beatmapTitleKey : "",
+        };
 
-        const key = `${beatmapKey}|${state.modSignature}`;
+        const identitySourcesByPriority = ["id", "hash", "path", "meta"];
 
-        if (!key || key === state.lastBeatmapKey) return;
+        let nextIdentitySource = "";
+        if (previousIdentitySource && identityValueBySource[previousIdentitySource]) {
+            nextIdentitySource = previousIdentitySource;
+        } else if (!previousBeatmapIdentity) {
+            for (const source of identitySourcesByPriority) {
+                if (identityValueBySource[source]) {
+                    nextIdentitySource = source;
+                    break;
+                }
+            }
+        } else {
+            nextIdentitySource = previousIdentitySource;
+        }
+
+        const nextBeatmapIdentity = nextIdentitySource && identityValueBySource[nextIdentitySource]
+            ? `${nextIdentitySource}:${identityValueBySource[nextIdentitySource]}`
+            : previousBeatmapIdentity;
+        if (!nextBeatmapIdentity) return;
+
+        // api_v2 packets can be partial. Only apply incoming mod state when
+        // mod payload is explicitly present; otherwise keep current state.
+        const shouldApplyModState = !previousModSignature
+            || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod));
+        const nextModSignature = shouldApplyModState
+            ? modData.modSignature
+            : previousModSignature;
+
+        const hasStateMismatch = nextBeatmapIdentity !== previousBeatmapIdentity
+            || nextModSignature !== previousModSignature;
+        if (!hasStateMismatch) return;
+
+        if (shouldApplyModState) {
+            state.speedRate = modData.speedRate;
+            state.odFlag = modData.odFlag;
+            state.cvtFlag = modData.cvtFlag;
+            state.modSignature = nextModSignature;
+        }
+
+        state.lastBeatmapIdentity = nextBeatmapIdentity;
+        state.lastBeatmapIdentitySource = nextIdentitySource || previousIdentitySource || "";
+        const key = `${nextBeatmapIdentity}|${nextModSignature}`;
         resetPauseRuntime(true);
         state.lastBeatmapKey = key;
 

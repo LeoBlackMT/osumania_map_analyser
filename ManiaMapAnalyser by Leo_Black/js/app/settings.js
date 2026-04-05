@@ -9,8 +9,11 @@ import {
     parseDebugUseAmountValue,
     parseDiffTextValue,
     parseEnableEtternaRainbowBarsValue,
+    parseEnableStatusMarqueeValue,
     parseEnablePauseDetectionValue,
     parseEstimatorAlgorithmValue,
+    parseEtternaVersionValue,
+    parseCompanellaEtternaVersionValue,
     parseEnableNumericDifficultyValue,
     parseHideCardDuringPlayValue,
     parseShowModeTagCapsuleValue,
@@ -28,6 +31,7 @@ import {
     normalizeBooleanSetting,
     normalizeContentBarValue,
     normalizeDiffTextValue,
+    normalizeEtternaVersionValue,
     normalizeEstimatorAlgorithmValue,
     normalizeWsEndpointValue,
     normalizeSrTextValue,
@@ -42,6 +46,7 @@ import {
     updateCardPlayVisibility,
     updateModeTagVisibility,
     updatePauseCountVisibility,
+    refreshStatusRendering,
 } from "./hud.js";
 import { resolveAutoDisplayProfile } from "./modeLogic.js";
 import { scheduleRecompute } from "./scheduler.js";
@@ -207,9 +212,23 @@ export function applyDiffTextSetting(value) {
 }
 
 export function applyEstimatorAlgorithmSetting(value) {
-    const next = normalizeEstimatorAlgorithmValue(value) || "Sunny";
+    const next = normalizeEstimatorAlgorithmValue(value) || APP_CONFIG.defaults.estimatorAlgorithm;
     const changed = state.estimatorAlgorithm !== next;
     state.estimatorAlgorithm = next;
+    return changed;
+}
+
+export function applyEtternaVersionSetting(value) {
+    const next = normalizeEtternaVersionValue(value) || APP_CONFIG.defaults.etternaVersion;
+    const changed = state.etternaVersion !== next;
+    state.etternaVersion = next;
+    return changed;
+}
+
+export function applyCompanellaEtternaVersionSetting(value) {
+    const next = normalizeEtternaVersionValue(value) || APP_CONFIG.defaults.companellaEtternaVersion;
+    const changed = state.companellaEtternaVersion !== next;
+    state.companellaEtternaVersion = next;
     return changed;
 }
 
@@ -244,6 +263,18 @@ export function applyEnableEtternaRainbowBarsSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableEtternaRainbowBars);
     const changed = state.enableEtternaRainbowBars !== next;
     state.enableEtternaRainbowBars = next;
+    return changed;
+}
+
+export function applyEnableStatusMarqueeSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableStatusMarquee);
+    const changed = state.enableStatusMarquee !== next;
+    state.enableStatusMarquee = next;
+
+    if (changed) {
+        refreshStatusRendering();
+    }
+
     return changed;
 }
 
@@ -303,8 +334,11 @@ export function setupSettingsCommandListener() {
         const debugChanged = applyDebugUseAmountSetting(parseDebugUseAmountValue(payload));
         const diffTextChanged = applyDiffTextSetting(parseDiffTextValue(payload));
         const estimatorChanged = applyEstimatorAlgorithmSetting(parseEstimatorAlgorithmValue(payload));
+        const etternaVersionChanged = applyEtternaVersionSetting(parseEtternaVersionValue(payload));
+        const companellaEtternaVersionChanged = applyCompanellaEtternaVersionSetting(parseCompanellaEtternaVersionValue(payload));
         const pauseChanged = applyPauseDetectionSetting(parseEnablePauseDetectionValue(payload));
         const rainbowChanged = applyEnableEtternaRainbowBarsSetting(parseEnableEtternaRainbowBarsValue(payload));
+        const statusMarqueeChanged = applyEnableStatusMarqueeSetting(parseEnableStatusMarqueeValue(payload));
         const vibroChanged = applyVibroDetectionSetting(parseVibroDetectionValue(payload));
         const modeTagVisibilityChanged = applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(payload));
         const numericDifficultyChanged = applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(payload));
@@ -324,8 +358,11 @@ export function setupSettingsCommandListener() {
             || debugChanged
             || diffTextChanged
             || estimatorChanged
+            || etternaVersionChanged
+            || companellaEtternaVersionChanged
             || pauseChanged
             || rainbowChanged
+            || statusMarqueeChanged
             || vibroChanged
             || modeTagVisibilityChanged
             || numericDifficultyChanged
@@ -337,6 +374,8 @@ export function setupSettingsCommandListener() {
             || debugChanged
             || diffTextChanged
             || estimatorChanged
+            || etternaVersionChanged
+            || companellaEtternaVersionChanged
             || pauseChanged
             || rainbowChanged
             || vibroChanged
@@ -409,8 +448,11 @@ export async function loadSettings() {
         applyDebugUseAmountSetting(parseDebugUseAmountValue(settings));
         applyDiffTextSetting(parseDiffTextValue(settings));
         applyEstimatorAlgorithmSetting(parseEstimatorAlgorithmValue(settings));
+        applyEtternaVersionSetting(parseEtternaVersionValue(settings));
+        applyCompanellaEtternaVersionSetting(parseCompanellaEtternaVersionValue(settings));
         applyPauseDetectionSetting(parseEnablePauseDetectionValue(settings));
         applyEnableEtternaRainbowBarsSetting(parseEnableEtternaRainbowBarsValue(settings));
+        applyEnableStatusMarqueeSetting(parseEnableStatusMarqueeValue(settings));
         applyVibroDetectionSetting(parseVibroDetectionValue(settings));
         applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(settings));
         applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(settings));
@@ -423,8 +465,11 @@ export async function loadSettings() {
         applyDebugUseAmountSetting(APP_CONFIG.defaults.debugUseAmount);
         applyDiffTextSetting(APP_CONFIG.defaults.diffText);
         applyEstimatorAlgorithmSetting(APP_CONFIG.defaults.estimatorAlgorithm);
+        applyEtternaVersionSetting(APP_CONFIG.defaults.etternaVersion);
+        applyCompanellaEtternaVersionSetting(APP_CONFIG.defaults.companellaEtternaVersion);
         applyPauseDetectionSetting(APP_CONFIG.defaults.pauseDetectionEnabled);
         applyEnableEtternaRainbowBarsSetting(APP_CONFIG.defaults.enableEtternaRainbowBars);
+        applyEnableStatusMarqueeSetting(APP_CONFIG.defaults.enableStatusMarquee);
         applyVibroDetectionSetting(APP_CONFIG.defaults.vibroDetection);
         applyShowModeTagCapsuleSetting(APP_CONFIG.defaults.showModeTagCapsule);
         applyEnableNumericDifficultySetting(APP_CONFIG.defaults.enableNumericDifficulty);
@@ -435,6 +480,10 @@ export async function loadSettings() {
 
 export function currentUseDanielAlgorithm() {
     return state.estimatorAlgorithm === "Daniel";
+}
+
+export function currentEstimatorAlgorithm() {
+    return state.estimatorAlgorithm;
 }
 
 export function isAutoDisplayEnabledNow() {

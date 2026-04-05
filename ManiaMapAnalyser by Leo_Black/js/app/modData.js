@@ -8,6 +8,23 @@ function collectValues(value) {
     return [];
 }
 
+function collectPlayModsCandidates(data) {
+    const candidates = [data?.play?.mods];
+
+    for (const tourneyClient of collectValues(data?.tourney?.clients)) {
+        candidates.push(tourneyClient?.play?.mods);
+    }
+    for (const ipcClient of collectValues(data?.tourney?.ipcClients)) {
+        candidates.push(ipcClient?.gameplay?.mods);
+    }
+
+    return candidates;
+}
+
+function collectNonPlayModsCandidates(data) {
+    return [data?.menu?.mods, data?.resultsScreen?.mods];
+}
+
 function addCodesFromString(codes, value, sortedKnownModCodes) {
     if (typeof value !== "string" || value.trim().length === 0) {
         return;
@@ -42,23 +59,56 @@ function addCodesFromNumber(codes, value, modBitFlagEntries) {
     }
 }
 
-export function getModData(data, { sortedKnownModCodes, modBitFlagEntries }) {
-    const client = String(data?.client || "").toLowerCase();
+export function getModData(data, {
+    sortedKnownModCodes,
+    modBitFlagEntries,
+    fallbackClient,
+    preferPlayMods = false,
+}) {
+    const payloadClient = String(data?.client || "").toLowerCase();
+    const client = payloadClient || String(fallbackClient || "").toLowerCase();
 
-    const modsCandidates = [data?.play?.mods, data?.menu?.mods, data?.resultsScreen?.mods];
+    const playModsCandidates = collectPlayModsCandidates(data);
+    const nonPlayModsCandidates = collectNonPlayModsCandidates(data);
+    const selectedModsCandidates = preferPlayMods
+        ? playModsCandidates
+        : [...playModsCandidates, ...nonPlayModsCandidates];
 
-    for (const tourneyClient of collectValues(data?.tourney?.clients)) {
-        modsCandidates.push(tourneyClient?.play?.mods);
-    }
-    for (const ipcClient of collectValues(data?.tourney?.ipcClients)) {
-        modsCandidates.push(ipcClient?.gameplay?.mods);
-    }
-
-    const validMods = modsCandidates.filter(Boolean);
+    const validMods = selectedModsCandidates.filter((mods) => mods !== undefined && mods !== null);
+    const hasModPayload = validMods.length > 0;
 
     const modCodes = new Set();
     const modArrays = [];
+    let hasModInfo = false;
+    let hasExplicitNoMod = false;
     for (const mods of validMods) {
+        const nameText = typeof mods?.name === "string" ? mods.name.trim() : "";
+        const strText = typeof mods?.str === "string" ? mods.str.trim() : "";
+        const acronymText = typeof mods?.acronym === "string" ? mods.acronym.trim() : "";
+        const numberValue = Number(mods?.number);
+        const numValue = Number(mods?.num);
+
+        if (nameText.length > 0) {
+            hasModInfo = true;
+        }
+        if (strText.length > 0) {
+            hasModInfo = true;
+        }
+        if (acronymText.length > 0) {
+            hasModInfo = true;
+        }
+        if (Number.isFinite(numberValue) || Number.isFinite(numValue)) {
+            hasModInfo = true;
+        }
+
+        if (/^(NM|NOMOD|NONE)$/i.test(nameText)
+            || /^(NM|NOMOD|NONE)$/i.test(strText)
+            || /^(NM|NOMOD|NONE)$/i.test(acronymText)
+            || (Number.isFinite(numberValue) && numberValue === 0)
+            || (Number.isFinite(numValue) && numValue === 0)) {
+            hasExplicitNoMod = true;
+        }
+
         addCodesFromString(modCodes, mods?.name, sortedKnownModCodes);
         addCodesFromString(modCodes, mods?.str, sortedKnownModCodes);
         addCodesFromString(modCodes, mods?.acronym, sortedKnownModCodes);
@@ -66,9 +116,19 @@ export function getModData(data, { sortedKnownModCodes, modBitFlagEntries }) {
         addCodesFromNumber(modCodes, mods?.num, modBitFlagEntries);
 
         if (Array.isArray(mods?.array)) {
+            if (mods.array.length > 0) {
+                hasModInfo = true;
+            } else {
+                hasExplicitNoMod = true;
+            }
             modArrays.push(mods.array);
         }
         if (Array.isArray(mods)) {
+            if (mods.length > 0) {
+                hasModInfo = true;
+            } else {
+                hasExplicitNoMod = true;
+            }
             modArrays.push(mods);
         }
     }
@@ -143,11 +203,22 @@ export function getModData(data, { sortedKnownModCodes, modBitFlagEntries }) {
         }
     }
 
+    const hasRelevantModInfo = modCodes.size > 0
+        || Number.isFinite(lazerSpeedChange)
+        || Number.isFinite(daOverallDifficulty)
+        || cvtFlag != null
+        || odFlag != null
+        || Math.abs(Number(speedRate) - 1.0) > 1e-6;
+
+    const hasExplicitNoModSignal = hasExplicitNoMod
+        && !hasRelevantModInfo;
+
+    // Only include calculation-relevant dimensions in signature.
+    // This avoids recompute thrash when unrelated lazer mod payload fields fluctuate.
     const modSignature = [
         Number(speedRate).toFixed(5),
         odFlag == null ? "none" : String(odFlag),
         cvtFlag == null ? "none" : String(cvtFlag),
-        [...modCodes].sort().join("+"),
     ].join("|");
 
     return {
@@ -156,6 +227,9 @@ export function getModData(data, { sortedKnownModCodes, modBitFlagEntries }) {
         odFlag,
         cvtFlag,
         modSignature,
+        hasModPayload,
+        hasModInfo: hasRelevantModInfo,
+        hasExplicitNoMod: hasExplicitNoModSignal,
     };
 }
 

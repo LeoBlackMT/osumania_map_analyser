@@ -66,6 +66,8 @@
     .star-right {
         min-width: 0;
         max-width: 56%;
+        width: 56%;
+        flex: 0 0 56%;
     }
 
     .star-subtitle {
@@ -76,15 +78,4 @@
         font-size: 11px;
     }
 
-    .main-card:not(.bars-none) .top-right-capsule.numeric-mode {
-        font-size: 44px;
-        padding: 4px 10px;
-        border-radius: 18px;
-    }
-
-    .main-card.bars-none .top-right-capsule.numeric-mode {
-        font-size: 40px;
-        padding: 4px 10px;
-        border-radius: 18px;
-    }
 }
