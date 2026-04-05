@@ -57,6 +57,24 @@ export function normalizeEtternaVersionValue(value) {
         return "0.68.0-Unofficial";
     }
     return trimmed.length > 0 ? trimmed : null;
+export function normalizeWsEndpointValue(value, fallback = "localhost:24050") {
+    if (typeof value !== "string") {
+        return fallback;
+    }
+
+    let normalized = value.trim();
+    if (!normalized) {
+        return fallback;
+    }
+
+    normalized = normalized.replace(/^(wss?:\/\/|https?:\/\/)/i, "");
+    const slashIndex = normalized.indexOf("/");
+    if (slashIndex >= 0) {
+        normalized = normalized.slice(0, slashIndex);
+    }
+
+    normalized = normalized.trim();
+    return normalized || fallback;
 }
 
 export function normalizeDiffTextValue(value) {
@@ -301,6 +319,22 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.svDetection);
     }
 
+    function parseWsEndpointValue(settingsPayload) {
+        const wsEndpointValue = extractSettingValue(settingsPayload, "wsEndpoint");
+        const legacyWsHostValue = extractSettingValue(settingsPayload, "wsHost");
+        const fallbackHost = appConfig.defaults.wsEndpoint || appConfig.socketHost;
+
+        if (wsEndpointValue !== undefined && wsEndpointValue !== null) {
+            return normalizeWsEndpointValue(wsEndpointValue, fallbackHost);
+        }
+
+        if (legacyWsHostValue !== undefined && legacyWsHostValue !== null) {
+            return normalizeWsEndpointValue(legacyWsHostValue, fallbackHost);
+        }
+
+        return normalizeWsEndpointValue(fallbackHost, "localhost:24050");
+    }
+
     return {
         parseEnablePatternValue,
         parseContentBarValue,
@@ -321,5 +355,6 @@ export function createSettingsParsers(appConfig) {
         parseEnableNumericDifficultyValue,
         parseHideCardDuringPlayValue,
         parseSvDetectionValue,
+        parseWsEndpointValue,
     };
 }

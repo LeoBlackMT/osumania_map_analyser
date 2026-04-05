@@ -14,8 +14,8 @@ import {
 } from "../ett/index.js";
 import { PATTERNS_CONFIG } from "../patterns/config.js";
 import {
-    ENDPOINT,
     ettSkillBarsEl,
+    getEndpoint,
     GRAPH_SUPPORTED_KEY_SET,
     mainCardEl,
     patternClustersEl,
@@ -175,7 +175,7 @@ export async function fetchBeatmapFile(reason) {
     renderContentSkeleton();
 
     try {
-        const response = await fetch(ENDPOINT, {
+        const response = await fetch(getEndpoint(), {
             method: "GET",
             cache: "no-store",
         });

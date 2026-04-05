@@ -157,6 +157,22 @@
 		"value": "0.74.0"
 	},
 
+	{
+		"uniqueID":"hNetwork",
+		"type":"header",
+		"title":"Network Configuration",
+		"description":"",
+		"options":[],
+		"value":""
+	},
+	{
+		"uniqueID":"wsEndpoint",
+		"type":"text",
+		"title":"WebSocket Endpoint",
+		"description":"Set host:port for both websocket and beatmap HTTP endpoint.",
+		"options":[],
+		"value":"localhost:24050"
+	},
 
 	{
 		"uniqueID":"hDebug",
