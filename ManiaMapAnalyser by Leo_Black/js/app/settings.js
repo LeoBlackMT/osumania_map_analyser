@@ -17,6 +17,7 @@ import {
     parseSrTextValue,
     parseSvDetectionValue,
     parseVibroDetectionValue,
+    parseWsEndpointValue,
     patternClustersEl,
     reworkStarEl,
     socket,
@@ -28,6 +29,7 @@ import {
     normalizeContentBarValue,
     normalizeDiffTextValue,
     normalizeEstimatorAlgorithmValue,
+    normalizeWsEndpointValue,
     normalizeSrTextValue,
 } from "./settingsParsers.js";
 import {
@@ -93,6 +95,18 @@ export function applyDebugUseSvDetectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.svDetection);
     const changed = state.debugUseSvDetection !== next;
     state.debugUseSvDetection = next;
+    return changed;
+}
+
+export function applyWsEndpointSetting(value) {
+    const next = normalizeWsEndpointValue(value, APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost);
+    const changed = state.wsEndpoint !== next;
+    state.wsEndpoint = next;
+
+    if (changed && socket && typeof socket.setHost === "function") {
+        socket.setHost(next, true);
+    }
+
     return changed;
 }
 
@@ -283,6 +297,7 @@ export function setupSettingsCommandListener() {
         }
 
         state.settingsReceivedFromCommand = true;
+        const wsEndpointChanged = applyWsEndpointSetting(parseWsEndpointValue(payload));
         const contentBarChanged = applyContentBarSetting(parseContentBarValue(payload));
         const srTextChanged = applySrTextSetting(parseSrTextValue(payload));
         const debugChanged = applyDebugUseAmountSetting(parseDebugUseAmountValue(payload));
@@ -304,6 +319,7 @@ export function setupSettingsCommandListener() {
         }
 
         const changed = contentBarChanged
+            || wsEndpointChanged
             || srTextChanged
             || debugChanged
             || diffTextChanged
@@ -387,6 +403,7 @@ export async function loadSettings() {
         }
 
         const settings = await response.json();
+        applyWsEndpointSetting(parseWsEndpointValue(settings));
         applyContentBarSetting(parseContentBarValue(settings));
         applySrTextSetting(parseSrTextValue(settings));
         applyDebugUseAmountSetting(parseDebugUseAmountValue(settings));
@@ -400,6 +417,7 @@ export async function loadSettings() {
         applyHideCardDuringPlaySetting(parseHideCardDuringPlayValue(settings));
         applyDebugUseSvDetectionSetting(parseSvDetectionValue(settings));
     } catch {
+        applyWsEndpointSetting(APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost);
         applyContentBarSetting(APP_CONFIG.defaults.contentBar);
         applySrTextSetting(APP_CONFIG.defaults.srText);
         applyDebugUseAmountSetting(APP_CONFIG.defaults.debugUseAmount);
