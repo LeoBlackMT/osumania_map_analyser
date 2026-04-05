@@ -57,6 +57,7 @@ export function normalizeEtternaVersionValue(value) {
         return "0.68.0-Unofficial";
     }
     return trimmed.length > 0 ? trimmed : null;
+}
 export function normalizeWsEndpointValue(value, fallback = "localhost:24050") {
     if (typeof value !== "string") {
         return fallback;

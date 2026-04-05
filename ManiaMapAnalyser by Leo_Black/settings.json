@@ -19,7 +19,7 @@
 			"Etterna",
 			"Graph"
 		],
-		"value": "Pattern"
+		"value": "Auto"
 	},
 	{
 		"uniqueID": "srText",
@@ -33,7 +33,7 @@
 			"MSD",
 			"Pattern"
 		],
-		"value": "ReworkSR"
+		"value": "Auto"
 	},
 	{
 		"uniqueID": "diffText",
