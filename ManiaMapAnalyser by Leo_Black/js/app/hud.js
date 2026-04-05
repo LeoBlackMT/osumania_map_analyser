@@ -9,11 +9,67 @@ import {
     pauseCountEl,
     state,
     statusEl,
+    svTagEl,
 } from "./appContext.js";
 
+function applyStatusMarquee(messageText) {
+    if (!statusEl) {
+        return;
+    }
+
+    statusEl.classList.remove("marquee");
+    statusEl.style.removeProperty("--status-marquee-distance");
+    statusEl.style.removeProperty("--status-marquee-duration");
+    statusEl.textContent = messageText;
+
+    if (!state.enableStatusMarquee) {
+        return;
+    }
+
+    const prefersReducedMotion = typeof window !== "undefined"
+        && typeof window.matchMedia === "function"
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+        return;
+    }
+
+    if (statusEl.clientWidth <= 0) {
+        return;
+    }
+
+    const overflowPx = statusEl.scrollWidth - statusEl.clientWidth;
+    if (!(overflowPx > 12)) {
+        return;
+    }
+
+    const distance = overflowPx + 28;
+    const duration = Math.max(7, Math.min(20, distance / 18));
+    const trackEl = document.createElement("span");
+    trackEl.className = "status-track";
+    trackEl.textContent = messageText;
+
+    statusEl.textContent = "";
+    statusEl.appendChild(trackEl);
+    statusEl.style.setProperty("--status-marquee-distance", `${Math.round(distance)}px`);
+    statusEl.style.setProperty("--status-marquee-duration", `${duration.toFixed(2)}s`);
+    statusEl.classList.add("marquee");
+}
+
 export function setStatus(message, kind) {
-    statusEl.textContent = message;
+    const text = String(message ?? "");
+    state.statusText = text;
+    state.statusKind = kind;
+
+    if (!statusEl) {
+        return;
+    }
+
     statusEl.className = `status ${kind}`;
+    applyStatusMarquee(text);
+}
+
+export function refreshStatusRendering() {
+    setStatus(state.statusText || "", state.statusKind || "loading");
 }
 
 export function setModeTag(tag) {
@@ -30,10 +86,20 @@ export function setModeTag(tag) {
 }
 
 export function updateModeTagVisibility() {
-    if (!modeTagEl) {
-        return;
+    if (modeTagEl) {
+        modeTagEl.hidden = !state.showModeTagCapsule;
     }
-    modeTagEl.hidden = !state.showModeTagCapsule;
+
+    if (svTagEl) {
+        svTagEl.hidden = !state.showModeTagCapsule || !state.showSvTag;
+    }
+}
+
+export function setSvTagVisible(visible) {
+    state.showSvTag = Boolean(visible);
+    if (svTagEl) {
+        svTagEl.hidden = !state.showModeTagCapsule || !state.showSvTag;
+    }
 }
 
 export function updatePauseCountVisibility() {

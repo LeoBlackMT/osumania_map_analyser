@@ -4,9 +4,11 @@ export const APP_CONFIG = {
 
     options: {
         contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph"],
-        srText: ["Auto", "ReworkSR", "MSD", "Pattern"],
-        diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR"],
-        estimatorAlgorithm: ["Sunny", "Daniel"],
+        srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR"],
+        diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
+        estimatorAlgorithm: ["Mixed", "Sunny", "Daniel", "Companella"],
+        etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
+        companellaEtternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
         modeTag: ["RC", "LN", "HB", "Mix", "SV"],
     },
 
@@ -69,12 +71,15 @@ export const APP_CONFIG = {
     defaults: {
         autoMode: false,
         useDanielAlgorithm: false,
-        estimatorAlgorithm: "Sunny",
+        estimatorAlgorithm: "Mixed",
+        etternaVersion: "0.72.3",
+        companellaEtternaVersion: "0.74.0",
         pauseDetectionEnabled: true,
         enableEtternaRainbowBars: true,
+        enableStatusMarquee: true,
         vibroDetection: true,
         disableVibroDetection: false,
-        svDetection: false,
+        svDetection: true,
         showModeTagCapsule: true,
         enableNumericDifficulty: false,
         hideCardDuringPlay: false,

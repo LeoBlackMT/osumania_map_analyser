@@ -197,12 +197,28 @@ function formatEstimateDifficultyCaption() {
         return base;
     }
 
+    const formatRcCaptionValue = (rawValue) => {
+        const text = String(rawValue ?? "").trim();
+        if (!text) {
+            return text;
+        }
+        if (state.currentModeTag === "RC") {
+            return text;
+        }
+        if (/^RC\b/i.test(text)) {
+            return text;
+        }
+        return `RC${text}`;
+    };
+
     if (Number.isFinite(state.numericDifficulty)) {
-        return `${base}(${state.numericDifficulty.toFixed(2)})`;
+        const valueText = formatRcCaptionValue(state.numericDifficulty.toFixed(2));
+        return `${base}(${valueText})`;
     }
 
     if (typeof state.numericDifficultyHint === "string" && state.numericDifficultyHint.trim().length > 0) {
-        return `${base}(${state.numericDifficultyHint.trim()})`;
+        const valueText = formatRcCaptionValue(state.numericDifficultyHint.trim());
+        return `${base}(${valueText})`;
     }
 
     return base;
@@ -560,7 +576,10 @@ export function updateDiffTextVisibility() {
     const mode = state.diffText;
     const showDiffText = mode === "Difficulty";
     const showHeaderGraph = mode === "Graph";
-    const showRightCapsule = mode === "MSD" || mode === "Pattern" || mode === "ReworkSR";
+    const showRightCapsule = mode === "MSD"
+        || mode === "Pattern"
+        || mode === "ReworkSR"
+        || mode === "InterludeSR";
 
     reworkDiffEl.hidden = !showDiffText;
     forEachGraphView((view) => {
@@ -584,7 +603,10 @@ export function updateDiffTextVisibility() {
                 estDiffCaptionEl.textContent = "Overall Pattern";
                 break;
             case "ReworkSR":
-                estDiffCaptionEl.textContent = "Suuny Rework SR";
+                estDiffCaptionEl.textContent = "Sunny Rework SR";
+                break;
+            case "InterludeSR":
+                estDiffCaptionEl.textContent = "Interlude Star Rating";
                 break;
             default:
                 estDiffCaptionEl.textContent = "";
@@ -601,7 +623,8 @@ export function updateDiffTextVisibility() {
 
     if (!showRightCapsule && reworkRightCapsuleEl) {
         reworkRightCapsuleEl.textContent = "-";
-        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast");
+        reworkRightCapsuleEl.classList.remove("category-mode", "numeric-mode", "high-contrast", "has-unit");
+        reworkRightCapsuleEl.removeAttribute("data-unit");
         reworkRightCapsuleEl.style.backgroundColor = "rgba(38, 50, 84, 0.45)";
         reworkRightCapsuleEl.style.color = "#f6fbff";
         reworkRightCapsuleEl.style.textShadow = "none";

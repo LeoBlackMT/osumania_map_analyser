@@ -26,6 +26,7 @@ export function normalizeSrTextValue(value) {
     if (lowered === "reworksr") return "ReworkSR";
     if (lowered === "msd") return "MSD";
     if (lowered === "pattern") return "Pattern";
+    if (lowered === "interludesr") return "InterludeSR";
     return null;
 }
 
@@ -35,11 +36,27 @@ export function normalizeEstimatorAlgorithmValue(value) {
     }
 
     const lowered = value.trim().toLowerCase();
+    if (lowered === "mixed") return "Mixed";
+    if (lowered === "mix") return "Mixed";
     if (lowered === "sunny") return "Sunny";
     if (lowered === "rework") return "Sunny";
     if (lowered === "direct") return "Sunny";
     if (lowered === "daniel") return "Daniel";
+    if (lowered === "companella") return "Companella";
+    if (lowered === "campanella") return "Companella";
     return null;
+}
+
+export function normalizeEtternaVersionValue(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed === "0.68.0") {
+        return "0.68.0-Unofficial";
+    }
+    return trimmed.length > 0 ? trimmed : null;
 }
 
 export function normalizeDiffTextValue(value) {
@@ -52,6 +69,7 @@ export function normalizeDiffTextValue(value) {
     if (lowered === "msd") return "MSD";
     if (lowered === "pattern") return "Pattern";
     if (lowered === "reworksr") return "ReworkSR";
+    if (lowered === "interludesr") return "InterludeSR";
     if (lowered === "graph") return "Graph";
     if (lowered === "difficulty") return "Difficulty";
     return null;
@@ -104,6 +122,10 @@ export function createSettingsParsers(appConfig) {
     const srTextSet = createSet(appConfig?.options?.srText);
     const diffTextSet = createSet(appConfig?.options?.diffText);
     const estimatorAlgorithmSet = createSet(appConfig?.options?.estimatorAlgorithm);
+    const etternaVersionSet = createSet(appConfig?.options?.etternaVersion);
+    const companellaEtternaVersionSet = createSet(
+        appConfig?.options?.companellaEtternaVersion || appConfig?.options?.etternaVersion,
+    );
 
     function parseEnablePatternValue(settingsPayload) {
         if (Array.isArray(settingsPayload)) {
@@ -196,6 +218,36 @@ export function createSettingsParsers(appConfig) {
         return "Sunny";
     }
 
+    function parseEtternaVersionValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "etternaVersion");
+        const normalized = normalizeEtternaVersionValue(value);
+        if (normalized && etternaVersionSet.has(normalized.toLowerCase())) {
+            return normalized;
+        }
+
+        const fallback = normalizeEtternaVersionValue(appConfig.defaults.etternaVersion);
+        if (fallback && etternaVersionSet.has(fallback.toLowerCase())) {
+            return fallback;
+        }
+
+        return appConfig.defaults.etternaVersion;
+    }
+
+    function parseCompanellaEtternaVersionValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "companellaEtternaVersion");
+        const normalized = normalizeEtternaVersionValue(value);
+        if (normalized && companellaEtternaVersionSet.has(normalized.toLowerCase())) {
+            return normalized;
+        }
+
+        const fallback = normalizeEtternaVersionValue(appConfig.defaults.companellaEtternaVersion);
+        if (fallback && companellaEtternaVersionSet.has(fallback.toLowerCase())) {
+            return fallback;
+        }
+
+        return appConfig.defaults.companellaEtternaVersion;
+    }
+
     function parseEnablePauseDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "enablePauseDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.pauseDetectionEnabled);
@@ -222,6 +274,11 @@ export function createSettingsParsers(appConfig) {
     function parseEnableEtternaRainbowBarsValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "enableEtternaRainbowBars");
         return normalizeBooleanSetting(value, appConfig.defaults.enableEtternaRainbowBars);
+    }
+
+    function parseEnableStatusMarqueeValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableStatusMarquee");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableStatusMarquee);
     }
 
     function parseShowModeTagCapsuleValue(settingsPayload) {
@@ -253,10 +310,13 @@ export function createSettingsParsers(appConfig) {
         parseAutoModeValue,
         parseUseDanielAlgorithmValue,
         parseEstimatorAlgorithmValue,
+        parseEtternaVersionValue,
+        parseCompanellaEtternaVersionValue,
         parseEnablePauseDetectionValue,
         parseDisableVibroDetectionValue,
         parseVibroDetectionValue,
         parseEnableEtternaRainbowBarsValue,
+        parseEnableStatusMarqueeValue,
         parseShowModeTagCapsuleValue,
         parseEnableNumericDifficultyValue,
         parseHideCardDuringPlayValue,
