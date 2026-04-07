@@ -277,51 +277,34 @@ export class OsuFileParser {
     }
 
     modIN() {
-    const notesByCol = {};
+    const startsByCol = {};
     for (let i = 0; i < this.columns.length; i += 1) {
             const col = this.columns[i];
             const start = this.noteStarts[i];
-            const end = this.noteEnds[i];
-            const ntype = this.noteTypes[i];
-            if (!notesByCol[col]) notesByCol[col] = [];
-            notesByCol[col].push([start, end, ntype]);
+            if (!startsByCol[col]) startsByCol[col] = [];
+            startsByCol[col].push(Number(start));
     }
 
     const newObjects = [];
-    for (const colText of Object.keys(notesByCol)) {
+    for (const colText of Object.keys(startsByCol)) {
             const col = Number.parseInt(colText, 10);
-            const notes = notesByCol[col];
-            const locations = [];
-
-            for (const [start, end, ntype] of notes) {
-        if ((ntype & 128) !== 0) {
-                    locations.push(Number(start));
-                    locations.push(Number(end));
-        } else {
-                    locations.push(Number(start));
-        }
-            }
+            const locations = startsByCol[col];
 
             locations.sort((a, b) => a - b);
 
-            // Keep duplicated event points to stay aligned with Invert behavior,
-            // where each adjacent event pair is considered independently.
             for (let i = 0; i < locations.length - 1; i += 1) {
         const startTime = locations[i];
         const nextTime = locations[i + 1];
-        if (nextTime <= startTime) {
-                    continue;
-        }
         let duration = nextTime - startTime;
         const beatLength = this.getBeatLengthAt(nextTime);
         duration = Math.max(duration / 2, duration - beatLength / 4);
-        let endTime = startTime + duration;
+        const endTime = startTime + duration;
 
-        let endTimeInt = Math.round(endTime);
-        const startTimeInt = Math.round(startTime);
-        if (endTimeInt <= startTimeInt) endTimeInt = startTimeInt + 1;
-
-        newObjects.push([startTimeInt, col, endTimeInt]);
+        newObjects.push([
+                    Math.round(startTime),
+                    col,
+                    Math.round(endTime),
+        ]);
             }
     }
 

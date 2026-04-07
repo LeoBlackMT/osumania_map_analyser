@@ -58,6 +58,60 @@ export function normalizeEtternaVersionValue(value) {
     }
     return trimmed.length > 0 ? trimmed : null;
 }
+
+export function normalizeCardOpacityValue(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        const clamped = Math.max(0, Math.min(100, Math.round(value)));
+        return `${clamped}%`;
+    }
+
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const match = trimmed.match(/^(\d{1,3})(%)?$/);
+    if (!match) {
+        return null;
+    }
+
+    const numeric = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(numeric)) {
+        return null;
+    }
+
+    const clamped = Math.max(0, Math.min(100, numeric));
+    return `${clamped}%`;
+}
+
+export function normalizeCardBlurValue(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const lowered = value.trim().toLowerCase();
+    if (lowered === "off") return "Off";
+    if (lowered === "soft") return "Soft";
+    if (lowered === "strong") return "Strong";
+    return null;
+}
+
+export function normalizeCardRadiusValue(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const lowered = value.trim().toLowerCase();
+    if (lowered === "small") return "Small";
+    if (lowered === "medium") return "Medium";
+    if (lowered === "large") return "Large";
+    return null;
+}
+
 export function normalizeWsEndpointValue(value, fallback = "localhost:24050") {
     if (typeof value !== "string") {
         return fallback;
@@ -145,6 +199,9 @@ export function createSettingsParsers(appConfig) {
     const companellaEtternaVersionSet = createSet(
         appConfig?.options?.companellaEtternaVersion || appConfig?.options?.etternaVersion,
     );
+    const cardOpacitySet = createSet(appConfig?.options?.cardOpacity);
+    const cardBlurSet = createSet(appConfig?.options?.cardBlur);
+    const cardRadiusSet = createSet(appConfig?.options?.cardRadius);
 
     function parseEnablePatternValue(settingsPayload) {
         if (Array.isArray(settingsPayload)) {
@@ -315,6 +372,61 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.hideCardDuringPlay);
     }
 
+    function parseCardOpacityValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "cardOpacity");
+        const normalized = normalizeCardOpacityValue(value);
+        if (normalized && cardOpacitySet.has(normalized.toLowerCase())) {
+            return normalized;
+        }
+
+        const fallback = normalizeCardOpacityValue(appConfig.defaults.cardOpacity);
+        if (fallback && cardOpacitySet.has(fallback.toLowerCase())) {
+            return fallback;
+        }
+
+        return appConfig.defaults.cardOpacity;
+    }
+
+    function parseCardBlurValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "cardBlur");
+        const normalized = normalizeCardBlurValue(value);
+        if (normalized && cardBlurSet.has(normalized.toLowerCase())) {
+            return normalized;
+        }
+
+        const fallback = normalizeCardBlurValue(appConfig.defaults.cardBlur);
+        if (fallback && cardBlurSet.has(fallback.toLowerCase())) {
+            return fallback;
+        }
+
+        return appConfig.defaults.cardBlur;
+    }
+
+    function parseCardRadiusValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "cardRadius");
+        const normalized = normalizeCardRadiusValue(value);
+        if (normalized && cardRadiusSet.has(normalized.toLowerCase())) {
+            return normalized;
+        }
+
+        const fallback = normalizeCardRadiusValue(appConfig.defaults.cardRadius);
+        if (fallback && cardRadiusSet.has(fallback.toLowerCase())) {
+            return fallback;
+        }
+
+        return appConfig.defaults.cardRadius;
+    }
+
+    function parseShowTitleIconValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "showTitleIcon");
+        return normalizeBooleanSetting(value, appConfig.defaults.showTitleIcon);
+    }
+
+    function parseReverseCardExtendDirectionValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "reverseCardExtendDirection");
+        return normalizeBooleanSetting(value, appConfig.defaults.reverseCardExtendDirection);
+    }
+
     function parseSvDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "debugUseSvDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.svDetection);
@@ -355,6 +467,11 @@ export function createSettingsParsers(appConfig) {
         parseShowModeTagCapsuleValue,
         parseEnableNumericDifficultyValue,
         parseHideCardDuringPlayValue,
+        parseCardOpacityValue,
+        parseCardBlurValue,
+        parseCardRadiusValue,
+        parseShowTitleIconValue,
+        parseReverseCardExtendDirectionValue,
         parseSvDetectionValue,
         parseWsEndpointValue,
     };

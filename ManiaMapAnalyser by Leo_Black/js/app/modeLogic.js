@@ -2,7 +2,7 @@ export function modeTagFromLnRatio(lnRatio) {
     if (!Number.isFinite(lnRatio)) {
         return "Mix";
     }
-    if (lnRatio <= 0.1) {
+    if (lnRatio <= 0.15) {
         return "RC";
     }
     if (lnRatio >= 0.9) {

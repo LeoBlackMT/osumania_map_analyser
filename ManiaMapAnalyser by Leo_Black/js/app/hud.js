@@ -12,6 +12,74 @@ import {
     svTagEl,
 } from "./appContext.js";
 
+const SV_TAG_EXIT_DURATION_MS = 220;
+let svTagHideTimerId = 0;
+
+function restartAnimationClass(element, className) {
+    if (!element || !className) {
+        return;
+    }
+
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+}
+
+function clearSvTagHideTimer() {
+    if (svTagHideTimerId) {
+        clearTimeout(svTagHideTimerId);
+        svTagHideTimerId = 0;
+    }
+}
+
+function hideSvTagImmediately() {
+    if (!svTagEl) {
+        return;
+    }
+
+    clearSvTagHideTimer();
+    svTagEl.hidden = true;
+    svTagEl.classList.remove("visible", "sv-enter", "sv-exit");
+}
+
+function showSvTagAnimated() {
+    if (!svTagEl) {
+        return;
+    }
+
+    clearSvTagHideTimer();
+    const wasVisible = !svTagEl.hidden && svTagEl.classList.contains("visible");
+
+    svTagEl.hidden = false;
+    svTagEl.classList.remove("sv-exit");
+    svTagEl.classList.add("visible");
+
+    if (!wasVisible) {
+        restartAnimationClass(svTagEl, "sv-enter");
+    }
+}
+
+function hideSvTagAnimated() {
+    if (!svTagEl) {
+        return;
+    }
+
+    if (svTagEl.hidden) {
+        svTagEl.classList.remove("visible", "sv-enter", "sv-exit");
+        return;
+    }
+
+    clearSvTagHideTimer();
+    svTagEl.classList.remove("sv-enter", "visible");
+    restartAnimationClass(svTagEl, "sv-exit");
+
+    svTagHideTimerId = setTimeout(() => {
+        svTagEl.hidden = true;
+        svTagEl.classList.remove("sv-exit");
+        svTagHideTimerId = 0;
+    }, SV_TAG_EXIT_DURATION_MS);
+}
+
 function applyStatusMarquee(messageText) {
     if (!statusEl) {
         return;
@@ -80,9 +148,15 @@ export function setModeTag(tag) {
         return;
     }
 
+    const nextClassName = `mode-tag mode-${normalized.toLowerCase()}`;
+    const changed = modeTagEl.textContent !== normalized || modeTagEl.className !== nextClassName;
     modeTagEl.textContent = normalized;
-    modeTagEl.className = `mode-tag mode-${normalized.toLowerCase()}`;
+    modeTagEl.className = nextClassName;
     modeTagEl.hidden = !state.showModeTagCapsule;
+
+    if (changed && state.showModeTagCapsule) {
+        restartAnimationClass(modeTagEl, "capsule-switch");
+    }
 }
 
 export function updateModeTagVisibility() {
@@ -90,15 +164,38 @@ export function updateModeTagVisibility() {
         modeTagEl.hidden = !state.showModeTagCapsule;
     }
 
-    if (svTagEl) {
-        svTagEl.hidden = !state.showModeTagCapsule || !state.showSvTag;
+    if (!svTagEl) {
+        return;
+    }
+
+    if (!state.showModeTagCapsule) {
+        hideSvTagImmediately();
+        return;
+    }
+
+    if (state.showSvTag) {
+        showSvTagAnimated();
+    } else {
+        hideSvTagAnimated();
     }
 }
 
 export function setSvTagVisible(visible) {
     state.showSvTag = Boolean(visible);
-    if (svTagEl) {
-        svTagEl.hidden = !state.showModeTagCapsule || !state.showSvTag;
+
+    if (!svTagEl) {
+        return;
+    }
+
+    if (!state.showModeTagCapsule) {
+        hideSvTagImmediately();
+        return;
+    }
+
+    if (state.showSvTag) {
+        showSvTagAnimated();
+    } else {
+        hideSvTagAnimated();
     }
 }
 

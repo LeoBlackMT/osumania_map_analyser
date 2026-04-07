@@ -21,6 +21,33 @@
     color: #f6fbff;
     background: rgba(55, 71, 115, 0.72);
     pointer-events: none;
+    transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease;
+}
+
+.mode-tag.capsule-switch {
+    animation: capsule-switch 260ms cubic-bezier(0.2, 0.92, 0.28, 1);
+}
+
+.sv-tag {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+    visibility: hidden;
+}
+
+.sv-tag.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    visibility: visible;
+}
+
+.sv-tag.sv-enter {
+    visibility: visible;
+    animation: capsule-enter 280ms cubic-bezier(0.2, 0.92, 0.28, 1) both;
+}
+
+.sv-tag.sv-exit {
+    visibility: visible;
+    animation: capsule-exit 220ms cubic-bezier(0.4, 0.18, 0.5, 1) both;
 }
 
 .pause-count {

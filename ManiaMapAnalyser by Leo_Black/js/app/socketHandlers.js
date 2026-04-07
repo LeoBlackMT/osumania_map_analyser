@@ -1,4 +1,5 @@
 import {
+    getActiveContentBar,
     MOD_BIT_FLAG_ENTRIES,
     NOTE_END_MARGIN_MS,
     PAUSE_DETECT_EPSILON_MS,
@@ -77,7 +78,7 @@ function updateSongTimeState(data) {
         state.songTimeReceiveTs = now;
         state.frozenInterpMs = scaledLiveTimeMs;
 
-        if (state.diffText === "Graph" || state.contentBar === "Graph") {
+        if (state.diffText === "Graph" || getActiveContentBar() === "Graph") {
             updateGraphCursor(state.songTimeMs);
         }
         return;
@@ -125,7 +126,7 @@ function updateSongTimeState(data) {
         state.prevSongTimeReceiveTs = state.songTimeReceiveTs;
     }
 
-    if (state.diffText === "Graph" || state.contentBar === "Graph") {
+    if (state.diffText === "Graph" || getActiveContentBar() === "Graph") {
         updateGraphCursor(state.pauseDetectionEnabled && state.isPaused ? state.frozenInterpMs : state.songTimeMs);
     }
 }
@@ -166,55 +167,50 @@ export function setupSocketListener() {
             return String(value).trim();
         };
 
+        const normalizePathText = (value) => {
+            const normalized = normalizeText(value).replace(/\\/g, "/");
+            if (!normalized) return "";
+            return normalized.replace(/\/+/g, "/").toLowerCase();
+        };
+
         const normalizeNumberText = (value) => {
             const num = Number(value);
-            return Number.isFinite(num) ? String(num) : "";
+            if (!Number.isFinite(num) || num <= 0) {
+                return "";
+            }
+            return String(Math.trunc(num));
         };
 
         const beatmapId = normalizeNumberText(beatmap?.id);
-        const beatmapHash = normalizeText(beatmap?.md5 || beatmap?.checksum);
-        const beatmapPath = normalizeText(data?.files?.beatmap || data?.directPath?.beatmapFile);
+        const beatmapHash = normalizeText(beatmap?.md5 || beatmap?.checksum).toLowerCase();
+        const beatmapPath = normalizePathText(data?.files?.beatmap || data?.directPath?.beatmapFile);
         const beatmapTitleKey = [
             normalizeText(beatmap?.artist),
             normalizeText(beatmap?.title),
             normalizeText(beatmap?.version),
             normalizeText(beatmap?.mapper),
-        ].join("::");
+        ].join("::").toLowerCase();
 
         const previousBeatmapIdentity = state.lastBeatmapIdentity || "";
-        const parsedPreviousIdentitySource = typeof previousBeatmapIdentity === "string"
-            ? String(previousBeatmapIdentity).split(":")[0]
-            : "";
-        const previousIdentitySource = state.lastBeatmapIdentitySource || parsedPreviousIdentitySource;
         const previousModSignature = state.modSignature || "";
 
-        const hasMetadataIdentity = beatmapTitleKey.replace(/[:]/g, "").length > 0;
-        const identityValueBySource = {
-            id: beatmapId,
-            hash: beatmapHash,
-            path: beatmapPath,
-            meta: hasMetadataIdentity ? beatmapTitleKey : "",
-        };
-
-        const identitySourcesByPriority = ["id", "hash", "path", "meta"];
-
-        let nextIdentitySource = "";
-        if (previousIdentitySource && identityValueBySource[previousIdentitySource]) {
-            nextIdentitySource = previousIdentitySource;
-        } else if (!previousBeatmapIdentity) {
-            for (const source of identitySourcesByPriority) {
-                if (identityValueBySource[source]) {
-                    nextIdentitySource = source;
-                    break;
-                }
-            }
-        } else {
-            nextIdentitySource = previousIdentitySource;
+        const identityParts = [];
+        if (beatmapId) {
+            identityParts.push(`id:${beatmapId}`);
+        }
+        if (beatmapHash) {
+            identityParts.push(`hash:${beatmapHash}`);
+        }
+        if (beatmapPath) {
+            identityParts.push(`path:${beatmapPath}`);
         }
 
-        const nextBeatmapIdentity = nextIdentitySource && identityValueBySource[nextIdentitySource]
-            ? `${nextIdentitySource}:${identityValueBySource[nextIdentitySource]}`
-            : previousBeatmapIdentity;
+        const hasMetadataIdentity = beatmapTitleKey.replace(/[:]/g, "").length > 0;
+        if (identityParts.length === 0 && hasMetadataIdentity) {
+            identityParts.push(`meta:${beatmapTitleKey}`);
+        }
+
+        const nextBeatmapIdentity = identityParts.join("|");
         if (!nextBeatmapIdentity) return;
 
         // api_v2 packets can be partial. Only apply incoming mod state when
@@ -237,7 +233,9 @@ export function setupSocketListener() {
         }
 
         state.lastBeatmapIdentity = nextBeatmapIdentity;
-        state.lastBeatmapIdentitySource = nextIdentitySource || previousIdentitySource || "";
+        state.lastBeatmapIdentitySource = identityParts.length > 1
+            ? "composite"
+            : (identityParts[0]?.split(":")[0] || "");
         const key = `${nextBeatmapIdentity}|${nextModSignature}`;
         resetPauseRuntime(true);
         state.lastBeatmapKey = key;

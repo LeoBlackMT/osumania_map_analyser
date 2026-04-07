@@ -16,6 +16,7 @@ import { PATTERNS_CONFIG } from "../patterns/config.js";
 import {
     ettSkillBarsEl,
     getEndpoint,
+    getActiveContentBar,
     GRAPH_SUPPORTED_KEY_SET,
     mainCardEl,
     patternClustersEl,
@@ -34,6 +35,7 @@ import {
     renderEtternaSkillBars,
     renderPatternClusters,
     renderRightCapsule,
+    setEstimateDifficultyText,
     showCategoryValue,
     showInterludeValue,
     showMsdValue,
@@ -51,6 +53,7 @@ import {
     clearAllPauseMarkers,
     clearDiffGraph,
     renderDiffGraph,
+    setForceHideNumericDifficulty,
     setNumericDifficultyValue,
     showDiffGraphError,
     setGraphLoading,
@@ -59,6 +62,7 @@ import {
     currentEstimatorAlgorithm,
     isAutoDisplayEnabledNow,
     refreshAutoDisplayProfile,
+    setEffectiveContentBarForMap,
 } from "./settings.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro } from "./vibro.js";
@@ -81,6 +85,21 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function buildMetaError(errors) {
+    const merged = (errors || [])
+        .map((entry) => String(entry ?? "").trim())
+        .filter((entry) => entry.length > 0)
+        .join(" | ")
+        .replace(/\s+/g, " ");
+
+    if (!merged) {
+        return "";
+    }
+
+    const clipped = merged.length > 180 ? `${merged.slice(0, 177)}...` : merged;
+    return `${escapeHtml(clipped)}`;
 }
 
 function renderBodySectionError(section, message) {
@@ -128,8 +147,63 @@ function buildEtternaAnalyzeOptions(etternaVersion) {
     };
 }
 
+const CARD_EXTEND_TRANSITION_FALLBACK_MS = 420;
+
+function waitForMainCardResizeTransition() {
+    if (!mainCardEl) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        let settled = false;
+
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            mainCardEl.removeEventListener("transitionend", onTransitionEnd);
+            clearTimeout(timeoutId);
+            resolve();
+        };
+
+        const onTransitionEnd = (event) => {
+            if (event.target !== mainCardEl) {
+                return;
+            }
+
+            if (event.propertyName === "min-height"
+                || event.propertyName === "height"
+                || event.propertyName === "grid-template-rows") {
+                finish();
+            }
+        };
+
+        const timeoutId = setTimeout(finish, CARD_EXTEND_TRANSITION_FALLBACK_MS);
+        mainCardEl.addEventListener("transitionend", onTransitionEnd);
+    });
+}
+
+function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar) {
+    if (!mainCardEl || typeof window === "undefined") {
+        return false;
+    }
+
+    if (activeContentBar !== "Pattern" && activeContentBar !== "Etterna") {
+        return false;
+    }
+
+    const currentHeight = Number(mainCardEl.getBoundingClientRect().height) || 0;
+    const computedStyle = window.getComputedStyle(mainCardEl);
+    const targetMinHeight = Number.parseFloat(computedStyle.minHeight) || 0;
+    const baseline = Math.max(Number(previousCardHeight) || 0, currentHeight);
+
+    return targetMinHeight > baseline + 1;
+}
+
 export function resetReworkDisplay() {
     setNumericDifficultyValue(null);
+    setForceHideNumericDifficulty(false);
     reworkStarEl.textContent = "-";
     reworkStarEl.classList.remove("category-mode");
     reworkDiffEl.textContent = "-";
@@ -143,7 +217,8 @@ export function resetReworkDisplay() {
     }
     clearDiffGraph();
     clearAllPauseMarkers();
-    if (state.diffText === "Graph" || state.contentBar === "Graph") {
+    setEffectiveContentBarForMap(null);
+    if (state.diffText === "Graph" || getActiveContentBar() === "Graph") {
         showDiffGraphError("Graph unavailable");
     }
     reworkMetaEl.innerHTML = "LN%: -<br/>Keys: -";
@@ -162,17 +237,16 @@ export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
     setStatus(`Loading beatmap file (${reason})...`, "loading");
     hideOverlay();
 
-    if (state.diffText === "Graph" || state.contentBar === "Graph") {
+    if (state.diffText === "Graph" || getActiveContentBar() === "Graph") {
         setGraphLoading(true);
-    } else {
+    } else if (!(state.diffText === "Graph" || getActiveContentBar() === "Graph")) {
         clearDiffGraph();
     }
-
-    renderContentSkeleton();
 
     try {
         const response = await fetch(getEndpoint(), {
@@ -192,6 +266,32 @@ export async function fetchBeatmapFile(reason) {
         }
 
         const parsedInfo = parseMetadataFromBeatmap(rawText);
+        const parsedKeycount = Number(parsedInfo.columnCount) || 0;
+        const shouldFallbackBodyToPattern = parsedKeycount > 0
+            && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
+            && state.contentBar !== "None";
+        setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
+        const activeContentBar = getActiveContentBar();
+
+        const shouldDelayBodyRender = shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar);
+        let bodyRenderDelayPromise = null;
+        if (shouldDelayBodyRender) {
+            renderContentSkeleton();
+            bodyRenderDelayPromise = waitForMainCardResizeTransition();
+        }
+
+        const waitForBodyRenderReady = async () => {
+            if (!bodyRenderDelayPromise) {
+                return true;
+            }
+            await bodyRenderDelayPromise;
+            if (isStaleRequest()) {
+                return false;
+            }
+            bodyRenderDelayPromise = null;
+            return true;
+        };
+
         const autoDisplayEnabled = isAutoDisplayEnabledNow();
 
         const errors = [];
@@ -204,6 +304,7 @@ export async function fetchBeatmapFile(reason) {
         let resolvedEstDiff = null;
         let resolvedNumericDifficulty = null;
         let resolvedNumericDifficultyHint = null;
+        let resolvedMetaHtml = "LN%: -<br/>Keys: -";
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
 
@@ -211,7 +312,7 @@ export async function fetchBeatmapFile(reason) {
         const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
             || estimatorAlgorithm === "Mixed";
 
-        const needPatternAnalysis = state.contentBar === "Pattern"
+        const needPatternAnalysis = activeContentBar === "Pattern"
             || state.srText === "Pattern"
             || state.diffText === "Pattern"
             || state.debugUseSvDetection
@@ -221,11 +322,11 @@ export async function fetchBeatmapFile(reason) {
             || state.diffText === "InterludeSR"
             || estimatorNeedsCompanellaData;
         const needVibroDetection = state.vibroDetection;
-        const needEtternaAnalysis = state.contentBar === "Etterna"
+        const needEtternaAnalysis = activeContentBar === "Etterna"
             || needMsdValue
             || needVibroDetection
             || estimatorNeedsCompanellaData;
-        const shouldReportEtternaError = state.contentBar === "Etterna"
+        const shouldReportEtternaError = activeContentBar === "Etterna"
             || needMsdValue
             || estimatorNeedsCompanellaData;
 
@@ -234,7 +335,7 @@ export async function fetchBeatmapFile(reason) {
                 speedRate: state.speedRate,
                 odFlag: state.odFlag,
                 cvtFlag: state.cvtFlag,
-                withGraph: state.diffText === "Graph" || state.contentBar === "Graph",
+                withGraph: state.diffText === "Graph" || activeContentBar === "Graph",
             };
 
             const sunnyBaseline = runSunnyEstimatorFromText(rawText, estimatorOptions);
@@ -267,7 +368,7 @@ export async function fetchBeatmapFile(reason) {
             resolvedNumericDifficulty = nextNumericDifficulty;
             resolvedNumericDifficultyHint = nextNumericDifficultyHint;
 
-            if (state.diffText === "Graph" || state.contentBar === "Graph") {
+            if (state.diffText === "Graph" || activeContentBar === "Graph") {
                 if (!GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)) {
                     showDiffGraphError("Unsupported Keys");
                 } else {
@@ -281,11 +382,12 @@ export async function fetchBeatmapFile(reason) {
             }
 
             const lnPercent = `${(rework.lnRatio * 100).toFixed(1)}%`;
-            reworkMetaEl.innerHTML = `LN%: ${lnPercent}<br/>Keys: ${rework.columnCount}`;
+            resolvedMetaHtml = `LN%: ${lnPercent}<br/>Keys: ${rework.columnCount}`;
+            reworkMetaEl.innerHTML = resolvedMetaHtml;
             reworkMetaEl.classList.remove("loading");
         } catch (error) {
             resetReworkDisplay();
-            if (state.diffText === "Graph" || state.contentBar === "Graph") {
+            if (state.diffText === "Graph" || activeContentBar === "Graph") {
                 showDiffGraphError("Graph unavailable");
             }
             errors.push(`Rework failed: ${error.message}`);
@@ -319,11 +421,13 @@ export async function fetchBeatmapFile(reason) {
                     }
                 }
 
-                if (state.contentBar === "Pattern") {
+                if (activeContentBar === "Pattern") {
+                    if (!(await waitForBodyRenderReady())) return;
                     renderPatternClusters(mergedClusters);
                 }
             } catch (error) {
-                if (state.contentBar === "Pattern") {
+                if (activeContentBar === "Pattern") {
+                    if (!(await waitForBodyRenderReady())) return;
                     renderBodySectionError("Pattern", error.message);
                 }
                 errors.push(`Pattern analyze failed: ${error.message}`);
@@ -346,12 +450,14 @@ export async function fetchBeatmapFile(reason) {
                     && vibroEligible
                     && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
 
-                if (state.contentBar === "Etterna") {
+                if (activeContentBar === "Etterna") {
+                    if (!(await waitForBodyRenderReady())) return;
                     const columnCount = Number(rework?.columnCount) || Number(parsedInfo.columnCount) || 0;
                     renderEtternaSkillBars(ettResult?.values || {}, columnCount);
                 }
             } catch (error) {
-                if (state.contentBar === "Etterna") {
+                if (activeContentBar === "Etterna") {
+                    if (!(await waitForBodyRenderReady())) return;
                     renderBodySectionError("Etterna", error.message);
                     state.etternaTechnicalHidden = false;
                     mainCardEl.classList.remove("bars-etterna-compact");
@@ -386,7 +492,7 @@ export async function fetchBeatmapFile(reason) {
 
                         companellaMsdValues = forcedCompanellaEtterna?.values;
                     } catch (error) {
-                        errors.push(`Companella Etterna (${companellaEtternaVersion}) analyze failed: ${error.message}`);
+                        console.warn(`Companella Etterna (${companellaEtternaVersion}) analyze failed: ${error.message}`);
                     }
                 }
 
@@ -418,18 +524,18 @@ export async function fetchBeatmapFile(reason) {
                         pendingMixedCompanellaContext = null;
                     }
                 } catch (error) {
-                    errors.push(`Companella estimate failed: ${error.message}`);
+                    console.warn(`Companella estimate failed: ${error.message}`);
                 }
             }
 
             const diffText = GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)
                 ? formatDiffForDisplay(resolvedEstDiff)
                 : "Unsupported Keys";
-            reworkDiffEl.textContent = diffText;
+            setEstimateDifficultyText(diffText);
         }
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
-        let resolvedModeTag = (state.contentBar === "None")
+        let resolvedModeTag = (activeContentBar === "None")
             ? fallbackModeTag
             : (patternResult?.report?.ModeTag || fallbackModeTag);
         let shouldShowSvTag = false;
@@ -451,18 +557,20 @@ export async function fetchBeatmapFile(reason) {
             setNumericDifficultyValue(resolvedNumericDifficulty, resolvedNumericDifficultyHint);
         }
 
+        setForceHideNumericDifficulty(isVibroMap);
+
         if (autoDisplayEnabled) {
             const beforeContent = state.contentBar;
             const beforeSrText = state.srText;
             const profileChanged = refreshAutoDisplayProfile(resolvedModeTag);
 
             const missingEtterna = (
-                state.contentBar === "Etterna"
+                activeContentBar === "Etterna"
                 || state.srText === "MSD"
                 || state.diffText === "MSD"
             ) && !needEtternaAnalysis;
             const missingPattern = (
-                state.contentBar === "Pattern"
+                activeContentBar === "Pattern"
                 || state.srText === "Pattern"
                 || state.diffText === "Pattern"
                 || state.debugUseSvDetection
@@ -495,7 +603,6 @@ export async function fetchBeatmapFile(reason) {
                 showMsdValue(overallValue);
                 leftCapsuleUnit = "MSD";
             } else if (rework) {
-                // Fallback to ReworkSR when MSD value is unavailable.
                 showNumericStarValue(rework.star);
                 leftCapsuleUnit = "SR";
             }
@@ -517,12 +624,20 @@ export async function fetchBeatmapFile(reason) {
         );
 
         if (isVibroMap && state.diffText === "Difficulty") {
-            reworkDiffEl.textContent = "VIBRO";
+            setEstimateDifficultyText("VIBRO");
         }
 
         const metadataLine = formatMetadataStatus(parsedInfo.metadata);
-        if (errors.length > 0) {
-            setStatus(`${metadataLine} (partial errors)`, "error");
+        const metadataErrors = errors.filter((entry) => {
+            const text = String(entry ?? "").trim().toLowerCase();
+            return !text.startsWith("companella ");
+        });
+
+        reworkMetaEl.innerHTML = resolvedMetaHtml;
+
+        if (metadataErrors.length > 0) {
+            const errorText = buildMetaError(metadataErrors);
+            setStatus(`[Error] ${errorText}`, "error");
             hideOverlay();
         } else {
             setStatus(metadataLine, "ok");
@@ -532,10 +647,10 @@ export async function fetchBeatmapFile(reason) {
         if (isStaleRequest()) return;
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
         resetReworkDisplay();
-        patternClustersEl.innerHTML = state.contentBar === "Pattern"
+        patternClustersEl.innerHTML = getActiveContentBar() === "Pattern"
             ? "<li class=\"cluster-item empty\">No data</li>"
             : "";
-        ettSkillBarsEl.innerHTML = state.contentBar === "Etterna"
+        ettSkillBarsEl.innerHTML = getActiveContentBar() === "Etterna"
             ? "<li class=\"ett-skill-item empty\">No data</li>"
             : "";
         showOverlay({

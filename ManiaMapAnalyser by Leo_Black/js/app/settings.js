@@ -1,10 +1,15 @@
 import {
     APP_CONFIG,
     bodyGraphWrapEl,
+    dashboardEl,
     ettSkillBarsEl,
+    getActiveContentBar,
     hasAnyGraphModeEnabled,
     mainCardEl,
     parseAutoModeValue,
+    parseCardBlurValue,
+    parseCardOpacityValue,
+    parseCardRadiusValue,
     parseContentBarValue,
     parseDebugUseAmountValue,
     parseDiffTextValue,
@@ -17,6 +22,8 @@ import {
     parseEnableNumericDifficultyValue,
     parseHideCardDuringPlayValue,
     parseShowModeTagCapsuleValue,
+    parseShowTitleIconValue,
+    parseReverseCardExtendDirectionValue,
     parseSrTextValue,
     parseSvDetectionValue,
     parseVibroDetectionValue,
@@ -26,16 +33,20 @@ import {
     socket,
     state,
     SETTINGS_COMMAND_TIMEOUT_MS,
+    titleIconEl,
 } from "./appContext.js";
 import {
     normalizeBooleanSetting,
+    normalizeCardBlurValue,
+    normalizeCardOpacityValue,
+    normalizeCardRadiusValue,
     normalizeContentBarValue,
     normalizeDiffTextValue,
     normalizeEtternaVersionValue,
     normalizeEstimatorAlgorithmValue,
     normalizeWsEndpointValue,
     normalizeSrTextValue,
-} from "./settingsParsers.js";
+} from "../parser/settingsParser.js";
 import {
     clearDiffGraph,
     redrawPauseMarkers,
@@ -65,20 +76,129 @@ function resolveRuntimeDisplayProfile(modeTag = state.currentModeTag || "Mix") {
 }
 
 function updateContentBarVisibility() {
-    patternClustersEl.hidden = state.contentBar !== "Pattern";
-    ettSkillBarsEl.hidden = state.contentBar !== "Etterna";
+    const activeContentBar = getActiveContentBar();
+
+    patternClustersEl.hidden = activeContentBar !== "Pattern";
+    ettSkillBarsEl.hidden = activeContentBar !== "Etterna";
     if (bodyGraphWrapEl) {
-        bodyGraphWrapEl.hidden = state.contentBar !== "Graph";
+        bodyGraphWrapEl.hidden = activeContentBar !== "Graph";
     }
 
-    mainCardEl.classList.toggle("bars-pattern", state.contentBar === "Pattern");
-    mainCardEl.classList.toggle("bars-etterna", state.contentBar === "Etterna");
-    mainCardEl.classList.toggle("bars-graph", state.contentBar === "Graph");
-    mainCardEl.classList.toggle("bars-none", state.contentBar === "None");
+    mainCardEl.classList.toggle("bars-pattern", activeContentBar === "Pattern");
+    mainCardEl.classList.toggle("bars-etterna", activeContentBar === "Etterna");
+    mainCardEl.classList.toggle("bars-graph", activeContentBar === "Graph");
+    mainCardEl.classList.toggle("bars-none", activeContentBar === "None");
 
-    if (state.contentBar !== "Etterna") {
+    if (activeContentBar !== "Etterna") {
         mainCardEl.classList.remove("bars-etterna-compact");
     }
+}
+
+let cardHeightTransitionTimerId = 0;
+let cardHeightTransitionEndHandler = null;
+
+function clearCardHeightTransitionState() {
+    if (!mainCardEl) {
+        return;
+    }
+
+    if (cardHeightTransitionTimerId) {
+        clearTimeout(cardHeightTransitionTimerId);
+        cardHeightTransitionTimerId = 0;
+    }
+
+    if (cardHeightTransitionEndHandler) {
+        mainCardEl.removeEventListener("transitionend", cardHeightTransitionEndHandler);
+        cardHeightTransitionEndHandler = null;
+    }
+
+    mainCardEl.style.removeProperty("height");
+}
+
+function animateCardHeightTransition(previousHeight) {
+    if (!mainCardEl) {
+        clearCardHeightTransitionState();
+        return;
+    }
+
+    if (typeof window !== "undefined"
+        && typeof window.matchMedia === "function"
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        clearCardHeightTransitionState();
+        return;
+    }
+
+    const fromHeight = Number(previousHeight);
+    const toHeight = Number(mainCardEl.getBoundingClientRect().height) || 0;
+    if (!Number.isFinite(fromHeight) || !Number.isFinite(toHeight)) {
+        clearCardHeightTransitionState();
+        return;
+    }
+
+    if (Math.abs(toHeight - fromHeight) < 1) {
+        clearCardHeightTransitionState();
+        return;
+    }
+
+    clearCardHeightTransitionState();
+    mainCardEl.style.height = `${fromHeight}px`;
+    void mainCardEl.offsetHeight;
+    mainCardEl.style.height = `${toHeight}px`;
+
+    const cleanup = () => {
+        clearCardHeightTransitionState();
+    };
+
+    cardHeightTransitionEndHandler = (event) => {
+        if (event.target !== mainCardEl || event.propertyName !== "height") {
+            return;
+        }
+        cleanup();
+    };
+
+    mainCardEl.addEventListener("transitionend", cardHeightTransitionEndHandler);
+    cardHeightTransitionTimerId = setTimeout(cleanup, 420);
+}
+
+function applyVisualStyleSettings() {
+    const opacityMap = {
+        "100%": "1",
+        "95%": "0.95",
+        "90%": "0.9",
+        "80%": "0.8",
+        "70%": "0.7",
+    };
+    const blurMap = {
+        Off: "0px",
+        Soft: "6px",
+        Strong: "12px",
+    };
+    const radiusMap = {
+        Small: "12px",
+        Medium: "16px",
+        Large: "22px",
+    };
+
+    const opacity = opacityMap[state.cardOpacity] || opacityMap[APP_CONFIG.defaults.cardOpacity] || "0.95";
+    const blur = blurMap[state.cardBlur] || blurMap[APP_CONFIG.defaults.cardBlur] || "6px";
+    const radius = radiusMap[state.cardRadius] || radiusMap[APP_CONFIG.defaults.cardRadius] || "16px";
+
+    if (mainCardEl) {
+        mainCardEl.style.setProperty("--card-opacity", opacity);
+        mainCardEl.style.setProperty("--card-backdrop-blur", blur);
+        mainCardEl.style.setProperty("--card-radius", radius);
+        mainCardEl.style.setProperty("--card-extend-origin", state.reverseCardExtendDirection ? "bottom" : "top");
+        mainCardEl.classList.toggle("hide-title-icon", !state.showTitleIcon);
+    }
+
+    if (dashboardEl) {
+        dashboardEl.classList.toggle("extend-upward", state.reverseCardExtendDirection);
+    }
+
+    if (titleIconEl) {
+        titleIconEl.hidden = !state.showTitleIcon;
+    }
+
 }
 
 export function getCounterPathForCommand() {
@@ -116,29 +236,59 @@ export function applyWsEndpointSetting(value) {
 }
 
 export function setRuntimeContentBar(contentBar) {
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
     const normalized = normalizeContentBarValue(contentBar);
     const nextBar = (!normalized || normalized === "Auto") ? "Pattern" : normalized;
     const changed = state.contentBar !== nextBar;
     state.contentBar = nextBar;
 
-    if (state.contentBar !== "Pattern") {
+    const activeContentBar = getActiveContentBar();
+
+    if (activeContentBar !== "Pattern") {
         patternClustersEl.innerHTML = "";
     } else if (!patternClustersEl.innerHTML.trim()) {
         patternClustersEl.innerHTML = "<li class=\"cluster-item empty\">No data</li>";
     }
 
-    if (state.contentBar !== "Etterna") {
+    if (activeContentBar !== "Etterna") {
         ettSkillBarsEl.innerHTML = "";
     } else if (!ettSkillBarsEl.innerHTML.trim()) {
         ettSkillBarsEl.innerHTML = "<li class=\"ett-skill-item empty\">No data</li>";
     }
 
     updateContentBarVisibility();
+    animateCardHeightTransition(previousCardHeight);
     if (!hasAnyGraphModeEnabled()) {
         clearDiffGraph();
     } else {
         setGraphCursorVisible(false);
     }
+    return changed;
+}
+
+export function setEffectiveContentBarForMap(contentBarOrNull) {
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
+    const normalized = normalizeContentBarValue(contentBarOrNull);
+    const next = (!normalized || normalized === "Auto") ? null : normalized;
+    const changed = state.effectiveContentBar !== next;
+    state.effectiveContentBar = next;
+
+    const activeContentBar = getActiveContentBar();
+    if (activeContentBar !== "Pattern") {
+        patternClustersEl.innerHTML = "";
+    }
+    if (activeContentBar !== "Etterna") {
+        ettSkillBarsEl.innerHTML = "";
+    }
+
+    updateContentBarVisibility();
+    animateCardHeightTransition(previousCardHeight);
+    if (!hasAnyGraphModeEnabled()) {
+        clearDiffGraph();
+    } else {
+        setGraphCursorVisible(false);
+    }
+
     return changed;
 }
 
@@ -302,6 +452,46 @@ export function applyHideCardDuringPlaySetting(value) {
     return changed;
 }
 
+export function applyCardOpacitySetting(value) {
+    const next = normalizeCardOpacityValue(value) || APP_CONFIG.defaults.cardOpacity;
+    const changed = state.cardOpacity !== next;
+    state.cardOpacity = next;
+    applyVisualStyleSettings();
+    return changed;
+}
+
+export function applyCardBlurSetting(value) {
+    const next = normalizeCardBlurValue(value) || APP_CONFIG.defaults.cardBlur;
+    const changed = state.cardBlur !== next;
+    state.cardBlur = next;
+    applyVisualStyleSettings();
+    return changed;
+}
+
+export function applyCardRadiusSetting(value) {
+    const next = normalizeCardRadiusValue(value) || APP_CONFIG.defaults.cardRadius;
+    const changed = state.cardRadius !== next;
+    state.cardRadius = next;
+    applyVisualStyleSettings();
+    return changed;
+}
+
+export function applyShowTitleIconSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.showTitleIcon);
+    const changed = state.showTitleIcon !== next;
+    state.showTitleIcon = next;
+    applyVisualStyleSettings();
+    return changed;
+}
+
+export function applyReverseCardExtendDirectionSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.reverseCardExtendDirection);
+    const changed = state.reverseCardExtendDirection !== next;
+    state.reverseCardExtendDirection = next;
+    applyVisualStyleSettings();
+    return changed;
+}
+
 function extractSettingsPayloadFromCommandPacket(packet) {
     if (Array.isArray(packet)) {
         return packet;
@@ -343,6 +533,11 @@ export function setupSettingsCommandListener() {
         const modeTagVisibilityChanged = applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(payload));
         const numericDifficultyChanged = applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(payload));
         const hideCardDuringPlayChanged = applyHideCardDuringPlaySetting(parseHideCardDuringPlayValue(payload));
+        const cardOpacityChanged = applyCardOpacitySetting(parseCardOpacityValue(payload));
+        const cardBlurChanged = applyCardBlurSetting(parseCardBlurValue(payload));
+        const cardRadiusChanged = applyCardRadiusSetting(parseCardRadiusValue(payload));
+        const showTitleIconChanged = applyShowTitleIconSetting(parseShowTitleIconValue(payload));
+        const reverseCardDirectionChanged = applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(payload));
         const svChanged = applyDebugUseSvDetectionSetting(parseSvDetectionValue(payload));
 
         const legacyAutoMode = parseAutoModeValue(payload);
@@ -367,6 +562,11 @@ export function setupSettingsCommandListener() {
             || modeTagVisibilityChanged
             || numericDifficultyChanged
             || hideCardDuringPlayChanged
+            || cardOpacityChanged
+            || cardBlurChanged
+            || cardRadiusChanged
+            || showTitleIconChanged
+            || reverseCardDirectionChanged
             || svChanged;
 
         const recomputeNeeded = contentBarChanged
@@ -457,6 +657,11 @@ export async function loadSettings() {
         applyShowModeTagCapsuleSetting(parseShowModeTagCapsuleValue(settings));
         applyEnableNumericDifficultySetting(parseEnableNumericDifficultyValue(settings));
         applyHideCardDuringPlaySetting(parseHideCardDuringPlayValue(settings));
+        applyCardOpacitySetting(parseCardOpacityValue(settings));
+        applyCardBlurSetting(parseCardBlurValue(settings));
+        applyCardRadiusSetting(parseCardRadiusValue(settings));
+        applyShowTitleIconSetting(parseShowTitleIconValue(settings));
+        applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(settings));
         applyDebugUseSvDetectionSetting(parseSvDetectionValue(settings));
     } catch {
         applyWsEndpointSetting(APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost);
@@ -474,6 +679,11 @@ export async function loadSettings() {
         applyShowModeTagCapsuleSetting(APP_CONFIG.defaults.showModeTagCapsule);
         applyEnableNumericDifficultySetting(APP_CONFIG.defaults.enableNumericDifficulty);
         applyHideCardDuringPlaySetting(APP_CONFIG.defaults.hideCardDuringPlay);
+        applyCardOpacitySetting(APP_CONFIG.defaults.cardOpacity);
+        applyCardBlurSetting(APP_CONFIG.defaults.cardBlur);
+        applyCardRadiusSetting(APP_CONFIG.defaults.cardRadius);
+        applyShowTitleIconSetting(APP_CONFIG.defaults.showTitleIcon);
+        applyReverseCardExtendDirectionSetting(APP_CONFIG.defaults.reverseCardExtendDirection);
         applyDebugUseSvDetectionSetting(APP_CONFIG.defaults.svDetection);
     }
 }

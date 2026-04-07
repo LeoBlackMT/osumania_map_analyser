@@ -96,9 +96,13 @@
     font-weight: 700;
     line-height: 1;
     color: #e9efff;
-    white-space: pre-wrap;
+    white-space: pre-line;
     word-break: break-word;
     overflow-wrap: anywhere;
+}
+
+.star-subtitle.diff-swap {
+    animation: diff-swap 260ms cubic-bezier(0.2, 0.92, 0.28, 1);
 }
 
 .star-caption {
@@ -125,6 +129,10 @@
     transform: translateY(-2px);
     max-width: 100%;
     overflow-wrap: anywhere;
+}
+
+.top-right-capsule.capsule-switch {
+    animation: capsule-switch 260ms cubic-bezier(0.2, 0.92, 0.28, 1);
 }
 
 .top-right-capsule.has-unit {

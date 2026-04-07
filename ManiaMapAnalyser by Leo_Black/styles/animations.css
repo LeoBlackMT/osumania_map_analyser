@@ -122,3 +122,47 @@
         transform: rotate(360deg);
     }
 }
+
+@keyframes capsule-switch {
+    0% {
+        opacity: 0.45;
+        transform: translateY(4px) scale(0.96);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes capsule-enter {
+    0% {
+        opacity: 0;
+        transform: translateY(5px) scale(0.94);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes capsule-exit {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(5px) scale(0.95);
+    }
+}
+
+@keyframes diff-swap {
+    0% {
+        opacity: 0.4;
+        transform: translateY(6px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

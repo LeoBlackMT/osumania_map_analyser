@@ -3,9 +3,11 @@ import {
     ETT_SKILLSET_ORDER,
     ETT_SKILLSET_ORDER_NO_TECHNICAL,
     ettSkillBarsEl,
+    getActiveContentBar,
     mainCardEl,
     PATTERN_BAR_GRADIENT,
     patternClustersEl,
+    reworkDiffEl,
     reworkRightCapsuleEl,
     reworkStarEl,
     STAR_BG_STOPS,
@@ -218,6 +220,43 @@ function formatClusterSpecificTypes(specificTypes) {
         .join(", ");
 }
 
+function restartAnimationClass(element, className) {
+    if (!element || !className) {
+        return;
+    }
+
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+}
+
+function estimateBodySkeletonItemCount(mode) {
+    const isEtterna = mode === "etterna";
+    const minimum = isEtterna ? (state.etternaTechnicalHidden ? 6 : 7) : 5;
+    const maximum = isEtterna ? 12 : 10;
+
+    if (!mainCardEl || typeof window === "undefined") {
+        return minimum;
+    }
+
+    const computedStyle = window.getComputedStyle(mainCardEl);
+    const minHeight = Number.parseFloat(computedStyle.minHeight) || 0;
+    const measuredHeight = Number(mainCardEl.getBoundingClientRect().height) || 0;
+    const cardHeight = Math.max(minHeight, measuredHeight);
+    if (!(cardHeight > 0)) {
+        return minimum;
+    }
+
+    const RESERVED_TOP_SECTION_PX = 220;
+    const availableHeight = Math.max(0, cardHeight - RESERVED_TOP_SECTION_PX);
+    const rowHeight = isEtterna ? 19 : 24;
+    const rowGap = isEtterna ? 8 : 7;
+
+    // Include the inter-row gap in the estimate so skeleton density tracks card length naturally.
+    const estimated = Math.floor((availableHeight + rowGap) / (rowHeight + rowGap));
+    return Math.max(minimum, Math.min(maximum, estimated));
+}
+
 export function mergeDuplicateClusters(clusters) {
     const mergedMap = new Map();
 
@@ -259,12 +298,13 @@ export function mergeDuplicateClusters(clusters) {
 }
 
 export function renderClusterSkeleton() {
-    if (state.contentBar !== "Pattern") {
+    if (getActiveContentBar() !== "Pattern") {
         patternClustersEl.innerHTML = "";
         return;
     }
 
-    patternClustersEl.innerHTML = Array.from({ length: 5 })
+    const itemCount = estimateBodySkeletonItemCount("pattern");
+    patternClustersEl.innerHTML = Array.from({ length: itemCount })
         .map(() => `
             <li class="cluster-item skeleton">
                 <div class="skeleton-line"></div>
@@ -275,12 +315,12 @@ export function renderClusterSkeleton() {
 }
 
 export function renderEtternaSkeleton() {
-    if (state.contentBar !== "Etterna") {
+    if (getActiveContentBar() !== "Etterna") {
         ettSkillBarsEl.innerHTML = "";
         return;
     }
 
-    const itemCount = state.etternaTechnicalHidden ? 6 : 7;
+    const itemCount = estimateBodySkeletonItemCount("etterna");
     ettSkillBarsEl.innerHTML = Array.from({ length: itemCount })
         .map(() => `
             <li class="ett-skill-item skeleton">
@@ -294,6 +334,20 @@ export function renderEtternaSkeleton() {
 export function renderContentSkeleton() {
     renderClusterSkeleton();
     renderEtternaSkeleton();
+}
+
+export function setEstimateDifficultyText(value) {
+    if (!reworkDiffEl) {
+        return;
+    }
+
+    const nextText = String(value ?? "-");
+    if (reworkDiffEl.textContent === nextText) {
+        return;
+    }
+
+    reworkDiffEl.textContent = nextText;
+    restartAnimationClass(reworkDiffEl, "diff-swap");
 }
 
 export function showNumericStarValue(starValue) {
@@ -512,7 +566,7 @@ export function renderPatternClusters(clusters) {
 }
 
 export function renderEtternaSkillBars(values, columnCount) {
-    if (state.contentBar !== "Etterna") {
+    if (getActiveContentBar() !== "Etterna") {
         state.etternaTechnicalHidden = false;
         mainCardEl.classList.remove("bars-etterna-compact");
         ettSkillBarsEl.innerHTML = "";

@@ -1,7 +1,7 @@
 import WebSocketManager from "./socket.js";
 import { DISPLAY_SKILLSET_ORDER } from "../ett/index.js";
 import { APP_CONFIG } from "../../config.js";
-import { createSettingsParsers } from "./settingsParsers.js";
+import { createSettingsParsers } from "../parser/settingsParser.js";
 
 export { APP_CONFIG };
 
@@ -50,6 +50,8 @@ export const overlaySpinnerEl = document.getElementById("overlay-spinner");
 export const overlayTitleEl = document.getElementById("overlay-title");
 export const overlayMessageEl = document.getElementById("overlay-message");
 export const mainCardEl = document.querySelector(".main-card");
+export const dashboardEl = document.querySelector(".dashboard");
+export const titleIconEl = document.querySelector(".title-icon");
 export const modeTagEl = document.getElementById("mode-tag");
 export const svTagEl = document.getElementById("sv-tag");
 
@@ -63,6 +65,7 @@ export const state = {
     cvtFlag: null,
     modSignature: "",
     contentBar: APP_CONFIG.defaults.contentBar,
+    effectiveContentBar: null,
     srText: APP_CONFIG.defaults.srText,
     userContentBar: APP_CONFIG.defaults.contentBar,
     userSrText: APP_CONFIG.defaults.srText,
@@ -78,9 +81,15 @@ export const state = {
     enableStatusMarquee: APP_CONFIG.defaults.enableStatusMarquee,
     enableNumericDifficulty: APP_CONFIG.defaults.enableNumericDifficulty,
     hideCardDuringPlay: APP_CONFIG.defaults.hideCardDuringPlay,
+    cardOpacity: APP_CONFIG.defaults.cardOpacity,
+    cardBlur: APP_CONFIG.defaults.cardBlur,
+    cardRadius: APP_CONFIG.defaults.cardRadius,
+    showTitleIcon: APP_CONFIG.defaults.showTitleIcon,
+    reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
     vibroDetection: APP_CONFIG.defaults.vibroDetection,
     numericDifficulty: null,
     numericDifficultyHint: null,
+    forceHideNumericDifficulty: false,
     showModeTagCapsule: APP_CONFIG.defaults.showModeTagCapsule,
     showSvTag: false,
     statusText: "",
@@ -165,9 +174,18 @@ export const {
     parseShowModeTagCapsuleValue,
     parseEnableNumericDifficultyValue,
     parseHideCardDuringPlayValue,
+    parseCardOpacityValue,
+    parseCardBlurValue,
+    parseCardRadiusValue,
+    parseShowTitleIconValue,
+    parseReverseCardExtendDirectionValue,
     parseSvDetectionValue,
     parseWsEndpointValue,
 } = createSettingsParsers(APP_CONFIG);
+
+export function getActiveContentBar() {
+    return state.effectiveContentBar || state.contentBar;
+}
 
 export const GRAPH_VIEW_DEFS = [
     {
@@ -192,12 +210,12 @@ export const GRAPH_VIEW_DEFS = [
         cursorDotEl: bodyGraphCursorDotEl,
         pauseMarkersEl: bodyGraphPauseMarkersEl,
         errorEl: bodyGraphErrorEl,
-        isEnabled: () => state.contentBar === "Graph",
+        isEnabled: () => getActiveContentBar() === "Graph",
     },
 ];
 
 export function hasAnyGraphModeEnabled() {
-    return state.diffText === "Graph" || state.contentBar === "Graph";
+    return state.diffText === "Graph" || getActiveContentBar() === "Graph";
 }
 
 export function forEachGraphView(callback) {

@@ -11,6 +11,10 @@
     --glass-border: rgba(255, 255, 255, 0.14);
     --overlay: rgba(14, 18, 30, 0.66);
     --track: rgba(255, 255, 255, 0.1);
+    --card-opacity: 0.95;
+    --card-backdrop-blur: 6px;
+    --card-radius: 16px;
+    --card-extend-origin: top;
 }
 
 html,
@@ -33,29 +37,47 @@ body {
     margin: 0;
     display: grid;
     grid-template-columns: 1fr;
+    min-height: 100%;
+    align-content: start;
     gap: 14px;
+}
+
+.dashboard.extend-upward {
+    align-content: end;
 }
 
 .card {
     position: relative;
-    border-radius: 16px;
+    border-radius: var(--card-radius, 16px);
     border: 1px solid var(--glass-border);
     background: var(--glass);
     /* box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24); */
-    backdrop-filter: none;
+    backdrop-filter: blur(var(--card-backdrop-blur, 0px));
+    -webkit-backdrop-filter: blur(var(--card-backdrop-blur, 0px));
+    opacity: var(--card-opacity, 0.95);
     padding: 12px;
     overflow: hidden;
 }
 
+.main-card.hide-title-icon .title-icon {
+    display: none;
+}
+
 .main-card {
-    transform-origin: center top;
+    transform-origin: center var(--card-extend-origin, top);
     transition:
         opacity 280ms ease,
         transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1),
+        height 320ms cubic-bezier(0.25, 0.9, 0.2, 1),
+        min-height 320ms cubic-bezier(0.25, 0.9, 0.2, 1),
+        max-height 320ms cubic-bezier(0.25, 0.9, 0.2, 1),
+        gap 280ms ease,
+        padding 280ms ease,
+        grid-template-rows 320ms cubic-bezier(0.25, 0.9, 0.2, 1),
         background-color 260ms ease,
         border-color 260ms ease,
         box-shadow 260ms ease;
-    will-change: opacity, transform;
+    will-change: opacity, transform, height;
 }
 
 .main-card.card-hidden-by-play {
@@ -65,4 +87,10 @@ body {
     border-color: rgba(255, 255, 255, 0) !important;
     box-shadow: none !important;
     pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .main-card {
+        transition-duration: 1ms !important;
+    }
 }

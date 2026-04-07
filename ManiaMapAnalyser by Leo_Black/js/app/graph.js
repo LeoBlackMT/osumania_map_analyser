@@ -193,7 +193,7 @@ function trimSeriesStartToFirstObject(series) {
 
 function formatEstimateDifficultyCaption() {
     const base = "Estimate Difficulty";
-    if (!state.enableNumericDifficulty) {
+    if (!state.enableNumericDifficulty || state.forceHideNumericDifficulty) {
         return base;
     }
 
@@ -646,4 +646,17 @@ export function setNumericDifficultyValue(value, hint = null) {
     if (state.diffText === "Difficulty") {
         updateDiffTextVisibility();
     }
+}
+
+export function setForceHideNumericDifficulty(value) {
+    const next = Boolean(value);
+    if (state.forceHideNumericDifficulty === next) {
+        return false;
+    }
+
+    state.forceHideNumericDifficulty = next;
+    if (state.diffText === "Difficulty") {
+        updateDiffTextVisibility();
+    }
+    return true;
 }

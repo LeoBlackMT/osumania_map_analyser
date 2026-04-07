@@ -114,7 +114,7 @@ export function estDiff(sr, lnRatio, columnCount) {
             else rcDiff = "Unknown RC difficulty";
         }
 
-        if (lnRatio < 0.1) return rcDiff;
+        if (lnRatio < 0.15) return rcDiff;
 
         let lnDiff = null;
         for (const [lower, upper, name] of SR_INTERVALS.LN_intervals_4K) {
@@ -146,7 +146,7 @@ export function estDiff(sr, lnRatio, columnCount) {
             else rcDiff = "Unknown RC difficulty";
         }
 
-        if (lnRatio < 0.1) return rcDiff;
+        if (lnRatio < 0.15) return rcDiff;
 
         let lnDiff = null;
         for (const [lower, upper, name] of SR_INTERVALS.LN_intervals_6K) {
@@ -178,7 +178,7 @@ export function estDiff(sr, lnRatio, columnCount) {
             else rcDiff = "Unknown RC difficulty";
         }
 
-        if (lnRatio < 0.1) return rcDiff;
+        if (lnRatio < 0.15) return rcDiff;
 
         let lnDiff = null;
         for (const [lower, upper, name] of SR_INTERVALS.LN_intervals_7K) {

@@ -52,6 +52,44 @@
 		"value": "Difficulty"
 	},
 	{
+		"uniqueID": "cardOpacity",
+		"type": "options",
+		"title": "Card Opacity",
+		"description": "Set overall card opacity.",
+		"options": [
+			"100%",
+			"95%",
+			"90%",
+			"80%",
+			"70%"
+		],
+		"value": "95%"
+	},
+	{
+		"uniqueID": "cardBlur",
+		"type": "options",
+		"title": "Card Blur",
+		"description": "Set card background blur strength.",
+		"options": [
+			"Off",
+			"Soft",
+			"Strong"
+		],
+		"value": "Soft"
+	},
+	{
+		"uniqueID": "cardRadius",
+		"type": "options",
+		"title": "Card Radius",
+		"description": "Set card corner roundness.",
+		"options": [
+			"Small",
+			"Medium",
+			"Large"
+		],
+		"value": "Medium"
+	},
+	{
 		"uniqueID": "showModeTagCapsule",
 		"type": "checkbox",
 		"title": "Map Tag Capsule",
@@ -81,13 +119,29 @@
 		"title": "Numeric Difficulty",
 		"description": "Show numeric difficulty values in RC algorithms.",
 		"options": [],
-		"value": false
+		"value": true
 	},
 	{
 		"uniqueID": "hideCardDuringPlay",
 		"type": "checkbox",
 		"title": "Hide During Play",
 		"description": "Hide the whole card when playing.",
+		"options": [],
+		"value": false
+	},
+	{
+		"uniqueID": "showTitleIcon",
+		"type": "checkbox",
+		"title": "Show Title Icon",
+		"description": "Show the icon at the left of metadata status line.",
+		"options": [],
+		"value": true
+	},
+	{
+		"uniqueID": "reverseCardExtendDirection",
+		"type": "checkbox",
+		"title": "Reverse Card Extension",
+		"description": "Anchor card bottom and extend upwards when card needs to extend.",
 		"options": [],
 		"value": false
 	},
@@ -137,6 +191,7 @@
 		"description": "Select Etterna's MinaCalc version used by MSD and related metrics.",
 		"options": [
 			"0.68.0-Unofficial",
+			"0.70.0",
 			"0.72.0",
 			"0.72.3",
 			"0.74.0"
@@ -150,6 +205,7 @@
 		"description": "Select Etterna's MinaCalc version specifically used for Companella Estimator.",
 		"options": [
 			"0.68.0-Unofficial",
+			"0.70.0",
 			"0.72.0",
 			"0.72.3",
 			"0.74.0"
@@ -196,6 +252,6 @@
 		"title": "SV Detection(experimental)",
 		"description": "Allow SV-based mode tag/category detection logic.",
 		"options": [],
-		"value": true
+		"value": false
 	}
 ]

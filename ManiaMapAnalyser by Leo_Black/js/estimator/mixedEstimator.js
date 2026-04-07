@@ -1,11 +1,13 @@
 import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 
+const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
+
 function modeTagFromLnRatio(lnRatio) {
     if (!Number.isFinite(lnRatio)) {
         return "Mix";
     }
-    if (lnRatio <= 0.1) {
+    if (lnRatio <= 0.15) {
         return "RC";
     }
     if (lnRatio >= 0.9) {
@@ -51,7 +53,7 @@ export function composeDifficultyFromRcLn(rcLabel, lnLabel, lnRatio) {
     const ln = String(lnLabel ?? "").trim();
     const ratio = Number(lnRatio);
 
-    if (!Number.isFinite(ratio) || ratio < 0.1) {
+    if (!Number.isFinite(ratio) || ratio < 0.15) {
         return rc || ln || "-";
     }
 
@@ -79,8 +81,23 @@ function tryRunDanielFallback(osuText, options) {
 
 export function runMixedEstimatorFromText(osuText, options = {}) {
     const sunnyBaseline = runSunnyEstimatorFromText(osuText, options);
+    const columnCount = Number(sunnyBaseline.columnCount);
+    if (!Number.isFinite(columnCount) || !MIXED_SUPPORTED_KEYS.has(columnCount)) {
+        return {
+            ...sunnyBaseline,
+            mixedCompanellaPlan: null,
+        };
+    }
+
     const { inEnabled, hoEnabled } = parseCvtFlags(options.cvtFlag);
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
+
+    if (mixedModeTag === "RC" && columnCount !== 4) {
+        return {
+            ...sunnyBaseline,
+            mixedCompanellaPlan: null,
+        };
+    }
 
     let selectedRework = sunnyBaseline;
     let estDiff = sunnyBaseline.estDiff;
@@ -111,7 +128,7 @@ export function runMixedEstimatorFromText(osuText, options = {}) {
         let rcNumericDifficulty = sunnyBaseline.numericDifficulty;
         let rcNumericDifficultyHint = sunnyBaseline.numericDifficultyHint;
 
-        if (Number(sunnyBaseline.columnCount) === 4) {
+        if (columnCount === 4) {
             if (Number(sunnyBaseline.star) < 9) {
                 companellaPlan = {
                     lnRatio,

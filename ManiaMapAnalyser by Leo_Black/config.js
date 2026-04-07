@@ -9,6 +9,10 @@ export const APP_CONFIG = {
         estimatorAlgorithm: ["Mixed", "Sunny", "Daniel", "Companella"],
         etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
         companellaEtternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
+        cardOpacity: ["100%", "95%", "90%", "80%", "70%"],
+        cardBlur: ["Off", "Soft", "Strong"],
+        cardRadius: ["Small", "Medium", "Large"],
+        reverseCardExtendDirection: [true, false],
         modeTag: ["RC", "LN", "HB", "Mix", "SV"],
     },
 
@@ -42,7 +46,7 @@ export const APP_CONFIG = {
 
     etterna: {
         maxSkillValue: 41.0,
-        vibroJackspeedRatioThreshold: 0.93,
+        vibroJackspeedRatioThreshold: 0.95,
     },
 
     graph: {
@@ -80,10 +84,15 @@ export const APP_CONFIG = {
         enableStatusMarquee: true,
         vibroDetection: true,
         disableVibroDetection: false,
-        svDetection: true,
+        svDetection: false,
         showModeTagCapsule: true,
-        enableNumericDifficulty: false,
+        enableNumericDifficulty: true,
         hideCardDuringPlay: false,
+        cardOpacity: "95%",
+        cardBlur: "Soft",
+        cardRadius: "Medium",
+        showTitleIcon: true,
+        reverseCardExtendDirection: false,
         contentBar: "Auto",
         srText: "Auto",
         diffText: "Difficulty",
