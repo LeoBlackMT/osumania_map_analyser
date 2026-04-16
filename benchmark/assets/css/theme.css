@@ -1,0 +1,135 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap");
+
+:root {
+    --bg: #0a0f1c;
+    --bg-soft: #121a2e;
+    --panel: rgba(16, 24, 43, 0.74);
+    --panel-strong: rgba(17, 25, 44, 0.9);
+    --line: rgba(153, 180, 255, 0.25);
+    --line-soft: rgba(153, 180, 255, 0.14);
+    --text: #eef3ff;
+    --text-soft: #9fb0da;
+
+    --ok: #5ee8bd;
+    --close: #7ad1ff;
+    --moderate: #f9bb5d;
+    --miss: #ff6f7d;
+
+    --accent: #80b3ff;
+    --accent-2: #67ffe2;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+}
+
+body {
+    color: var(--text);
+    font-family: "Outfit", "Segoe UI", sans-serif;
+    background:
+        radial-gradient(1200px 720px at 6% -10%, #24447f 0%, transparent 55%),
+        radial-gradient(1000px 700px at 95% 5%, #1b5a6f 0%, transparent 52%),
+        linear-gradient(160deg, var(--bg) 5%, #081224 45%, #07101f 100%);
+    letter-spacing: 0.01em;
+}
+
+.bg-orb {
+    position: fixed;
+    border-radius: 999px;
+    filter: blur(70px);
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.orb-a {
+    width: 360px;
+    height: 360px;
+    left: -120px;
+    top: -60px;
+    background: #4f8fff;
+    animation: orb-drift-a 14s ease-in-out infinite;
+}
+
+.orb-b {
+    width: 320px;
+    height: 320px;
+    right: -90px;
+    top: 150px;
+    background: #45e6ca;
+    animation: orb-drift-b 16s ease-in-out infinite;
+}
+
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fade-up 500ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.delay-1 {
+    animation-delay: 80ms;
+}
+
+.delay-2 {
+    animation-delay: 140ms;
+}
+
+.delay-3 {
+    animation-delay: 200ms;
+}
+
+.delay-4 {
+    animation-delay: 260ms;
+}
+
+.delay-5 {
+    animation-delay: 320ms;
+}
+
+@keyframes fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes orb-drift-a {
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+    50% {
+        transform: translate(35px, 20px) scale(1.05);
+    }
+}
+
+@keyframes orb-drift-b {
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+    50% {
+        transform: translate(-40px, 16px) scale(1.06);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fade-in-up,
+    .orb-a,
+    .orb-b {
+        animation: none !important;
+        opacity: 1;
+        transform: none;
+    }
+}
