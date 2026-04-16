@@ -42,6 +42,7 @@ export function parseBenchmarkCsv(csvText) {
 
         rows.push({
             ...parsed,
+            subPattern: parsed.subPattern || "Unsigned",
             expected: toNumberOrNull(parsed.expectedRaw),
             got: toNumberOrNull(parsed.gotRaw),
             delta: toNumberOrNull(parsed.deltaRaw),

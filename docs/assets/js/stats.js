@@ -147,6 +147,7 @@ export function computeSummary(rows) {
     };
 
     const patternAcc = new Map();
+    const subPatternAcc = new Map();
 
     for (const row of rows) {
         const expected = Number(row.expected);
@@ -191,6 +192,21 @@ export function computeSummary(rows) {
         slot.count += 1;
         slot.sumAbs += deltaAbs;
         slot.sumDelta += delta;
+
+        const subPatternKey = String(row.subPattern || "Unsigned").trim() || "Unsigned";
+        if (!subPatternAcc.has(subPatternKey)) {
+            subPatternAcc.set(subPatternKey, {
+                subPattern: subPatternKey,
+                count: 0,
+                sumAbs: 0,
+                sumDelta: 0,
+            });
+        }
+
+        const subSlot = subPatternAcc.get(subPatternKey);
+        subSlot.count += 1;
+        subSlot.sumAbs += deltaAbs;
+        subSlot.sumDelta += delta;
     }
 
     const deltas = validRows.map((row) => row.delta);
@@ -210,6 +226,15 @@ export function computeSummary(rows) {
     const patternRows = [...patternAcc.values()]
         .map((item) => ({
             pattern: item.pattern,
+            count: item.count,
+            mae: item.count ? item.sumAbs / item.count : 0,
+            bias: item.count ? item.sumDelta / item.count : 0,
+        }))
+        .sort((a, b) => b.mae - a.mae);
+
+    const subPatternRows = [...subPatternAcc.values()]
+        .map((item) => ({
+            subPattern: item.subPattern,
             count: item.count,
             mae: item.count ? item.sumAbs / item.count : 0,
             bias: item.count ? item.sumDelta / item.count : 0,
@@ -256,6 +281,7 @@ export function computeSummary(rows) {
         scatterByBand,
         trendRows,
         patternRows,
+        subPatternRows,
         deltaHistogram: buildHistogram(deltas),
         topUnderrated,
         topOverrated,

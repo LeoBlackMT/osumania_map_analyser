@@ -4,6 +4,8 @@
 本仓库是一个 [tosu](https://tosu.app) 游戏内叠加界面(ppcounter)，实时提供 osu!mania（4/6/7K） 下，lazer与stable的多个mod，提供估算难度、分析RC/LN键型、自定义ett版本计算MSD、难度图表和暂停检测功能。
 ![Features](img/features.gif)
 
+估计算法 Benchmark: 请前往[此处](https://leoblackmt.github.io/osumania_map_analyser/)查看基于真实谱面数据的估计算法表现对比。
+
 ## 主要特性
 - **实时分析**：在游戏/选图过程中实时分析当前谱面的各项数据。
 - **多mod支持**：兼容lazer与stable的多个mod，支持自定义倍速与改变OD。

@@ -140,6 +140,7 @@
     .chart-panel,
     .table-panel,
     .compare-panel,
+    .error-panel,
     .insight-panel {
         padding: 12px;
     }

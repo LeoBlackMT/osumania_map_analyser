@@ -34,6 +34,10 @@
     flex: 1 1 230px;
 }
 
+.toolbar-field.hidden {
+    display: none;
+}
+
 .action-row {
     display: flex;
     align-items: center;
@@ -238,6 +242,85 @@ input[type="text"]:focus {
     font-style: italic;
 }
 
+.error-panel {
+    padding: 14px;
+}
+
+.error-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.error-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.error-header p {
+    margin: 3px 0 0;
+    color: var(--text-soft);
+    font-size: 0.86rem;
+}
+
+.error-counter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.error-pill {
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.error-pill b {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+}
+
+.error-pill.invalid {
+    color: var(--moderate);
+    border-color: rgba(249, 187, 93, 0.4);
+}
+
+.error-pill.failed {
+    color: var(--miss);
+    border-color: rgba(255, 111, 125, 0.42);
+}
+
+.error-pill.missing {
+    color: #ff9d66;
+    border-color: rgba(255, 157, 102, 0.42);
+}
+
+.error-table-wrap {
+    max-height: 320px;
+}
+
+tr.error-invalid td {
+    background: rgba(249, 187, 93, 0.07);
+}
+
+tr.error-failed td {
+    background: rgba(255, 111, 125, 0.07);
+}
+
+tr.error-missing td {
+    background: rgba(255, 157, 102, 0.08);
+}
+
 .table-header {
     display: flex;
     justify-content: space-between;
@@ -385,6 +468,10 @@ tr.band-miss td.band {
     }
 
     .table-controls .btn-ghost {
+        width: 100%;
+    }
+
+    .error-counter-row {
         width: 100%;
     }
 }

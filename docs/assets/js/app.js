@@ -12,16 +12,29 @@ import { BenchmarkCharts } from "./charts.js";
 const DATA_DIR = "data";
 const INDEX_URL = `${DATA_DIR}/index.json`;
 
+const SCOPE_RC = "RC";
+const SCOPE_LN = "LN";
+
 const state = {
     catalog: new Map(),
     cache: new Map(),
+    metaCache: new Map(),
 
     algorithms: [],
     currentAlgorithm: null,
     compareAlgorithm: "",
 
+    baseMode: SCOPE_RC,
+    compareMode: SCOPE_RC,
+
     baseRows: [],
+    compareRows: [],
+    scopedBaseRows: [],
+    scopedCompareRows: [],
+
     displayRows: [],
+    errorRows: [],
+
     summary: null,
     compareSummary: null,
 
@@ -33,6 +46,12 @@ const state = {
 const dom = {
     algorithmSelect: document.getElementById("algorithmSelect"),
     compareAlgorithmSelect: document.getElementById("compareAlgorithmSelect"),
+
+    baseCategoryField: document.getElementById("baseCategoryField"),
+    baseCategorySelect: document.getElementById("baseCategorySelect"),
+    compareCategoryField: document.getElementById("compareCategoryField"),
+    compareCategorySelect: document.getElementById("compareCategorySelect"),
+
     reloadDataButton: document.getElementById("reloadDataButton"),
     openDataFolderButton: document.getElementById("openDataFolderButton"),
     dataFileInput: document.getElementById("dataFileInput"),
@@ -70,11 +89,19 @@ const dom = {
     compareAgreementValue: document.getElementById("compareAgreementValue"),
     compareMaeGapValue: document.getElementById("compareMaeGapValue"),
 
+    errorStatusText: document.getElementById("errorStatusText"),
+    errorInvalidCount: document.getElementById("errorInvalidCount"),
+    errorFailedCount: document.getElementById("errorFailedCount"),
+    errorMissingCount: document.getElementById("errorMissingCount"),
+    errorTableBody: document.getElementById("errorTableBody"),
+    errorEmptyState: document.getElementById("errorEmptyState"),
+
     underratedList: document.getElementById("underratedList"),
     overratedList: document.getElementById("overratedList"),
 
     searchInput: document.getElementById("searchInput"),
     patternFilter: document.getElementById("patternFilter"),
+    subPatternFilter: document.getElementById("subPatternFilter"),
     bandFilter: document.getElementById("bandFilter"),
     clearFilterButton: document.getElementById("clearFilterButton"),
 
@@ -90,11 +117,26 @@ const charts = new BenchmarkCharts({
     deltaDistribution: "deltaDistributionChart",
     trend: "trendChart",
     pattern: "patternChart",
+    subPattern: "subPatternChart",
     headToHead: "headToHeadChart",
 });
 
 function normalizeLooseName(value) {
     return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizePattern(value) {
+    return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeSubPattern(value) {
+    const text = String(value ?? "").trim();
+    return text || "Unsigned";
+}
+
+function normalizeScope(value) {
+    const text = String(value ?? "").trim().toUpperCase();
+    return text === SCOPE_LN ? SCOPE_LN : SCOPE_RC;
 }
 
 function isCsvFileName(fileName) {
@@ -150,6 +192,46 @@ function setStatus(message, level) {
 
 function setDatasetInfo(text) {
     dom.datasetInfo.textContent = text;
+}
+
+function setFieldVisible(field, visible) {
+    if (!field) {
+        return;
+    }
+    field.classList.toggle("hidden", !visible);
+}
+
+function isRowValidForStats(row) {
+    const expected = Number(row.expected);
+    const got = Number(row.got);
+    return Number.isFinite(expected) && Number.isFinite(got);
+}
+
+function buildAlgorithmMeta(rows) {
+    const lnRows = rows.filter((row) => normalizePattern(row.pattern) === "ln");
+    const lnValidRows = lnRows.filter((row) => isRowValidForStats(row));
+
+    return {
+        lnTotal: lnRows.length,
+        lnValid: lnValidRows.length,
+        hasUsableLn: lnRows.length > 0 && lnValidRows.length > 0,
+    };
+}
+
+function normalizeLoadedRows(rows) {
+    return rows.map((row) => ({
+        ...row,
+        pattern: String(row.pattern ?? "").trim(),
+        subPattern: normalizeSubPattern(row.subPattern),
+        gotRaw: String(row.gotRaw ?? "").trim(),
+    }));
+}
+
+function cacheRowsForAlgorithm(algorithm, rows) {
+    const normalizedRows = normalizeLoadedRows(rows);
+    state.cache.set(algorithm, normalizedRows);
+    state.metaCache.set(algorithm, buildAlgorithmMeta(normalizedRows));
+    return normalizedRows;
 }
 
 function updateSourceHint(extra = "") {
@@ -210,6 +292,7 @@ function clearRemoteCatalogEntries() {
         if (descriptor.source !== "local") {
             state.catalog.delete(algorithm);
             state.cache.delete(algorithm);
+            state.metaCache.delete(algorithm);
         }
     }
 }
@@ -305,8 +388,84 @@ function fillPatternFilter(rows) {
     dom.patternFilter.value = patterns.includes(previous) ? previous : "all";
 }
 
+function fillSubPatternFilter(rows) {
+    const previous = dom.subPatternFilter.value;
+    const subPatterns = [...new Set(rows.map((row) => normalizeSubPattern(row.subPattern)).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+    dom.subPatternFilter.innerHTML = "";
+
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = "All";
+    dom.subPatternFilter.appendChild(allOption);
+
+    for (const subPattern of subPatterns) {
+        const option = document.createElement("option");
+        option.value = subPattern;
+        option.textContent = subPattern;
+        dom.subPatternFilter.appendChild(option);
+    }
+
+    dom.subPatternFilter.value = subPatterns.includes(previous) ? previous : "all";
+}
+
 function getRowBand(row) {
     return classifyBand(Number(row.deltaAbs));
+}
+
+function parseErrorInfoFromRawGot(rawGot) {
+    const raw = String(rawGot ?? "").trim();
+
+    if (!raw) {
+        return {
+            type: "Failed",
+            detail: "got 为空，未得到可解析结果",
+            raw,
+        };
+    }
+
+    const invalidMatch = raw.match(/^invalid\b\s*[:：-]?\s*(.*)$/i);
+    if (invalidMatch) {
+        return {
+            type: "Invalid",
+            detail: invalidMatch[1] ? invalidMatch[1].trim() : "估计难度字符串中包含 < 或 >",
+            raw,
+        };
+    }
+
+    const failedMatch = raw.match(/^failed\b\s*[:：-]?\s*(.*)$/i);
+    if (failedMatch) {
+        return {
+            type: "Failed",
+            detail: failedMatch[1] ? failedMatch[1].trim() : "估计器运行失败或难度解析失败",
+            raw,
+        };
+    }
+
+    const missingMatch = raw.match(/^missing\b\s*[:：-]?\s*(.*)$/i);
+    if (missingMatch) {
+        return {
+            type: "Missing",
+            detail: missingMatch[1] ? missingMatch[1].trim() : "找不到对应谱面文件",
+            raw,
+        };
+    }
+
+    return {
+        type: "Failed",
+        detail: raw,
+        raw,
+    };
+}
+
+function getRowErrorInfo(row) {
+    const got = Number(row.got);
+    if (Number.isFinite(got)) {
+        return null;
+    }
+
+    return parseErrorInfoFromRawGot(row.gotRaw);
 }
 
 function getWinnerLabel(better) {
@@ -326,11 +485,55 @@ function getWinnerLabel(better) {
     return "-";
 }
 
+function applyScopeRows(rows, scope) {
+    if (normalizeScope(scope) === SCOPE_LN) {
+        return rows.filter((row) => normalizePattern(row.pattern) === "ln");
+    }
+
+    return rows.filter((row) => normalizePattern(row.pattern) !== "ln");
+}
+
+function syncBaseScopeVisibility(rows) {
+    const meta = buildAlgorithmMeta(rows);
+    state.metaCache.set(state.currentAlgorithm, meta);
+
+    const showLnChoice = meta.hasUsableLn;
+    setFieldVisible(dom.baseCategoryField, showLnChoice);
+
+    if (!showLnChoice) {
+        state.baseMode = SCOPE_RC;
+    }
+
+    dom.baseCategorySelect.value = state.baseMode;
+}
+
+function syncCompareScopeVisibility(rows) {
+    if (!state.compareAlgorithm) {
+        state.compareMode = SCOPE_RC;
+        setFieldVisible(dom.compareCategoryField, false);
+        dom.compareCategorySelect.value = state.compareMode;
+        return;
+    }
+
+    const meta = buildAlgorithmMeta(rows);
+    state.metaCache.set(state.compareAlgorithm, meta);
+
+    const showLnChoice = meta.hasUsableLn;
+    setFieldVisible(dom.compareCategoryField, showLnChoice);
+
+    if (!showLnChoice) {
+        state.compareMode = SCOPE_RC;
+    }
+
+    dom.compareCategorySelect.value = state.compareMode;
+}
+
 function mergeRowsForDisplay(baseRows, compareRows) {
     if (!state.compareAlgorithm || !Array.isArray(compareRows) || compareRows.length === 0) {
         return baseRows.map((row) => ({
             ...row,
             compareGot: null,
+            compareGotRaw: "",
             compareDeltaAbs: null,
             better: "na",
         }));
@@ -344,6 +547,7 @@ function mergeRowsForDisplay(baseRows, compareRows) {
             return {
                 ...row,
                 compareGot: null,
+                compareGotRaw: "",
                 compareDeltaAbs: null,
                 better: "na",
             };
@@ -366,6 +570,7 @@ function mergeRowsForDisplay(baseRows, compareRows) {
         return {
             ...row,
             compareGot: Number.isFinite(Number(peer.got)) ? Number(peer.got) : null,
+            compareGotRaw: String(peer.gotRaw || ""),
             compareDeltaAbs: Number.isFinite(compareDeltaAbs) ? compareDeltaAbs : null,
             better,
         };
@@ -433,13 +638,79 @@ function updateCompareSummary(compareSummary) {
         return;
     }
 
-    dom.compareStatusText.textContent = `${state.currentAlgorithm} vs ${state.compareAlgorithm}`;
+    dom.compareStatusText.textContent = `${state.currentAlgorithm}[${state.baseMode}] vs ${state.compareAlgorithm}[${state.compareMode}]`;
     dom.compareMatchedValue.textContent = String(compareSummary.matchedRows);
     dom.compareBaseWinsValue.textContent = String(compareSummary.baseWins);
     dom.compareOtherWinsValue.textContent = String(compareSummary.compareWins);
     dom.compareTieValue.textContent = String(compareSummary.tieCount);
     dom.compareAgreementValue.textContent = formatPercent(compareSummary.agreementRate);
     dom.compareMaeGapValue.textContent = formatSigned(compareSummary.maeGap, 3);
+}
+
+function renderErrorPanel(rows) {
+    const errors = [];
+
+    for (const row of rows) {
+        const info = getRowErrorInfo(row);
+        if (!info) {
+            continue;
+        }
+
+        errors.push({
+            ...row,
+            errorType: info.type,
+            errorDetail: info.detail,
+            errorRaw: info.raw,
+        });
+    }
+
+    state.errorRows = errors;
+
+    let invalidCount = 0;
+    let failedCount = 0;
+    let missingCount = 0;
+
+    for (const row of errors) {
+        if (row.errorType === "Invalid") {
+            invalidCount += 1;
+        } else if (row.errorType === "Missing") {
+            missingCount += 1;
+        } else {
+            failedCount += 1;
+        }
+    }
+
+    dom.errorInvalidCount.textContent = String(invalidCount);
+    dom.errorFailedCount.textContent = String(failedCount);
+    dom.errorMissingCount.textContent = String(missingCount);
+
+    if (!errors.length) {
+        dom.errorStatusText.textContent = "No error rows in current algorithm scope.";
+        dom.errorTableBody.innerHTML = "";
+        dom.errorEmptyState.hidden = false;
+        return;
+    }
+
+    dom.errorStatusText.textContent = `${errors.length} error rows in current algorithm scope.`;
+    dom.errorEmptyState.hidden = true;
+
+    dom.errorTableBody.innerHTML = errors
+        .map((row) => {
+            const rowClass = String(row.errorType || "Failed").toLowerCase();
+            const expectedText = String(row.expectedRaw || "").trim() || formatNumber(Number(row.expected));
+            return [
+                `<tr class="error-${rowClass}">`,
+                `<td>${escapeHtml(row.name)}</td>`,
+                `<td>${escapeHtml(row.pattern)}</td>`,
+                `<td>${escapeHtml(normalizeSubPattern(row.subPattern))}</td>`,
+                `<td class="num">${escapeHtml(expectedText)}</td>`,
+                `<td>${escapeHtml(row.errorRaw)}</td>`,
+                `<td>${escapeHtml(row.errorType)}</td>`,
+                `<td>${escapeHtml(row.errorDetail)}</td>`,
+                "</tr>",
+            ].join("");
+        })
+        .join("");
 }
 
 function compareValues(a, b, key) {
@@ -462,7 +733,7 @@ function compareValues(a, b, key) {
         const bFinite = Number.isFinite(bVal);
 
         if (!aFinite && !bFinite) {
-            return 0;
+            return String(a[`${key}Raw`] ?? "").localeCompare(String(b[`${key}Raw`] ?? ""));
         }
         if (!aFinite) {
             return 1;
@@ -495,17 +766,27 @@ function renderTable(rows) {
             const winnerLabel = getWinnerLabel(row.better);
             const winnerClass = row.better || "na";
 
+            const gotValue = Number(row.got);
+            const gotText = Number.isFinite(gotValue)
+                ? formatNumber(gotValue)
+                : (String(row.gotRaw || "").trim() || "-");
+
+            const compareGotValue = Number(row.compareGot);
+            const compareGotText = Number.isFinite(compareGotValue)
+                ? formatNumber(compareGotValue)
+                : (String(row.compareGotRaw || "").trim() || "-");
+
             return [
                 `<tr class="band-${bandKey}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
                 `<td class="num">${formatNumber(Number(row.expected))}</td>`,
-                `<td class="num">${formatNumber(Number(row.got))}</td>`,
+                `<td>${escapeHtml(gotText)}</td>`,
                 `<td class="num">${formatSigned(Number(row.delta))}</td>`,
                 `<td class="num">${formatNumber(Number(row.deltaAbs))}</td>`,
                 `<td>${escapeHtml(row.pattern)}</td>`,
-                `<td>${escapeHtml(row.subPattern)}</td>`,
+                `<td>${escapeHtml(normalizeSubPattern(row.subPattern))}</td>`,
                 `<td class="band">${bandLabel}</td>`,
-                `<td class="num">${formatNumber(Number(row.compareGot))}</td>`,
+                `<td>${escapeHtml(compareGotText)}</td>`,
                 `<td class="num">${formatNumber(Number(row.compareDeltaAbs))}</td>`,
                 `<td class="winner ${winnerClass}">${escapeHtml(winnerLabel)}</td>`,
                 "</tr>",
@@ -517,10 +798,15 @@ function renderTable(rows) {
 function applyFilters() {
     const searchText = String(dom.searchInput.value || "").trim().toLowerCase();
     const selectedPattern = dom.patternFilter.value;
+    const selectedSubPattern = dom.subPatternFilter.value;
     const selectedBand = dom.bandFilter.value;
 
     const filtered = state.displayRows.filter((row) => {
         if (selectedPattern && selectedPattern !== "all" && row.pattern !== selectedPattern) {
+            return false;
+        }
+
+        if (selectedSubPattern && selectedSubPattern !== "all" && normalizeSubPattern(row.subPattern) !== selectedSubPattern) {
             return false;
         }
 
@@ -532,7 +818,15 @@ function applyFilters() {
             return true;
         }
 
-        const haystack = [row.name, row.pattern, row.subPattern]
+        const rowError = getRowErrorInfo(row);
+        const haystack = [
+            row.name,
+            row.pattern,
+            normalizeSubPattern(row.subPattern),
+            row.gotRaw,
+            rowError?.type,
+            rowError?.detail,
+        ]
             .map((part) => String(part || "").toLowerCase())
             .join(" ");
 
@@ -542,7 +836,7 @@ function applyFilters() {
     state.filteredRows = sortRows(filtered);
     renderTable(state.filteredRows);
 
-    dom.tableMeta.textContent = `${state.filteredRows.length} / ${state.displayRows.length} rows shown`;
+    dom.tableMeta.textContent = `${state.filteredRows.length} / ${state.displayRows.length} rows shown | errors=${state.errorRows.length}`;
 }
 
 function updateSortVisual() {
@@ -571,6 +865,14 @@ function syncUrlParams() {
         currentUrl.searchParams.set("compare", state.compareAlgorithm);
     } else {
         currentUrl.searchParams.delete("compare");
+    }
+
+    currentUrl.searchParams.set("scope", state.baseMode);
+
+    if (state.compareAlgorithm) {
+        currentUrl.searchParams.set("compareScope", state.compareMode);
+    } else {
+        currentUrl.searchParams.delete("compareScope");
     }
 
     history.replaceState(null, "", currentUrl.toString());
@@ -737,8 +1039,7 @@ async function ensureRowsLoaded(algorithm, forceReload = false) {
 
     const csvText = await response.text();
     const parsed = parseBenchmarkCsv(csvText);
-    state.cache.set(algorithm, parsed.rows);
-    return parsed.rows;
+    return cacheRowsForAlgorithm(algorithm, parsed.rows);
 }
 
 function buildFriendlyFetchHint(originalMessage) {
@@ -748,11 +1049,32 @@ function buildFriendlyFetchHint(originalMessage) {
     if (window.location.protocol === "file:" && isFetchFailure) {
         return [
             "Direct file mode blocks fetch in some Edge contexts.",
-            "Click Open Data Folder and select benchmark/data to load CSV files locally.",
+            "Click Upload Data Folder and select docs/data to load CSV files locally.",
         ].join(" ");
     }
 
     return message;
+}
+
+function applyEmptyDashboard() {
+    const emptySummary = computeSummary([]);
+    state.baseRows = [];
+    state.compareRows = [];
+    state.scopedBaseRows = [];
+    state.scopedCompareRows = [];
+    state.displayRows = [];
+    state.summary = emptySummary;
+    state.compareSummary = null;
+
+    updateSummary(emptySummary);
+    updateInsightLists(emptySummary);
+    updateCompareSummary(null);
+    renderErrorPanel([]);
+    fillPatternFilter([]);
+    fillSubPatternFilter([]);
+    renderTable([]);
+    charts.render(emptySummary, null);
+    dom.tableMeta.textContent = "No data loaded.";
 }
 
 async function loadCurrentView(options = {}) {
@@ -761,6 +1083,7 @@ async function loadCurrentView(options = {}) {
     if (!state.currentAlgorithm) {
         setStatus("Waiting", "warn");
         setDatasetInfo("No algorithm selected.");
+        applyEmptyDashboard();
         return;
     }
 
@@ -769,49 +1092,52 @@ async function loadCurrentView(options = {}) {
 
     try {
         state.baseRows = await ensureRowsLoaded(state.currentAlgorithm, forceReload);
+        syncBaseScopeVisibility(state.baseRows);
 
-        let compareRows = [];
         if (state.compareAlgorithm) {
-            compareRows = await ensureRowsLoaded(state.compareAlgorithm, forceReload);
+            state.compareRows = await ensureRowsLoaded(state.compareAlgorithm, forceReload);
+        } else {
+            state.compareRows = [];
         }
+        syncCompareScopeVisibility(state.compareRows);
 
-        state.summary = computeSummary(state.baseRows);
+        state.scopedBaseRows = applyScopeRows(state.baseRows, state.baseMode);
+        state.scopedCompareRows = state.compareAlgorithm
+            ? applyScopeRows(state.compareRows, state.compareMode)
+            : [];
+
+        state.summary = computeSummary(state.scopedBaseRows);
         state.compareSummary = state.compareAlgorithm
-            ? computeHeadToHead(state.baseRows, compareRows)
+            ? computeHeadToHead(state.scopedBaseRows, state.scopedCompareRows)
             : null;
 
-        state.displayRows = mergeRowsForDisplay(state.baseRows, compareRows);
+        state.displayRows = mergeRowsForDisplay(state.scopedBaseRows, state.scopedCompareRows);
 
         updateSummary(state.summary);
         updateInsightLists(state.summary);
         updateCompareSummary(state.compareSummary);
+        renderErrorPanel(state.scopedBaseRows);
 
-        fillPatternFilter(state.baseRows);
+        fillPatternFilter(state.scopedBaseRows);
+        fillSubPatternFilter(state.scopedBaseRows);
+
         applyFilters();
         charts.render(state.summary, state.compareSummary);
 
         const nowText = new Date().toLocaleString();
         const compareText = state.compareAlgorithm
-            ? ` | compare=${state.compareAlgorithm} | matched=${state.compareSummary?.matchedRows ?? 0}`
+            ? ` vs ${state.compareAlgorithm}[${state.compareMode}]`
             : "";
 
         setStatus("Ready", "ok");
-        setDatasetInfo(`${state.currentAlgorithm}${compareText} | rows=${state.baseRows.length} | loaded ${nowText}`);
+        setDatasetInfo(
+            `${state.currentAlgorithm}[${state.baseMode}]${compareText}`
+            + ` | rows=${state.scopedBaseRows.length} | errors=${state.errorRows.length} | loaded ${nowText}`,
+        );
+
         syncUrlParams();
     } catch (error) {
-        const emptySummary = computeSummary([]);
-        state.baseRows = [];
-        state.displayRows = [];
-        state.summary = emptySummary;
-        state.compareSummary = null;
-
-        updateSummary(emptySummary);
-        updateInsightLists(emptySummary);
-        updateCompareSummary(null);
-        renderTable([]);
-        charts.render(emptySummary, null);
-        dom.tableMeta.textContent = "No data loaded.";
-
+        applyEmptyDashboard();
         setStatus("Error", "error");
         setDatasetInfo(`${state.currentAlgorithm} | ${buildFriendlyFetchHint(toErrorMessage(error))}`);
     }
@@ -842,7 +1168,7 @@ async function loadLocalDatasets(fileList) {
                 url: null,
             });
 
-            state.cache.set(algorithm, parsed.rows);
+            cacheRowsForAlgorithm(algorithm, parsed.rows);
             imported += 1;
         } catch {
             // Continue importing remaining files.
@@ -854,15 +1180,18 @@ async function loadLocalDatasets(fileList) {
     if (!state.algorithms.length) {
         setStatus("Error", "error");
         setDatasetInfo("Local import finished but no valid CSV was parsed.");
+        applyEmptyDashboard();
         return;
     }
 
     if (!state.currentAlgorithm || !state.algorithms.includes(state.currentAlgorithm)) {
         state.currentAlgorithm = state.algorithms[0];
+        state.baseMode = SCOPE_RC;
     }
 
     if (state.compareAlgorithm && !state.algorithms.includes(state.compareAlgorithm)) {
         state.compareAlgorithm = "";
+        state.compareMode = SCOPE_RC;
     }
 
     renderAlgorithmSelectors();
@@ -875,6 +1204,7 @@ async function loadLocalDatasets(fileList) {
 function bindEvents() {
     dom.algorithmSelect.addEventListener("change", async () => {
         state.currentAlgorithm = dom.algorithmSelect.value;
+        state.baseMode = SCOPE_RC;
 
         if (state.compareAlgorithm === state.currentAlgorithm) {
             state.compareAlgorithm = "";
@@ -884,8 +1214,19 @@ function bindEvents() {
         await loadCurrentView();
     });
 
+    dom.baseCategorySelect.addEventListener("change", async () => {
+        state.baseMode = normalizeScope(dom.baseCategorySelect.value);
+        await loadCurrentView();
+    });
+
     dom.compareAlgorithmSelect.addEventListener("change", async () => {
         state.compareAlgorithm = dom.compareAlgorithmSelect.value || "";
+        state.compareMode = SCOPE_RC;
+        await loadCurrentView();
+    });
+
+    dom.compareCategorySelect.addEventListener("change", async () => {
+        state.compareMode = normalizeScope(dom.compareCategorySelect.value);
         await loadCurrentView();
     });
 
@@ -894,10 +1235,12 @@ function bindEvents() {
 
         if (state.currentAlgorithm && !state.algorithms.includes(state.currentAlgorithm)) {
             state.currentAlgorithm = state.algorithms[0] || null;
+            state.baseMode = SCOPE_RC;
         }
 
         if (state.compareAlgorithm && !state.algorithms.includes(state.compareAlgorithm)) {
             state.compareAlgorithm = "";
+            state.compareMode = SCOPE_RC;
         }
 
         renderAlgorithmSelectors();
@@ -917,11 +1260,13 @@ function bindEvents() {
 
     dom.searchInput.addEventListener("input", applyFilters);
     dom.patternFilter.addEventListener("change", applyFilters);
+    dom.subPatternFilter.addEventListener("change", applyFilters);
     dom.bandFilter.addEventListener("change", applyFilters);
 
     dom.clearFilterButton.addEventListener("click", () => {
         dom.searchInput.value = "";
         dom.patternFilter.value = "all";
+        dom.subPatternFilter.value = "all";
         dom.bandFilter.value = "all";
         applyFilters();
     });
@@ -951,7 +1296,7 @@ async function init() {
     bindEvents();
 
     setStatus("Loading...", "warn");
-    setDatasetInfo("Discovering datasets from benchmark/data...");
+    setDatasetInfo("Discovering datasets from docs/data...");
     updateSourceHint();
 
     const discoveredRemoteCount = await refreshRemoteCatalog();
@@ -960,20 +1305,17 @@ async function init() {
 
     if (!state.algorithms.length) {
         setStatus("Waiting", "warn");
-        setDatasetInfo("No dataset discovered. Click Open Data Folder and select benchmark/data.");
-
-        const emptySummary = computeSummary([]);
-        updateSummary(emptySummary);
-        updateInsightLists(emptySummary);
-        updateCompareSummary(null);
-        charts.render(emptySummary, null);
-        dom.tableMeta.textContent = "No data loaded.";
+        setDatasetInfo("No dataset discovered. Click Upload Data Folder and select docs/data.");
+        applyEmptyDashboard();
         return;
     }
 
     const search = new URLSearchParams(window.location.search);
     const requestedBase = findAlgorithmByLooseName(search.get("algorithm"));
     const requestedCompare = findAlgorithmByLooseName(search.get("compare"));
+
+    state.baseMode = normalizeScope(search.get("scope"));
+    state.compareMode = normalizeScope(search.get("compareScope"));
 
     if (requestedBase) {
         state.currentAlgorithm = requestedBase;
@@ -990,7 +1332,7 @@ async function init() {
 
     if (window.location.protocol === "file:" && discoveredRemoteCount === 0) {
         setStatus("Ready", "ok");
-        setDatasetInfo("Local-file mode detected. Use Open Data Folder to import CSVs directly.");
+        setDatasetInfo("Local-file mode detected. Use Upload Data Folder to import CSVs from docs/data.");
     }
 }
 

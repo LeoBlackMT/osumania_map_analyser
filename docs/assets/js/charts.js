@@ -87,6 +87,10 @@ export class BenchmarkCharts {
         this.renderTrend(summary);
         this.renderPattern(summary);
 
+        if (this.hasCanvas(this.canvasIds.subPattern)) {
+            this.renderSubPattern(summary);
+        }
+
         if (this.hasCanvas(this.canvasIds.headToHead)) {
             this.renderHeadToHead(compareSummary);
         }
@@ -361,6 +365,51 @@ export class BenchmarkCharts {
                         callbacks: {
                             label: (context) => {
                                 const row = topPatterns[context.dataIndex];
+                                return ` MAE ${Number(context.raw).toFixed(3)} | bias ${row.bias.toFixed(3)} | n=${row.count}`;
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: "MAE",
+                        },
+                    },
+                },
+            },
+        });
+
+        this.register(chart);
+    }
+
+    renderSubPattern(summary) {
+        const topSubPatterns = (summary.subPatternRows || []).slice(0, 12).reverse();
+
+        const chart = new this.ChartRef(this.getCanvas(this.canvasIds.subPattern), {
+            type: "bar",
+            data: {
+                labels: topSubPatterns.map((row) => row.subPattern),
+                datasets: [{
+                    label: "MAE",
+                    data: topSubPatterns.map((row) => Number(row.mae.toFixed(4))),
+                    backgroundColor: "rgba(94, 232, 189, 0.55)",
+                    borderColor: "rgba(94, 232, 189, 0.95)",
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                indexAxis: "y",
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const row = topSubPatterns[context.dataIndex];
                                 return ` MAE ${Number(context.raw).toFixed(3)} | bias ${row.bias.toFixed(3)} | n=${row.count}`;
                             },
                         },

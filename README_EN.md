@@ -6,6 +6,8 @@
 This repository is an in-game overlay (pp counter) for [tosu](https://tosu.app), providing real-time support for osu!mania (4/6/7K) across both lazer and stable with multiple mods. It offers estimated difficulty analysis, RC/LN pattern analysis, customizable Etterna version for MSD calculation, difficulty charts, and pause detection.
 ![Features](img/features.gif)
 
+Estimation Algorithm Benchmark: Please visit [here](https://leoblackmt.github.io/osumania_map_analyser/) to see the performance comparison of estimation algorithms based on real beatmap data.
+
 ## Key Features
 - **Real-time Analysis**: Analyzes various data of the current beatmap in real-time during gameplay/selection.
 - **Multi-mod Support**: Compatible with multiple mods in both lazer and stable, supporting custom speed changes and OD adjustments.

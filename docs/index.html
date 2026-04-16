@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Estimator Benchmark Dashboard</title>
+    <title>Estimator Algorithm Benchmark</title>
     <link rel="stylesheet" href="assets/css/theme.css" />
     <link rel="stylesheet" href="assets/css/layout.css" />
     <link rel="stylesheet" href="assets/css/components.css" />
@@ -16,8 +16,8 @@
     <main class="page" id="pageRoot">
         <section class="hero panel fade-in-up">
             <div class="hero-head">
-                <p class="eyebrow">osu!mania benchmark</p>
-                <h1>Estimator Benchmark Dashboard</h1>
+                <p class="eyebrow">Dashboard</p>
+                <h1>Estimator Algorithm Benchmark</h1>
                 <p class="subtitle">
                     Compare expected difficulty against estimator output with fast filtering, visual diagnostics,
                     and per-pattern breakdown.
@@ -30,19 +30,35 @@
                     <select id="algorithmSelect" aria-label="Algorithm selector"></select>
                 </label>
 
+                <label class="toolbar-field" id="baseCategoryField">
+                    <span>Scope</span>
+                    <select id="baseCategorySelect" aria-label="Base category selector">
+                        <option value="RC">RC</option>
+                        <option value="LN">LN</option>
+                    </select>
+                </label>
+
                 <label class="toolbar-field">
                     <span>Compare With</span>
                     <select id="compareAlgorithmSelect" aria-label="Compare algorithm selector">
                         <option value="">Off</option>
                     </select>
                 </label>
+
+                <label class="toolbar-field" id="compareCategoryField">
+                    <span>Compare Scope</span>
+                    <select id="compareCategorySelect" aria-label="Compare category selector">
+                        <option value="RC">RC</option>
+                        <option value="LN">LN</option>
+                    </select>
+                </label>
             </div>
 
             <div class="action-row">
                 <button id="reloadDataButton" class="btn-ghost" type="button">Reload Data</button>
-                <button id="openDataFolderButton" class="btn-ghost" type="button">Open Data Folder</button>
+                <button id="openDataFolderButton" class="btn-ghost" type="button">Upload Data Folder</button>
                 <input id="dataFileInput" type="file" accept=".csv" multiple directory webkitdirectory hidden />
-                <span id="sourceHint" class="muted source-hint">Source: benchmark/data</span>
+                <span id="sourceHint" class="muted source-hint">Source: docs/data</span>
             </div>
             <div class="meta-row">
                 <span id="statusBadge" class="badge warn">Loading...</span>
@@ -154,7 +170,39 @@
             <div class="chart-wrap compare-chart"><canvas id="headToHeadChart"></canvas></div>
         </section>
 
-        <section class="charts-grid fade-in-up delay-3">
+        <section class="panel error-panel fade-in-up delay-3">
+            <header class="error-header">
+                <div>
+                    <h3>Error Rows</h3>
+                    <p id="errorStatusText">Rows with Invalid / Failed / Missing status.</p>
+                </div>
+                <div class="error-counter-row">
+                    <span class="error-pill invalid">Invalid <b id="errorInvalidCount">0</b></span>
+                    <span class="error-pill failed">Failed <b id="errorFailedCount">0</b></span>
+                    <span class="error-pill missing">Missing <b id="errorMissingCount">0</b></span>
+                </div>
+            </header>
+
+            <div class="table-wrap error-table-wrap">
+                <table id="errorTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Pattern</th>
+                            <th>Sub Pattern</th>
+                            <th>Expected</th>
+                            <th>Raw Got</th>
+                            <th>Error Type</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="errorTableBody"></tbody>
+                </table>
+            </div>
+            <p id="errorEmptyState" class="empty-state" hidden>No error rows in current scope.</p>
+        </section>
+
+        <section class="charts-grid fade-in-up delay-4">
             <article class="panel chart-panel">
                 <header>
                     <h3>Accuracy Breakdown</h3>
@@ -194,9 +242,17 @@
                 </header>
                 <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
             </article>
+
+            <article class="panel chart-panel span-2">
+                <header>
+                    <h3>SubPattern MAE</h3>
+                    <p>Error profile by subPattern group</p>
+                </header>
+                <div class="chart-wrap"><canvas id="subPatternChart"></canvas></div>
+            </article>
         </section>
 
-        <section class="insight-grid fade-in-up delay-4">
+        <section class="insight-grid fade-in-up delay-5">
             <article class="panel insight-panel">
                 <header>
                     <h3>Top Underrated Maps</h3>
@@ -229,6 +285,10 @@
                     <label>
                         <span>Pattern</span>
                         <select id="patternFilter"></select>
+                    </label>
+                    <label>
+                        <span>Sub Pattern</span>
+                        <select id="subPatternFilter"></select>
                     </label>
                     <label>
                         <span>Band</span>

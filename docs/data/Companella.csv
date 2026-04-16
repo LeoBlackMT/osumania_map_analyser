@@ -1,8 +1,8 @@
 name,expected,got,delta,deltaAbs,pattern,subPattern
-Grinding Of The Teeth x1.35,18,18.40,-0.40,0.40,tech,stream tech
-The Fate of x1.425,18,18.40,-0.40,0.40,stamina,light jumpstream
+Grinding Of The Teeth x1.35,18,Invalid,,,tech,stream tech
+The Fate of x1.425,18,Invalid,,,stamina,light jumpstream
 Agoniya (Opium Remix)(theta) x1.1,18,17.40,0.60,0.60,speed,high stream
-Rip Me Apart(theta) x1.075,17.8,18.40,-0.60,0.60,jack,dense chordjack
+Rip Me Apart(theta) x1.075,17.8,Invalid,,,jack,dense chordjack
 Exitium(eta),17.2,17.00,0.20,0.20,tech,stream tech
 Intersect Thunderbolt-Remix,17.2,16.40,0.80,0.80,speed,mid stream
 Torment Payback,17.2,17.20,0.00,0.00,jack,high chordjack
@@ -19,23 +19,23 @@ NEURO-CLOUD-9(efv3),16,16.20,-0.20,0.20,tech,stream tech
 Senkou no Furea(haku) x1.25,16,17.20,-1.20,1.20,stamina,dense handstream
 HIBACHI,16,15.60,0.40,0.40,speed,high stream
 Credens Justitiam(haku) x1.1,16,16.40,-0.40,0.40,speed,mid stream
-Double Universe x1.2,16,18.40,-2.40,2.40,jack,mid chordjack
+Double Universe x1.2,16,Invalid,,,jack,mid chordjack
 Infinity Heaven(180bpm),16,16.00,0.00,0.00,jack,high chordjack
 Runengon(efv3),15.7,15.60,0.10,0.10,stamina,dense handstream
-Weird Autumn(spz) x1.4,15.6,18.40,-2.80,2.80,tech,stream tech
+Weird Autumn(spz) x1.4,15.6,Invalid,,,tech,stream tech
 Vertex Beta(spz cut),15.6,14.40,1.20,1.20,jack,mid chordjack
 Deadly force - Put an end,15.4,15.20,0.20,0.20,stamina,dense handstream
 Finixe(zeta) x1.1,15.4,16.60,-1.20,1.20,speed,low stream
-Forgotten[Collab(2015)] x1.4,15.2,18.40,-3.20,3.20,tech,jack tech
-Matusa Bomber x1.3,15,18.40,-3.40,3.40,tech,stream tech
+Forgotten[Collab(2015)] x1.4,15.2,Invalid,,,tech,jack tech
+Matusa Bomber x1.3,15,Invalid,,,tech,stream tech
 Hitsugi to Futago x1.25,15,17.00,-2.00,2.00,stamina,dense jumpstream
 Ash Statues(wafles)[Inhuman],15,14.60,0.40,0.40,stamina,dense jumpstream
 Mario Point[D-Another],15,15.00,0.00,0.00,speed,low stream
 Shuuten,15,15.00,0.00,0.00,speed,high stream
 crazy_tek (DJ Noriken Remix)(e9v3),15,14.80,0.20,0.20,jack,high chordjack
-Rose Quartz(epsilon) x1.3,15,18.40,-3.40,3.40,jack,high chordjack
+Rose Quartz(epsilon) x1.3,15,Invalid,,,jack,high chordjack
 Nhelv(e9v3),14.8,15.00,-0.20,0.20,tech,stream tech
-Kimi to bokueno sousouka,14.8,15.00,-0.20,0.20,speed,
+Kimi to bokueno sousouka,14.8,15.00,-0.20,0.20,speed,Unsigned
 Shuu no hazama,14.7,14.80,-0.10,0.10,tech,stream tech
 Paradigm Shift(e8v2) x1.15,14.7,16.00,-1.30,1.30,speed,low stream
 Ash Statues(rachel),14.6,14.40,0.20,0.20,stamina,dense jumpstream
@@ -45,7 +45,7 @@ Lalala.Refrain(sp7v2) x1.1,14.6,15.60,-1.00,1.00,speed,mid stream
 Tactical Railroad(ATTang),14.6,13.60,1.00,1.00,speed,high stream
 Hayabusa(e8v3),14.6,14.40,0.20,0.20,jack,high chordjack
 Search And Destroy(Ena) x1.25,14.6,16.60,-2.00,2.00,stamina,dense handstream
-Death Melody(e8v2) x1.25,14.5,,,,stamina,dense handstream
+Death Melody(e8v2) x1.25,14.5,Missing,,,stamina,dense handstream
 Stay Alive (Zekk Remix) x1.25,14.5,16.00,-1.50,1.50,speed,mid stream
 Paraclete -Miracle,14.5,14.60,-0.10,0.10,speed,low stream
 Alpha,14.4,14.20,0.20,0.20,tech,stream tech
@@ -62,16 +62,16 @@ Quadraphinix x1.5,14,17.40,-3.40,3.40,stamina,dense handstream
 Volcanic(delta),14,13.40,0.60,0.60,speed,high stream
 STRONG 280(isxi),14,13.40,0.60,0.60,jack,dense chordjack
 Aquaris(snover) x1.3,14,16.80,-2.80,2.80,jack,low chordjack
-Ascension to heaven(sp6v2) x0.975,13.8,13.80,0.00,0.00,speed,
+Ascension to heaven(sp6v2) x0.975,13.8,13.80,0.00,0.00,speed,Unsigned
 Nhelv(Guilhermeziat),13.6,13.00,0.60,0.60,tech,jack tech
 Shadows of Cats(tachyon) x1.2,13.6,15.40,-1.80,1.80,tech,stream tech
 The Empress(delta),13.6,13.00,0.60,0.60,stamina,dense handstream
 Nopea,13.6,13.40,0.20,0.20,speed,mid stream
-Pastel Subliminal,13.5,13.40,0.10,0.10,speed,
-Extraction,13.4,13.00,0.40,0.40,tech,
+Pastel Subliminal,13.5,13.40,0.10,0.10,speed,Unsigned
+Extraction,13.4,13.00,0.40,0.40,tech,Unsigned
 Tornado [Devastation](interliser),13.4,11.60,1.80,1.80,tech,mix tech
 Cyber Inductance(tachyon) x1.4,13.4,16.80,-3.40,3.40,stamina,dense jumpstream
-Electric Angel(e5v3) x1.2,13.4,,,,speed,high stream
+Electric Angel(e5v3) x1.2,13.4,Missing,,,speed,high stream
 Angel Dust(tachyon),13.4,12.40,1.00,1.00,speed,high stream
 Defeat awaken battle ship,13.4,12.40,1.00,1.00,jack,high chordjack
 WE LUV LAMA(gamma) x1.2,13,14.80,-1.80,1.80,stamina,dense jumpstream
@@ -79,40 +79,40 @@ Reflec Streamz(gamma),13,13.20,-0.20,0.20,speed,low stream
 Break(loved) x1.1,13,14.40,-1.40,1.40,jack,high chordjack
 Sendan Life(OpakyL),13,11.80,1.20,1.20,jack,dense chordjack
 Unsan-musho,12.8,12.40,0.40,0.40,tech,stream tech
-Sonesaki Shinju(sp5v2) x0.925,12.7,10.60,2.10,2.10,speed,
+Sonesaki Shinju(sp5v2) x0.925,12.7,10.60,2.10,2.10,speed,Unsigned
 Fastest Crash (gamma),12.6,12.40,0.20,0.20,tech,stream tech
 Shinbatsu o Tadori Kyoukotsu ni Itaru(evening),12.6,12.20,0.40,0.40,stamina,dense jumpstream
 The Truth Never Spoken,12.6,11.80,0.80,0.80,jack,mid chordjack
 Bring Our Ignition Back x1.1,12.6,13.60,-1.00,1.00,jack,mid chordjack
 Japanese Transformation(fullerene),12.5,11.80,0.70,0.70,stamina,dense jumpstream
-Crystal World -Fracture-,12.5,12.60,-0.10,0.10,speed,
+Crystal World -Fracture-,12.5,12.60,-0.10,0.10,speed,Unsigned
 IMAGE -MATERIAL- Version 0(luminal),12.4,11.60,0.80,0.80,stamina,light handstream
 Lolit Speed,12.4,9.60,2.80,2.80,stamina,dense jumpstream
-Pure Ruby,12.4,11.80,0.60,0.60,speed,
+Pure Ruby,12.4,11.80,0.60,0.60,speed,Unsigned
 Odin(fullerene),12.4,11.20,1.20,1.20,speed,high stream
 Mario Point[D-Hyper],12.4,9.80,2.60,2.60,speed,low stream
 ZENITHALIZE,12.4,11.80,0.60,0.60,jack,high chordjack
 IMAGE -MATERIAL- Version 0(fullerene),12.3,11.60,0.70,0.70,stamina,light handstream
-YELL!(e4v2),12.2,11.40,0.80,0.80,speed,
-Asymmetrical Grooves,12,11.80,0.20,0.20,tech,
+YELL!(e4v2),12.2,11.40,0.80,0.80,speed,Unsigned
+Asymmetrical Grooves,12,11.80,0.20,0.20,tech,Unsigned
 Blue Planet,12,11.80,0.20,0.20,tech,stream tech
 Time to Say Goodbye(beta),12,11.80,0.20,0.20,stamina,dense jumpstream
 Amber Starlight(beta),12,11.20,0.80,0.80,speed,low stream
 Paradigm Shift(beta),12,11.60,0.40,0.40,jack,high chordjack
 Edison(e3v3) x1.15,12,13.40,-1.40,1.40,jack,mid chordjack
-Akasha(sp3v2) x0.88,11.7,7.00,4.70,4.70,speed,
-End Time(e3v2) x1.1,11.5,12.00,-0.50,0.50,speed,
+Akasha(sp3v2) x0.88,11.7,7.00,4.70,4.70,speed,Unsigned
+End Time(e3v2) x1.1,11.5,12.00,-0.50,0.50,speed,Unsigned
 INTERNET OVERDOSE x1.05,11.4,12.40,-1.00,1.00,tech,stream tech
-Enthanasia x1.05,11.2,11.80,-0.60,0.60,speed,
+Enthanasia x1.05,11.2,11.80,-0.60,0.60,speed,Unsigned
 LazorBeamz,11,10.00,1.00,1.00,stamina,light jumpstream
 Makiba(alpha),11,10.40,0.60,0.60,speed,low stream
 Dark Sambaland,11,10.40,0.60,0.60,jack,high chordjack
 Odoru Mizushibuki x1.1,10.8,12.40,-1.60,1.60,tech,jack tech
-Towards the Horizon,10.8,10.00,0.80,0.80,tech,
+Towards the Horizon,10.8,10.00,0.80,0.80,tech,Unsigned
 P8107 x0.95,10.8,9.60,1.20,1.20,speed,low stream
 Message(e2v2),10.7,9.60,1.10,1.10,speed,low stream
 Moment x1.05,10.6,11.20,-0.60,0.60,jack,high chordjack
-Shin Takarajim(sp2v2),10.5,9.40,1.10,1.10,speed,
+Shin Takarajim(sp2v2),10.5,9.40,1.10,1.10,speed,Unsigned
 Torikago,10.4,9.40,1.00,1.00,speed,mid stream
 The Lost Dedicated(loved),10.4,9.80,0.60,0.60,jack,high chordjack
 Eiya no Parade x1.05,10.3,11.00,-0.70,0.70,speed,low stream
@@ -133,32 +133,32 @@ Trickstarz,8,7.40,0.60,0.60,speed,staircase
 To The Limit(8),8,7.40,0.60,0.60,jack,high chordjack
 WAVE,7,6.60,0.40,0.40,tech,mix tech
 Hymn,7,7.00,0.00,0.00,stamina,light jumpstream
-Last Chance,7,5.20,1.80,1.80,jack,
+Last Chance,7,5.20,1.80,1.80,jack,Unsigned
 Five Five Five Guys,6.6,6.00,0.60,0.60,speed,low stream
 M-A[Expert Lv.15],6.2,7.00,-0.80,0.80,stamina,dense jumpstream
-The Bird's Midair Heatstroke,6,4.00,2.00,2.00,tech,
+The Bird's Midair Heatstroke,6,4.00,2.00,2.00,tech,Unsigned
 Luv Lab 22ate!,6,6.20,-0.20,0.20,speed,mid stream
 SOS,6,5.20,0.80,0.80,speed,mid stream
-Sweet Cherry X,6,4.60,1.40,1.40,jack,
+Sweet Cherry X,6,4.60,1.40,1.40,jack,Unsigned
 Back to the Gate[Lv.5100],6,6.00,0.00,0.00,stamina,dense jumpstream
-Brainfog,5,4.20,0.80,0.80,tech,
+Brainfog,5,4.20,0.80,0.80,tech,Unsigned
 Elektric U-Phoria,5,5.60,-0.60,0.60,stamina,dense jumpstream
 Palette GAMMA[Abstract],5,5.00,0.00,0.00,speed,low stream
 TDPDG,5,4.80,0.20,0.20,speed,low stream
-Energy Flower 3007,5,3.20,1.80,1.80,jack,
+Energy Flower 3007,5,3.20,1.80,1.80,jack,Unsigned
 Angel Of Darkness,4.2,4.40,-0.20,0.20,stamina,light jumpstream
-Ephemera,4,3.80,0.20,0.20,tech,
+Ephemera,4,3.80,0.20,0.20,tech,Unsigned
 Shannon's Theorem,4,3.40,0.60,0.60,tech,stream tech
-CrossOver,4,1.20,2.80,2.80,jack,
-Kirlian Shores,3,0.20,2.80,2.80,tech,
-True Blue,3,3.00,0.00,0.00,stamina,
+CrossOver,4,1.20,2.80,2.80,jack,Unsigned
+Kirlian Shores,3,0.20,2.80,2.80,tech,Unsigned
+True Blue,3,3.00,0.00,0.00,stamina,Unsigned
 Entelechia,3,3.00,0.00,0.00,speed,mid stream
-Dimension Trippere!!!!,3,0.80,2.20,2.20,jack,
-Vermillion,2,0.80,1.20,1.20,tech,
-Eternal Drain,2,1.80,0.20,0.20,stamina,
-Snow Storm,2,1.60,0.40,0.40,speed,
-Flashes,2,2.80,-0.80,0.80,jack,
-Want U 2,1,0.40,0.60,0.60,tech,
-Tommorow Perfume,1,1.40,-0.40,0.40,stamina,
-Shelter,1,0.80,0.20,0.20,speed,
-Miracle Chance,1,-1.00,2.00,2.00,jack,
+Dimension Trippere!!!!,3,0.80,2.20,2.20,jack,Unsigned
+Vermillion,2,0.80,1.20,1.20,tech,Unsigned
+Eternal Drain,2,1.80,0.20,0.20,stamina,Unsigned
+Snow Storm,2,1.60,0.40,0.40,speed,Unsigned
+Flashes,2,2.80,-0.80,0.80,jack,Unsigned
+Want U 2,1,0.40,0.60,0.60,tech,Unsigned
+Tommorow Perfume,1,1.40,-0.40,0.40,stamina,Unsigned
+Shelter,1,0.80,0.20,0.20,speed,Unsigned
+Miracle Chance,1,-1.00,2.00,2.00,jack,Unsigned
