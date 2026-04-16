@@ -150,17 +150,17 @@ export function computeSummary(rows) {
     const subPatternAcc = new Map();
 
     for (const row of rows) {
-        const expected = Number(row.expected);
-        const got = Number(row.got);
+        const expected = row.expected;
+        const got = row.got;
         if (!Number.isFinite(expected) || !Number.isFinite(got)) {
             continue;
         }
 
-        const delta = Number.isFinite(Number(row.delta))
-            ? Number(row.delta)
+        const delta = Number.isFinite(row.delta)
+            ? row.delta
             : expected - got;
-        const deltaAbs = Number.isFinite(Number(row.deltaAbs))
-            ? Number(row.deltaAbs)
+        const deltaAbs = Number.isFinite(row.deltaAbs)
+            ? row.deltaAbs
             : Math.abs(delta);
 
         const band = classifyBand(deltaAbs);
@@ -308,8 +308,8 @@ export function computeHeadToHead(baseRows, compareRows) {
             continue;
         }
 
-        const baseAbs = Number(baseRow.deltaAbs);
-        const compareAbs = Number(compareRow.deltaAbs);
+        const baseAbs = baseRow.deltaAbs;
+        const compareAbs = compareRow.deltaAbs;
         if (!Number.isFinite(baseAbs) || !Number.isFinite(compareAbs)) {
             continue;
         }

@@ -202,8 +202,8 @@ function setFieldVisible(field, visible) {
 }
 
 function isRowValidForStats(row) {
-    const expected = Number(row.expected);
-    const got = Number(row.got);
+    const expected = row.expected;
+    const got = row.got;
     return Number.isFinite(expected) && Number.isFinite(got);
 }
 
@@ -411,7 +411,7 @@ function fillSubPatternFilter(rows) {
 }
 
 function getRowBand(row) {
-    return classifyBand(Number(row.deltaAbs));
+    return classifyBand(row.deltaAbs);
 }
 
 function parseErrorInfoFromRawGot(rawGot) {
@@ -460,7 +460,7 @@ function parseErrorInfoFromRawGot(rawGot) {
 }
 
 function getRowErrorInfo(row) {
-    const got = Number(row.got);
+    const got = row.got;
     if (Number.isFinite(got)) {
         return null;
     }
@@ -553,8 +553,8 @@ function mergeRowsForDisplay(baseRows, compareRows) {
             };
         }
 
-        const baseDeltaAbs = Number(row.deltaAbs);
-        const compareDeltaAbs = Number(peer.deltaAbs);
+        const baseDeltaAbs = Number.isFinite(row.deltaAbs) ? row.deltaAbs : null;
+        const compareDeltaAbs = Number.isFinite(peer.deltaAbs) ? peer.deltaAbs : null;
 
         let better = "na";
         if (Number.isFinite(baseDeltaAbs) && Number.isFinite(compareDeltaAbs)) {
@@ -569,9 +569,9 @@ function mergeRowsForDisplay(baseRows, compareRows) {
 
         return {
             ...row,
-            compareGot: Number.isFinite(Number(peer.got)) ? Number(peer.got) : null,
+            compareGot: Number.isFinite(peer.got) ? peer.got : null,
             compareGotRaw: String(peer.gotRaw || ""),
-            compareDeltaAbs: Number.isFinite(compareDeltaAbs) ? compareDeltaAbs : null,
+            compareDeltaAbs,
             better,
         };
     });
@@ -614,7 +614,7 @@ function renderInsightList(target, rows, direction) {
                 "<li>",
                 `<strong>${escapeHtml(row.name)}</strong>`,
                 `<span class="muted"> (${escapeHtml(row.pattern || "-")})</span>`,
-                `<br><span class="muted">delta ${sign}${formatNumber(Number(row.delta), 3)} | expected ${formatNumber(Number(row.expected), 3)} | got ${formatNumber(Number(row.got), 3)}</span>`,
+                `<br><span class="muted">delta ${sign}${formatNumber(row.delta, 3)} | expected ${formatNumber(row.expected, 3)} | got ${formatNumber(row.got, 3)}</span>`,
                 "</li>",
             ].join("");
         })
@@ -697,7 +697,7 @@ function renderErrorPanel(rows) {
     dom.errorTableBody.innerHTML = errors
         .map((row) => {
             const rowClass = String(row.errorType || "Failed").toLowerCase();
-            const expectedText = String(row.expectedRaw || "").trim() || formatNumber(Number(row.expected));
+            const expectedText = String(row.expectedRaw || "").trim() || formatNumber(row.expected);
             return [
                 `<tr class="error-${rowClass}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
@@ -727,13 +727,13 @@ function compareValues(a, b, key) {
 
     const numericKeys = new Set(["expected", "got", "delta", "deltaAbs", "compareGot", "compareDeltaAbs"]);
     if (numericKeys.has(key)) {
-        const aVal = Number(a[key]);
-        const bVal = Number(b[key]);
+        const aVal = a[key];
+        const bVal = b[key];
         const aFinite = Number.isFinite(aVal);
         const bFinite = Number.isFinite(bVal);
 
         if (!aFinite && !bFinite) {
-            return String(a[`${key}Raw`] ?? "").localeCompare(String(b[`${key}Raw`] ?? ""));
+            return String(a[key] ?? "").localeCompare(String(b[key] ?? ""));
         }
         if (!aFinite) {
             return 1;
@@ -766,12 +766,12 @@ function renderTable(rows) {
             const winnerLabel = getWinnerLabel(row.better);
             const winnerClass = row.better || "na";
 
-            const gotValue = Number(row.got);
+            const gotValue = row.got;
             const gotText = Number.isFinite(gotValue)
                 ? formatNumber(gotValue)
                 : (String(row.gotRaw || "").trim() || "-");
 
-            const compareGotValue = Number(row.compareGot);
+            const compareGotValue = row.compareGot;
             const compareGotText = Number.isFinite(compareGotValue)
                 ? formatNumber(compareGotValue)
                 : (String(row.compareGotRaw || "").trim() || "-");
@@ -779,15 +779,15 @@ function renderTable(rows) {
             return [
                 `<tr class="band-${bandKey}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
-                `<td class="num">${formatNumber(Number(row.expected))}</td>`,
+                `<td class="num">${formatNumber(row.expected)}</td>`,
                 `<td>${escapeHtml(gotText)}</td>`,
-                `<td class="num">${formatSigned(Number(row.delta))}</td>`,
-                `<td class="num">${formatNumber(Number(row.deltaAbs))}</td>`,
+                `<td class="num">${formatSigned(row.delta)}</td>`,
+                `<td class="num">${formatNumber(row.deltaAbs)}</td>`,
                 `<td>${escapeHtml(row.pattern)}</td>`,
                 `<td>${escapeHtml(normalizeSubPattern(row.subPattern))}</td>`,
                 `<td class="band">${bandLabel}</td>`,
                 `<td>${escapeHtml(compareGotText)}</td>`,
-                `<td class="num">${formatNumber(Number(row.compareDeltaAbs))}</td>`,
+                `<td class="num">${formatNumber(row.compareDeltaAbs)}</td>`,
                 `<td class="winner ${winnerClass}">${escapeHtml(winnerLabel)}</td>`,
                 "</tr>",
             ].join("");

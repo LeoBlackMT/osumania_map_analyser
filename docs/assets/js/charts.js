@@ -193,15 +193,26 @@ export class BenchmarkCharts {
                     },
                     tooltip: {
                         callbacks: {
-                            title: (items) => items[0]?.raw?.row?.name || "Unknown",
+                            title: (items) => {
+                                const names = [...new Set(
+                                    (items || [])
+                                        .map((item) => item?.raw?.row?.name)
+                                        .filter((name) => Boolean(name)),
+                                )];
+
+                                if (!names.length) {
+                                    return "Unknown";
+                                }
+
+                                if (names.length === 1) {
+                                    return names[0];
+                                }
+
+                                return `${names.length} maps overlapped`;
+                            },
                             label: (item) => {
                                 const row = item.raw.row;
-                                return [
-                                    ` expected: ${row.expected.toFixed(2)}`,
-                                    ` got: ${row.got.toFixed(2)}`,
-                                    ` delta: ${row.delta.toFixed(2)}`,
-                                    ` pattern: ${row.pattern || "-"}`,
-                                ];
+                                return `${row.name} | expected ${row.expected.toFixed(2)} | got ${row.got.toFixed(2)} | delta ${row.delta.toFixed(2)} | pattern ${row.pattern || "-"}`;
                             },
                         },
                     },
@@ -459,14 +470,26 @@ export class BenchmarkCharts {
                     },
                     tooltip: {
                         callbacks: {
-                            title: (items) => items[0]?.raw?.name || "Unknown",
+                            title: (items) => {
+                                const names = [...new Set(
+                                    (items || [])
+                                        .map((item) => item?.raw?.name)
+                                        .filter((name) => Boolean(name)),
+                                )];
+
+                                if (!names.length) {
+                                    return "Unknown";
+                                }
+
+                                if (names.length === 1) {
+                                    return names[0];
+                                }
+
+                                return `${names.length} maps overlapped`;
+                            },
                             label: (item) => {
                                 const point = item.raw;
-                                return [
-                                    ` base |delta|: ${Number(point.x).toFixed(2)}`,
-                                    ` compare |delta|: ${Number(point.y).toFixed(2)}`,
-                                    ` pattern: ${point.pattern || "-"}`,
-                                ];
+                                return `${point.name} | base |delta| ${Number(point.x).toFixed(2)} | compare |delta| ${Number(point.y).toFixed(2)} | pattern ${point.pattern || "-"}`;
                             },
                         },
                     },
