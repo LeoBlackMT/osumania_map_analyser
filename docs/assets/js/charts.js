@@ -247,7 +247,7 @@ export class BenchmarkCharts {
             data: {
                 labels: summary.deltaHistogram.labels,
                 datasets: [{
-                    label: "Rows",
+                    label: "Maps",
                     data: summary.deltaHistogram.counts,
                     backgroundColor: "rgba(128, 179, 255, 0.55)",
                     borderColor: "rgba(128, 179, 255, 0.9)",
@@ -323,7 +323,7 @@ export class BenchmarkCharts {
                         callbacks: {
                             title: (items) => {
                                 const index = Number(items[0]?.dataIndex || 0);
-                                return rows[index]?.name || "Row";
+                                return rows[index]?.name || "Map";
                             },
                         },
                     },
@@ -335,7 +335,7 @@ export class BenchmarkCharts {
                         },
                         title: {
                             display: true,
-                            text: "Row index (sorted by expected)",
+                            text: "Map index (sorted by expected)",
                         },
                     },
                     y: {
@@ -451,7 +451,7 @@ export class BenchmarkCharts {
             type: "scatter",
             data: {
                 datasets: [{
-                    label: "Rows",
+                    label: "Maps",
                     data: points,
                     backgroundColor: "rgba(128, 179, 255, 0.78)",
                     borderColor: "rgba(128, 179, 255, 0.95)",

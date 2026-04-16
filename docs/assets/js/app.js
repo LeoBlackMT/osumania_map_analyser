@@ -109,6 +109,7 @@ const dom = {
     resultTable: document.getElementById("resultTable"),
     resultTableBody: document.getElementById("resultTableBody"),
     emptyState: document.getElementById("emptyState"),
+    comparePanel: document.getElementById("comparePanel"),
 };
 
 const charts = new BenchmarkCharts({
@@ -194,6 +195,52 @@ function setDatasetInfo(text) {
     dom.datasetInfo.textContent = text;
 }
 
+function formatGeneratedAt(value) {
+    if (!value) {
+        return "Unknown";
+    }
+
+    try {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed.toLocaleString();
+        }
+    } catch {
+        // keep raw value as fallback
+    }
+
+    return String(value);
+}
+
+function hasValidBid(row) {
+    return Number.isInteger(row?.bid) && row.bid > 0;
+}
+
+function getMapSearchUrl(bid) {
+    return `https://osu.ppy.sh/beatmapsets?m=3&q=${encodeURIComponent(String(bid))}&s=any`;
+}
+
+function getBeatmapDownloadUrl(bid) {
+    return `https://osu.ppy.sh/osu/${encodeURIComponent(String(bid))}`;
+}
+
+function setCompareUiVisible(visible) {
+    if (dom.comparePanel) {
+        dom.comparePanel.classList.toggle("hidden", !visible);
+    }
+
+    const compareCells = document.querySelectorAll(".compare-col");
+    compareCells.forEach((cell) => {
+        cell.classList.toggle("hidden", !visible);
+    });
+
+    if (!visible && ["compareGot", "compareDeltaAbs", "better"].includes(state.sortKey)) {
+        state.sortKey = "deltaAbs";
+        state.sortDirection = "asc";
+        updateSortVisual();
+    }
+}
+
 function setFieldVisible(field, visible) {
     if (!field) {
         return;
@@ -248,13 +295,13 @@ function updateSourceHint(extra = "") {
 
     const segments = [];
     if (remoteCount > 0) {
-        segments.push(`remote ${remoteCount}`);
+        segments.push(`Remote ${remoteCount}`);
     }
     if (localCount > 0) {
-        segments.push(`local ${localCount}`);
+        segments.push(`Local ${localCount}`);
     }
     if (!segments.length) {
-        segments.push("no datasets");
+        segments.push("No Datasets");
     }
 
     const suffix = extra ? ` | ${extra}` : "";
@@ -272,6 +319,7 @@ function addCatalogEntry(algorithm, descriptor) {
         fileName: descriptor.fileName,
         url: descriptor.url || null,
         source: descriptor.source,
+        modifiedAt: descriptor.modifiedAt || null,
     };
 
     const previous = state.catalog.get(normalizedName);
@@ -411,6 +459,10 @@ function fillSubPatternFilter(rows) {
 }
 
 function getRowBand(row) {
+    if (getRowErrorInfo(row)) {
+        return "error";
+    }
+
     return classifyBand(row.deltaAbs);
 }
 
@@ -420,7 +472,7 @@ function parseErrorInfoFromRawGot(rawGot) {
     if (!raw) {
         return {
             type: "Failed",
-            detail: "got 为空，未得到可解析结果",
+            detail: "Got value is empty.",
             raw,
         };
     }
@@ -429,7 +481,7 @@ function parseErrorInfoFromRawGot(rawGot) {
     if (invalidMatch) {
         return {
             type: "Invalid",
-            detail: invalidMatch[1] ? invalidMatch[1].trim() : "估计难度字符串中包含 < 或 >",
+            detail: invalidMatch[1] ? invalidMatch[1].trim() : "Difficulty label contains bound symbol.",
             raw,
         };
     }
@@ -438,7 +490,7 @@ function parseErrorInfoFromRawGot(rawGot) {
     if (failedMatch) {
         return {
             type: "Failed",
-            detail: failedMatch[1] ? failedMatch[1].trim() : "估计器运行失败或难度解析失败",
+            detail: failedMatch[1] ? failedMatch[1].trim() : "Estimator execution or parsing failed.",
             raw,
         };
     }
@@ -447,7 +499,9 @@ function parseErrorInfoFromRawGot(rawGot) {
     if (missingMatch) {
         return {
             type: "Missing",
-            detail: missingMatch[1] ? missingMatch[1].trim() : "找不到对应谱面文件",
+            detail: missingMatch[1]
+                ? missingMatch[1].trim()
+                : "Local map file is missing.",
             raw,
         };
     }
@@ -595,15 +649,15 @@ function updateSummary(summary) {
     dom.moderateRateValue.textContent = formatPercent(summary.bandRates.moderate);
     dom.missRateValue.textContent = formatPercent(summary.bandRates.miss);
 
-    dom.exactCountValue.textContent = `${summary.bandCounts.exact} rows`;
-    dom.closeCountValue.textContent = `${summary.bandCounts.close} rows`;
-    dom.moderateCountValue.textContent = `${summary.bandCounts.moderate} rows`;
-    dom.missCountValue.textContent = `${summary.bandCounts.miss} rows`;
+    dom.exactCountValue.textContent = `${summary.bandCounts.exact} maps`;
+    dom.closeCountValue.textContent = `${summary.bandCounts.close} maps`;
+    dom.moderateCountValue.textContent = `${summary.bandCounts.moderate} maps`;
+    dom.missCountValue.textContent = `${summary.bandCounts.miss} maps`;
 }
 
 function renderInsightList(target, rows, direction) {
     if (!rows.length) {
-        target.innerHTML = '<li class="insight-empty">No rows with valid values.</li>';
+        target.innerHTML = '<li class="insight-empty">No maps with valid values.</li>';
         return;
     }
 
@@ -685,28 +739,32 @@ function renderErrorPanel(rows) {
     dom.errorMissingCount.textContent = String(missingCount);
 
     if (!errors.length) {
-        dom.errorStatusText.textContent = "No error rows in current algorithm scope.";
+        dom.errorStatusText.textContent = "No error maps in current algorithm scope.";
         dom.errorTableBody.innerHTML = "";
         dom.errorEmptyState.hidden = false;
         return;
     }
 
-    dom.errorStatusText.textContent = `${errors.length} error rows in current algorithm scope.`;
+    dom.errorStatusText.textContent = `${errors.length} error maps in current algorithm scope.`;
     dom.errorEmptyState.hidden = true;
 
     dom.errorTableBody.innerHTML = errors
         .map((row) => {
             const rowClass = String(row.errorType || "Failed").toLowerCase();
             const expectedText = String(row.expectedRaw || "").trim() || formatNumber(row.expected);
+            const detailText = String(row.errorDetail || "").trim();
+            const compactDetail = detailText.length > 120
+                ? `${detailText.slice(0, 117)}...`
+                : detailText;
             return [
                 `<tr class="error-${rowClass}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
                 `<td>${escapeHtml(row.pattern)}</td>`,
                 `<td>${escapeHtml(normalizeSubPattern(row.subPattern))}</td>`,
-                `<td class="num">${escapeHtml(expectedText)}</td>`,
+                `<td>${escapeHtml(expectedText)}</td>`,
                 `<td>${escapeHtml(row.errorRaw)}</td>`,
                 `<td>${escapeHtml(row.errorType)}</td>`,
-                `<td>${escapeHtml(row.errorDetail)}</td>`,
+                `<td>${escapeHtml(compactDetail)}</td>`,
                 "</tr>",
             ].join("");
         })
@@ -715,9 +773,14 @@ function renderErrorPanel(rows) {
 
 function compareValues(a, b, key) {
     if (key === "band") {
-        const aIdx = BAND_ORDER.indexOf(getRowBand(a));
-        const bIdx = BAND_ORDER.indexOf(getRowBand(b));
-        return aIdx - bIdx;
+        const rank = {
+            exact: 0,
+            close: 1,
+            moderate: 2,
+            miss: 3,
+            error: 4,
+        };
+        return (rank[getRowBand(a)] ?? 99) - (rank[getRowBand(b)] ?? 99);
     }
 
     if (key === "better") {
@@ -750,6 +813,12 @@ function compareValues(a, b, key) {
 function sortRows(rows) {
     const sorted = [...rows];
     sorted.sort((a, b) => {
+        const aErrorPriority = getRowErrorInfo(a) ? 1 : 0;
+        const bErrorPriority = getRowErrorInfo(b) ? 1 : 0;
+        if (aErrorPriority !== bErrorPriority) {
+            return aErrorPriority - bErrorPriority;
+        }
+
         const base = compareValues(a, b, state.sortKey);
         return state.sortDirection === "asc" ? base : -base;
     });
@@ -762,9 +831,14 @@ function renderTable(rows) {
     dom.resultTableBody.innerHTML = rows
         .map((row) => {
             const bandKey = getRowBand(row);
-            const bandLabel = BAND_META[bandKey].label;
+            const bandLabel = bandKey === "error"
+                ? "Error"
+                : (BAND_META[bandKey]?.label || "Miss");
             const winnerLabel = getWinnerLabel(row.better);
             const winnerClass = row.better || "na";
+            const hasBid = hasValidBid(row);
+            const searchUrl = hasBid ? getMapSearchUrl(row.bid) : "";
+            const downloadUrl = hasBid ? getBeatmapDownloadUrl(row.bid) : "";
 
             const gotValue = row.got;
             const gotText = Number.isFinite(gotValue)
@@ -777,7 +851,7 @@ function renderTable(rows) {
                 : (String(row.compareGotRaw || "").trim() || "-");
 
             return [
-                `<tr class="band-${bandKey}">`,
+                `<tr class="band-${bandKey}${bandKey === "error" ? " map-error" : ""}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
                 `<td class="num">${formatNumber(row.expected)}</td>`,
                 `<td>${escapeHtml(gotText)}</td>`,
@@ -786,9 +860,15 @@ function renderTable(rows) {
                 `<td>${escapeHtml(row.pattern)}</td>`,
                 `<td>${escapeHtml(normalizeSubPattern(row.subPattern))}</td>`,
                 `<td class="band">${bandLabel}</td>`,
-                `<td>${escapeHtml(compareGotText)}</td>`,
-                `<td class="num">${formatNumber(row.compareDeltaAbs)}</td>`,
-                `<td class="winner ${winnerClass}">${escapeHtml(winnerLabel)}</td>`,
+                `<td class="compare-col">${escapeHtml(compareGotText)}</td>`,
+                `<td class="num compare-col">${formatNumber(row.compareDeltaAbs)}</td>`,
+                `<td class="winner ${winnerClass} compare-col">${escapeHtml(winnerLabel)}</td>`,
+                `<td class="actions-col">${hasBid
+                    ? `<a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="Open beatmap search">🔗</a>`
+                    : '<span class="icon-btn disabled" title="No bid">🔗</span>'}</td>`,
+                `<td class="actions-col">${hasBid
+                    ? `<a class="icon-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" title="Download .osu">⬇</a>`
+                    : '<span class="icon-btn disabled" title="No bid">⬇</span>'}</td>`,
                 "</tr>",
             ].join("");
         })
@@ -835,8 +915,9 @@ function applyFilters() {
 
     state.filteredRows = sortRows(filtered);
     renderTable(state.filteredRows);
+    setCompareUiVisible(Boolean(state.compareAlgorithm));
 
-    dom.tableMeta.textContent = `${state.filteredRows.length} / ${state.displayRows.length} rows shown | errors=${state.errorRows.length}`;
+    dom.tableMeta.textContent = `${state.filteredRows.length} / ${state.displayRows.length} Maps Shown | Errors=${state.errorRows.length}`;
 }
 
 function updateSortVisual() {
@@ -898,6 +979,7 @@ async function discoverCatalogFromIndexJson() {
                 discovered.push({
                     algorithm: stripCsvSuffix(fileName),
                     fileName,
+                    modifiedAt: null,
                 });
                 continue;
             }
@@ -908,7 +990,11 @@ async function discoverCatalogFromIndexJson() {
             }
 
             const algorithm = String(item?.algorithm ?? stripCsvSuffix(fileName)).trim();
-            discovered.push({ algorithm, fileName });
+            discovered.push({
+                algorithm,
+                fileName,
+                modifiedAt: String(item?.modifiedAt ?? "").trim() || null,
+            });
         }
     }
 
@@ -921,6 +1007,7 @@ async function discoverCatalogFromIndexJson() {
             discovered.push({
                 algorithm,
                 fileName: `${algorithm}.csv`,
+                modifiedAt: null,
             });
         }
     }
@@ -968,6 +1055,7 @@ async function discoverCatalogFromDirectoryListing() {
             algorithm: stripCsvSuffix(fileName),
             fileName,
             url: `${DATA_DIR}/${encodeURIComponent(fileName)}`,
+            modifiedAt: null,
         });
     }
 
@@ -982,7 +1070,7 @@ async function refreshRemoteCatalog() {
 
     try {
         discovered = await discoverCatalogFromIndexJson();
-        sourceLabel = "index.json";
+        sourceLabel = "Index.json";
     } catch {
         discovered = [];
     }
@@ -990,7 +1078,7 @@ async function refreshRemoteCatalog() {
     if (!discovered.length) {
         try {
             discovered = await discoverCatalogFromDirectoryListing();
-            sourceLabel = "directory listing";
+            sourceLabel = "Directory Listing";
         } catch {
             discovered = [];
         }
@@ -1001,11 +1089,12 @@ async function refreshRemoteCatalog() {
             fileName: entry.fileName,
             url: entry.url,
             source: "remote",
+            modifiedAt: entry.modifiedAt,
         });
     }
 
     rebuildAlgorithmList();
-    updateSourceHint(sourceLabel ? `discovered by ${sourceLabel}` : "");
+    updateSourceHint(sourceLabel ? `Discovered By ${sourceLabel}` : "");
 
     return discovered.length;
 }
@@ -1070,11 +1159,12 @@ function applyEmptyDashboard() {
     updateInsightLists(emptySummary);
     updateCompareSummary(null);
     renderErrorPanel([]);
+    setCompareUiVisible(Boolean(state.compareAlgorithm));
     fillPatternFilter([]);
     fillSubPatternFilter([]);
     renderTable([]);
     charts.render(emptySummary, null);
-    dom.tableMeta.textContent = "No data loaded.";
+    dom.tableMeta.textContent = "No Data Loaded.";
 }
 
 async function loadCurrentView(options = {}) {
@@ -1082,7 +1172,7 @@ async function loadCurrentView(options = {}) {
 
     if (!state.currentAlgorithm) {
         setStatus("Waiting", "warn");
-        setDatasetInfo("No algorithm selected.");
+        setDatasetInfo("No Algorithm Selected.");
         applyEmptyDashboard();
         return;
     }
@@ -1112,6 +1202,7 @@ async function loadCurrentView(options = {}) {
             : null;
 
         state.displayRows = mergeRowsForDisplay(state.scopedBaseRows, state.scopedCompareRows);
+        setCompareUiVisible(Boolean(state.compareAlgorithm));
 
         updateSummary(state.summary);
         updateInsightLists(state.summary);
@@ -1124,7 +1215,8 @@ async function loadCurrentView(options = {}) {
         applyFilters();
         charts.render(state.summary, state.compareSummary);
 
-        const nowText = new Date().toLocaleString();
+        const descriptor = state.catalog.get(state.currentAlgorithm);
+        const generatedAtText = formatGeneratedAt(descriptor?.modifiedAt);
         const compareText = state.compareAlgorithm
             ? ` vs ${state.compareAlgorithm}[${state.compareMode}]`
             : "";
@@ -1132,7 +1224,7 @@ async function loadCurrentView(options = {}) {
         setStatus("Ready", "ok");
         setDatasetInfo(
             `${state.currentAlgorithm}[${state.baseMode}]${compareText}`
-            + ` | rows=${state.scopedBaseRows.length} | errors=${state.errorRows.length} | loaded ${nowText}`,
+            + ` | Maps=${state.scopedBaseRows.length} | Errors=${state.errorRows.length} | Generated At ${generatedAtText}`,
         );
 
         syncUrlParams();
@@ -1147,7 +1239,7 @@ async function loadLocalDatasets(fileList) {
     const files = Array.from(fileList || []).filter((file) => isCsvFileName(file.name));
     if (!files.length) {
         setStatus("Waiting", "warn");
-        setDatasetInfo("No CSV files found in selected folder.");
+        setDatasetInfo("No CSV Files Found In Selected Folder.");
         return;
     }
 
@@ -1166,6 +1258,9 @@ async function loadLocalDatasets(fileList) {
                 fileName: file.name,
                 source: "local",
                 url: null,
+                modifiedAt: Number.isFinite(file.lastModified)
+                    ? new Date(file.lastModified).toISOString()
+                    : null,
             });
 
             cacheRowsForAlgorithm(algorithm, parsed.rows);
@@ -1179,7 +1274,7 @@ async function loadLocalDatasets(fileList) {
 
     if (!state.algorithms.length) {
         setStatus("Error", "error");
-        setDatasetInfo("Local import finished but no valid CSV was parsed.");
+        setDatasetInfo("Local Import Finished But No Valid CSV Was Parsed.");
         applyEmptyDashboard();
         return;
     }
@@ -1196,7 +1291,7 @@ async function loadLocalDatasets(fileList) {
 
     renderAlgorithmSelectors();
     updateSortVisual();
-    updateSourceHint(`local import ${imported} file(s)`);
+    updateSourceHint(`Local Import ${imported} File(s)`);
 
     await loadCurrentView();
 }
@@ -1296,7 +1391,7 @@ async function init() {
     bindEvents();
 
     setStatus("Loading...", "warn");
-    setDatasetInfo("Discovering datasets from docs/data...");
+    setDatasetInfo("Discovering Datasets From docs/data...");
     updateSourceHint();
 
     const discoveredRemoteCount = await refreshRemoteCatalog();
@@ -1305,7 +1400,7 @@ async function init() {
 
     if (!state.algorithms.length) {
         setStatus("Waiting", "warn");
-        setDatasetInfo("No dataset discovered. Click Upload Data Folder and select docs/data.");
+        setDatasetInfo("No Dataset Discovered. Click Upload Data Folder And Select docs/data.");
         applyEmptyDashboard();
         return;
     }
@@ -1332,7 +1427,7 @@ async function init() {
 
     if (window.location.protocol === "file:" && discoveredRemoteCount === 0) {
         setStatus("Ready", "ok");
-        setDatasetInfo("Local-file mode detected. Use Upload Data Folder to import CSVs from docs/data.");
+        setDatasetInfo("Local-file Mode Detected. Use Upload Data Folder To Import CSVs From docs/data.");
     }
 }
 

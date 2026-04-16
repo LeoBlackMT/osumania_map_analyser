@@ -38,6 +38,10 @@
     display: none;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .action-row {
     display: flex;
     align-items: center;
@@ -359,6 +363,7 @@ table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.92rem;
+    table-layout: fixed;
 }
 
 thead th {
@@ -380,6 +385,7 @@ tbody td {
     border-bottom: 1px solid var(--line-soft);
     padding: 9px;
     vertical-align: middle;
+    overflow-wrap: anywhere;
 }
 
 tbody tr {
@@ -425,6 +431,42 @@ td.winner.na {
     color: var(--text-soft);
 }
 
+td.actions-col,
+th.actions-col {
+    text-align: center;
+    width: 52px;
+}
+
+th.actions-col {
+    cursor: default;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--line-soft);
+    text-decoration: none;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.02);
+    transition: border-color 140ms ease, background-color 140ms ease, transform 120ms ease;
+}
+
+.icon-btn:hover {
+    border-color: rgba(128, 179, 255, 0.7);
+    background: rgba(128, 179, 255, 0.11);
+    transform: translateY(-1px);
+}
+
+.icon-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 tr.band-exact td.band {
     color: var(--ok);
 }
@@ -439,6 +481,42 @@ tr.band-moderate td.band {
 
 tr.band-miss td.band {
     color: var(--miss);
+}
+
+tr.band-error td.band {
+    color: #b3b9c8;
+}
+
+tr.map-error td {
+    background: rgba(140, 146, 160, 0.14);
+}
+
+tr.map-error:hover td {
+    background: rgba(140, 146, 160, 0.2);
+}
+
+#resultTable thead th:nth-child(1) {
+    width: 20%;
+}
+
+#resultTable thead th:nth-child(2),
+#resultTable thead th:nth-child(3),
+#resultTable thead th:nth-child(4),
+#resultTable thead th:nth-child(5),
+#resultTable thead th:nth-child(9),
+#resultTable thead th:nth-child(10) {
+    width: 6%;
+}
+
+#resultTable thead th:nth-child(6),
+#resultTable thead th:nth-child(7),
+#resultTable thead th:nth-child(8),
+#resultTable thead th:nth-child(11) {
+    width: 7%;
+}
+
+#errorTable thead th:nth-child(1) {
+    width: 28%;
 }
 
 .empty-state {
