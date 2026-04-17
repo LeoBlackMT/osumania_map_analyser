@@ -1,0 +1,164 @@
+﻿bid,name,pattern,subPattern,expected,got,delta,deltaAbs
+,Grinding Of The Teeth x1.35,tech,stream tech,18,17.6,-0.3999999999999986,0.3999999999999986
+,The Fate of x1.425,stamina,light jumpstream,18,18,0,0
+,Agoniya (Opium Remix)(theta) x1.1,speed,high stream,18,17.6,-0.3999999999999986,0.3999999999999986
+,Rip Me Apart(theta) x1.075,jack,dense chordjack,17.8,18.4,0.5999999999999979,0.5999999999999979
+,Exitium(eta),tech,stream tech,17.2,17.4,0.1999999999999993,0.1999999999999993
+,Intersect Thunderbolt-Remix,speed,mid stream,17.2,17,-0.1999999999999993,0.1999999999999993
+,Torment Payback,jack,high chordjack,17.2,17.4,0.1999999999999993,0.1999999999999993
+,Collapse of Ego,stamina,dense jumpstream,16.8,16.6,-0.1999999999999993,0.1999999999999993
+,Angel Dust (2016 Radio Mix)(zeta),jack,anchor chordjack,16.6,15.6,-1.0000000000000018,1.0000000000000018
+,northern limit(haku) x1.1,tech,stream tech,16.4,16.6,0.20000000000000284,0.20000000000000284
+,Purgatorium(efv2) x1.14,tech,stream tech,16.4,16.6,0.20000000000000284,0.20000000000000284
+,Angel Dust(spz),stamina,light handstream,16.4,16.6,0.20000000000000284,0.20000000000000284
+,Angel Dust (2016 Radio Mix)(zeta old),jack,high chordjack,16.4,17,0.6000000000000014,0.6000000000000014
+,Nijuu(zeta),stamina,dense handstream,16.2,16,-0.1999999999999993,0.1999999999999993
+,Kizuato(efv3) x1.3,speed,staircase,16.2,16.4,0.1999999999999993,0.1999999999999993
+,Apocalyptic Premonition x1.05,tech,stream tech,16,16,0,0
+,NEURO-CLOUD-9(efv3),tech,stream tech,16,16.8,0.8000000000000007,0.8000000000000007
+,Senkou no Furea(haku) x1.25,stamina,dense handstream,16,15.4,-0.5999999999999996,0.5999999999999996
+,HIBACHI,speed,high stream,16,15.6,-0.40000000000000036,0.40000000000000036
+,Credens Justitiam(haku) x1.1,speed,mid stream,16,15.6,-0.40000000000000036,0.40000000000000036
+,Double Universe x1.2,jack,mid chordjack,16,14.4,-1.5999999999999996,1.5999999999999996
+,Infinity Heaven(180bpm),jack,high chordjack,16,14.4,-1.5999999999999996,1.5999999999999996
+,Runengon(efv3),stamina,dense handstream,15.7,16,0.3000000000000007,0.3000000000000007
+,Weird Autumn(spz) x1.4,tech,stream tech,15.6,15.6,0,0
+,Vertex Beta(spz cut),jack,mid chordjack,15.6,14.6,-1,1
+,Deadly force - Put an end,stamina,dense handstream,15.4,15.4,0,0
+,Finixe(zeta) x1.1,speed,low stream,15.4,16.4,0.9999999999999982,0.9999999999999982
+,Forgotten[Collab(2015)] x1.4,tech,jack tech,15.2,15.4,0.20000000000000107,0.20000000000000107
+,Matusa Bomber x1.3,tech,stream tech,15,13.4,-1.5999999999999996,1.5999999999999996
+,Hitsugi to Futago x1.25,stamina,dense jumpstream,15,15,0,0
+,Ash Statues(wafles)[Inhuman],stamina,dense jumpstream,15,15,0,0
+,Mario Point[D-Another],speed,low stream,15,15.4,0.40000000000000036,0.40000000000000036
+,Shuuten,speed,high stream,15,15.4,0.40000000000000036,0.40000000000000036
+,crazy_tek (DJ Noriken Remix)(e9v3),jack,high chordjack,15,15,0,0
+,Rose Quartz(epsilon) x1.3,jack,high chordjack,15,14.6,-0.40000000000000036,0.40000000000000036
+,Nhelv(e9v3),tech,stream tech,14.8,15.4,0.5999999999999996,0.5999999999999996
+,Kimi to bokueno sousouka,speed,,14.8,15.4,0.5999999999999996,0.5999999999999996
+,Shuu no hazama,tech,stream tech,14.7,15,0.3000000000000007,0.3000000000000007
+,Paradigm Shift(e8v2) x1.15,speed,low stream,14.7,14.6,-0.09999999999999964,0.09999999999999964
+,Ash Statues(rachel),stamina,dense jumpstream,14.6,14.6,0,0
+,CRIMSON FIGHTER x1.15,stamina,dense handstream,14.6,14.6,0,0
+,Amatsukami x1.15,speed,high stream,14.6,14.6,0,0
+,Lalala.Refrain(sp7v2) x1.1,speed,mid stream,14.6,15,0.40000000000000036,0.40000000000000036
+,Tactical Railroad(ATTang),speed,high stream,14.6,13.6,-1,1
+,Hayabusa(e8v3),jack,high chordjack,14.6,14.6,0,0
+,Search And Destroy(Ena) x1.25,stamina,dense handstream,14.6,14.6,0,0
+,Death Melody(e8v2) x1.25,stamina,dense handstream,14.5,14.6,0.09999999999999964,0.09999999999999964
+,Stay Alive (Zekk Remix) x1.25,speed,mid stream,14.5,14.6,0.09999999999999964,0.09999999999999964
+,Paraclete -Miracle,speed,low stream,14.5,14.6,0.09999999999999964,0.09999999999999964
+,Alpha,tech,stream tech,14.4,14.4,0,0
+,Ankoku Butoukai,tech,mix tech,14.4,14,-0.40000000000000036,0.40000000000000036
+,Kaguyahime(mintapril) x1.2,tech,mix tech,14.4,14,-0.40000000000000036,0.40000000000000036
+,Heaven's Fall(e7v3) x1.4,stamina,dense handstream,14.4,14.4,0,0
+,Ash Statues(wafles)[Passable],stamina,light jumpstream,14.4,14,-0.40000000000000036,0.40000000000000036
+,STRONG 280(11bit),stamina,dense handstream,14.4,14,-0.40000000000000036,0.40000000000000036
+,Pine Nut,speed,high stream,14.4,14.4,0,0
+,LiFE Garden(e7v3) x1.05,jack,high chordjack,14.4,14.4,0,0
+,Crescent Moon Boss Battle x1.05,tech,stream tech,14,14,0,0
+,FUTURE DOMINATORS(delta) x1.3 ,stamina,dense handstream,14,14,0,0
+,Quadraphinix x1.5,stamina,dense handstream,14,14,0,0
+,Volcanic(delta),speed,high stream,14,13.6,-0.40000000000000036,0.40000000000000036
+,STRONG 280(isxi),jack,dense chordjack,14,14,0,0
+,Aquaris(snover) x1.3,jack,low chordjack,14,13.6,-0.40000000000000036,0.40000000000000036
+,Ascension to heaven(sp6v2) x0.975,speed,,13.8,14,0.1999999999999993,0.1999999999999993
+,Nhelv(Guilhermeziat),tech,jack tech,13.6,13.4,-0.1999999999999993,0.1999999999999993
+,Shadows of Cats(tachyon) x1.2,tech,stream tech,13.6,12.8,-0.7999999999999989,0.7999999999999989
+,The Empress(delta),stamina,dense handstream,13.6,13.4,-0.1999999999999993,0.1999999999999993
+,Nopea,speed,mid stream,13.6,13.4,-0.1999999999999993,0.1999999999999993
+,Pastel Subliminal,speed,,13.5,13.4,-0.09999999999999964,0.09999999999999964
+,Extraction,tech,,13.4,13.4,0,0
+,Tornado [Devastation](interliser),tech,mix tech,13.4,12,-1.4000000000000004,1.4000000000000004
+,Cyber Inductance(tachyon) x1.4,stamina,dense jumpstream,13.4,13,-0.40000000000000036,0.40000000000000036
+,Electric Angel(e5v3) x1.2,speed,high stream,13.4,13,-0.40000000000000036,0.40000000000000036
+,Angel Dust(tachyon),speed,high stream,13.4,12.6,-0.8000000000000007,0.8000000000000007
+,Defeat awaken battle ship,jack,high chordjack,13.4,12.6,-0.8000000000000007,0.8000000000000007
+,WE LUV LAMA(gamma) x1.2,stamina,dense jumpstream,13,13,0,0
+,Reflec Streamz(gamma),speed,low stream,13,13.4,0.40000000000000036,0.40000000000000036
+,Break(loved) x1.1,jack,high chordjack,13,13.4,0.40000000000000036,0.40000000000000036
+,Sendan Life(OpakyL),jack,dense chordjack,13,12.4,-0.5999999999999996,0.5999999999999996
+,Unsan-musho,tech,stream tech,12.8,13,0.1999999999999993,0.1999999999999993
+,Sonesaki Shinju(sp5v2) x0.925,speed,,12.7,12.6,-0.09999999999999964,0.09999999999999964
+,Fastest Crash (gamma),tech,stream tech,12.6,12.6,0,0
+,Shinbatsu o Tadori Kyoukotsu ni Itaru(evening),stamina,dense jumpstream,12.6,12.6,0,0
+,The Truth Never Spoken,jack,mid chordjack,12.6,12.4,-0.1999999999999993,0.1999999999999993
+,Bring Our Ignition Back x1.1,jack,mid chordjack,12.6,12,-0.5999999999999996,0.5999999999999996
+,Japanese Transformation(fullerene),stamina,dense jumpstream,12.5,12,-0.5,0.5
+,Crystal World -Fracture-,speed,,12.5,12.6,0.09999999999999964,0.09999999999999964
+,IMAGE -MATERIAL- Version 0(luminal),stamina,light handstream,12.4,12,-0.40000000000000036,0.40000000000000036
+,Lolit Speed,stamina,dense jumpstream,12.4,11,-1.4000000000000004,1.4000000000000004
+,Pure Ruby,speed,,12.4,12,-0.40000000000000036,0.40000000000000036
+,Odin(fullerene),speed,high stream,12.4,11.6,-0.8000000000000007,0.8000000000000007
+,Mario Point[D-Hyper],speed,low stream,12.4,11,-1.4000000000000004,1.4000000000000004
+,ZENITHALIZE,jack,high chordjack,12.4,12.4,0,0
+,IMAGE -MATERIAL- Version 0(fullerene),stamina,light handstream,12.3,12,-0.3000000000000007,0.3000000000000007
+,YELL!(e4v2),speed,,12.2,11.6,-0.5999999999999996,0.5999999999999996
+,Asymmetrical Grooves,tech,,12,12,0,0
+,Blue Planet,tech,stream tech,12,12.4,0.40000000000000036,0.40000000000000036
+,Time to Say Goodbye(beta),stamina,dense jumpstream,12,12,0,0
+,Amber Starlight(beta),speed,low stream,12,11.4,-0.5999999999999996,0.5999999999999996
+,Paradigm Shift(beta),jack,high chordjack,12,12,0,0
+,Edison(e3v3) x1.15,jack,mid chordjack,12,11.6,-0.40000000000000036,0.40000000000000036
+,Akasha(sp3v2) x0.88,speed,,11.7,10.6,-1.0999999999999996,1.0999999999999996
+,End Time(e3v2) x1.1,speed,,11.5,11,-0.5,0.5
+,INTERNET OVERDOSE x1.05,tech,stream tech,11.4,12,0.5999999999999996,0.5999999999999996
+,Enthanasia x1.05,speed,,11.2,11.4,0.20000000000000107,0.20000000000000107
+,LazorBeamz,stamina,light jumpstream,11,11,0,0
+,Makiba(alpha),speed,low stream,11,11,0,0
+,Dark Sambaland,jack,high chordjack,11,11,0,0
+,Odoru Mizushibuki x1.1,tech,jack tech,10.8,11,0.1999999999999993,0.1999999999999993
+,Towards the Horizon,tech,,10.8,11,0.1999999999999993,0.1999999999999993
+,P8107 x0.95,speed,low stream,10.8,11.6,0.7999999999999989,0.7999999999999989
+,Message(e2v2),speed,low stream,10.7,10.6,-0.09999999999999964,0.09999999999999964
+,Moment x1.05,jack,high chordjack,10.6,10.6,0,0
+,Shin Takarajim(sp2v2),speed,,10.5,10.6,0.09999999999999964,0.09999999999999964
+,Torikago,speed,mid stream,10.4,10.4,0,0
+,The Lost Dedicated(loved),jack,high chordjack,10.4,11,0.5999999999999996,0.5999999999999996
+,Eiya no Parade x1.05,speed,low stream,10.3,9.4,-0.9000000000000004,0.9000000000000004
+,Dope Monkeys x1.02,speed,low stream,10.1,9,-1.0999999999999996,1.0999999999999996
+,Tailin no Soul x1.2,tech,stream tech,10,9,-1,1
+,Rave 7 [Hard] x1.1,tech,stream tech,10,11,1,1
+,Chandelier(10),stamina,dense jumpstream,10,11,1,1
+,Oh Curry! x0.9,speed,staircase,10,8,-2,2
+,The Lost Dedicated(10),jack,high chordjack,10,11,1,1
+,Cicadidae,tech,stream tech,9,9.2,0.1999999999999993,0.1999999999999993
+,Firmament Castle Velier(9) x1.05,stamina,dense jumpstream,9,9.2,0.1999999999999993,0.1999999999999993
+,Disconnected Trance(9),speed,low stream,9,7.2,-1.7999999999999998,1.7999999999999998
+,Scorpion Dance,jack,high chordjack,9,9,0,0
+,Can't Take my Eyes,jack,low chordjack,9,7.6,-1.4000000000000004,1.4000000000000004
+,RATO,tech,stream tech,8,7.4,-0.5999999999999996,0.5999999999999996
+,Anguish(8),stamina,dense jumpstream,8,8.6,0.5999999999999996,0.5999999999999996
+,Trickstarz,speed,staircase,8,7.4,-0.5999999999999996,0.5999999999999996
+,To The Limit(8),jack,high chordjack,8,7.4,-0.5999999999999996,0.5999999999999996
+,WAVE,tech,mix tech,7,6.6,-0.40000000000000036,0.40000000000000036
+,Hymn,stamina,light jumpstream,7,7,0,0
+,Last Chance,jack,,7,5.2,-1.7999999999999998,1.7999999999999998
+,Five Five Five Guys,speed,low stream,6.6,6,-0.5999999999999996,0.5999999999999996
+,M-A[Expert Lv.15],stamina,dense jumpstream,6.2,7,0.7999999999999998,0.7999999999999998
+,The Bird's Midair Heatstroke,tech,,6,4,-2,2
+,Luv Lab 22ate!,speed,mid stream,6,6.2,0.20000000000000018,0.20000000000000018
+,SOS,speed,mid stream,6,5.2,-0.7999999999999998,0.7999999999999998
+,Sweet Cherry X,jack,,6,4.8,-1.2000000000000002,1.2000000000000002
+,Back to the Gate[Lv.5100],stamina,dense jumpstream,6,6,0,0
+,Brainfog,tech,,5,4.2,-0.7999999999999998,0.7999999999999998
+,Elektric U-Phoria,stamina,dense jumpstream,5,5.6,0.5999999999999996,0.5999999999999996
+,Palette GAMMA[Abstract],speed,low stream,5,5,0,0
+,TDPDG,speed,low stream,5,4.8,-0.20000000000000018,0.20000000000000018
+,Energy Flower 3007,jack,,5,3.2,-1.7999999999999998,1.7999999999999998
+,Angel Of Darkness,stamina,light jumpstream,4.2,4.4,0.20000000000000018,0.20000000000000018
+,Ephemera,tech,,4,3.8,-0.20000000000000018,0.20000000000000018
+,Shannon's Theorem,tech,stream tech,4,3.4,-0.6000000000000001,0.6000000000000001
+,CrossOver,jack,,4,1.2,-2.8,2.8
+,Kirlian Shores,tech,,3,0.2,-2.8,2.8
+,True Blue,stamina,,3,3,0,0
+,Entelechia,speed,mid stream,3,3,0,0
+,Dimension Trippere!!!!,jack,,3,1.8,-1.2,1.2
+,Vermillion,tech,,2,0.8,-1.2,1.2
+,Eternal Drain,stamina,,2,1.8,-0.19999999999999996,0.19999999999999996
+,Snow Storm,speed,,2,1.6,-0.3999999999999999,0.3999999999999999
+,Flashes,jack,,2,2.8,0.7999999999999998,0.7999999999999998
+,Want U 2,tech,,1,0.4,-0.6,0.6
+,Tommorow Perfume,stamina,,1,1.4,0.3999999999999999,0.3999999999999999
+,Shelter,speed,,1,0.8,-0.19999999999999996,0.19999999999999996
+,Miracle Chance,jack,,1,-1,-2,2

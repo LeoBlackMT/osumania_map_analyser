@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Estimator Algorithm Benchmark</title>
+    <link rel="icon" type="image/png" href="assets/images/icon.png?v=20260417f" />
+    <link rel="stylesheet" href="assets/css/theme.css?v=20260417f" />
+    <link rel="stylesheet" href="assets/css/layout.css?v=20260417f" />
+    <link rel="stylesheet" href="assets/css/components.css?v=20260417f" />
+    <script src="assets/vendor/chart.umd.min.js?v=20260417f"></script>
+</head>
+<body>
+    <div class="bg-orb orb-a" aria-hidden="true"></div>
+    <div class="bg-orb orb-b" aria-hidden="true"></div>
+
+    <main class="page" id="pageRoot">
+        <a
+            class="github-float-btn"
+            href="https://github.com/LeoBlackMT/osumania_map_analyser"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open GitHub Repository"
+            aria-label="Open GitHub Repository"
+        >
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.64 7.64 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+        </a>
+
+        <section class="hero panel fade-in-up">
+            <div class="hero-head">
+                <p class="eyebrow">Dashboard</p>
+                <h1>Estimator Algorithm Benchmark</h1>
+                <p class="subtitle">
+                    Compare expected difficulty against estimator output across every map with a variety of checks, and pattern/subPattern breakdowns. Use this dashboard to quickly view the overall performance of an algorithm, identify its strengths and weaknesses, and compare it against other algorithms in a head-to-head matchup.
+                </p>
+            </div>
+
+            <div class="toolbar">
+                <label class="toolbar-field">
+                    <span>Algorithm</span>
+                    <select id="algorithmSelect" aria-label="Algorithm selector"></select>
+                </label>
+
+                <label class="toolbar-field" id="baseCategoryField">
+                    <span>Scope</span>
+                    <select id="baseCategorySelect" aria-label="Base category selector">
+                        <option value="RC">RC</option>
+                        <option value="LN">LN</option>
+                    </select>
+                </label>
+
+                <label class="toolbar-field">
+                    <span>Compare With</span>
+                    <select id="compareAlgorithmSelect" aria-label="Compare algorithm selector">
+                        <option value="">Off</option>
+                    </select>
+                </label>
+
+                <label class="toolbar-field" id="compareCategoryField">
+                    <span>Compare Scope</span>
+                    <select id="compareCategorySelect" aria-label="Compare category selector">
+                        <option value="RC">RC</option>
+                        <option value="LN">LN</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="action-row">
+                <button id="reloadDataButton" class="btn-ghost" type="button">Reload Data</button>
+                <button id="openDataFolderButton" class="btn-ghost" type="button">Upload Data Folder</button>
+                <button id="downloadCurrentDataButton" class="btn-ghost" type="button">Download Current Data</button>
+                <input id="dataFileInput" type="file" accept=".csv" multiple directory webkitdirectory hidden />
+                <span id="sourceHint" class="muted source-hint">Source: Docs/Data</span>
+            </div>
+            <div class="meta-row">
+                <span id="statusBadge" class="badge warn">Loading...</span>
+                <span id="datasetInfo" class="muted">Waiting For Data</span>
+            </div>
+        </section>
+
+        <section class="kpi-grid fade-in-up delay-1" id="kpiGrid">
+            <article class="kpi-card">
+                <h3>Total Maps</h3>
+                <p id="totalMapsValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Valid Maps</h3>
+                <p id="validMapsValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>MAE</h3>
+                <p id="maeValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>RMSE</h3>
+                <p id="rmseValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Bias</h3>
+                <p id="biasValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Median |Delta|</h3>
+                <p id="medianValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Coverage</h3>
+                <p id="coverageValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>P90 |Delta|</h3>
+                <p id="p90Value" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Max Underrate</h3>
+                <p id="maxUnderrateValue" class="kpi-value">-</p>
+            </article>
+            <article class="kpi-card">
+                <h3>Max Overrate</h3>
+                <p id="maxOverrateValue" class="kpi-value">-</p>
+            </article>
+        </section>
+
+        <section class="band-grid fade-in-up delay-2">
+            <article class="band-card exact">
+                <h4>Exact</h4>
+                <p id="exactRateValue" class="band-rate">-</p>
+                <p id="exactCountValue" class="band-count">-</p>
+            </article>
+            <article class="band-card close">
+                <h4>Close</h4>
+                <p id="closeRateValue" class="band-rate">-</p>
+                <p id="closeCountValue" class="band-count">-</p>
+            </article>
+            <article class="band-card moderate">
+                <h4>Moderate</h4>
+                <p id="moderateRateValue" class="band-rate">-</p>
+                <p id="moderateCountValue" class="band-count">-</p>
+            </article>
+            <article class="band-card miss">
+                <h4>Miss</h4>
+                <p id="missRateValue" class="band-rate">-</p>
+                <p id="missCountValue" class="band-count">-</p>
+            </article>
+        </section>
+
+        <section class="panel compare-panel fade-in-up delay-2 hidden" id="comparePanel">
+            <header class="compare-header">
+                <div>
+                    <h3>Head-to-Head Comparison</h3>
+                    <p id="compareStatusText" class="muted">Comparison disabled.</p>
+                </div>
+            </header>
+
+            <div class="compare-kpi-grid">
+                <article class="kpi-card compact">
+                    <h3>Matched Maps</h3>
+                    <p id="compareMatchedValue" class="kpi-value">-</p>
+                </article>
+                <article class="kpi-card compact">
+                    <h3>Base Wins</h3>
+                    <p id="compareBaseWinsValue" class="kpi-value">-</p>
+                </article>
+                <article class="kpi-card compact">
+                    <h3>Compare Wins</h3>
+                    <p id="compareOtherWinsValue" class="kpi-value">-</p>
+                </article>
+                <article class="kpi-card compact">
+                    <h3>Ties</h3>
+                    <p id="compareTieValue" class="kpi-value">-</p>
+                </article>
+                <article class="kpi-card compact">
+                    <h3>Agreement</h3>
+                    <p id="compareAgreementValue" class="kpi-value">-</p>
+                </article>
+                <article class="kpi-card compact">
+                    <h3>MAE Gap</h3>
+                    <p id="compareMaeGapValue" class="kpi-value">-</p>
+                </article>
+            </div>
+
+            <div class="chart-wrap compare-chart"><canvas id="headToHeadChart"></canvas></div>
+        </section>
+
+        <section class="charts-grid fade-in-up delay-4">
+            <article class="panel chart-panel">
+                <header>
+                    <h3>Accuracy Breakdown</h3>
+                    <p>Distribution by |expected - got| band</p>
+                </header>
+                <div class="chart-wrap"><canvas id="accuracyBreakdownChart"></canvas></div>
+            </article>
+
+            <article class="panel chart-panel">
+                <header>
+                    <h3>Delta Distribution</h3>
+                    <p>Signed delta histogram</p>
+                </header>
+                <div class="chart-wrap"><canvas id="deltaDistributionChart"></canvas></div>
+            </article>
+
+            <article class="panel chart-panel span-2">
+                <header>
+                    <h3>Expected vs Got</h3>
+                    <p>Scatter with diagonal reference</p>
+                </header>
+                <div class="chart-wrap tall"><canvas id="scatterChart"></canvas></div>
+            </article>
+
+            <article class="panel chart-panel span-2">
+                <header>
+                    <h3>Expected/Got Trend</h3>
+                    <p>Maps sorted by expected value</p>
+                    <p id="trendFitValue" class="muted">Fit: -</p>
+                </header>
+                <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+            </article>
+
+            <article class="panel chart-panel span-2">
+                <header>
+                    <h3>Pattern MAE</h3>
+                    <p>Error profile by pattern group</p>
+                </header>
+                <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+            </article>
+
+            <article class="panel chart-panel span-2">
+                <header>
+                    <h3>SubPattern MAE</h3>
+                    <p>Error profile by subPattern group</p>
+                </header>
+                <div class="chart-wrap"><canvas id="subPatternChart"></canvas></div>
+            </article>
+        </section>
+
+        <section class="insight-grid fade-in-up delay-5">
+            <article class="panel insight-panel">
+                <header>
+                    <h3>Top Underrated Maps</h3>
+                    <p>Highest positive delta (expected - got)</p>
+                </header>
+                <ol id="underratedList" class="insight-list"></ol>
+            </article>
+
+            <article class="panel insight-panel">
+                <header>
+                    <h3>Top Overrated Maps</h3>
+                    <p>Most negative delta (expected - got)</p>
+                </header>
+                <ol id="overratedList" class="insight-list"></ol>
+            </article>
+        </section>
+
+        <section class="panel table-panel fade-in-up delay-5">
+            <header class="table-header">
+                <div>
+                    <h3>Benchmark Maps</h3>
+                    <p id="tableMeta" class="muted">-</p>
+                </div>
+
+                <div class="table-controls">
+                    <label>
+                        <span>Search</span>
+                        <input id="searchInput" type="text" placeholder="song, pattern, sub-pattern" />
+                    </label>
+                    <label>
+                        <span>Pattern</span>
+                        <select id="patternFilter"></select>
+                    </label>
+                    <label>
+                        <span>Sub Pattern</span>
+                        <select id="subPatternFilter"></select>
+                    </label>
+                    <label>
+                        <span>Band</span>
+                        <select id="bandFilter">
+                            <option value="all">All</option>
+                            <option value="exact">Exact</option>
+                            <option value="close">Close</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="miss">Miss</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </label>
+                    <button id="clearFilterButton" class="btn-ghost" type="button">Clear Filters</button>
+                </div>
+            </header>
+
+            <div class="table-wrap">
+                <table id="resultTable">
+                    <thead>
+                        <tr>
+                            <th data-sort="name">Name</th>
+                            <th data-sort="expected">Expected</th>
+                            <th data-sort="got">Got</th>
+                            <th data-sort="delta">Delta</th>
+                            <th data-sort="deltaAbs">|Delta|</th>
+                            <th data-sort="pattern">Pattern</th>
+                            <th data-sort="subPattern">Sub Pattern</th>
+                            <th data-sort="band">Band</th>
+                            <th data-sort="compareGot" class="compare-col hidden">Compare Got</th>
+                            <th data-sort="compareDeltaAbs" class="compare-col hidden">Compare |Delta|</th>
+                            <th data-sort="better" class="compare-col hidden">Winner</th>
+                            <th class="actions-col"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTableBody"></tbody>
+                </table>
+            </div>
+
+            <p id="emptyState" class="empty-state" hidden>No maps match the current filter.</p>
+        </section>
+
+        <section class="panel error-panel fade-in-up delay-5">
+            <header class="error-header">
+                <div>
+                    <h3>Error Maps</h3>
+                    <p id="errorStatusText">Maps with Invalid / Failed / Missing status.</p>
+                </div>
+                <div class="error-counter-row">
+                    <span class="error-pill invalid">Invalid <b id="errorInvalidCount">0</b></span>
+                    <span class="error-pill failed">Failed <b id="errorFailedCount">0</b></span>
+                    <span class="error-pill missing">Missing <b id="errorMissingCount">0</b></span>
+                </div>
+            </header>
+
+            <div class="table-wrap error-table-wrap">
+                <table id="errorTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Pattern</th>
+                            <th>Sub Pattern</th>
+                            <th>Expected</th>
+                            <th>Error Type</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="errorTableBody"></tbody>
+                </table>
+            </div>
+            <p id="errorEmptyState" class="empty-state" hidden>No error maps in current scope.</p>
+        </section>
+    </main>
+
+    <script type="module" src="assets/js/app.js?v=20260417f"></script>
+</body>
+</html>

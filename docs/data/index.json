@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-04-17T11:05:03.299Z",
+  "algorithms": [
+    "Companella",
+    "Daniel",
+    "Legacy",
+    "Mixed",
+    "Sunny"
+  ],
+  "files": [
+    {
+      "fileName": "Companella.csv",
+      "algorithm": "Companella",
+      "sizeBytes": 9776,
+      "modifiedAt": "2026-04-17T11:05:03.288Z"
+    },
+    {
+      "fileName": "Daniel.csv",
+      "algorithm": "Daniel",
+      "sizeBytes": 11336,
+      "modifiedAt": "2026-04-17T11:04:55.967Z"
+    },
+    {
+      "fileName": "Legacy.csv",
+      "algorithm": "Legacy",
+      "sizeBytes": 12205,
+      "modifiedAt": "2026-04-16T18:14:19.218Z"
+    },
+    {
+      "fileName": "Mixed.csv",
+      "algorithm": "Mixed",
+      "sizeBytes": 9806,
+      "modifiedAt": "2026-04-17T11:04:47.209Z"
+    },
+    {
+      "fileName": "Sunny.csv",
+      "algorithm": "Sunny",
+      "sizeBytes": 9776,
+      "modifiedAt": "2026-04-17T11:04:51.707Z"
+    }
+  ]
+}
