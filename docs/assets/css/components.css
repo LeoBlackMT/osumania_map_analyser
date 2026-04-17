@@ -18,7 +18,6 @@
 .hero-head .subtitle {
     margin: 0;
     color: var(--text-soft);
-    max-width: 75ch;
 }
 
 .github-float-btn {
@@ -412,7 +411,7 @@ thead th {
     font-size: 0.76rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    text-align: left;
+    text-align: center;
     padding: 10px 9px;
     cursor: pointer;
     user-select: none;
@@ -420,6 +419,7 @@ thead th {
 
 tbody td {
     border-bottom: 1px solid var(--line-soft);
+    text-align: center;
     padding: 9px;
     vertical-align: middle;
     overflow-wrap: anywhere;
@@ -434,13 +434,14 @@ tbody tr:hover {
 }
 
 td.num {
-    text-align: right;
+    text-align: center;
     font-family: var(--font-mono);
 }
 
 td.got-cell {
     position: relative;
     overflow: hidden;
+    text-align: center;
 }
 
 td.got-cell.has-hover-value {
@@ -455,7 +456,7 @@ td.got-cell .got-number {
 
 td.got-cell .got-number {
     position: absolute;
-    right: 9px;
+    right: 55px;
     top: 50%;
     transform: translateY(calc(-50% + 4px));
     opacity: 0;
@@ -511,6 +512,7 @@ th.actions-col {
 }
 
 th.actions-col {
+    width: 3%;
     cursor: default;
 }
 
@@ -581,10 +583,9 @@ tr.map-error:hover td {
 }
 
 #resultTable thead th:nth-child(1) {
-    width: 17%;
+    width: 25%;
 }
 
-#resultTable thead th:nth-child(2),
 #resultTable thead th:nth-child(4),
 #resultTable thead th:nth-child(5),
 #resultTable thead th:nth-child(6),
@@ -594,20 +595,29 @@ tr.map-error:hover td {
     width: 6%;
 }
 
+#resultTable thead th:nth-child(2) {
+    width: 6.5%;
+}
+
 #resultTable thead th:nth-child(3) {
-    width: 8%;
+    width: 12%;
 }
 
 #resultTable thead th:nth-child(7) {
-    width: 9%;
+    width: 12%;
 }
 
 #resultTable thead th:nth-child(8) {
     width: 8%;
 }
 
-#errorTable thead th:nth-child(1) {
-    width: 28%;
+#errorTable thead th:nth-child(1),
+#errorTable thead th:nth-child(7) {
+    width: 25%;
+}
+
+#errorTable thead th:nth-child(3){
+    width: 12%;
 }
 
 .empty-state {
