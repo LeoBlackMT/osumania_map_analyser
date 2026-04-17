@@ -1,4 +1,4 @@
-﻿bid,name,pattern,subPattern,expected,got,delta,deltaAbs
+bid,name,pattern,subPattern,expected,got,delta,deltaAbs
 ,Grinding Of The Teeth x1.35,tech,stream tech,18,17.60,0.40,0.40
 ,The Fate of x1.425,stamina,light jumpstream,18,18.00,0.00,0.00
 ,Agoniya (Opium Remix)(theta) x1.1,speed,high stream,18,17.60,0.40,0.40
@@ -45,7 +45,7 @@
 ,Tactical Railroad(ATTang),speed,high stream,14.6,13.60,1.00,1.00
 ,Hayabusa(e8v3),jack,high chordjack,14.6,14.40,0.20,0.20
 ,Search And Destroy(Ena) x1.25,stamina,dense handstream,14.6,14.60,0.00,0.00
-,Death Melody(e8v2) x1.25,stamina,dense handstream,14.5,Missing,,
+,Death Melody(e8v2) x1.25,stamina,dense handstream,14.5,Missing: local file not found and bid is empty,,
 ,Stay Alive (Zekk Remix) x1.25,speed,mid stream,14.5,14.60,-0.10,0.10
 ,Paraclete -Miracle,speed,low stream,14.5,14.60,-0.10,0.10
 ,Alpha,tech,stream tech,14.4,14.40,0.00,0.00
@@ -71,7 +71,7 @@
 ,Extraction,tech,Unsigned,13.4,13.40,0.00,0.00
 ,Tornado [Devastation](interliser),tech,mix tech,13.4,12.00,1.40,1.40
 ,Cyber Inductance(tachyon) x1.4,stamina,dense jumpstream,13.4,13.00,0.40,0.40
-,Electric Angel(e5v3) x1.2,speed,high stream,13.4,Missing,,
+,Electric Angel(e5v3) x1.2,speed,high stream,13.4,Missing: local file not found and bid is empty,,
 ,Angel Dust(tachyon),speed,high stream,13.4,12.60,0.80,0.80
 ,Defeat awaken battle ship,jack,high chordjack,13.4,12.60,0.80,0.80
 ,WE LUV LAMA(gamma) x1.2,stamina,dense jumpstream,13,13.00,0.00,0.00
@@ -115,50 +115,50 @@
 ,Shin Takarajim(sp2v2),speed,Unsigned,10.5,10.60,-0.10,0.10
 ,Torikago,speed,mid stream,10.4,10.60,-0.20,0.20
 ,The Lost Dedicated(loved),jack,high chordjack,10.4,11.00,-0.60,0.60
-,Eiya no Parade x1.05,speed,low stream,10.3,Invalid,,
-,Dope Monkeys x1.02,speed,low stream,10.1,Invalid,,
-,Tailin no Soul x1.2,tech,stream tech,10,Invalid,,
+,Eiya no Parade x1.05,speed,low stream,10.3,Invalid: estDiff contains bound symbol (< or >),,
+,Dope Monkeys x1.02,speed,low stream,10.1,Invalid: estDiff contains bound symbol (< or >),,
+,Tailin no Soul x1.2,tech,stream tech,10,Invalid: estDiff contains bound symbol (< or >),,
 ,Rave 7 [Hard] x1.1,tech,stream tech,10,11.00,-1.00,1.00
 ,Chandelier(10),stamina,dense jumpstream,10,11.00,-1.00,1.00
-,Oh Curry! x0.9,speed,staircase,10,Invalid,,
+,Oh Curry! x0.9,speed,staircase,10,Invalid: estDiff contains bound symbol (< or >),,
 ,The Lost Dedicated(10),jack,high chordjack,10,11.00,-1.00,1.00
-,Cicadidae,tech,stream tech,9,Invalid,,
-,Firmament Castle Velier(9) x1.05,stamina,dense jumpstream,9,Invalid,,
-,Disconnected Trance(9),speed,low stream,9,Invalid,,
-,Scorpion Dance,jack,high chordjack,9,Invalid,,
-,Can't Take my Eyes,jack,low chordjack,9,Invalid,,
-,RATO,tech,stream tech,8,Invalid,,
-,Anguish(8),stamina,dense jumpstream,8,Invalid,,
-,Trickstarz,speed,staircase,8,Invalid,,
-,To The Limit(8),jack,high chordjack,8,Invalid,,
-,WAVE,tech,mix tech,7,Invalid,,
-,Hymn,stamina,light jumpstream,7,Invalid,,
-,Last Chance,jack,Unsigned,7,Invalid,,
-,Five Five Five Guys,speed,low stream,6.6,Invalid,,
-,M-A[Expert Lv.15],stamina,dense jumpstream,6.2,Invalid,,
-,The Bird's Midair Heatstroke,tech,Unsigned,6,Invalid,,
-,Luv Lab 22ate!,speed,mid stream,6,Invalid,,
-,SOS,speed,mid stream,6,Invalid,,
-,Sweet Cherry X,jack,Unsigned,6,Invalid,,
-,Back to the Gate[Lv.5100],stamina,dense jumpstream,6,Invalid,,
-,Brainfog,tech,Unsigned,5,Invalid,,
-,Elektric U-Phoria,stamina,dense jumpstream,5,Invalid,,
-,Palette GAMMA[Abstract],speed,low stream,5,Invalid,,
-,TDPDG,speed,low stream,5,Invalid,,
-,Energy Flower 3007,jack,Unsigned,5,Invalid,,
-,Angel Of Darkness,stamina,light jumpstream,4.2,Invalid,,
-,Ephemera,tech,Unsigned,4,Invalid,,
-,Shannon's Theorem,tech,stream tech,4,Invalid,,
-,CrossOver,jack,Unsigned,4,Invalid,,
-,Kirlian Shores,tech,Unsigned,3,Invalid,,
-,True Blue,stamina,Unsigned,3,Invalid,,
-,Entelechia,speed,mid stream,3,Invalid,,
-,Dimension Trippere!!!!,jack,Unsigned,3,Invalid,,
-,Vermillion,tech,Unsigned,2,Invalid,,
-,Eternal Drain,stamina,Unsigned,2,Invalid,,
-,Snow Storm,speed,Unsigned,2,Invalid,,
-,Flashes,jack,Unsigned,2,Invalid,,
-,Want U 2,tech,Unsigned,1,Invalid,,
-,Tommorow Perfume,stamina,Unsigned,1,Invalid,,
-,Shelter,speed,Unsigned,1,Invalid,,
-,Miracle Chance,jack,Unsigned,1,Invalid,,
+,Cicadidae,tech,stream tech,9,Invalid: estDiff contains bound symbol (< or >),,
+,Firmament Castle Velier(9) x1.05,stamina,dense jumpstream,9,Invalid: estDiff contains bound symbol (< or >),,
+,Disconnected Trance(9),speed,low stream,9,Invalid: estDiff contains bound symbol (< or >),,
+,Scorpion Dance,jack,high chordjack,9,Invalid: estDiff contains bound symbol (< or >),,
+,Can't Take my Eyes,jack,low chordjack,9,Invalid: estDiff contains bound symbol (< or >),,
+,RATO,tech,stream tech,8,Invalid: estDiff contains bound symbol (< or >),,
+,Anguish(8),stamina,dense jumpstream,8,Invalid: estDiff contains bound symbol (< or >),,
+,Trickstarz,speed,staircase,8,Invalid: estDiff contains bound symbol (< or >),,
+,To The Limit(8),jack,high chordjack,8,Invalid: estDiff contains bound symbol (< or >),,
+,WAVE,tech,mix tech,7,Invalid: estDiff contains bound symbol (< or >),,
+,Hymn,stamina,light jumpstream,7,Invalid: estDiff contains bound symbol (< or >),,
+,Last Chance,jack,Unsigned,7,Invalid: estDiff contains bound symbol (< or >),,
+,Five Five Five Guys,speed,low stream,6.6,Invalid: estDiff contains bound symbol (< or >),,
+,M-A[Expert Lv.15],stamina,dense jumpstream,6.2,Invalid: estDiff contains bound symbol (< or >),,
+,The Bird's Midair Heatstroke,tech,Unsigned,6,Invalid: estDiff contains bound symbol (< or >),,
+,Luv Lab 22ate!,speed,mid stream,6,Invalid: estDiff contains bound symbol (< or >),,
+,SOS,speed,mid stream,6,Invalid: estDiff contains bound symbol (< or >),,
+,Sweet Cherry X,jack,Unsigned,6,Invalid: estDiff contains bound symbol (< or >),,
+,Back to the Gate[Lv.5100],stamina,dense jumpstream,6,Invalid: estDiff contains bound symbol (< or >),,
+,Brainfog,tech,Unsigned,5,Invalid: estDiff contains bound symbol (< or >),,
+,Elektric U-Phoria,stamina,dense jumpstream,5,Invalid: estDiff contains bound symbol (< or >),,
+,Palette GAMMA[Abstract],speed,low stream,5,Invalid: estDiff contains bound symbol (< or >),,
+,TDPDG,speed,low stream,5,Invalid: estDiff contains bound symbol (< or >),,
+,Energy Flower 3007,jack,Unsigned,5,Invalid: estDiff contains bound symbol (< or >),,
+,Angel Of Darkness,stamina,light jumpstream,4.2,Invalid: estDiff contains bound symbol (< or >),,
+,Ephemera,tech,Unsigned,4,Invalid: estDiff contains bound symbol (< or >),,
+,Shannon's Theorem,tech,stream tech,4,Invalid: estDiff contains bound symbol (< or >),,
+,CrossOver,jack,Unsigned,4,Invalid: estDiff contains bound symbol (< or >),,
+,Kirlian Shores,tech,Unsigned,3,Invalid: estDiff contains bound symbol (< or >),,
+,True Blue,stamina,Unsigned,3,Invalid: estDiff contains bound symbol (< or >),,
+,Entelechia,speed,mid stream,3,Invalid: estDiff contains bound symbol (< or >),,
+,Dimension Trippere!!!!,jack,Unsigned,3,Invalid: estDiff contains bound symbol (< or >),,
+,Vermillion,tech,Unsigned,2,Invalid: estDiff contains bound symbol (< or >),,
+,Eternal Drain,stamina,Unsigned,2,Invalid: estDiff contains bound symbol (< or >),,
+,Snow Storm,speed,Unsigned,2,Invalid: estDiff contains bound symbol (< or >),,
+,Flashes,jack,Unsigned,2,Invalid: estDiff contains bound symbol (< or >),,
+,Want U 2,tech,Unsigned,1,Invalid: estDiff contains bound symbol (< or >),,
+,Tommorow Perfume,stamina,Unsigned,1,Invalid: estDiff contains bound symbol (< or >),,
+,Shelter,speed,Unsigned,1,Invalid: estDiff contains bound symbol (< or >),,
+,Miracle Chance,jack,Unsigned,1,Invalid: estDiff contains bound symbol (< or >),,

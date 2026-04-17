@@ -456,7 +456,7 @@ td.got-cell .got-number {
 
 td.got-cell .got-number {
     position: absolute;
-    right: 55px;
+    left: 40%;
     top: 50%;
     transform: translateY(calc(-50% + 4px));
     opacity: 0;
@@ -611,13 +611,16 @@ tr.map-error:hover td {
     width: 8%;
 }
 
-#errorTable thead th:nth-child(1),
-#errorTable thead th:nth-child(7) {
-    width: 25%;
+#errorTable thead th:nth-child(1){
+    width: 20%;
 }
 
 #errorTable thead th:nth-child(3){
-    width: 12%;
+    width: 15%;
+}
+
+#errorTable thead th:nth-child(6){
+    width: 30%;
 }
 
 .empty-state {
@@ -645,32 +648,6 @@ tr.map-error:hover td {
     #resultTable thead th,
     #errorTable thead th {
         white-space: nowrap;
-    }
-
-    .action-row {
-        width: 100%;
-    }
-
-    .action-row .btn-ghost {
-        width: 100%;
-    }
-
-    .table-controls {
-        width: 100%;
-    }
-
-    .table-controls label,
-    .table-controls input,
-    .table-controls select {
-        width: 100%;
-    }
-
-    .table-controls .btn-ghost {
-        width: 100%;
-    }
-
-    .error-counter-row {
-        width: 100%;
     }
 }
 

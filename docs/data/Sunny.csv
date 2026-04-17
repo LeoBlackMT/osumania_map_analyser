@@ -1,4 +1,4 @@
-﻿bid,name,pattern,subPattern,expected,got,delta,deltaAbs
+bid,name,pattern,subPattern,expected,got,delta,deltaAbs
 ,Grinding Of The Teeth x1.35,tech,stream tech,18,17.40,0.60,0.60
 ,The Fate of x1.425,stamina,light jumpstream,18,18.20,-0.20,0.20
 ,Agoniya (Opium Remix)(theta) x1.1,speed,high stream,18,16.80,1.20,1.20
@@ -45,7 +45,7 @@
 ,Tactical Railroad(ATTang),speed,high stream,14.6,13.60,1.00,1.00
 ,Hayabusa(e8v3),jack,high chordjack,14.6,14.40,0.20,0.20
 ,Search And Destroy(Ena) x1.25,stamina,dense handstream,14.6,14.60,0.00,0.00
-,Death Melody(e8v2) x1.25,stamina,dense handstream,14.5,Missing,,
+,Death Melody(e8v2) x1.25,stamina,dense handstream,14.5,Missing: local file not found and bid is empty,,
 ,Stay Alive (Zekk Remix) x1.25,speed,mid stream,14.5,14.60,-0.10,0.10
 ,Paraclete -Miracle,speed,low stream,14.5,14.60,-0.10,0.10
 ,Alpha,tech,stream tech,14.4,14.20,0.20,0.20
@@ -71,7 +71,7 @@
 ,Extraction,tech,Unsigned,13.4,13.00,0.40,0.40
 ,Tornado [Devastation](interliser),tech,mix tech,13.4,11.60,1.80,1.80
 ,Cyber Inductance(tachyon) x1.4,stamina,dense jumpstream,13.4,12.60,0.80,0.80
-,Electric Angel(e5v3) x1.2,speed,high stream,13.4,Missing,,
+,Electric Angel(e5v3) x1.2,speed,high stream,13.4,Missing: local file not found and bid is empty,,
 ,Angel Dust(tachyon),speed,high stream,13.4,12.40,1.00,1.00
 ,Defeat awaken battle ship,jack,high chordjack,13.4,12.40,1.00,1.00
 ,WE LUV LAMA(gamma) x1.2,stamina,dense jumpstream,13,12.40,0.60,0.60

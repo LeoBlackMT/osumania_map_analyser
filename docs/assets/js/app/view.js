@@ -305,7 +305,6 @@ export function renderErrorPanel(rows) {
                 `<td>${escapeHtml(row.pattern)}</td>`,
                 `<td>${escapeHtml(row._normalizedSubPattern || normalizeSubPattern(row.subPattern))}</td>`,
                 `<td>${escapeHtml(expectedText)}</td>`,
-                `<td>${escapeHtml(row.errorRaw)}</td>`,
                 `<td>${escapeHtml(row.errorType)}</td>`,
                 `<td>${escapeHtml(compactDetail)}</td>`,
                 "</tr>",

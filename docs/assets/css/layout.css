@@ -7,7 +7,12 @@
     gap: 14px;
 }
 
+.page > * {
+    min-width: 0;
+}
+
 .panel {
+    min-width: 0;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 18px;
