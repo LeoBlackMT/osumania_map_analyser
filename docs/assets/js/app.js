@@ -54,6 +54,7 @@ const dom = {
 
     reloadDataButton: document.getElementById("reloadDataButton"),
     openDataFolderButton: document.getElementById("openDataFolderButton"),
+    downloadCurrentDataButton: document.getElementById("downloadCurrentDataButton"),
     dataFileInput: document.getElementById("dataFileInput"),
     sourceHint: document.getElementById("sourceHint"),
 
@@ -279,6 +280,104 @@ function formatGeneratedAt(value) {
 
 function hasValidBid(row) {
     return Number.isInteger(row?.bid) && row.bid > 0;
+}
+
+function sanitizeFileNameToken(value, fallback = "dataset") {
+    const text = String(value ?? "").trim();
+    if (!text) {
+        return fallback;
+    }
+
+    const normalized = text
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+    return normalized || fallback;
+}
+
+function buildCurrentDataExportPayload() {
+    return {
+        formatVersion: 1,
+        exportedAt: new Date().toISOString(),
+        dashboard: {
+            title: "Estimator Algorithm Benchmark",
+            url: window.location.href,
+        },
+        selection: {
+            algorithm: state.currentAlgorithm,
+            baseScope: state.baseMode,
+            compareAlgorithm: state.compareAlgorithm,
+            compareScope: state.compareMode,
+        },
+        filters: {
+            search: String(dom.searchInput.value || "").trim(),
+            pattern: dom.patternFilter.value,
+            subPattern: dom.subPatternFilter.value,
+            band: dom.bandFilter.value,
+        },
+        sorting: {
+            key: state.sortKey,
+            direction: state.sortDirection,
+        },
+        ui: {
+            sourceHint: String(dom.sourceHint.textContent || ""),
+            statusBadge: String(dom.statusBadge.textContent || ""),
+            datasetInfo: String(dom.datasetInfo.textContent || ""),
+            tableMeta: String(dom.tableMeta.textContent || ""),
+        },
+        counters: {
+            catalogCount: state.catalog.size,
+            baseRows: state.baseRows.length,
+            compareRows: state.compareRows.length,
+            scopedBaseRows: state.scopedBaseRows.length,
+            scopedCompareRows: state.scopedCompareRows.length,
+            displayRows: state.displayRows.length,
+            filteredRows: state.filteredRows.length,
+            errorRows: state.errorRows.length,
+        },
+        bandOrder: BAND_ORDER,
+        bandMeta: BAND_META,
+        summary: state.summary,
+        compareSummary: state.compareSummary,
+        catalog: Array.from(state.catalog.entries()).map(([algorithm, descriptor]) => ({
+            algorithm,
+            ...descriptor,
+        })),
+        rows: {
+            scopedBaseRows: state.scopedBaseRows,
+            scopedCompareRows: state.scopedCompareRows,
+            displayRows: state.displayRows,
+            filteredRows: state.filteredRows,
+            errorRows: state.errorRows,
+        },
+    };
+}
+
+function downloadCurrentDataSnapshot() {
+    const payload = buildCurrentDataExportPayload();
+    const baseToken = sanitizeFileNameToken(state.currentAlgorithm, "unknown");
+    const compareToken = state.compareAlgorithm
+        ? `-vs-${sanitizeFileNameToken(state.compareAlgorithm, "unknown")}`
+        : "";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `benchmark-current-data-${baseToken}${compareToken}-${timestamp}.json`;
+
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(blob);
+
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = fileName;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(downloadUrl);
+    return fileName;
 }
 
 function sanitizeNameForSearch(name) {
@@ -1435,6 +1534,19 @@ function bindEvents() {
         dom.dataFileInput.click();
     });
 
+    if (dom.downloadCurrentDataButton) {
+        dom.downloadCurrentDataButton.addEventListener("click", () => {
+            try {
+                const fileName = downloadCurrentDataSnapshot();
+                setStatus("Ready", "ok");
+                setDatasetInfo(`Exported current dashboard data to ${fileName}`);
+            } catch (error) {
+                setStatus("Error", "error");
+                setDatasetInfo(`Export failed: ${toErrorMessage(error)}`);
+            }
+        });
+    }
+
     dom.dataFileInput.addEventListener("change", async (event) => {
         const files = event.target?.files;
         await loadLocalDatasets(files);
@@ -1517,5 +1629,10 @@ async function init() {
         setDatasetInfo("Local-file Mode Detected. Use Upload Data Folder To Import CSVs From docs/data.");
     }
 }
+
+window.benchmarkDashboardApi = Object.freeze({
+    getCurrentDataSnapshot: buildCurrentDataExportPayload,
+    downloadCurrentDataSnapshot,
+});
 
 init();

@@ -21,6 +21,37 @@
     max-width: 75ch;
 }
 
+.github-float-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: rgba(12, 19, 34, 0.82);
+    color: var(--text);
+    text-decoration: none;
+    z-index: 9;
+    box-shadow: 0 8px 24px rgba(3, 8, 17, 0.36);
+    transition: transform 130ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.github-float-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(128, 179, 255, 0.75);
+    background: rgba(18, 29, 49, 0.95);
+}
+
+.github-float-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
 .toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -48,6 +79,10 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+.action-row .btn-ghost {
+    white-space: nowrap;
 }
 
 .source-hint {
@@ -370,6 +405,7 @@ table {
 thead th {
     position: sticky;
     top: 0;
+    z-index: 12;
     background: rgba(13, 19, 35, 0.96);
     border-bottom: 1px solid var(--line);
     color: var(--text-soft);
@@ -404,6 +440,7 @@ td.num {
 
 td.got-cell {
     position: relative;
+    overflow: hidden;
 }
 
 td.got-cell.has-hover-value {
@@ -544,23 +581,29 @@ tr.map-error:hover td {
 }
 
 #resultTable thead th:nth-child(1) {
-    width: 20%;
+    width: 17%;
 }
 
 #resultTable thead th:nth-child(2),
-#resultTable thead th:nth-child(3),
 #resultTable thead th:nth-child(4),
 #resultTable thead th:nth-child(5),
+#resultTable thead th:nth-child(6),
 #resultTable thead th:nth-child(9),
-#resultTable thead th:nth-child(10) {
+#resultTable thead th:nth-child(10),
+#resultTable thead th:nth-child(11) {
     width: 6%;
 }
 
-#resultTable thead th:nth-child(6),
-#resultTable thead th:nth-child(7),
-#resultTable thead th:nth-child(8),
-#resultTable thead th:nth-child(11) {
-    width: 7%;
+#resultTable thead th:nth-child(3) {
+    width: 8%;
+}
+
+#resultTable thead th:nth-child(7) {
+    width: 9%;
+}
+
+#resultTable thead th:nth-child(8) {
+    width: 8%;
 }
 
 #errorTable thead th:nth-child(1) {
@@ -599,5 +642,14 @@ tr.map-error:hover td {
 
     .error-counter-row {
         width: 100%;
+    }
+}
+
+@media (max-width: 620px) {
+    .github-float-btn {
+        top: 6px;
+        right: 6px;
+        width: 34px;
+        height: 34px;
     }
 }
