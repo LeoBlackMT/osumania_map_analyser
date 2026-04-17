@@ -186,6 +186,71 @@ function formatSigned(value, digits = 2) {
     return value > 0 ? `+${fixed}` : fixed;
 }
 
+const GOT_TIER_STEPS = Object.freeze([
+    { delta: -0.4, label: "low" },
+    { delta: -0.2, label: "mid/low" },
+    { delta: 0.0, label: "mid" },
+    { delta: 0.2, label: "mid/high" },
+    { delta: 0.4, label: "high" },
+]);
+
+const GOT_BASE_LABELS = Object.freeze({
+    11: "Alpha",
+    12: "Beta",
+    13: "Gamma",
+    14: "Delta",
+    15: "Epsilon",
+    16: "Zeta",
+    17: "Eta",
+    18: "Theta",
+    19: "iota",
+    20: "kappa",
+});
+
+function pickNearestGotTier(decimalPart) {
+    let best = GOT_TIER_STEPS[0];
+    let distance = Number.POSITIVE_INFINITY;
+
+    for (const tier of GOT_TIER_STEPS) {
+        const nextDistance = Math.abs(decimalPart - tier.delta);
+        if (nextDistance < distance) {
+            distance = nextDistance;
+            best = tier;
+        }
+    }
+
+    return best;
+}
+
+function formatGotDifficultyFromNumeric(value, row) {
+    if (!Number.isFinite(value)) {
+        return "-";
+    }
+
+    const tier = pickNearestGotTier(value - Math.round(value));
+    const base = Math.round(value - tier.delta);
+
+    if (normalizePattern(row?.pattern) === "ln") {
+        return `${base} ${tier.label}`;
+    }
+
+    if (base === -2) {
+        return `Intro 1 ${tier.label}`;
+    }
+    if (base === -1) {
+        return `Intro 2 ${tier.label}`;
+    }
+    if (base === 0) {
+        return `Intro 3 ${tier.label}`;
+    }
+    if (base >= 1 && base <= 10) {
+        return `Reform ${base} ${tier.label}`;
+    }
+
+    const baseLabel = GOT_BASE_LABELS[base] || String(base);
+    return `${baseLabel} ${tier.label}`;
+}
+
 function setStatus(message, level) {
     dom.statusBadge.className = `badge ${level}`;
     dom.statusBadge.textContent = message;
@@ -216,8 +281,30 @@ function hasValidBid(row) {
     return Number.isInteger(row?.bid) && row.bid > 0;
 }
 
-function getMapSearchUrl(bid) {
-    return `https://osu.ppy.sh/beatmapsets?m=3&q=${encodeURIComponent(String(bid))}&s=any`;
+function sanitizeNameForSearch(name) {
+    let text = String(name ?? "").trim();
+    if (!text) {
+        return "";
+    }
+
+    let previous = "";
+    while (previous !== text) {
+        previous = text;
+        text = text.replace(/\([^()]*\)|\[[^\[\]]*\]/g, " ");
+    }
+
+    text = text.replace(/\bx\s*\d+(?:\.\d+)?\b/gi, " ");
+    text = text.replace(/\b\d+(?:\.\d+)?\s*x\b/gi, " ");
+    return text.replace(/\s+/g, " ").trim();
+}
+
+function getMapSearchUrl(name) {
+    const keyword = sanitizeNameForSearch(name);
+    if (!keyword) {
+        return "";
+    }
+
+    return `https://osu.ppy.sh/beatmapsets?m=3&q=${encodeURIComponent(keyword)}&s=any`;
 }
 
 function getBeatmapDownloadUrl(bid) {
@@ -837,13 +924,15 @@ function renderTable(rows) {
             const winnerLabel = getWinnerLabel(row.better);
             const winnerClass = row.better || "na";
             const hasBid = hasValidBid(row);
-            const searchUrl = hasBid ? getMapSearchUrl(row.bid) : "";
+            const searchUrl = getMapSearchUrl(row.name);
+            const hasSearch = Boolean(searchUrl);
             const downloadUrl = hasBid ? getBeatmapDownloadUrl(row.bid) : "";
 
             const gotValue = row.got;
             const gotText = Number.isFinite(gotValue)
-                ? formatNumber(gotValue)
+                ? formatGotDifficultyFromNumeric(gotValue, row)
                 : (String(row.gotRaw || "").trim() || "-");
+            const gotNumericText = Number.isFinite(gotValue) ? formatNumber(gotValue) : "";
 
             const compareGotValue = row.compareGot;
             const compareGotText = Number.isFinite(compareGotValue)
@@ -854,7 +943,9 @@ function renderTable(rows) {
                 `<tr class="band-${bandKey}${bandKey === "error" ? " map-error" : ""}">`,
                 `<td>${escapeHtml(row.name)}</td>`,
                 `<td class="num">${formatNumber(row.expected)}</td>`,
-                `<td>${escapeHtml(gotText)}</td>`,
+                Number.isFinite(gotValue)
+                    ? `<td class="got-cell has-hover-value"><span class="got-label">${escapeHtml(gotText)}</span><span class="got-number">${escapeHtml(gotNumericText)}</span></td>`
+                    : `<td class="got-cell">${escapeHtml(gotText)}</td>`,
                 `<td class="num">${formatSigned(row.delta)}</td>`,
                 `<td class="num">${formatNumber(row.deltaAbs)}</td>`,
                 `<td>${escapeHtml(row.pattern)}</td>`,
@@ -863,12 +954,11 @@ function renderTable(rows) {
                 `<td class="compare-col">${escapeHtml(compareGotText)}</td>`,
                 `<td class="num compare-col">${formatNumber(row.compareDeltaAbs)}</td>`,
                 `<td class="winner ${winnerClass} compare-col">${escapeHtml(winnerLabel)}</td>`,
-                `<td class="actions-col">${hasBid
-                    ? `<a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="Open beatmap search">🔗</a>`
-                    : '<span class="icon-btn disabled" title="No bid">🔗</span>'}</td>`,
-                `<td class="actions-col">${hasBid
+                `<td class="actions-col"><div class="row-actions">${hasSearch
+                    ? `<a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="Search beatmapsets">🔎</a>`
+                    : '<span class="icon-btn disabled" title="Search keyword is empty">🔎</span>'}${hasBid
                     ? `<a class="icon-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" title="Download .osu">⬇</a>`
-                    : '<span class="icon-btn disabled" title="No bid">⬇</span>'}</td>`,
+                    : '<span class="icon-btn disabled" title="No bid">⬇</span>'}</div></td>`,
                 "</tr>",
             ].join("");
         })
@@ -1070,7 +1160,7 @@ async function refreshRemoteCatalog() {
 
     try {
         discovered = await discoverCatalogFromIndexJson();
-        sourceLabel = "Index.json";
+        sourceLabel = "index.json";
     } catch {
         discovered = [];
     }
@@ -1078,7 +1168,7 @@ async function refreshRemoteCatalog() {
     if (!discovered.length) {
         try {
             discovered = await discoverCatalogFromDirectoryListing();
-            sourceLabel = "Directory Listing";
+            sourceLabel = "directory listing";
         } catch {
             discovered = [];
         }
@@ -1094,7 +1184,7 @@ async function refreshRemoteCatalog() {
     }
 
     rebuildAlgorithmList();
-    updateSourceHint(sourceLabel ? `Discovered By ${sourceLabel}` : "");
+    updateSourceHint(sourceLabel ? `Discovered by ${sourceLabel}` : "");
 
     return discovered.length;
 }

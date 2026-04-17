@@ -1,3 +1,22 @@
+@font-face {
+    font-family: "OutfitLocal";
+    src: url("../fonts/Outfit-Latin.woff2") format("woff2"),
+         url("../fonts/Outfit-Ext.woff2") format("woff2");
+    font-weight: 300 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "SpaceGroteskLocal";
+    src: url("../fonts/SpaceGrotesk-Latin.woff2") format("woff2"),
+         url("../fonts/SpaceGrotesk-Ext.woff2") format("woff2"),
+         url("../fonts/SpaceGrotesk-Vietnamese.woff2") format("woff2");
+    font-weight: 300 900;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     --bg: #0a0f1c;
     --bg-soft: #121a2e;
@@ -15,6 +34,10 @@
 
     --accent: #80b3ff;
     --accent-2: #67ffe2;
+
+    --font-ui: "SpaceGroteskLocal", "OutfitLocal", "Segoe UI", sans-serif;
+    --font-display: "OutfitLocal", "SpaceGroteskLocal", "Segoe UI", sans-serif;
+    --font-mono: "SpaceGroteskLocal", "Consolas", "Courier New", monospace;
 }
 
 * {
@@ -30,7 +53,7 @@ body {
 
 body {
     color: var(--text);
-    font-family: "Outfit", "Segoe UI", sans-serif;
+    font-family: var(--font-ui);
     background:
         radial-gradient(1200px 720px at 6% -10%, #24447f 0%, transparent 55%),
         radial-gradient(1000px 700px at 95% 5%, #1b5a6f 0%, transparent 52%),

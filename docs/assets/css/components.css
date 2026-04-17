@@ -50,7 +50,7 @@
 }
 
 .source-hint {
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
 }
 
@@ -68,7 +68,7 @@ input[type="text"] {
     border: 1px solid var(--line);
     background: var(--panel-strong);
     color: var(--text);
-    font: 600 0.95rem "Outfit", "Segoe UI", sans-serif;
+    font: 600 0.95rem var(--font-ui);
     padding: 8px 10px;
     outline: none;
     transition: border-color 180ms ease, box-shadow 180ms ease;
@@ -86,7 +86,7 @@ input[type="text"]:focus {
     background: rgba(255, 255, 255, 0.02);
     color: var(--text);
     text-decoration: none;
-    font: 600 0.9rem "Outfit", "Segoe UI", sans-serif;
+    font: 600 0.9rem var(--font-ui);
     padding: 8px 11px;
     cursor: pointer;
     transition: transform 140ms ease, border-color 180ms ease, background-color 180ms ease;
@@ -111,7 +111,7 @@ input[type="text"]:focus {
     border-radius: 999px;
     border: 1px solid var(--line);
     padding: 3px 9px;
-    font: 700 0.74rem "JetBrains Mono", monospace;
+    font: 700 0.74rem var(--font-mono);
     letter-spacing: 0.02em;
 }
 
@@ -178,7 +178,7 @@ input[type="text"]:focus {
 .band-count {
     margin: 2px 0 0;
     color: var(--text-soft);
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
 }
 
@@ -290,7 +290,7 @@ input[type="text"]:focus {
 }
 
 .error-pill b {
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
     font-size: 0.8rem;
 }
 
@@ -398,7 +398,41 @@ tbody tr:hover {
 
 td.num {
     text-align: right;
-    font-family: "JetBrains Mono", monospace;
+    font-family: var(--font-mono);
+}
+
+td.got-cell {
+    position: relative;
+}
+
+td.got-cell.has-hover-value {
+    white-space: nowrap;
+}
+
+td.got-cell .got-label,
+td.got-cell .got-number {
+    display: inline-block;
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+td.got-cell .got-number {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(calc(-50% + 4px));
+    opacity: 0;
+    pointer-events: none;
+    font-family: var(--font-mono);
+}
+
+td.got-cell.has-hover-value:hover .got-label {
+    opacity: 0;
+    transform: translateY(-3px);
+}
+
+td.got-cell.has-hover-value:hover .got-number {
+    opacity: 1;
+    transform: translateY(-50%);
 }
 
 td.band {
@@ -433,20 +467,32 @@ td.winner.na {
 
 td.actions-col,
 th.actions-col {
-    text-align: center;
-    width: 52px;
+    text-align: right;
+    width: 74px;
 }
 
 th.actions-col {
     cursor: default;
 }
 
+td.actions-col {
+    padding-right: 8px;
+}
+
+.row-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
 .icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border-radius: 8px;
     border: 1px solid var(--line-soft);
     text-decoration: none;
