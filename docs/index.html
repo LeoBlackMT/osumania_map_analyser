@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Estimator Algorithm Benchmark</title>
-    <link rel="icon" type="image/png" href="assets/images/icon.png?v=20260417d" />
-    <link rel="stylesheet" href="assets/css/theme.css?v=20260417d" />
-    <link rel="stylesheet" href="assets/css/layout.css?v=20260417d" />
-    <link rel="stylesheet" href="assets/css/components.css?v=20260417d" />
-    <script src="assets/vendor/chart.umd.min.js?v=20260417d"></script>
+    <link rel="icon" type="image/png" href="assets/images/icon.png?v=20260417e" />
+    <link rel="stylesheet" href="assets/css/theme.css?v=20260417e" />
+    <link rel="stylesheet" href="assets/css/layout.css?v=20260417e" />
+    <link rel="stylesheet" href="assets/css/components.css?v=20260417e" />
+    <script src="assets/vendor/chart.umd.min.js?v=20260417e"></script>
 </head>
 <body>
     <div class="bg-orb orb-a" aria-hidden="true"></div>
@@ -33,7 +33,7 @@
                 <p class="eyebrow">Dashboard</p>
                 <h1>Estimator Algorithm Benchmark</h1>
                 <p class="subtitle">
-                    Compare expected difficulty against estimator output across every map with scope-aware filtering, error-aware diagnostics, head-to-head algorithm checks, and pattern/subPattern breakdowns. Use this dashboard to quickly find stable maps, high-risk misses, and edge cases that need manual review.
+                    Compare expected difficulty against estimator output across every map with a variety of checks, and pattern/subPattern breakdowns. Use this dashboard to quickly view the overall performance of an algorithm, identify its strengths and weaknesses, and compare it against other algorithms in a head-to-head matchup.
                 </p>
             </div>
 
@@ -213,6 +213,7 @@
                 <header>
                     <h3>Expected/Got Trend</h3>
                     <p>Maps sorted by expected value</p>
+                    <p id="trendFitValue" class="muted">Fit: -</p>
                 </header>
                 <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
             </article>
@@ -345,6 +346,6 @@
         </section>
     </main>
 
-    <script type="module" src="assets/js/app.js?v=20260417d"></script>
+    <script type="module" src="assets/js/app.js?v=20260417e"></script>
 </body>
 </html>

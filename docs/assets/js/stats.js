@@ -102,6 +102,41 @@ function buildHistogram(values, step = 0.2) {
     };
 }
 
+function computeTrendFitPercent(rows) {
+    if (!rows.length) {
+        return null;
+    }
+
+    const expectedValues = rows.map((row) => row.expected);
+    const gotValues = rows.map((row) => row.got);
+    const expectedMean = average(expectedValues);
+
+    if (!Number.isFinite(expectedMean)) {
+        return null;
+    }
+
+    let ssTot = 0;
+    let ssRes = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+        const expected = expectedValues[i];
+        const got = gotValues[i];
+
+        const diffMean = expected - expectedMean;
+        ssTot += diffMean * diffMean;
+
+        const diffFit = expected - got;
+        ssRes += diffFit * diffFit;
+    }
+
+    if (ssTot === 0) {
+        return ssRes === 0 ? 100 : 0;
+    }
+
+    const r2 = 1 - (ssRes / ssTot);
+    const clamped = Math.max(0, Math.min(r2, 1));
+    return clamped * 100;
+}
+
 export function classifyBand(absDelta) {
     if (!Number.isFinite(absDelta)) {
         return "miss";
@@ -254,6 +289,8 @@ export function computeSummary(rows) {
         .sort((a, b) => a.delta - b.delta)
         .slice(0, 8);
 
+    const trendFitPercent = computeTrendFitPercent(trendRows);
+
     const totalValid = validRows.length;
     const bandRates = BAND_ORDER.reduce((acc, key) => {
         acc[key] = totalValid > 0 ? (bandCounts[key] / totalValid) * 100 : 0;
@@ -276,6 +313,7 @@ export function computeSummary(rows) {
             maxUnderrate: Number.isFinite(maxUnderrate) ? round4(maxUnderrate) : null,
             maxOverrate: Number.isFinite(maxOverrate) ? round4(maxOverrate) : null,
             coverage: round4(coverage),
+            trendFitPercent: Number.isFinite(trendFitPercent) ? round4(trendFitPercent) : null,
         },
         validDataRows: validRows,
         scatterByBand,

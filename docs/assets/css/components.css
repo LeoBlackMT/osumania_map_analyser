@@ -628,6 +628,25 @@ tr.map-error:hover td {
 }
 
 @media (max-width: 920px) {
+    .table-wrap {
+        overflow-x: auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #resultTable {
+        min-width: 1120px;
+    }
+
+    #errorTable {
+        min-width: 980px;
+    }
+
+    #resultTable thead th,
+    #errorTable thead th {
+        white-space: nowrap;
+    }
+
     .action-row {
         width: 100%;
     }

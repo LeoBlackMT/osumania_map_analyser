@@ -1,4 +1,9 @@
 import { BAND_META, BAND_ORDER } from "./stats.js";
+import {
+    createHeadToHeadChart,
+    createPatternChart,
+    createSubPatternChart,
+} from "./chartRenderers.js";
 
 const BAND_COLORS = {
     exact: "#5ee8bd",
@@ -50,9 +55,10 @@ function alphaColor(hex, alphaHex) {
 }
 
 export class BenchmarkCharts {
-    constructor(canvasIds) {
+    constructor(canvasIds, interactionHandlers = {}) {
         this.canvasIds = canvasIds;
         this.instances = [];
+        this.interactionHandlers = interactionHandlers;
 
         this.ChartRef = globalThis.Chart;
         if (!this.ChartRef) {
@@ -61,6 +67,10 @@ export class BenchmarkCharts {
 
         ensurePluginRegistered(this.ChartRef);
         this.applyGlobalDefaults();
+    }
+
+    setInteractionHandlers(interactionHandlers = {}) {
+        this.interactionHandlers = interactionHandlers;
     }
 
     applyGlobalDefaults() {
@@ -78,17 +88,17 @@ export class BenchmarkCharts {
         }
     }
 
-    render(summary, compareSummary = null) {
+    render(summary, compareSummary = null, renderState = {}) {
         this.destroy();
 
-        this.renderAccuracyBreakdown(summary);
+        this.renderAccuracyBreakdown(summary, renderState);
         this.renderScatter(summary);
         this.renderDeltaDistribution(summary);
         this.renderTrend(summary);
-        this.renderPattern(summary);
+        this.renderPattern(summary, renderState);
 
         if (this.hasCanvas(this.canvasIds.subPattern)) {
-            this.renderSubPattern(summary);
+            this.renderSubPattern(summary, renderState);
         }
 
         if (this.hasCanvas(this.canvasIds.headToHead)) {
@@ -116,9 +126,19 @@ export class BenchmarkCharts {
         return Boolean(document.getElementById(id));
     }
 
-    renderAccuracyBreakdown(summary) {
+    renderAccuracyBreakdown(summary, renderState = {}) {
+        const sourceSummary = renderState.fullSummary || summary;
         const labels = BAND_ORDER.map((key) => `${BAND_META[key].label}`);
-        const values = BAND_ORDER.map((key) => summary.bandCounts[key] || 0);
+        const values = BAND_ORDER.map((key) => sourceSummary.bandCounts[key] || 0);
+        const activeBand = String(renderState.activeFilters?.band || "all");
+        const shouldDim = Boolean(renderState.dimUnselected && activeBand !== "all");
+
+        const backgroundColor = BAND_ORDER.map((key) => {
+            if (!shouldDim || key === activeBand) {
+                return BAND_COLORS[key];
+            }
+            return "rgba(140, 146, 160, 0.45)";
+        });
 
         const chart = new this.ChartRef(this.getCanvas(this.canvasIds.accuracy), {
             type: "doughnut",
@@ -126,12 +146,21 @@ export class BenchmarkCharts {
                 labels,
                 datasets: [{
                     data: values,
-                    backgroundColor: BAND_ORDER.map((key) => BAND_COLORS[key]),
+                    backgroundColor,
                     borderColor: "rgba(10, 15, 28, 0.95)",
                     borderWidth: 2,
                 }],
             },
             options: {
+                onClick: (_event, elements) => {
+                    if (!elements?.length || !this.interactionHandlers?.onBandSelect) {
+                        return;
+                    }
+
+                    const index = elements[0].index;
+                    const bandKey = BAND_ORDER[index];
+                    this.interactionHandlers.onBandSelect(bandKey);
+                },
                 plugins: {
                     legend: {
                         position: "bottom",
@@ -143,7 +172,7 @@ export class BenchmarkCharts {
                         callbacks: {
                             label: (context) => {
                                 const count = Number(context.raw || 0);
-                                const total = summary.validRows || 1;
+                                const total = sourceSummary.validRows || 1;
                                 const rate = ((count / total) * 100).toFixed(1);
                                 return ` ${context.label}: ${count} (${rate}%)`;
                             },
@@ -351,168 +380,37 @@ export class BenchmarkCharts {
         this.register(chart);
     }
 
-    renderPattern(summary) {
-        const topPatterns = summary.patternRows.slice(0, 12).reverse();
-
-        const chart = new this.ChartRef(this.getCanvas(this.canvasIds.pattern), {
-            type: "bar",
-            data: {
-                labels: topPatterns.map((row) => row.pattern),
-                datasets: [{
-                    label: "MAE",
-                    data: topPatterns.map((row) => Number(row.mae.toFixed(4))),
-                    backgroundColor: "rgba(249, 187, 93, 0.55)",
-                    borderColor: "rgba(249, 187, 93, 0.95)",
-                    borderWidth: 1,
-                }],
-            },
-            options: {
-                indexAxis: "y",
-                plugins: {
-                    legend: {
-                        display: false,
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                const row = topPatterns[context.dataIndex];
-                                return ` MAE ${Number(context.raw).toFixed(3)} | bias ${row.bias.toFixed(3)} | n=${row.count}`;
-                            },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: "MAE",
-                        },
-                    },
-                },
-            },
+    renderPattern(summary, renderState = {}) {
+        const sourceSummary = renderState.fullSummary || summary;
+        const chart = createPatternChart({
+            ChartRef: this.ChartRef,
+            canvas: this.getCanvas(this.canvasIds.pattern),
+            sourceSummary,
+            renderState,
+            interactionHandlers: this.interactionHandlers,
         });
 
         this.register(chart);
     }
 
-    renderSubPattern(summary) {
-        const topSubPatterns = (summary.subPatternRows || []).slice(0, 12).reverse();
-
-        const chart = new this.ChartRef(this.getCanvas(this.canvasIds.subPattern), {
-            type: "bar",
-            data: {
-                labels: topSubPatterns.map((row) => row.subPattern),
-                datasets: [{
-                    label: "MAE",
-                    data: topSubPatterns.map((row) => Number(row.mae.toFixed(4))),
-                    backgroundColor: "rgba(94, 232, 189, 0.55)",
-                    borderColor: "rgba(94, 232, 189, 0.95)",
-                    borderWidth: 1,
-                }],
-            },
-            options: {
-                indexAxis: "y",
-                plugins: {
-                    legend: {
-                        display: false,
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                const row = topSubPatterns[context.dataIndex];
-                                return ` MAE ${Number(context.raw).toFixed(3)} | bias ${row.bias.toFixed(3)} | n=${row.count}`;
-                            },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: "MAE",
-                        },
-                    },
-                },
-            },
+    renderSubPattern(summary, renderState = {}) {
+        const sourceSummary = renderState.fullSummary || summary;
+        const chart = createSubPatternChart({
+            ChartRef: this.ChartRef,
+            canvas: this.getCanvas(this.canvasIds.subPattern),
+            sourceSummary,
+            renderState,
+            interactionHandlers: this.interactionHandlers,
         });
 
         this.register(chart);
     }
 
     renderHeadToHead(compareSummary) {
-        const points = compareSummary?.points || [];
-        const values = points.flatMap((point) => [point.x, point.y]);
-        const min = values.length ? Math.max(0, Math.min(...values) - 0.2) : 0;
-        const max = values.length ? Math.max(...values) + 0.2 : 5;
-
-        const chart = new this.ChartRef(this.getCanvas(this.canvasIds.headToHead), {
-            type: "scatter",
-            data: {
-                datasets: [{
-                    label: "Maps",
-                    data: points,
-                    backgroundColor: "rgba(128, 179, 255, 0.78)",
-                    borderColor: "rgba(128, 179, 255, 0.95)",
-                    borderWidth: 0,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                }],
-            },
-            options: {
-                plugins: {
-                    benchmarkDiagonalReference: {
-                        enabled: true,
-                    },
-                    legend: {
-                        display: false,
-                    },
-                    tooltip: {
-                        callbacks: {
-                            title: (items) => {
-                                const names = [...new Set(
-                                    (items || [])
-                                        .map((item) => item?.raw?.name)
-                                        .filter((name) => Boolean(name)),
-                                )];
-
-                                if (!names.length) {
-                                    return "Unknown";
-                                }
-
-                                if (names.length === 1) {
-                                    return names[0];
-                                }
-
-                                return `${names.length} maps overlapped`;
-                            },
-                            label: (item) => {
-                                const point = item.raw;
-                                return `${point.name} | base |delta| ${Number(point.x).toFixed(2)} | compare |delta| ${Number(point.y).toFixed(2)} | pattern ${point.pattern || "-"}`;
-                            },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        min,
-                        max,
-                        title: {
-                            display: true,
-                            text: "Base |Delta|",
-                        },
-                    },
-                    y: {
-                        min,
-                        max,
-                        title: {
-                            display: true,
-                            text: "Compare |Delta|",
-                        },
-                    },
-                },
-            },
+        const chart = createHeadToHeadChart({
+            ChartRef: this.ChartRef,
+            canvas: this.getCanvas(this.canvasIds.headToHead),
+            compareSummary,
         });
 
         this.register(chart);
