@@ -3,6 +3,7 @@
     font-size: clamp(1.55rem, 2.4vw, 2.3rem);
     font-weight: 800;
     letter-spacing: -0.02em;
+    font-family: var(--font-display);
 }
 
 .hero-head .eyebrow {
@@ -468,7 +469,8 @@ td.winner.na {
 td.actions-col,
 th.actions-col {
     text-align: right;
-    width: 74px;
+    width: 64px;
+    min-width: 64px;
 }
 
 th.actions-col {
@@ -476,14 +478,14 @@ th.actions-col {
 }
 
 td.actions-col {
-    padding-right: 8px;
+    padding-right: 4px;
 }
 
 .row-actions {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     width: 100%;
 }
 
@@ -491,8 +493,8 @@ td.actions-col {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     border-radius: 8px;
     border: 1px solid var(--line-soft);
     text-decoration: none;

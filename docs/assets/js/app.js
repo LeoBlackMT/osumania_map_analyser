@@ -301,7 +301,7 @@ function sanitizeNameForSearch(name) {
 function getMapSearchUrl(name) {
     const keyword = sanitizeNameForSearch(name);
     if (!keyword) {
-        return "";
+        return "https://osu.ppy.sh/beatmapsets?m=3&s=any";
     }
 
     return `https://osu.ppy.sh/beatmapsets?m=3&q=${encodeURIComponent(keyword)}&s=any`;
@@ -925,7 +925,6 @@ function renderTable(rows) {
             const winnerClass = row.better || "na";
             const hasBid = hasValidBid(row);
             const searchUrl = getMapSearchUrl(row.name);
-            const hasSearch = Boolean(searchUrl);
             const downloadUrl = hasBid ? getBeatmapDownloadUrl(row.bid) : "";
 
             const gotValue = row.got;
@@ -954,9 +953,7 @@ function renderTable(rows) {
                 `<td class="compare-col">${escapeHtml(compareGotText)}</td>`,
                 `<td class="num compare-col">${formatNumber(row.compareDeltaAbs)}</td>`,
                 `<td class="winner ${winnerClass} compare-col">${escapeHtml(winnerLabel)}</td>`,
-                `<td class="actions-col"><div class="row-actions">${hasSearch
-                    ? `<a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="Search beatmapsets">🔎</a>`
-                    : '<span class="icon-btn disabled" title="Search keyword is empty">🔎</span>'}${hasBid
+                `<td class="actions-col"><div class="row-actions"><a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="Search beatmapsets">🔎</a>${hasBid
                     ? `<a class="icon-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" title="Download .osu">⬇</a>`
                     : '<span class="icon-btn disabled" title="No bid">⬇</span>'}</div></td>`,
                 "</tr>",

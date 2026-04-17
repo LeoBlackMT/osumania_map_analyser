@@ -35,7 +35,7 @@
     --accent: #80b3ff;
     --accent-2: #67ffe2;
 
-    --font-ui: "SpaceGroteskLocal", "OutfitLocal", "Segoe UI", sans-serif;
+    --font-ui: "OutfitLocal", "SpaceGroteskLocal", "Segoe UI", sans-serif;
     --font-display: "OutfitLocal", "SpaceGroteskLocal", "Segoe UI", sans-serif;
     --font-mono: "SpaceGroteskLocal", "Consolas", "Courier New", monospace;
 }
