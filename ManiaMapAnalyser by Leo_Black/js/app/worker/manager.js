@@ -10,7 +10,23 @@
 
 let worker = null;
 let nextId = 0;
-let latestId = null;
+let activeRequest = null;
+
+function makeCancellationError() {
+    const error = new Error("Worker request superseded");
+    error.name = "AbortError";
+    return error;
+}
+
+function terminateWorker(target = worker) {
+    if (!target) return;
+    try {
+        target.terminate();
+    } catch {
+        // The worker may already have terminated after an error.
+    }
+    if (worker === target) worker = null;
+}
 
 function ensureWorker() {
     if (worker) return worker;
@@ -39,38 +55,69 @@ function generateId() {
  * @returns {Promise<object>} estimator result (same shape as sync functions)
  */
 export function runInWorker(osuText, options) {
+    if (activeRequest) {
+        activeRequest.cancel();
+        terminateWorker();
+    }
+
     const w = ensureWorker();
     if (!w) return null; // caller should fall back to sync
 
-    // Cancel all previous pending requests by advancing latestId
     const id = generateId();
-    latestId = id;
 
     return new Promise((resolve, reject) => {
-        const handler = (event) => {
+        let settled = false;
+        let timeoutId = null;
+
+        const cleanup = () => {
+            w.removeEventListener("message", onMessage);
+            w.removeEventListener("error", onError);
+            if (timeoutId != null) clearTimeout(timeoutId);
+            if (activeRequest?.id === id) activeRequest = null;
+        };
+
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+
+        const onMessage = (event) => {
             const { id: respId, result, error } = event.data || {};
-
-            // Discard responses from stale requests
-            if (respId !== latestId) return;
-
-            w.removeEventListener("message", handler);
+            if (respId !== id) return;
             if (error) {
-                reject(new Error(error));
+                finish(reject, new Error(error));
             } else {
-                resolve(result);
+                finish(resolve, result);
             }
         };
 
-        w.addEventListener("message", handler);
-        w.postMessage({ id, osuText, options });
+        const onError = (event) => {
+            const message = event?.message || "Worker crashed";
+            finish(reject, new Error(message));
+            terminateWorker(w);
+        };
 
-        // Safety timeout (30s) to prevent hanging
-        setTimeout(() => {
-            if (id === latestId) {
-                w.removeEventListener("message", handler);
-                reject(new Error("Worker timeout"));
-            }
+        activeRequest = {
+            id,
+            cancel: () => finish(reject, makeCancellationError()),
+        };
+
+        w.addEventListener("message", onMessage);
+        w.addEventListener("error", onError);
+
+        timeoutId = setTimeout(() => {
+            finish(reject, new Error("Worker timeout"));
+            terminateWorker(w);
         }, 30000);
+
+        try {
+            w.postMessage({ id, osuText, options });
+        } catch (error) {
+            finish(reject, error instanceof Error ? error : new Error(String(error)));
+            terminateWorker(w);
+        }
     });
 }
 

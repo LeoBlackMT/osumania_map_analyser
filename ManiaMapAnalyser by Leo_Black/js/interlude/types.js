@@ -4,6 +4,8 @@ export const NoteType = Object.freeze({
     HOLDHEAD: 2,
     HOLDBODY: 3,
     HOLDTAIL: 4,
+    HOLDTAIL_NORMAL: 5,
+    HOLDTAIL_HOLDHEAD: 6,
 });
 
 export function createEmptyRow(keyCount) {
@@ -11,7 +13,10 @@ export function createEmptyRow(keyCount) {
 }
 
 export function isPlayableNoteType(noteType) {
-    return noteType === NoteType.NORMAL || noteType === NoteType.HOLDHEAD;
+    return noteType === NoteType.NORMAL
+        || noteType === NoteType.HOLDHEAD
+        || noteType === NoteType.HOLDTAIL_NORMAL
+        || noteType === NoteType.HOLDTAIL_HOLDHEAD;
 }
 
 export function isRowEmpty(row) {

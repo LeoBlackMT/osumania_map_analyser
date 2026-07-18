@@ -16,6 +16,14 @@ function setNoteType(row, key, noteType) {
 
     if (row[key] === NoteType.NOTHING) {
         row[key] = noteType;
+    } else if (row[key] === NoteType.HOLDTAIL && noteType === NoteType.NORMAL) {
+        row[key] = NoteType.HOLDTAIL_NORMAL;
+    } else if (row[key] === NoteType.HOLDTAIL && noteType === NoteType.HOLDHEAD) {
+        row[key] = NoteType.HOLDTAIL_HOLDHEAD;
+    } else if (noteType === NoteType.HOLDTAIL && row[key] === NoteType.NORMAL) {
+        row[key] = NoteType.HOLDTAIL_NORMAL;
+    } else if (noteType === NoteType.HOLDTAIL && row[key] === NoteType.HOLDHEAD) {
+        row[key] = NoteType.HOLDTAIL_HOLDHEAD;
     }
 }
 
@@ -77,7 +85,13 @@ function buildRowsFromParsed(parsed) {
     const noteTypes = Array.isArray(parsed?.noteTypes) ? parsed.noteTypes : [];
 
     const rowMap = new Map();
-    const holdSpans = [];
+    const holdStartsAt = new Map();
+    const holdEndsAt = new Map();
+
+    const addHoldEvent = (events, time, key) => {
+        if (!events.has(time)) events.set(time, []);
+        events.get(time).push(key);
+    };
 
     for (let i = 0; i < columns.length; i += 1) {
         const key = Number(columns[i]);
@@ -97,7 +111,8 @@ function buildRowsFromParsed(parsed) {
             if (Number.isFinite(endTime) && endTime > startTime) {
                 const endRow = getOrCreateRow(rowMap, keyCount, endTime);
                 setNoteType(endRow, key, NoteType.HOLDTAIL);
-                holdSpans.push({ key, startTime, endTime });
+                addHoldEvent(holdStartsAt, startTime, key);
+                addHoldEvent(holdEndsAt, endTime, key);
             }
         } else {
             setNoteType(startRow, key, NoteType.NORMAL);
@@ -106,17 +121,21 @@ function buildRowsFromParsed(parsed) {
 
     const sortedTimes = Array.from(rowMap.keys()).sort((a, b) => a - b);
 
-    for (let i = 0; i < holdSpans.length; i += 1) {
-        const { key, startTime, endTime } = holdSpans[i];
-        for (let t = 0; t < sortedTimes.length; t += 1) {
-            const time = sortedTimes[t];
-            if (time <= startTime || time >= endTime) {
-                continue;
-            }
-            const row = rowMap.get(time);
-            if (row[key] === NoteType.NOTHING) {
+    const activeHolds = new Array(keyCount).fill(0);
+    for (const time of sortedTimes) {
+        for (const key of holdEndsAt.get(time) || []) {
+            activeHolds[key] = Math.max(0, activeHolds[key] - 1);
+        }
+
+        const row = rowMap.get(time);
+        for (let key = 0; key < keyCount; key += 1) {
+            if (activeHolds[key] > 0 && row[key] === NoteType.NOTHING) {
                 row[key] = NoteType.HOLDBODY;
             }
+        }
+
+        for (const key of holdStartsAt.get(time) || []) {
+            activeHolds[key] += 1;
         }
     }
 

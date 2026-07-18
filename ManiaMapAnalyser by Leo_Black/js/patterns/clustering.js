@@ -5,14 +5,14 @@ function patternAmount(sortedStartsEnds) {
     let totalTime = 0;
     let [currentStart, currentEnd] = sortedStartsEnds[0];
 
-    for (const [start, end] of sortedStartsEnds) {
-    if (currentEnd < end) {
+    for (const [start, end] of sortedStartsEnds.slice(1)) {
+        if (start > currentEnd) {
             totalTime += (currentEnd - currentStart);
             currentStart = start;
             currentEnd = end;
-    } else {
+        } else {
             currentEnd = Math.max(currentEnd, end);
-    }
+        }
     }
 
     totalTime += (currentEnd - currentStart);

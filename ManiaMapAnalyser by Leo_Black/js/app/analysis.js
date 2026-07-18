@@ -422,7 +422,8 @@ export async function fetchBeatmapFile(reason) {
                 nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
                 pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
             } else if (estimatorAlgorithm === "Mixed") {
-                selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
+                const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
+                selectedRework = wp ? await wp : runMixedEstimatorFromText(rawText, estimatorOptions);
                 nextEstDiff = selectedRework.estDiff;
                 nextNumericDifficulty = selectedRework.numericDifficulty;
                 nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
@@ -466,6 +467,7 @@ export async function fetchBeatmapFile(reason) {
             reworkMetaEl.innerHTML = resolvedMetaHtml;
             reworkMetaEl.classList.remove("loading");
         } catch (error) {
+            if (isStaleRequest()) return;
             resetReworkDisplay();
             if (state.diffText === "Graph" || showsGraph) {
                 showDiffGraphError("Graph unavailable");

@@ -210,9 +210,10 @@
         const countEl = document.getElementById("count");
         const pauseBtn = document.getElementById("pause-btn");
         const clearBtn = document.getElementById("clear-btn");
+        const socketHost = window.location.host || "127.0.0.1:24050";
         const estimatorPanel = createEstimatorDebugPanel({
             root: document.getElementById("estimator-debug-root"),
-            socketHost: "127.0.0.1:24050",
+            socketHost,
         });
 
         let paused = false;
@@ -238,7 +239,7 @@
             updateCount();
         });
 
-        const socket = new WebSocketManager("127.0.0.1:24050");
+        const socket = new WebSocketManager(socketHost);
         setConnectionState("warn", "Connecting...");
 
         socket.api_v2((data) => {

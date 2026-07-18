@@ -230,13 +230,6 @@ export function updateCardPlayVisibility() {
         return;
     }
 
-    // Always hide the card when on the menu screen.
-    if (state.clientStateName === "menu") {
-        mainCardEl.classList.toggle("card-hidden-by-play", true);
-        mainCardEl.setAttribute("aria-hidden", "true");
-        return;
-    }
-
     let shouldHide = false;
     if (state.cardVisibility === "DuringPlay") {
         shouldHide = !state.isInPlayState;

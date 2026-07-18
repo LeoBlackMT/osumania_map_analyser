@@ -382,8 +382,8 @@ export function renderTable(rows) {
                 `<td class="compare-col">${escapeHtml(compareGotText)}</td>`,
                 `<td class="num compare-col">${formatNumber(row.compareDeltaAbs)}</td>`,
                 `<td class="winner ${winnerClass} compare-col">${escapeHtml(winnerLabel)}</td>`,
-                `<td class="actions-col"><div class="row-actions"><a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t("index.table.actions.search", "Search beatmapsets"))}">🔎</a>${hasBid
-                    ? `<a class="icon-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t("index.table.actions.download", "Download .osu"))}">⬇</a>`
+                `<td class="actions-col"><div class="row-actions"><a class="icon-btn" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t("index.table.actions.search", "Search beatmapsets"))}" aria-label="${escapeHtml(t("index.table.actions.search", "Search beatmapsets"))}">🔎</a>${hasBid
+                    ? `<a class="icon-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(t("index.table.actions.download", "Download .osu"))}" aria-label="${escapeHtml(t("index.table.actions.download", "Download .osu"))}">⬇</a>`
                     : `<span class="icon-btn disabled" title="${escapeHtml(t("index.table.actions.noBid", "No bid"))}">⬇</span>`}</div></td>`,
                 "</tr>",
             ].join("");
@@ -398,8 +398,10 @@ export function updateSortVisual() {
         const original = head.textContent.replace(/[\u2191\u2193]/g, "").trim();
         if (key === state.sortKey) {
             head.textContent = `${original} ${state.sortDirection === "asc" ? "\u2191" : "\u2193"}`;
+            head.setAttribute("aria-sort", state.sortDirection === "asc" ? "ascending" : "descending");
         } else {
             head.textContent = original;
+            head.setAttribute("aria-sort", "none");
         }
     });
 }

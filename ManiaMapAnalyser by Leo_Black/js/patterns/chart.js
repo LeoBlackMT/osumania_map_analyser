@@ -4,6 +4,8 @@
     HOLDHEAD: 2,
     HOLDBODY: 3,
     HOLDTAIL: 4,
+    HOLDTAIL_NORMAL: 5,
+    HOLDTAIL_HOLDHEAD: 6,
 };
 
 export function createTimeItem(time, data) {

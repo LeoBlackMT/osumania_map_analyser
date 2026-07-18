@@ -1,5 +1,9 @@
 export function toNumberOrNull(value) {
-    const parsed = Number(String(value ?? "").trim());
+    const text = String(value ?? "").trim();
+    if (!text) {
+        return null;
+    }
+    const parsed = Number(text);
     return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -67,14 +71,19 @@ export function parseBenchmarkCsv(csvText) {
             continue;
         }
 
+        const expected = toNumberOrNull(parsed.expectedRaw);
+        const got = toNumberOrNull(parsed.gotRaw);
+        const hasPair = Number.isFinite(expected) && Number.isFinite(got);
+        const delta = hasPair ? expected - got : null;
+
         rows.push({
             ...parsed,
             subPattern: parsed.subPattern || "Unsigned",
             bid: toBidOrNull(parsed.bidRaw),
-            expected: toNumberOrNull(parsed.expectedRaw),
-            got: toNumberOrNull(parsed.gotRaw),
-            delta: toNumberOrNull(parsed.deltaRaw),
-            deltaAbs: toNumberOrNull(parsed.deltaAbsRaw),
+            expected,
+            got,
+            delta,
+            deltaAbs: hasPair ? Math.abs(delta) : null,
         });
     }
 

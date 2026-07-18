@@ -19,7 +19,7 @@
                         <path d="M12 3.2l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.5 6.8 19.2l1-5.8L3.6 9.3l5.8-.8L12 3.2z"></path>
                     </svg>
                 </span>
-                <p id="status" class="status">Waiting to load beatmap file...</p>
+                <p id="status" class="status" role="status" aria-live="polite">Waiting to load beatmap file...</p>
             </div>
 
             <div class="star-block" id="rework">
@@ -81,7 +81,7 @@
             </div>
             <div id="pause-count" class="pause-count" hidden></div>
 
-            <div id="card-overlay" class="card-overlay" hidden>
+            <div id="card-overlay" class="card-overlay" role="status" aria-live="assertive" hidden>
                 <div id="overlay-spinner" class="overlay-spinner" aria-hidden="true"></div>
                 <p id="overlay-title" class="overlay-title">Loading</p>
                 <pre id="overlay-message" class="overlay-message"></pre>

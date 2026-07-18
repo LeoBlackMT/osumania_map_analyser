@@ -188,9 +188,14 @@ export class BenchmarkCharts {
 
     renderScatter(summary) {
         const points = BAND_ORDER.flatMap((key) => summary.scatterByBand[key] || []);
-        const values = points.flatMap((row) => [row.expected, row.got]);
-        const min = values.length ? Math.min(...values) - 0.6 : 0;
-        const max = values.length ? Math.max(...values) + 0.6 : 10;
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+        for (const row of points) {
+            minValue = Math.min(minValue, row.expected, row.got);
+            maxValue = Math.max(maxValue, row.expected, row.got);
+        }
+        const min = Number.isFinite(minValue) ? minValue - 0.6 : 0;
+        const max = Number.isFinite(maxValue) ? maxValue + 0.6 : 10;
 
         const datasets = BAND_ORDER.map((key) => ({
             label: t(`band.${key}`, BAND_META[key].label),

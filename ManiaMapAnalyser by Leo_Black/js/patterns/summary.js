@@ -15,8 +15,8 @@ function hbRowRatio(chart) {
     let hbRows = 0;
     for (const row of rows) {
         const data = Array.isArray(row?.Data) ? row.Data : [];
-        const hasHead = data.some((n) => n === NoteType.HOLDHEAD);
-        const hasNormal = data.some((n) => n === NoteType.NORMAL);
+        const hasHead = data.some((n) => n === NoteType.HOLDHEAD || n === NoteType.HOLDTAIL_HOLDHEAD);
+        const hasNormal = data.some((n) => n === NoteType.NORMAL || n === NoteType.HOLDTAIL_NORMAL);
         if (hasHead && hasNormal) {
             hbRows += 1;
         }

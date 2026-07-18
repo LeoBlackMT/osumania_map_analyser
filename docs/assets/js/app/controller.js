@@ -47,6 +47,10 @@ import {
 } from "./view.js";
 import { downloadCurrentDataSnapshot, exposeDashboardApi } from "./exporter.js";
 
+let viewRequestSeq = 0;
+let filterRenderTimerId = 0;
+const FILTER_RENDER_DEBOUNCE_MS = 120;
+
 function syncBaseScopeVisibility(rows) {
     const meta = buildAlgorithmMeta(rows);
     state.metaCache.set(state.currentAlgorithm, meta);
@@ -207,10 +211,24 @@ function applyFiltersAndRender() {
     }
 }
 
-async function loadCurrentView(options = {}) {
-    const forceReload = Boolean(options.forceReload);
+function scheduleFilterRender() {
+    if (filterRenderTimerId) {
+        clearTimeout(filterRenderTimerId);
+    }
+    filterRenderTimerId = setTimeout(() => {
+        filterRenderTimerId = 0;
+        applyFiltersAndRender();
+    }, FILTER_RENDER_DEBOUNCE_MS);
+}
 
-    if (!state.currentAlgorithm) {
+async function loadCurrentView(options = {}) {
+    const requestSeq = ++viewRequestSeq;
+    const isStaleRequest = () => requestSeq !== viewRequestSeq;
+    const forceReload = Boolean(options.forceReload);
+    const baseAlgorithm = state.currentAlgorithm;
+    const compareAlgorithm = state.compareAlgorithm;
+
+    if (!baseAlgorithm) {
         setStatus(t("status.waiting", "Waiting"), "warn");
         setDatasetInfo(t("status.noAlgorithmSelected", "No Algorithm Selected."));
         applyEmptyDashboard();
@@ -218,17 +236,22 @@ async function loadCurrentView(options = {}) {
     }
 
     setStatus(t("status.loading", "Loading..."), "warn");
-    setDatasetInfo(t("status.loadingAlgorithm", "Loading {algorithm}...", { algorithm: state.currentAlgorithm }));
+    setDatasetInfo(t("status.loadingAlgorithm", "Loading {algorithm}...", { algorithm: baseAlgorithm }));
 
     try {
-        state.baseRows = await ensureRowsLoaded(state.currentAlgorithm, forceReload);
+        const baseRows = await ensureRowsLoaded(baseAlgorithm, forceReload);
+        if (isStaleRequest()) return;
+
+        let compareRows = [];
+        if (compareAlgorithm) {
+            compareRows = await ensureRowsLoaded(compareAlgorithm, forceReload);
+            if (isStaleRequest()) return;
+        }
+
+        state.baseRows = baseRows;
+        state.compareRows = compareRows;
         syncBaseScopeVisibility(state.baseRows);
 
-        if (state.compareAlgorithm) {
-            state.compareRows = await ensureRowsLoaded(state.compareAlgorithm, forceReload);
-        } else {
-            state.compareRows = [];
-        }
         syncCompareScopeVisibility(state.compareRows);
 
         state.scopedBaseRows = applyScopeRows(state.baseRows, state.baseMode, SCOPE_LN, SCOPE_ALL);
@@ -253,6 +276,7 @@ async function loadCurrentView(options = {}) {
         setStatus(t("status.ready", "Ready"), "ok");
         syncUrlParams();
     } catch (error) {
+        if (isStaleRequest()) return;
         applyEmptyDashboard();
         setStatus(t("status.error", "Error"), "error");
         setDatasetInfo(`${state.currentAlgorithm} | ${buildFriendlyFetchHint(toErrorMessage(error))}`);
@@ -384,14 +408,14 @@ function bindEvents() {
         });
     }
 
-    dom.searchInput.addEventListener("input", applyFiltersAndRender);
+    dom.searchInput.addEventListener("input", scheduleFilterRender);
     dom.patternFilter.addEventListener("change", applyFiltersAndRender);
     dom.subPatternFilter.addEventListener("change", applyFiltersAndRender);
     dom.bandFilter.addEventListener("change", applyFiltersAndRender);
-    dom.expectedMinFilter.addEventListener("input", applyFiltersAndRender);
-    dom.expectedMaxFilter.addEventListener("input", applyFiltersAndRender);
-    dom.deltaMinFilter.addEventListener("input", applyFiltersAndRender);
-    dom.deltaMaxFilter.addEventListener("input", applyFiltersAndRender);
+    dom.expectedMinFilter.addEventListener("input", scheduleFilterRender);
+    dom.expectedMaxFilter.addEventListener("input", scheduleFilterRender);
+    dom.deltaMinFilter.addEventListener("input", scheduleFilterRender);
+    dom.deltaMaxFilter.addEventListener("input", scheduleFilterRender);
 
     dom.clearFilterButton.addEventListener("click", () => {
         dom.searchInput.value = "";
@@ -407,7 +431,7 @@ function bindEvents() {
 
     const sortableHeaders = dom.resultTable.querySelectorAll("thead th[data-sort]");
     sortableHeaders.forEach((header) => {
-        header.addEventListener("click", () => {
+        const applySort = () => {
             const key = header.getAttribute("data-sort");
             if (!key) {
                 return;
@@ -422,6 +446,14 @@ function bindEvents() {
 
             updateSortVisual();
             applyFiltersAndRender();
+        };
+        header.tabIndex = 0;
+        header.addEventListener("click", applySort);
+        header.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                applySort();
+            }
         });
     });
 }

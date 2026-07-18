@@ -28,6 +28,7 @@ import { updateStarTipDots } from "./display.js";
 const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";
 const GRAPH_TIME_EPSILON_MS = 1e-3;
+const GRAPH_IDLE_POLL_MS = 250;
 
 function getGraphLineVerticalBounds(view) {
     const yTop = GRAPH_PADDING_TOP;
@@ -498,8 +499,10 @@ export function startGraphAnimationLoop() {
     const tick = () => {
         if (hasAnyGraphModeEnabled()) {
             updateGraphCursor();
+            requestAnimationFrame(tick);
+            return;
         }
-        requestAnimationFrame(tick);
+        setTimeout(tick, GRAPH_IDLE_POLL_MS);
     };
 
     requestAnimationFrame(tick);

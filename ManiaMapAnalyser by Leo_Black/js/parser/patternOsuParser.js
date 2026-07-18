@@ -51,7 +51,7 @@ function convertHitObjects(objects, keys) {
     function finishHolds(time) {
         let earliest = findEarliestUpcomingRelease(holdingUntil);
 
-        while (earliest < time) {
+        while (Number.isFinite(earliest) && earliest <= time) {
             for (let k = 0; k < keys; k += 1) {
                 if (holdingUntil[k] === earliest) {
                     if (earliest > lastRow.Time) {
@@ -91,7 +91,12 @@ function convertHitObjects(objects, keys) {
         const cur = lastRow.Data[column];
         if (cur === NoteType.NOTHING) {
             lastRow.Data[column] = NoteType.NORMAL;
-        } else if (cur === NoteType.NORMAL || cur === NoteType.HOLDHEAD) {
+        } else if (cur === NoteType.HOLDTAIL) {
+            lastRow.Data[column] = NoteType.HOLDTAIL_NORMAL;
+        } else if (cur === NoteType.NORMAL
+            || cur === NoteType.HOLDHEAD
+            || cur === NoteType.HOLDTAIL_NORMAL
+            || cur === NoteType.HOLDTAIL_HOLDHEAD) {
             // keep stacked note behavior
         } else {
             throw new Error(`Stacked note at ${time}, column ${column + 1}, coincides with ${cur}`);
@@ -112,6 +117,11 @@ function convertHitObjects(objects, keys) {
         const cur = lastRow.Data[column];
         if (cur === NoteType.NOTHING || cur === NoteType.NORMAL) {
             lastRow.Data[column] = NoteType.HOLDHEAD;
+            holdingUntil[column] = endTime;
+        } else if (cur === NoteType.HOLDTAIL) {
+            lastRow.Data[column] = NoteType.HOLDTAIL_HOLDHEAD;
+            holdingUntil[column] = endTime;
+        } else if (cur === NoteType.HOLDTAIL_NORMAL || cur === NoteType.HOLDTAIL_HOLDHEAD) {
             holdingUntil[column] = endTime;
         } else {
             throw new Error(`Stacked LN at ${time}, column ${column + 1}, head coincides with ${cur}`);
@@ -253,13 +263,20 @@ export function parseOsuManiaFromText(osuText) {
     const lines = osuText.split(/\r?\n/);
     const sections = parseSections(lines);
 
-    const diff = parseKV(sections.Difficulty || []);
-    let keys = 4;
-    try {
-        keys = Math.trunc(Number.parseFloat(diff.CircleSize || "4"));
-    } catch {
-        keys = 4;
+    const general = parseKV(sections.General || []);
+    if (general.Mode != null && String(general.Mode).trim() !== "3") {
+        throw new Error("Beatmap mode is not mania");
     }
+
+    const diff = parseKV(sections.Difficulty || []);
+    const circleSizeText = String(diff.CircleSize ?? "4").trim();
+    const parsedKeys = circleSizeText === "0"
+        ? 10
+        : Math.trunc(Number.parseFloat(circleSizeText));
+    if (!Number.isFinite(parsedKeys) || parsedKeys < 1 || parsedKeys > 18) {
+        throw new Error(`Invalid keycount: ${circleSizeText || "missing"}`);
+    }
+    const keys = parsedKeys;
 
     const timingPoints = parseTimingPoints(sections.TimingPoints || []);
     const hitObjects = parseHitObjects(sections.HitObjects || []);

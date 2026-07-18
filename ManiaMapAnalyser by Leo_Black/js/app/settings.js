@@ -231,7 +231,13 @@ function applyThemeEffectClasses() {
     }
     root.classList.toggle("ma-theme-osu", state.enableOsuTheme);
     root.classList.toggle("ma-fx-triangles", state.enableOsuTheme && state.enableFloatingTriangles);
-    root.classList.toggle("ma-fx-cover", state.enableCoverArt);
+    root.classList.toggle("ma-fx-cover", state.enableOsuTheme && state.enableCoverArt);
+}
+
+function ensureTriangleFieldIfEnabled() {
+    if (state.enableOsuTheme && state.enableFloatingTriangles) {
+        initTriangleField();
+    }
 }
 
 export function applyEnableOsuThemeSetting(value) {
@@ -239,6 +245,9 @@ export function applyEnableOsuThemeSetting(value) {
     const changed = state.enableOsuTheme !== next;
     state.enableOsuTheme = next;
     applyThemeEffectClasses();
+    if (next && state.enableCoverArt && state.lastBeatmapIdentity) {
+        applyCoverThemeForBeatmap(state.lastBeatmapIdentity).catch(() => {});
+    }
     return changed;
 }
 
@@ -260,7 +269,7 @@ export function applyEnableCoverArtSetting(value) {
         // Drop --ma-accent/--ma-cover back to the default osu pink and clear the
         // cached identity so re-enabling re-extracts color for the current map.
         resetCoverTheme();
-    } else if (changed && state.lastBeatmapIdentity) {
+    } else if (changed && state.enableOsuTheme && state.lastBeatmapIdentity) {
         applyCoverThemeForBeatmap(state.lastBeatmapIdentity).catch(() => {});
     }
 
@@ -275,8 +284,13 @@ export function applyCustomBackgroundColorSetting(value) {
     const root = document.documentElement;
     if (next !== "#000000") {
         root.style.setProperty("--ma-accent", next);
+    } else if (changed) {
+        root.style.removeProperty("--ma-accent");
+        resetCoverTheme();
+        if (state.enableCoverArt && state.lastBeatmapIdentity) {
+            applyCoverThemeForBeatmap(state.lastBeatmapIdentity).catch(() => {});
+        }
     }
-    // When #000000, do NOT override — let coverTheme auto-sampling take over
 
     return changed;
 }
@@ -696,6 +710,7 @@ export function setupSettingsCommandListener() {
         const floatingTrianglesChanged = applyIf("enableFloatingTriangles", applyEnableFloatingTrianglesSetting, parseEnableFloatingTrianglesValue(payload));
         const coverArtChanged = applyIf("enableCoverArt", applyEnableCoverArtSetting, parseEnableCoverArtValue(payload));
         const customColorChanged = applyIf("customBackgroundColor", applyCustomBackgroundColorSetting, parseCustomBackgroundColorValue(payload));
+        ensureTriangleFieldIfEnabled();
 
         const legacyAutoMode = parseAutoModeValue(payload);
         if (legacyAutoMode && !isAutoDisplayEnabled()) {
@@ -832,6 +847,7 @@ export async function loadSettings() {
         applyEnableCoverArtSetting(parseEnableCoverArtValue(source));
         applyCustomBackgroundColorSetting(parseCustomBackgroundColorValue(source));
         applyUseSvDetectionSetting(parseSvDetectionValue(source));
+        ensureTriangleFieldIfEnabled();
     }
 
     // Apply file settings as baseline immediately

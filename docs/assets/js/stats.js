@@ -191,12 +191,8 @@ export function computeSummary(rows) {
             continue;
         }
 
-        const delta = Number.isFinite(row.delta)
-            ? row.delta
-            : expected - got;
-        const deltaAbs = Number.isFinite(row.deltaAbs)
-            ? row.deltaAbs
-            : Math.abs(delta);
+        const delta = expected - got;
+        const deltaAbs = Math.abs(delta);
 
         const band = classifyBand(deltaAbs);
         bandCounts[band] += 1;

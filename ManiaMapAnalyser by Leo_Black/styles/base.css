@@ -30,8 +30,8 @@ body {
 }
 
 .dashboard {
-    width: 475px;
-    min-width: 475px;
+    width: min(475px, 100%);
+    min-width: 0;
     max-width: 475px;
     margin: 0;
     display: grid;

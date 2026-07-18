@@ -89,18 +89,17 @@ function appendCoreMatches(results, pattern, coreN, specificList, remaining, las
 }
 
 function matches(specificPatterns, lastNote, primitives) {
-    let remaining = [...primitives];
     const results = [];
+    const maxLookaheadRows = 8;
 
-    while (remaining.length > 0) {
-    appendCoreMatches(results, CorePattern.Stream, CORE_STREAM(remaining), specificPatterns.Stream, remaining, lastNote);
-    appendCoreMatches(results, CorePattern.Chordstream, CORE_CHORDSTREAM(remaining), specificPatterns.Chordstream, remaining, lastNote);
-    appendCoreMatches(results, CorePattern.Jacks, CORE_JACKS(remaining), specificPatterns.Jack, remaining, lastNote);
-    appendCoreMatches(results, CorePattern.Coordination, CORE_COORDINATION(remaining), specificPatterns.Coordination, remaining, lastNote);
-    appendCoreMatches(results, CorePattern.Density, CORE_DENSITY(remaining), specificPatterns.Density, remaining, lastNote);
-    appendCoreMatches(results, CorePattern.Wildcard, CORE_WILDCARD(remaining), specificPatterns.Wildcard, remaining, lastNote);
-
-    remaining = remaining.slice(1);
+    for (let index = 0; index < primitives.length; index += 1) {
+        const remaining = primitives.slice(index, index + maxLookaheadRows);
+        appendCoreMatches(results, CorePattern.Stream, CORE_STREAM(remaining), specificPatterns.Stream, remaining, lastNote);
+        appendCoreMatches(results, CorePattern.Chordstream, CORE_CHORDSTREAM(remaining), specificPatterns.Chordstream, remaining, lastNote);
+        appendCoreMatches(results, CorePattern.Jacks, CORE_JACKS(remaining), specificPatterns.Jack, remaining, lastNote);
+        appendCoreMatches(results, CorePattern.Coordination, CORE_COORDINATION(remaining), specificPatterns.Coordination, remaining, lastNote);
+        appendCoreMatches(results, CorePattern.Density, CORE_DENSITY(remaining), specificPatterns.Density, remaining, lastNote);
+        appendCoreMatches(results, CorePattern.Wildcard, CORE_WILDCARD(remaining), specificPatterns.Wildcard, remaining, lastNote);
     }
 
     return results;

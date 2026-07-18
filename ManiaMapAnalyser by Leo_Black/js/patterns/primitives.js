@@ -9,6 +9,24 @@ export const Direction = {
     INWARDS: "Inwards",
 };
 
+function isNormal(noteType) {
+    return noteType === NoteType.NORMAL || noteType === NoteType.HOLDTAIL_NORMAL;
+}
+
+function isHoldHead(noteType) {
+    return noteType === NoteType.HOLDHEAD || noteType === NoteType.HOLDTAIL_HOLDHEAD;
+}
+
+function isHoldTail(noteType) {
+    return noteType === NoteType.HOLDTAIL
+        || noteType === NoteType.HOLDTAIL_NORMAL
+        || noteType === NoteType.HOLDTAIL_HOLDHEAD;
+}
+
+function isPlayable(noteType) {
+    return isNormal(noteType) || isHoldHead(noteType);
+}
+
 function keysOnLeftHand(keymode) {
     if (keymode === 3) return 2;
     if (keymode === 4) return 2;
@@ -61,7 +79,7 @@ export function calculatePrimitives(chart) {
 
     let previousRow = [];
     for (let k = 0; k < chart.Keys; k += 1) {
-    if (firstRow[k] === NoteType.NORMAL || firstRow[k] === NoteType.HOLDHEAD) {
+    if (isPlayable(firstRow[k])) {
             previousRow.push(k);
     }
     }
@@ -86,11 +104,11 @@ export function calculatePrimitives(chart) {
 
     for (let k = 0; k < chart.Keys; k += 1) {
             const n = row[k];
-            if (n === NoteType.NORMAL || n === NoteType.HOLDHEAD) currentRow.push(k);
-            if (n === NoteType.NORMAL) normalNotes.push(k);
-            if (n === NoteType.HOLDHEAD) lnHeads.push(k);
-            else if (n === NoteType.HOLDBODY) lnBodies.push(k);
-            else if (n === NoteType.HOLDTAIL) lnTails.push(k);
+            if (isPlayable(n)) currentRow.push(k);
+            if (isNormal(n)) normalNotes.push(k);
+            if (isHoldHead(n)) lnHeads.push(k);
+            if (n === NoteType.HOLDBODY) lnBodies.push(k);
+            if (isHoldTail(n)) lnTails.push(k);
     }
 
     if (!currentRow.length && !lnHeads.length && !lnBodies.length && !lnTails.length) {
@@ -138,8 +156,8 @@ export function lnPercent(chart) {
 
     for (const item of chart.Notes) {
     for (const n of item.Data) {
-            if (n === NoteType.NORMAL) notes += 1;
-            else if (n === NoteType.HOLDHEAD) {
+            if (isNormal(n)) notes += 1;
+            else if (isHoldHead(n)) {
         notes += 1;
         lnotes += 1;
             }

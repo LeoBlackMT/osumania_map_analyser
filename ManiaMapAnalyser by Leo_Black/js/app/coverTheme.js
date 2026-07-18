@@ -22,6 +22,7 @@ let lastThemedIdentity = "";
 
 /** 把当前主题恢复成默认（暗色玻璃）或保持自定义颜色、清掉封面。 */
 export function resetCoverTheme() {
+    themeRequestSeq += 1;
     const root = document.documentElement;
     // If customBackgroundColor is active, keep it. Otherwise remove --ma-accent
     // so the :root default or osu theme takes over, effectively falling back
@@ -44,7 +45,7 @@ export function resetCoverTheme() {
  * @param {string} identity 谱面标识（socketHandlers 里算好的 beatmap identity）
  */
 export async function applyCoverThemeForBeatmap(identity) {
-    if (!identity) {
+    if (!identity || !state.enableCoverArt) {
         return;
     }
     if (identity === lastThemedIdentity) {
@@ -67,7 +68,7 @@ export async function applyCoverThemeForBeatmap(identity) {
         return;
     }
 
-    if (seq !== themeRequestSeq) {
+    if (seq !== themeRequestSeq || !state.enableCoverArt) {
         return; // 已有更新的换图请求，丢弃本次结果。
     }
 
@@ -78,7 +79,7 @@ export async function applyCoverThemeForBeatmap(identity) {
         accent = null; // 读像素被污染等：accent 退默认，封面仍照垫。
     }
 
-    if (seq !== themeRequestSeq) {
+    if (seq !== themeRequestSeq || !state.enableCoverArt) {
         return;
     }
 

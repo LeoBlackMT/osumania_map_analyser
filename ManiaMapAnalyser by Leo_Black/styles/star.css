@@ -159,7 +159,7 @@
 .top-right-capsule.has-unit::after {
     content: attr(data-unit);
     position: absolute;
-    right: -20px;
+    right: -8px;
     bottom: -2px;
     font-family: "Outfit", sans-serif;
     font-size: 10px;

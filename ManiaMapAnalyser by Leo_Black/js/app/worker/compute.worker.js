@@ -11,8 +11,15 @@ import { runSunnyEstimatorFromText } from "../../estimator/sunnyEstimator.js";
 import { runDanielEstimatorFromText } from "../../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../../estimator/roxyEstimator.js";
+import { runMixedEstimatorFromText } from "../../estimator/mixedEstimator.js";
 
-const ESTIMATORS = { Sunny: "Sunny", Daniel: "Daniel", Azusa: "Azusa", Roxy: "Roxy" };
+const ESTIMATORS = {
+    Sunny: "Sunny",
+    Daniel: "Daniel",
+    Azusa: "Azusa",
+    Roxy: "Roxy",
+    Mixed: "Mixed",
+};
 
 self.onmessage = (event) => {
     const { id, osuText, options } = event.data || {};
@@ -45,6 +52,8 @@ self.onmessage = (event) => {
                 result = runSunnyEstimatorFromText(osuText, options);
                 actualEstimatorAlgorithm = "Sunny";
             }
+        } else if (estimator === ESTIMATORS.Mixed) {
+            result = runMixedEstimatorFromText(osuText, options);
         } else {
             result = runSunnyEstimatorFromText(osuText, options);
             actualEstimatorAlgorithm = "Sunny";
