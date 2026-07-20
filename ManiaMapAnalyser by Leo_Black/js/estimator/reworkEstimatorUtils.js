@@ -114,8 +114,13 @@ export function estDiff2(sr, srLN, columnCount) {
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
     if (srLN <= 0) return rcDiff;
 
+    // 如果 RC 与 LN 差距大于 20% 且 LN 未达到 LN 5 mid，判定为装饰 LN，不显示
+    const gapRatio = sr > 0 ? (sr - srLN) / sr : 0;
     const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
     const lnDiff = intervalLookup(srLN, lnTable, "Unknown LN difficulty");
+    if (gapRatio > 0.2 && srLN < lnTable[0][0]) {
+        return rcDiff;
+    }
     return `${rcDiff} || ${lnDiff}`;
 }
 
