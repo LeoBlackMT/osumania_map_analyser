@@ -4,6 +4,9 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { evaluateRoxyMetaModel, ROXY_META_FEATURE_NAMES } from "./roxyMetaModel.generated.js";
 import { numericToRcLabel, rcLabelToNumeric } from "./rcDifficultyFormat.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
+import { calculate } from "../rework/sunnyAlgorithm.js";
+import { calculateLN } from "../rework/sunnyWindowAlgorithm.js";
+import { DAN_INDEX } from "./intervals/index.js";
 
 const ROXY_CONFIG = Object.freeze({
     rcLnRatioLimit: 0.18,
@@ -1503,10 +1506,38 @@ export function runRoxyEstimatorFromText(osuText, options = {}) {
             : 0;
         unguardedNumeric = clamp(unguardedNumeric + azusaHighGapLift, -2, ROXY_NUMERIC_OUTPUT_MAX);
         const finalNumeric = Number(unguardedNumeric.toFixed(2));
-        const estDiff = numericToRoxyRcLabel(finalNumeric);
+        let estDiff = numericToRoxyRcLabel(finalNumeric);
+        const star = Number((3.4 + 0.38 * finalNumeric).toFixed(4));
+
+        // LN Rework: append LN difficulty using shared LN table
+        if (options.enableLNRework === true) {
+            const lnResult = calculateLN(osuText, speedRate, odFlag, null);
+            let lnStar = 0;
+            if (lnResult !== -3 && Array.isArray(lnResult)) lnStar = lnResult[0];
+            if (lnStar > 0) {
+                const keys = DAN_INDEX[columnCount];
+                if (keys) {
+                    const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
+                    // intervalLookup inline
+                    let lnDiff = null;
+                    for (const [lo, hi, name] of lnTable) {
+                        if (lo <= lnStar && lnStar <= hi) { lnDiff = name; break; }
+                    }
+                    if (!lnDiff && lnStar < lnTable[0][0]) lnDiff = `< ${lnTable[0][2]}`;
+                    if (!lnDiff && lnStar > lnTable[lnTable.length - 1][1]) lnDiff = `> ${lnTable[lnTable.length - 1][2]}`;
+                    // Decorative LN mask: use Sunny RC star for gap comparison (same scale as LN star)
+                    const sunnyRC = calculate(osuText, speedRate, odFlag, null);
+                    const sunnyStar = Array.isArray(sunnyRC) ? sunnyRC[0] : star;
+                    const gapRatio = sunnyStar > 0 ? (sunnyStar - lnStar) / sunnyStar : 0;
+                    if (!(gapRatio > 0.2 && lnStar < lnTable[0][0]) && lnDiff) {
+                        estDiff = estDiff + " || " + lnDiff;
+                    }
+                }
+            }
+        }
 
         return {
-            star: Number((3.4 + 0.38 * finalNumeric).toFixed(4)),
+            star,
             lnRatio,
             columnCount,
             estDiff,

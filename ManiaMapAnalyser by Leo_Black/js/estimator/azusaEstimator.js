@@ -2,6 +2,9 @@ import { OsuFileParser } from "../parser/osuFileParser.js";
 import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
+import { calculate } from "../rework/sunnyAlgorithm.js";
+import { calculateLN } from "../rework/sunnyWindowAlgorithm.js";
+import { DAN_INDEX } from "./intervals/index.js";
 
 const AZUSA_CONFIG = Object.freeze({
     rcLnRatioLimit: 0.18,
@@ -946,10 +949,37 @@ export function runAzusaEstimatorFromText(osuText, options = {}) {
     const outputNumeric = calibrateAzusaOutputNumeric(preOutputNumeric);
     const refCorrection = computeReferenceCorrection(outputNumeric, danielNumericForBlend, sunnyNumeric);
     const finalNumeric = clamp(Number(outputNumeric) + refCorrection, -2, 20);
-    const estDiff = numericToRcLabel(finalNumeric);
+    let estDiff = numericToRcLabel(finalNumeric);
+    const star = Number((3.4 + 0.38 * finalNumeric).toFixed(4));
+
+    if (options.enableLNRework === true) {
+        const lnResult = calculateLN(osuText, speedRate, null, null);
+        let lnStar = 0;
+        if (lnResult !== -3 && Array.isArray(lnResult)) lnStar = lnResult[0];
+        if (lnStar > 0) {
+            const keys = DAN_INDEX[columnCount];
+            if (keys) {
+                const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
+                let lnDiff = null;
+                for (const [lo, hi, name] of lnTable) {
+                    if (lo <= lnStar && lnStar <= hi) { lnDiff = name; break; }
+                }
+                if (!lnDiff && lnStar < lnTable[0][0]) lnDiff = `< ${lnTable[0][2]}`;
+                if (!lnDiff && lnStar > lnTable[lnTable.length - 1][1]) lnDiff = `> ${lnTable[lnTable.length - 1][1]}`;
+                const gapRatio = star > 0 ? (star - lnStar) / star : 0;
+                // Use Sunny RC star for gap comparison (same scale as LN star)
+                const sunnyRC = calculate(osuText, speedRate, null, null);
+                const sunnyStar = Array.isArray(sunnyRC) ? sunnyRC[0] : star;
+                const gapRatio2 = sunnyStar > 0 ? (sunnyStar - lnStar) / sunnyStar : 0;
+                if (!(gapRatio2 > 0.2 && lnStar < lnTable[0][0]) && lnDiff) {
+                    estDiff = estDiff + " || " + lnDiff;
+                }
+            }
+        }
+    }
 
     const result = {
-        star: Number((3.4 + 0.38 * finalNumeric).toFixed(4)),
+        star,
         lnRatio,
         columnCount,
         estDiff,

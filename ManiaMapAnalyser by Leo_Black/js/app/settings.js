@@ -30,6 +30,7 @@ import {
     parseCardVisibilityValue,
     parseShowModeTagCapsuleValue,
     parseEnableUpdateCheckValue,
+    parseEnableLNReworkValue,
     parseReverseCardExtendDirectionValue,
     parseUseOsuFontValue,
     parseSrTextValue,
@@ -319,6 +320,13 @@ export function getCounterPathForCommand() {
 export function applyDebugUseAmountSetting(value) {
     const changed = state.debugUseAmount !== value;
     state.debugUseAmount = value;
+    return changed;
+}
+
+export function applyEnableLNReworkSetting(value) {
+    const next = Boolean(value);
+    const changed = state.enableLNRework !== next;
+    state.enableLNRework = next;
     return changed;
 }
 
@@ -672,6 +680,7 @@ export function setupSettingsCommandListener() {
         const contentBarChanged = applyIf("contentBar", applyContentBarSetting, parseContentBarValue(payload));
         const srTextChanged = applyIf("srText", applySrTextSetting, parseSrTextValue(payload));
         const debugChanged = applyIf("debugUseAmount", applyDebugUseAmountSetting, parseDebugUseAmountValue(payload));
+        const lnReworkChanged = applyIf("enableLNRework", applyEnableLNReworkSetting, parseEnableLNReworkValue(payload));
         const diffTextChanged = applyIf("diffText", applyDiffTextSetting, parseDiffTextValue(payload));
         const estimatorChanged = applyIf("estimatorAlgorithm", applyEstimatorAlgorithmSetting, parseEstimatorAlgorithmValue(payload));
         const azusaSunnyReferenceHoChanged = applyIf("azusaSunnyReferenceHo", applyAzusaSunnyReferenceHoSetting, parseAzusaSunnyReferenceHoValue(payload));
@@ -731,11 +740,13 @@ export function setupSettingsCommandListener() {
             || floatingTrianglesChanged
             || coverArtChanged
             || customColorChanged
-            || svChanged;
+            || svChanged
+            || lnReworkChanged;
 
         const recomputeNeeded = contentBarChanged
             || srTextChanged
             || debugChanged
+            || lnReworkChanged
             || diffTextChanged
             || estimatorChanged
             || azusaSunnyReferenceHoChanged
@@ -808,6 +819,7 @@ export async function loadSettings() {
         applyContentBarSetting(parseContentBarValue(source));
         applySrTextSetting(parseSrTextValue(source));
         applyDebugUseAmountSetting(parseDebugUseAmountValue(source));
+        applyEnableLNReworkSetting(parseEnableLNReworkValue(source));
         applyDiffTextSetting(parseDiffTextValue(source));
         applyEstimatorAlgorithmSetting(parseEstimatorAlgorithmValue(source));
         applyAzusaSunnyReferenceHoSetting(parseAzusaSunnyReferenceHoValue(source));

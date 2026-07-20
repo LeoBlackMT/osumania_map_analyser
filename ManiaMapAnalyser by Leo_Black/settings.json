@@ -297,8 +297,7 @@
 			"Roxy",
 			"Sunny",
 			"Daniel",
-			"Companella",
-			"Sunnywindow"
+			"Companella"
 		],
 		"value": "Mixed"
 	},
@@ -369,5 +368,13 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
+	},
+	{
+		"uniqueID": "enableLNRework",
+		"type": "checkbox",
+		"title": "LN Rework (Experimental)",
+		"description": "Extract LN-only segments and calculate the difficulty instead of treating all notes as a whole.",
+		"options": [],
+		"value": false
 	}
 ]

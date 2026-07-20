@@ -291,6 +291,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.debugUseAmount);
     }
 
+    function parseEnableLNReworkValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableLNRework");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableLNRework);
+    }
+
     function parseDiffTextValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "diffText");
         const normalized = normalizeDiffTextValue(value);
@@ -570,5 +575,6 @@ export function createSettingsParsers(appConfig) {
         parseUseOsuFontValue,
         parseSvDetectionValue,
         parseWsEndpointValue,
+        parseEnableLNReworkValue,
     };
 }

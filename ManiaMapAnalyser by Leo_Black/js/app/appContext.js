@@ -75,8 +75,9 @@ export const state = {
     userContentBar: APP_CONFIG.defaults.contentBar,
     userSrText: APP_CONFIG.defaults.srText,
     userDiffText: APP_CONFIG.defaults.diffText,
-    debugUseAmount: APP_CONFIG.defaults.debugUseAmount,
-    useSvDetection: APP_CONFIG.defaults.useSvDetection,
+debugUseAmount: APP_CONFIG.defaults.debugUseAmount,
+useSvDetection: APP_CONFIG.defaults.useSvDetection,
+enableLNRework: APP_CONFIG.defaults.enableLNRework,
     diffText: APP_CONFIG.defaults.diffText,
     estimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
     actualEstimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
@@ -203,6 +204,7 @@ export const {
     parseCustomBackgroundColorValue,
     parseSvDetectionValue,
     parseWsEndpointValue,
+    parseEnableLNReworkValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {
