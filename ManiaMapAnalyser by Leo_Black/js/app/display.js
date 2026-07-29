@@ -432,12 +432,13 @@ export function showNumericStarValue(starValue) {
 }
 
 export function show6KConstValue(constValue) {
-    numericAnimationTokens.delete(reworkStarEl);
     reworkStarEl.classList.remove("category-mode");
-    reworkStarEl.textContent = constValue.toFixed(2);
-    const starBg = starColorFor(constValue);
-    const preferredText = starTextColorFor(constValue);
-    const starText = pickReadableTextColor(constValue, starBg, preferredText);
+    animateNumericCapsuleValue(reworkStarEl, constValue);
+    // LV 5→SR 1, LV 23→SR 10; below LV 5 clamped to SR 1
+    const mappedStar = constValue < 5 ? 1 : 1 + (constValue - 5) * 0.5;
+    const starBg = starColorFor(mappedStar);
+    const preferredText = starTextColorFor(mappedStar);
+    const starText = pickReadableTextColor(mappedStar, starBg, preferredText);
     reworkStarEl.style.backgroundColor = starBg;
     reworkStarEl.style.color = starText;
     reworkStarEl.style.textShadow = "none";
