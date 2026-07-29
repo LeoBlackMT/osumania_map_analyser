@@ -204,6 +204,7 @@ export const {
     parseEnableCoverArtValue,
     parseCustomBackgroundColorValue,
     parseSvDetectionValue,
+    parseDisplay6kLevelValue,
     parseWsEndpointValue,
 } = createSettingsParsers(APP_CONFIG);
 
