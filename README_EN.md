@@ -113,6 +113,10 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **SV Detection**: Whether to enable SV beatmap detection.
         - When enabled, an SV tag will be displayed in the bottom-left corner when speed variation is detected.
         - Note: If the Map Tag Capsule display is not enabled, the SV tag will not be shown.
+    - **Show 6K Constant Rating**: Whether to enable the 6K constant rating display.
+        - When enabled, for 6K beatmaps only, the top-left star capsule will be overridden with the constant rating and display an "LV" badge.
+        - Formula: `sunnySR × 200/81 + 7/6`, rounded to 2 decimal places.
+        - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.

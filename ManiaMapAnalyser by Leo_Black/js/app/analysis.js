@@ -45,6 +45,7 @@ import {
     showInterludeValue,
     showMsdValue,
     showNumericStarValue,
+    show6KConstValue,
     renderFullModeSeparators,
 } from "./display.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
@@ -339,6 +340,7 @@ export async function fetchBeatmapFile(reason) {
         let resolvedMetaHtml = "LN%: -<br/>Keys: -";
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
+        let sixKConst = null;
 
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
@@ -438,6 +440,19 @@ export async function fetchBeatmapFile(reason) {
             rework = selectedRework;
             state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
             if (isStaleRequest()) return;
+
+            // 6K 定数: compute Sunny SR for constant rating display
+            sixKConst = null;
+            if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
+                const sunnySrc = actualEstimatorAlgorithm === "Sunny"
+                    ? Number(rework.star)
+                    : Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star);
+                state.sunnySR = sunnySrc;
+                if (Number.isFinite(sunnySrc) && sunnySrc > 0) {
+                    sixKConst = sunnySrc * 200 / 81 + 7 / 6;
+                    sixKConst = Math.round(sixKConst * 100) / 100;
+                }
+            }
 
             // 拿到结果、即将首次写入 star 区块时再触发入场动画，
             // 与数值/难度名/图表的刷新同帧，换歌才整块入场，换难度只做轻量过渡。
@@ -671,7 +686,12 @@ export async function fetchBeatmapFile(reason) {
         }
 
         let leftCapsuleUnit = "";
-        if (state.srText === "Pattern") {
+
+        // 6K 定数: force override left capsule when enabled and map is 6K
+        if (sixKConst !== null) {
+            show6KConstValue(sixKConst);
+            leftCapsuleUnit = "LV";
+        } else if (state.srText === "Pattern") {
             if (rework) {
                 showCategoryValue(patternReport?.Category || "-");
             }

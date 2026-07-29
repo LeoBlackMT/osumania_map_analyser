@@ -431,6 +431,20 @@ export function showNumericStarValue(starValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
+export function show6KConstValue(constValue) {
+    numericAnimationTokens.delete(reworkStarEl);
+    reworkStarEl.classList.remove("category-mode");
+    reworkStarEl.textContent = constValue.toFixed(2);
+    const starBg = starColorFor(constValue);
+    const preferredText = starTextColorFor(constValue);
+    const starText = pickReadableTextColor(constValue, starBg, preferredText);
+    reworkStarEl.style.backgroundColor = starBg;
+    reworkStarEl.style.color = starText;
+    reworkStarEl.style.textShadow = "none";
+    reworkStarEl.classList.remove("high-contrast");
+    syncLeftUnitBadgeContrast(starText);
+}
+
 function animateNumericCapsuleValue(element, targetValue) {
     if (!element) return;
     const numericTarget = Number(targetValue);
