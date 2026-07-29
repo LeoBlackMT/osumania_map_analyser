@@ -1,13 +1,15 @@
-import { rc4KReform } from "./4k-rc-reform.js";
+import { rc4K } from "./4k-rc.js";
 import { ln4K } from "./4k-ln.js";
 import { rc6K } from "./6k-rc.js";
 import { ln6K } from "./6k-ln.js";
 import { rc7K } from "./7k-rc.js";
 import { ln7K } from "./7k-ln.js";
+import { rc10K } from "./10k-rc.js";
+import { wild7k } from "./7k-wild.js";
 
 export const DAN_INDEX = {
     4: {
-        RC: { default: rc4KReform},
+        RC: { default: rc4K},
         LN: { default: ln4K },
     },
     6: {
@@ -18,4 +20,7 @@ export const DAN_INDEX = {
         RC: { default: rc7K },
         LN: { default: ln7K },
     },
+    10: {
+        RC: { default: rc10K },
+    }
 };
