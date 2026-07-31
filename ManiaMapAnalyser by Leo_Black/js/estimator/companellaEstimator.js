@@ -48,7 +48,7 @@ async function getOrtNamespace() {
         ortNamespacePromise = import(
             IS_NODE
                 ? "./companella/ort/ort.node.min.mjs"
-                : "./companella/ort/ort.min.mjs"
+                : "./companella/ort/ort.wasm.min.mjs"
         ).then(resolveOrtNamespace);
     }
     return ortNamespacePromise;
