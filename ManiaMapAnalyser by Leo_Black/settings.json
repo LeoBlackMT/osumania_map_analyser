@@ -339,6 +339,30 @@
 		"value": true
 	},
 	{
+    	"uniqueID": "enableLNDifficulty",
+    	"type": "checkbox",
+    	"title": "LN Star Rate",
+    	"description": "Show Star Rate values in LN algorithms.",
+    	"options": [],
+    	"value": false
+	},
+	{
+    	"uniqueID": "enableAnalyzeLN",
+    	"type": "checkbox",
+    	"title": "Analyze LN Parts",
+    	"description": "TODO: Write a description here",
+    	"options": [],
+    	"value": false
+	},
+	{
+    	"uniqueID": "enableAlwaysShowLNDifficulty",
+    	"type": "checkbox",
+    	"title": "Always Show LN Difficulty",
+    	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
+    	"options": [],
+    	"value": false
+	},
+	{
 		"uniqueID": "hNetwork",
 		"type": "header",
 		"title": "Network Configuration",
@@ -377,18 +401,5 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
-	},
-	{
-		"uniqueID":"lnStarShowGroups",
-		"type":"commands",
-		"title":"LN Star Show Settings",
-		"description":"Show LN Star when LN Star is in ANY of the Range below.\nIf you don't want to display LN Star after LN Difficulty, delete all commands.",
-		"options":[
-			{"type":"number", "name":"min", "title":"Minimum Value", "description":"", "values":[], "value":0, "required":false},
-			{"type":"number", "name":"max", "title":"Maximum Value", "description":"", "values":[], "value":999, "required":false},
-			{"type":"text","name":"whitelist","title":"Column Whitelist","description":"Split with \",\" for example \"4,6,7\" means this range only works for 4K,6K,7K","values":[],"value":""},
-			{"type":"text","name":"blacklist","title":"Column Blacklist","description":"Split with \",\" for example \"3,5,8\" means this range doesn't work for 3K,5K,8K","values":[],"value":""}
-			],
-		"value":[]
 	}
 ]

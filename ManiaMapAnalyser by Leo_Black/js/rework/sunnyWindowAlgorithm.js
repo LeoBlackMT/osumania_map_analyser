@@ -1,5 +1,6 @@
 // Copied from sunnyAlgorithm.js
 import { OsuFileParser } from "../parser/osuFileParser.js";
+import { state } from "../app/appContext.js";
 
 const BREAK_ZERO_THRESHOLD_MS = 400;
 const GRAPH_RESAMPLE_INTERVAL_MS = 100;
@@ -300,7 +301,6 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
         return getCuttedNoteSeq(noteSeq).length;
     }
 
-    // TODO:允许禁用；优化
     function getTypePercentageData(p, HB_NoteSeq, osuText, speedRate, odFlag, cvtFlag) {
         function getFullLength(count, value) {return count + (value[1] - value[0] + 1);}
 
@@ -320,7 +320,6 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
         }
         const LN_Length = getCuttedNoteSeq(LN_NoteSeq).length
 
-        console.error(p.columns.length, Mix_Length, HB_Length, LN_Length);
         return [
             ["All", p.columns.length],
             ["RC", p.columns.length - Mix_Length],
@@ -332,7 +331,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
 
     const LNParts = getLNParts(false, osuText, speedRate, odFlag, cvtFlag);
 
-    const shouldCalcData = true; // TODO 写出选项
+    const shouldCalcData = state.enableAnalyzeLN;
     if (LNParts.length <= 0) {
         return {
             status: "NoLN",

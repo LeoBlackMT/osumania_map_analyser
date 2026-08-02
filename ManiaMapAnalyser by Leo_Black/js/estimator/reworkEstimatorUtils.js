@@ -94,15 +94,6 @@ function intervalLookup(sr, table, fallbackLabel) {
     return fallbackLabel;
 }
 
-function lnSrInRange(sr, columnCount) {
-    const list = state.lnStarShowGroups;
-    for (var i = 0; i < list.length; i++) {
-        const value = list[i]
-        if (value.whitelist.indexOf(columnCount) >= 0 && sr >= value.min && sr <= value.max) return true;
-    }
-    return false;
-}
-
 export function estDiff(sr, lnRatio, columnCount) {
     const keys = DAN_INDEX[columnCount];
     if (!keys) return "Unknown difficulty";
@@ -113,7 +104,7 @@ export function estDiff(sr, lnRatio, columnCount) {
 
     const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
     const lnDiff = intervalLookup(sr, lnTable, "Unknown LN difficulty");
-    if (lnSrInRange(sr, columnCount)) return `${rcDiff} || ${lnDiff} (${Math.round(sr*100)/100}*)`;
+    if (state.enableLNDifficulty) return `${rcDiff} || ${lnDiff} (${Math.round(sr*100)/100}*)`;
     return `${rcDiff} || ${lnDiff}`;
 }
 
@@ -127,7 +118,7 @@ export function estDiff2(sr, srLN, columnCount) {
 
     const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
     const lnDiff = intervalLookup(srLN, lnTable, "Unknown LN difficulty");
-    if (lnSrInRange(srLN, columnCount)) return `${rcDiff} || ${lnDiff} (${Math.round(srLN*100)/100}*)`;
+    if (state.enableLNDifficulty) return `${rcDiff} || ${lnDiff} (${Math.round(srLN*100)/100}*)`;
     return `${rcDiff} || ${lnDiff}`;
 }
 

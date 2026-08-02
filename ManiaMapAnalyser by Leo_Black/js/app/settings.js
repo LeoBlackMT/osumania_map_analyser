@@ -37,7 +37,9 @@ import {
     parseVibroDetectionValue,
     parseWsEndpointValue,
     parseForceSunnyWindowValue,
-    parseLNStarShowGroupValue,
+    parseEnableLNDifficultyValue,
+    parseEnableAnalyzeLNValue,
+    parseEnableAlwaysShowLNDifficultyValue,
     patternClustersEl,
     reworkStarEl,
     socket,
@@ -56,7 +58,6 @@ import {
     normalizeEstimatorAlgorithmValue,
     normalizeWsEndpointValue,
     normalizeSrTextValue,
-    normalizeLNStarShowGroup,
 } from "../parser/settingsParser.js";
 import {
     clearDiffGraph,
@@ -351,10 +352,24 @@ export function applyForceSunnyWindowSetting(value) {
     return changed;
 }
 
-export function applyLNStarShowGroupSetting(value) {
-    const next = normalizeLNStarShowGroup(value, APP_CONFIG.defaults.lnStarShowGroups);
-    const changed = state.lnStarShowGroups !== next;
-    state.lnStarShowGroups = next;
+export function applyEnableLNDifficultySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableLNDifficulty);
+    const changed = state.enableLNDifficulty !== next;
+    state.enableLNDifficulty = next;
+    return changed;
+}
+
+export function applyEnableAnalyzeLNSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableAnalyzeLN);
+    const changed = state.enableAnalyzeLN !== next;
+    state.enableAnalyzeLN = next;
+    return changed;
+}
+
+export function applyEnableAlwaysShowLNDifficultySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableAlwaysShowLNDifficulty);
+    const changed = state.enableAlwaysShowLNDifficulty !== next;
+    state.enableAlwaysShowLNDifficulty = next;
     return changed;
 }
 
@@ -710,11 +725,13 @@ export function setupSettingsCommandListener() {
         const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
         const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
         const forceSunnyWindowChanged = applyIf("forceSunnyWindow", applyForceSunnyWindowSetting, parseForceSunnyWindowValue(payload));
+        const enableLNDifficultyChanged = applyIf("enableLNDifficulty", applyEnableLNDifficultySetting, parseEnableLNDifficultyValue(payload));
+        const enableAnalyzeLNChanged = applyIf("enableAnalyzeLN", applyEnableAnalyzeLNSetting, parseEnableAnalyzeLNValue(payload));
+        const enableAlwaysShowLNDifficultyChanged = applyIf("enableAlwaysShowLNDifficulty", applyEnableAlwaysShowLNDifficultySetting, parseEnableAlwaysShowLNDifficultyValue(payload));
         const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
         const floatingTrianglesChanged = applyIf("enableFloatingTriangles", applyEnableFloatingTrianglesSetting, parseEnableFloatingTrianglesValue(payload));
         const coverArtChanged = applyIf("enableCoverArt", applyEnableCoverArtSetting, parseEnableCoverArtValue(payload));
         const customColorChanged = applyIf("customBackgroundColor", applyCustomBackgroundColorSetting, parseCustomBackgroundColorValue(payload));
-        const lnStarShowGroupsChanged = applyIf("lnStarShowGroups",  applyLNStarShowGroupSetting, parseLNStarShowGroupValue(payload));
 
         const legacyAutoMode = parseAutoModeValue(payload);
         if (legacyAutoMode && !isAutoDisplayEnabled()) {
@@ -752,7 +769,9 @@ export function setupSettingsCommandListener() {
             || customColorChanged
             || svChanged
             || forceSunnyWindowChanged
-            || lnStarShowGroupsChanged;
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
 
         const recomputeNeeded = contentBarChanged
             || srTextChanged
@@ -769,7 +788,9 @@ export function setupSettingsCommandListener() {
             || modeTagVisibilityChanged
             || svChanged
             || forceSunnyWindowChanged
-            || lnStarShowGroupsChanged;
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
 
         if (typeof state.initialSettingsResolver === "function") {
             const resolve = state.initialSettingsResolver;
@@ -856,7 +877,9 @@ export async function loadSettings() {
         applyCustomBackgroundColorSetting(parseCustomBackgroundColorValue(source));
         applyUseSvDetectionSetting(parseSvDetectionValue(source));
         applyForceSunnyWindowSetting(parseForceSunnyWindowValue(source));
-        applyLNStarShowGroupSetting(parseLNStarShowGroupValue(source))
+        applyEnableLNDifficultySetting(parseEnableLNDifficultyValue(source));
+        applyEnableAnalyzeLNSetting(parseEnableAnalyzeLNValue(source));
+        applyEnableAlwaysShowLNDifficultySetting(parseEnableAlwaysShowLNDifficultyValue(source));
     }
 
     // Apply file settings as baseline immediately
@@ -894,7 +917,9 @@ export async function loadSettings() {
             customBackgroundColor: APP_CONFIG.defaults.customBackgroundColor,
             useSvDetection: APP_CONFIG.defaults.useSvDetection,
             forceSunnyWindow: APP_CONFIG.defaults.forceSunnyWindow,
-            lnStarShowGroups: APP_CONFIG.defaults.lnStarShowGroups,
+            enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
+            enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
+            enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
         });
     }
 

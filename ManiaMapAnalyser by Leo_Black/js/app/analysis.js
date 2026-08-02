@@ -52,6 +52,7 @@ import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
     setModeTag,
+    setModeTagAdvanced,
     setStatus,
     setSvTagVisible,
     showOverlay,
@@ -655,7 +656,11 @@ export async function fetchBeatmapFile(reason) {
             }
         }
 
-        setModeTag(typePercentageData ?? resolvedModeTag);
+        if (typePercentageData) {
+            setModeTagAdvanced(typePercentageData);
+        } else {
+            setModeTag(resolvedModeTag);
+        }
         setSvTagVisible(shouldShowSvTag);
 
         if (rework) {

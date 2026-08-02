@@ -141,6 +141,34 @@ export function refreshStatusRendering() {
 }
 
 export function setModeTag(tag) {
+    state.currentModeTag = tag;
+
+    if (!modeTagSubGroupEl) {
+        return;
+    }
+    modeTagSubGroupEl.hidden = !state.showModeTagCapsule;
+
+    if (modeTagSubGroupEl.children.length < 1) {
+        const span = document.createElement("span");
+        modeTagSubGroupEl.appendChild(span);
+    }
+
+    const modeTagEl = modeTagSubGroupEl.children[0];
+    const text = tag;
+    const nextClassName = `mode-tag mode-${tag.toLowerCase()}`;
+    const changed = modeTagEl.textContent !== text || modeTagEl.className !== nextClassName;
+    modeTagEl.textContent = text;
+    modeTagEl.className = nextClassName;
+    if (changed && state.showModeTagCapsule) {
+        restartAnimationClass(modeTagEl, "capsule-switch");
+    }
+
+    while (modeTagSubGroupEl.children.length > 1) {
+        modeTagSubGroupEl.removeChild(modeTagSubGroupEl.children[1]);
+    }
+}
+
+export function setModeTagAdvanced(tag) {
     let tagList = tag;
     if (typeof tagList !== "object") {
         const realTag = MODE_TAG_OPTIONS.includes(tag) ? tag : "Mix"

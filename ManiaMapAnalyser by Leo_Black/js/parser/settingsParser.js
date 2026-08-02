@@ -209,37 +209,6 @@ export function normalizeCustomBackgroundColorValue(value) {
     return null;
 }
 
-export function normalizeLNStarShowGroup(list) {
-    if (typeof list !== "object") {
-        return [];
-    }
-    const ALL_MANIA_KEYS = Object.freeze([1,2,3,4,5,6,7,8,9,10,12,14,16,18,20]);
-    const array = [];
-    for (let i = 0; i < list.length; i++) {
-        const value = list[i];
-        let whitelist = ALL_MANIA_KEYS;
-        if (typeof value.whitelist === "string" && value.whitelist !== "") {
-            const newWhitelist = value.whitelist.split(",").map((str)=>Number(str));
-            if (newWhitelist.length > 0) whitelist = newWhitelist;
-        }
-        else if (typeof value.whitelist === "object" && value.whitelist.length > 0) {
-            whitelist = value.whitelist;
-        }
-
-        if (typeof value.blacklist === "string" && value.blacklist !== "") {
-            const Blacklist = value.blacklist.split(",").map((str)=>Number(str));
-            if (Blacklist.length > 0) whitelist = whitelist.filter((num) => Blacklist.indexOf(num) === -1);
-        }
-
-        array.push({
-            min: Number(value.min),
-            max: value.max === "" ? 999 : Number(value.max),
-            whitelist: whitelist
-        });
-    }
-    return array;
-}
-
 export function extractSettingValue(settingsPayload, settingKey) {
     if (Array.isArray(settingsPayload)) {
         const item = settingsPayload.find((entry) => entry?.uniqueID === settingKey);
@@ -573,9 +542,19 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.forceSunnyWindow);
     }
 
-    function parseLNStarShowGroupValue(settingsPayload) {
-        const value = extractSettingValue(settingsPayload, "lnStarShowGroups");
-        return normalizeLNStarShowGroup(value, appConfig.defaults.lnStarShowGroups);
+    function parseEnableLNDifficultyValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableLNDifficulty");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableLNDifficulty);
+    }
+
+    function parseEnableAnalyzeLNValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableAnalyzeLN");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableAnalyzeLN);
+    }
+
+    function parseEnableAlwaysShowLNDifficultyValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableAlwaysShowLNDifficulty");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableAlwaysShowLNDifficulty);
     }
 
     return {
@@ -612,6 +591,8 @@ export function createSettingsParsers(appConfig) {
         parseSvDetectionValue,
         parseWsEndpointValue,
         parseForceSunnyWindowValue,
-        parseLNStarShowGroupValue,
+        parseEnableLNDifficultyValue,
+        parseEnableAnalyzeLNValue,
+        parseEnableAlwaysShowLNDifficultyValue,
     };
 }

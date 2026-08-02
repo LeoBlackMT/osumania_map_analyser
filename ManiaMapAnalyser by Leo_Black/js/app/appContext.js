@@ -102,6 +102,9 @@ export const state = {
     customBackgroundColor: APP_CONFIG.defaults.customBackgroundColor,
     vibroDetection: APP_CONFIG.defaults.vibroDetection,
     forceSunnyWindow: APP_CONFIG.defaults.forceSunnyWindow,
+    enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
+    enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
+    enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
     numericDifficulty: null,
     numericDifficultyHint: null,
     forceHideNumericDifficulty: false,
@@ -136,7 +139,6 @@ export const state = {
     initialSettingsResolver: null,
     analysisRequestSeq: 0,
     wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
-    lnStarShowGroups: APP_CONFIG.defaults.lnStarShowGroups,
 };
 
 export const MODE_TAG_OPTIONS = APP_CONFIG.options.modeTag;
@@ -206,7 +208,9 @@ export const {
     parseSvDetectionValue,
     parseWsEndpointValue,
     parseForceSunnyWindowValue,
-    parseLNStarShowGroupValue,
+    parseEnableLNDifficultyValue,
+    parseEnableAnalyzeLNValue,
+    parseEnableAlwaysShowLNDifficultyValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {

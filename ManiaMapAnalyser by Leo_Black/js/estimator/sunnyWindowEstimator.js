@@ -27,5 +27,6 @@ export function runSunnyWindowEstimatorFromText(osuText, options = {}) {
         numericDifficulty: null,
         numericDifficultyHint: null,
         typePercentageData: parsedLN.typePercentageData,
+        lnStar: parsedLN.star,
     };
 }
