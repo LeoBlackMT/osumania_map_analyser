@@ -57,7 +57,7 @@
         - 注：对于非4/6/7K谱面，主体内容将自动回退为Pattern显示。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
-        - ReworkSR: 显示[Suuny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
+        - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
         - MSD: 显示Etterna MSD。*仅适配4/6/7K谱面。
         - InterludeSR: 显示[Interlude](https://github.com/YAVSRG/YAVSRG)星数。
         - Pattern: 显示整体键型。
@@ -67,7 +67,7 @@
         - Difficulty: 显示估计难度。
         - MSD: 显示Etterna MSD。*仅适配4/6/7K谱面。
         - InterludeSR: 显示Interlude星数。
-        - ReworkSR: 显示Suuny Rework星数。
+        - ReworkSR: 显示Sunny Rework星数。
         - Pattern: 显示整体键型。
     - **Map Tag Capsule**: 是否显示谱面标签胶囊。
         - 包含HB/RC/LN/Mix/SV标签。
@@ -119,7 +119,7 @@
         - Mixed: (推荐)综合下方四个算法的混合算法，准确度相对较高。自动选择适配当前谱面的算法。
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
         - Roxy: 面向4K RC的元结构估算器。使用结构分析对谱面进行建模，再通过GBDT元模型融合Azusa/Sunny/Daniel的参考预测。
-        - Suuny: 使用Suuny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
+        - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
@@ -150,12 +150,12 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 请注意，由于使用了树模型进行决策，GBDT 元模型可能会存在边界不连续的情况：输入特征的微小变化（例如倍速相差0.01）可能会跨过决策树的分割阈值，导致输出难度出现不成比例的大跳跃。用户在使用时应当注意到这是树模型固有的特性。
 
 ## Azusa 算法说明
-该算法在谱面本身的基础上，融合了Daniel和Suuny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](azusa_algorithm.md)(英文)查看详细说明。
+该算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](azusa_algorithm.md)(英文)查看详细说明。
 
 ## 参考内容
 - [tosu](https://tosu.app): 本插件的运行环境和基础框架。
 - [Etterna](https://github.com/etternagame/etterna): 使用了Etterna的MinaCalc进行难度估计和MSD计算。
-- [Suuny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): 使用了Suuny Rework的算法进行难度估计。
+- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): 使用了Suuny Rework的算法进行难度估计。
 - [Interlude](https://github.com/YAVSRG/YAVSRG): 使用了Interlude的RC键型分析算法并在基础上新增LN检测算法。
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
