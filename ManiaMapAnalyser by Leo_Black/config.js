@@ -88,6 +88,7 @@ export const APP_CONFIG = {
         vibroDetection: true,
         disableVibroDetection: false,
         useSvDetection: true,
+        extendedEstimationRange: false,
         showModeTagCapsule: true,
         enableNumericDifficulty: true,
         cardVisibility: "Always",
