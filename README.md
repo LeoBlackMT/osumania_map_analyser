@@ -123,7 +123,7 @@
         - 不推荐：启用后将使用扩展区间表进行难度估计，大幅提高估计软上限。
         - 当前支持 4K RC、4K LN、7K RC；6K、7K LN 及 Daniel 4K 算法不受此设置影响。
         - 注意：启用后估计值将发生变化；扩展区间部分纯属娱乐性质，不保证准确度。
-        - 拓展部分的数据来源请见[此处](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)
+        - 拓展部分的数据来源请见[此处](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)。
     - **Pause Detection Threshold**: 设置暂停检测的时间阈值（毫秒）。
         - 只有当游戏时间冻结超过该时长后，才会被判定为一次暂停。
         - 默认值为500ms。如果游戏卡顿导致误判，可适当提高该值。
