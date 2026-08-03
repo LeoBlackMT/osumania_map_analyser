@@ -706,6 +706,10 @@ export async function fetchBeatmapFile(reason) {
             if (!cached && state.enableResultCache && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
+                // clustering.js 的 cluster 对象带 format()/Importance 方法，
+                // structuredClone 无法拷贝（resultCache 契约要求 JSON-safe），
+                // 快照只存渲染所需的普通字段。
+                const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
                 resultCache.put(cacheKey, {
                     rework: {
                         star: rework.star,
@@ -716,8 +720,8 @@ export async function fetchBeatmapFile(reason) {
                         lnRatio: rework.lnRatio,
                         columnCount: rework.columnCount,
                     },
-                    patternReport,
-                    mergedClusters,
+                    patternReport: jsonSafe(patternReport),
+                    mergedClusters: jsonSafe(mergedClusters),
                     ettResult,
                     interludeStar,
                     isVibroMap,

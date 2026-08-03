@@ -188,6 +188,7 @@ export const {
     parseEtternaVersionValue,
     parseCompanellaEtternaVersionValue,
     parseEnablePauseDetectionValue,
+    parseEnableResultCacheValue,
     parsePauseDetectionThresholdValue,
     parseDisableVibroDetectionValue,
     parseVibroDetectionValue,
