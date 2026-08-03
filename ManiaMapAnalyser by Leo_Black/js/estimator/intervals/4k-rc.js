@@ -1,4 +1,4 @@
-export const rc4KReform = [
+export const rc4K = [
     [1.502, 1.631, "Intro 1 low"],
     [1.631, 1.760, "Intro 1 mid/low"],
     [1.760, 1.890, "Intro 1 mid"],

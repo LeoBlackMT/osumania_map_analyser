@@ -520,6 +520,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.useSvDetection);
     }
 
+    function parseExtendedEstimationRangeValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "extendedEstimationRange");
+        return normalizeBooleanSetting(value, appConfig.defaults.extendedEstimationRange);
+    }
+
     function parseWsEndpointValue(settingsPayload) {
         const wsEndpointValue = extractSettingValue(settingsPayload, "wsEndpoint");
         const legacyWsHostValue = extractSettingValue(settingsPayload, "wsHost");
@@ -568,6 +573,7 @@ export function createSettingsParsers(appConfig) {
         parseReverseCardExtendDirectionValue,
         parseUseOsuFontValue,
         parseSvDetectionValue,
+        parseExtendedEstimationRangeValue,
         parseWsEndpointValue,
     };
 }
