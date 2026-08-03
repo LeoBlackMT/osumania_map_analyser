@@ -108,6 +108,9 @@ Note: It is recommended to start with the default settings and then adjust accor
         - When enabled, it checks the GitHub latest release at most once per day by default.
         - When switching from disabled to enabled, it immediately triggers one extra check.
         - The star icon on the left side of the status bar is shown only when a newer version is available.
+    - **Result Cache**: Enable caching of analysis results.
+        - When enabled, revisiting an already analyzed map (or switching mods and back) shows results instantly without recomputing.
+        - This option only affects display speed, not the results themselves. Enabled by default.
     - **Vibro Detection**: Whether to enable vibro detection.
         - Recommended: When enabled, the plugin will detect if a beatmap is a vibro map and display it as "Vibro" in the estimated difficulty; otherwise, you will see an extremely inflated difficulty estimate.
     - **SV Detection**: Whether to enable SV beatmap detection.
