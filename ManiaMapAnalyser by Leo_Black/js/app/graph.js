@@ -451,7 +451,7 @@ export function showDiffGraphError(message) {
 
 export function updateGraphCursor(explicitTimeMs = null) {
     if (!hasAnyGraphModeEnabled()) {
-        forEachEnabledGraphView((view) => resetPlayedFill(view));
+        forEachGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }

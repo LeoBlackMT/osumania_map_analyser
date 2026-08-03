@@ -276,43 +276,28 @@ export async function fetchBeatmapFile(reason) {
         clearDiffGraph();
     }
 
-    // 产物需求计算整体上移到 fetch 之前（逻辑不变仅移动位置），
-    // 供缓存覆盖检查与各计算块的执行条件使用。
-    const activeContentBar = getActiveContentBar();
-    const showsPattern = contentBarShows("Pattern");
-    const showsEtterna = contentBarShows("Etterna");
-    const showsGraph = contentBarShows("Graph");
-    const autoDisplayEnabled = isAutoDisplayEnabledNow();
-
-    const estimatorAlgorithm = currentEstimatorAlgorithm();
-    const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
-        || estimatorAlgorithm === "Mixed";
-
-    const needVibroDetection = state.vibroDetection;
-    const needPatternAnalysis = showsPattern
-        || state.srText === "Pattern"
-        || state.diffText === "Pattern"
-        || state.useSvDetection
-        || needVibroDetection
-        || autoDisplayEnabled;
-    const needMsdValue = state.srText === "MSD" || state.diffText === "MSD";
-    const needInterludeValue = state.srText === "InterludeSR"
-        || state.diffText === "InterludeSR"
-        || estimatorNeedsCompanellaData;
-    const needEtternaAnalysis = showsEtterna
-        || needMsdValue
-        || needVibroDetection
-        || estimatorNeedsCompanellaData;
-    const shouldReportEtternaError = showsEtterna
-        || needMsdValue
-        || estimatorNeedsCompanellaData;
-
     // 结果缓存：fetch 之前查缓存，覆盖检查（computed 需求）不匹配视为 miss。
     // graph 覆盖与估算器的 withGraph 条件一致（diffText=Graph 或主体显示 Graph）。
+    // needComputed 用 fetch 前的保守值（尚未经过 setEffectiveContentBarForMap 的
+    // 谱面级 override，contentBarShows 读的是上一张图的 effectiveContentBar），
+    // 仅用于覆盖检查；实际 shows*/need* 在执行块内 override 之后重新计算。
     const needComputed = {
-        pattern: needPatternAnalysis,
-        ett: needEtternaAnalysis,
-        graph: state.diffText === "Graph" || showsGraph,
+        pattern: contentBarShows("Pattern")
+            || state.srText === "Pattern"
+            || state.diffText === "Pattern"
+            || state.useSvDetection
+            || state.vibroDetection
+            || isAutoDisplayEnabledNow(),
+        ett: contentBarShows("Etterna")
+            || state.srText === "MSD"
+            || state.diffText === "MSD"
+            || state.vibroDetection
+            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"),
+        graph: state.diffText === "Graph" || contentBarShows("Graph"),
+        interlude: state.srText === "InterludeSR"
+            || state.diffText === "InterludeSR"
+            || currentEstimatorAlgorithm() === "Companella"
+            || currentEstimatorAlgorithm() === "Mixed",
     };
     const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
@@ -322,7 +307,8 @@ export async function fetchBeatmapFile(reason) {
         if (snapshot
             && snapshot.computed.graph === needComputed.graph
             && snapshot.computed.pattern === needComputed.pattern
-            && snapshot.computed.ett === needComputed.ett) {
+            && snapshot.computed.ett === needComputed.ett
+            && snapshot.computed.interlude === needComputed.interlude) {
             cached = snapshot;
         }
     }
@@ -368,6 +354,13 @@ export async function fetchBeatmapFile(reason) {
             setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
         }
 
+        // override 之后才计算 shows*/activeContentBar（恢复 main 顺序），
+        // 供下方各计算块与渲染段使用；needComputed 仍用 fetch 前的保守值。
+        const activeContentBar = getActiveContentBar();
+        const showsPattern = contentBarShows("Pattern");
+        const showsEtterna = contentBarShows("Etterna");
+        const showsGraph = contentBarShows("Graph");
+
         const shouldDelayBodyRender = shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar);
         let bodyRenderDelayPromise = null;
         if (shouldDelayBodyRender) {
@@ -386,6 +379,8 @@ export async function fetchBeatmapFile(reason) {
             bodyRenderDelayPromise = null;
             return true;
         };
+
+        const autoDisplayEnabled = isAutoDisplayEnabledNow();
 
         const errors = [];
         let rework = null;
@@ -703,7 +698,8 @@ export async function fetchBeatmapFile(reason) {
 
             // 写缓存：companella 完成后、SV/auto-profile 段之前。
             // 门控：miss && 开关开 && 全成功 && generation 未变（防 clear 后旧分析写回）。
-            if (!cached && state.enableResultCache && errors.length === 0
+            if (!cached && state.enableResultCache && state.lastBeatmapIdentity
+                && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
                 // clustering.js 的 cluster 对象带 format()/Importance 方法，

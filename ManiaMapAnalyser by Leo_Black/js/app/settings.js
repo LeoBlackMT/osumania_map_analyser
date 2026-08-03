@@ -855,6 +855,7 @@ export async function loadSettings() {
         applyCardRadiusSetting(parseCardRadiusValue(source));
         applyCardBgBlurSetting(parseCardBgBlurValue(source));
         applyEnableUpdateCheckSetting(parseEnableUpdateCheckValue(source));
+        applyEnableResultCacheSetting(parseEnableResultCacheValue(source));
         applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(source));
         applyUseOsuFontSetting(parseUseOsuFontValue(source));
         applyEnableOsuThemeSetting(parseEnableOsuThemeValue(source));
@@ -891,6 +892,7 @@ export async function loadSettings() {
             cardRadius: APP_CONFIG.defaults.cardRadius,
             cardBgBlur: APP_CONFIG.defaults.cardBgBlur,
             enableUpdateCheck: APP_CONFIG.defaults.enableUpdateCheck,
+            enableResultCache: APP_CONFIG.defaults.enableResultCache,
             reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
             useOsuFont: APP_CONFIG.defaults.useOsuFont,
             enableOsuTheme: APP_CONFIG.defaults.enableOsuTheme,
