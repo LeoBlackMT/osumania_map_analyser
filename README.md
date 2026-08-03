@@ -121,7 +121,7 @@
         - 开启后将在6K谱面时强制覆盖左上角胶囊显示内容为定数，不受Top-left Capsule Text设置影响。
     - **Extended Estimation Range**: 是否启用扩展估计范围。
         - 不推荐：启用后将使用扩展区间表进行难度估计，大幅提高估计软上限。
-        - 当前支持 4K RC、4K LN、7K RC；6K、7K LN 及 Daniel 4K 算法不受此设置影响。
+        - 仅对 Sunny 估算算法生效。扩展区间覆盖 4K RC、4K LN、7K RC；6K/7K LN 无扩展。
         - 注意：启用后估计值将发生变化；扩展区间部分纯属娱乐性质，不保证准确度。
         - 拓展部分的数据来源请见[此处](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)。
     - **Pause Detection Threshold**: 设置暂停检测的时间阈值（毫秒）。

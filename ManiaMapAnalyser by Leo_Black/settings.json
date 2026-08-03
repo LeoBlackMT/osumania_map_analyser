@@ -293,7 +293,7 @@
 		"uniqueID": "extendedEstimationRange",
 		"type": "checkbox",
 		"title": "Extended Estimation Range",
-		"description": "Extend the difficulty estimation limitation on some algorithms. Estimates change and extended tiers' accuracy is not guaranteed.",
+		"description": "Only effective with the Sunny estimator on some situations. Estimates change and extended tiers' accuracy is not guaranteed.",
 		"options": [],
 		"value": false
 	},

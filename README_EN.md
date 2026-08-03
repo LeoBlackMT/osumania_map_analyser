@@ -122,7 +122,7 @@ Note: It is recommended to start with the default settings and then adjust accor
         - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
     - **Extended Estimation Range**: Whether to enable the extended estimation range.
         - Not Recommended: When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
-        - Currently supported: 4K RC, 4K LN, 7K RC. 6K, 7K LN and the Daniel 4K algorithm are not affected.
+        - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
         - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
         - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
