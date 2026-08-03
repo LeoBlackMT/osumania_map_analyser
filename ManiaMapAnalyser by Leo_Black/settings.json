@@ -173,6 +173,14 @@
 		"value": true
 	},
 	{
+		"uniqueID": "reverseCardExtendDirection",
+		"type": "checkbox",
+		"title": "Reverse Card Extension",
+		"description": "Anchor card bottom and extend upwards when card needs to extend.",
+		"options": [],
+		"value": false
+	},
+	{
 		"uniqueID": "cardVisibility",
 		"type": "options",
 		"title": "Card Visibility",
@@ -183,14 +191,6 @@
 			"Always"
 		],
 		"value": "Always"
-	},
-	{
-		"uniqueID": "reverseCardExtendDirection",
-		"type": "checkbox",
-		"title": "Reverse Card Extension",
-		"description": "Anchor card bottom and extend upwards when card needs to extend.",
-		"options": [],
-		"value": false
 	},
 	{
 		"uniqueID": "cardOpacity",
@@ -293,7 +293,7 @@
 		"uniqueID": "extendedEstimationRange",
 		"type": "checkbox",
 		"title": "Extended Estimation Range",
-		"description": "Extend the difficulty estimation soft cap using extended interval tables (4K RC, 4K LN, 7K RC). Estimates change and extended tiers are experimental - accuracy is not guaranteed. Does not affect Daniel 4K.",
+		"description": "Extend the difficulty estimation limitation on some algorithms. Estimates change and extended tiers' accuracy is not guaranteed.",
 		"options": [],
 		"value": false
 	},

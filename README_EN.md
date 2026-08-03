@@ -91,10 +91,10 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **Metadata Marquee**: Whether to enable horizontal scrolling for beatmap metadata.
     - **Numeric Difficulty**: Whether to display numerical difficulty values.
         - When enabled, numerical difficulty will be shown after the "ESTIMATE DIFFICULTY" label under the RC estimation algorithm.
-    - **Card Visibility**: Control when the card is shown.
-        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
     - **Reverse Card Extension**: Whether to reverse the card expansion direction.
         - When enabled, the card stays anchored at the bottom and grows upward; when disabled, it expands downward by default.
+    - **Card Visibility**: Control when the card is shown.
+        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
     - **Card Opacity**: Set the overall card opacity.
         - Available values: 100% / 95% / 90% / 80% / 70%.
     - **Content Background Blur**: Whether to enable background image blur for content sections.
