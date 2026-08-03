@@ -57,6 +57,16 @@
     fill: rgba(150, 214, 255, 0.28);
 }
 
+/* 已玩/未玩分裂着色：graph.js 在渲染时给基础 fill 加 .graph-unplayed 做暗淡化，
+   已玩部分由 fill-play 亮色层（同色不暗化）经 play-clip 裁剪显示。 */
+.star-graph-fill.graph-unplayed {
+    opacity: 0.35;
+}
+
+.star-graph-fill-play {
+    fill: rgba(150, 214, 255, 0.28);
+}
+
 .star-graph-line {
     fill: none;
     stroke: #a6e0ff;

@@ -278,6 +278,11 @@ html.ma-theme-osu .star-graph-fill {
     fill: color-mix(in srgb, var(--ma-accent) 40%, transparent);
 }
 
+/* 已玩层与基础 fill 同一 accent 颜色源，仅靠 .graph-unplayed 暗化区分 */
+html.ma-theme-osu .star-graph-fill-play {
+    fill: color-mix(in srgb, var(--ma-accent) 40%, transparent);
+}
+
 html.ma-theme-osu .star-graph-cursor-dot {
     fill: #ffffff;
     stroke: color-mix(in srgb, var(--ma-accent) 75%, white);

@@ -21,6 +21,7 @@ import {
     parseEnableCoverArtValue,
     parseCustomBackgroundColorValue,
     parseEnablePauseDetectionValue,
+    parseEnableResultCacheValue,
     parsePauseDetectionThresholdValue,
     parseEstimatorAlgorithmValue,
     parseAzusaSunnyReferenceHoValue,
@@ -74,6 +75,7 @@ import { applyCoverThemeForBeatmap, resetCoverTheme } from "./coverTheme.js";
 import { initTriangleField } from "./triangles.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
+import { clearResultCache } from "./resultCache.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -629,6 +631,19 @@ export function applyEnableUpdateCheckSetting(value) {
     return changed;
 }
 
+export function applyEnableResultCacheSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableResultCache);
+    const changed = state.enableResultCache !== next;
+    const wasEnabled = state.enableResultCache;
+    state.enableResultCache = next;
+
+    if (changed && wasEnabled && !next) {
+        clearResultCache();
+    }
+
+    return changed;
+}
+
 export function applyReverseCardExtendDirectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.reverseCardExtendDirection);
     const changed = state.reverseCardExtendDirection !== next;
@@ -704,6 +719,7 @@ export function setupSettingsCommandListener() {
         const cardRadiusChanged = applyIf("cardRadius", applyCardRadiusSetting, parseCardRadiusValue(payload));
         const cardBgBlurChanged = applyIf("cardBgBlur", applyCardBgBlurSetting, parseCardBgBlurValue(payload));
         const enableUpdateCheckChanged = applyIf("enableUpdateCheck", applyEnableUpdateCheckSetting, parseEnableUpdateCheckValue(payload));
+        const resultCacheChanged = applyIf("enableResultCache", applyEnableResultCacheSetting, parseEnableResultCacheValue(payload));
         const reverseCardDirectionChanged = applyIf("reverseCardExtendDirection", applyReverseCardExtendDirectionSetting, parseReverseCardExtendDirectionValue(payload));
         const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
         const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
@@ -742,6 +758,7 @@ export function setupSettingsCommandListener() {
             || cardRadiusChanged
             || cardBgBlurChanged
             || enableUpdateCheckChanged
+            || resultCacheChanged
             || reverseCardDirectionChanged
             || osuFontChanged
             || osuThemeChanged
@@ -749,7 +766,7 @@ export function setupSettingsCommandListener() {
             || coverArtChanged
             || customColorChanged
             || svChanged
-            || display6kLevelChanged;
+            || display6kLevelChanged
             || extendedEstimationRangeChanged;
 
         const recomputeNeeded = contentBarChanged
@@ -766,8 +783,23 @@ export function setupSettingsCommandListener() {
             || vibroChanged
             || modeTagVisibilityChanged
             || svChanged
-            || display6kLevelChanged;
+            || display6kLevelChanged
             || extendedEstimationRangeChanged;
+
+        // Invalidate cached results when any computation-affecting setting changed.
+        // wsEndpointChanged lives in `changed` only (not recomputeNeeded), so it is listed here explicitly.
+        if (estimatorChanged
+            || azusaSunnyReferenceHoChanged
+            || etternaVersionChanged
+            || companellaEtternaVersionChanged
+            || debugChanged
+            || svChanged
+            || vibroChanged
+            || wsEndpointChanged
+            || display6kLevelChanged
+            || extendedEstimationRangeChanged) {
+            clearResultCache();
+        }
 
         if (typeof state.initialSettingsResolver === "function") {
             const resolve = state.initialSettingsResolver;
@@ -846,6 +878,7 @@ export async function loadSettings() {
         applyCardRadiusSetting(parseCardRadiusValue(source));
         applyCardBgBlurSetting(parseCardBgBlurValue(source));
         applyEnableUpdateCheckSetting(parseEnableUpdateCheckValue(source));
+        applyEnableResultCacheSetting(parseEnableResultCacheValue(source));
         applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(source));
         applyUseOsuFontSetting(parseUseOsuFontValue(source));
         applyEnableOsuThemeSetting(parseEnableOsuThemeValue(source));
@@ -884,6 +917,7 @@ export async function loadSettings() {
             cardRadius: APP_CONFIG.defaults.cardRadius,
             cardBgBlur: APP_CONFIG.defaults.cardBgBlur,
             enableUpdateCheck: APP_CONFIG.defaults.enableUpdateCheck,
+            enableResultCache: APP_CONFIG.defaults.enableResultCache,
             reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
             useOsuFont: APP_CONFIG.defaults.useOsuFont,
             enableOsuTheme: APP_CONFIG.defaults.enableOsuTheme,

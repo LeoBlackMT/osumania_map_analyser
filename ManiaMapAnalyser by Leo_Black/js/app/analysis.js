@@ -74,6 +74,7 @@ import {
 } from "./settings.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro } from "./vibro.js";
+import { resultCache, resultCacheGeneration } from "./resultCache.js";
 
 function parseMetadataFromBeatmap(osuText) {
     const parser = new OsuFileParser(osuText);
@@ -246,6 +247,7 @@ export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+    const genAtStart = resultCacheGeneration();
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
     // 取出 socket 层判定的本次变化类型并清空，避免之后纯改设置的 recompute
@@ -275,32 +277,86 @@ export async function fetchBeatmapFile(reason) {
         clearDiffGraph();
     }
 
+    // 结果缓存：fetch 之前查缓存，覆盖检查（computed 需求）不匹配视为 miss。
+    // graph 覆盖与估算器的 withGraph 条件一致（diffText=Graph 或主体显示 Graph）。
+    // needComputed 用 fetch 前的保守值（尚未经过 setEffectiveContentBarForMap 的
+    // 谱面级 override，contentBarShows 读的是上一张图的 effectiveContentBar），
+    // 仅用于覆盖检查；实际 shows*/need* 在执行块内 override 之后重新计算。
+    const needComputed = {
+        pattern: contentBarShows("Pattern")
+            || state.srText === "Pattern"
+            || state.diffText === "Pattern"
+            || state.useSvDetection
+            || state.vibroDetection
+            || isAutoDisplayEnabledNow(),
+        ett: contentBarShows("Etterna")
+            || state.srText === "MSD"
+            || state.diffText === "MSD"
+            || state.vibroDetection
+            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"),
+        graph: state.diffText === "Graph" || contentBarShows("Graph"),
+        interlude: state.srText === "InterludeSR"
+            || state.diffText === "InterludeSR"
+            || currentEstimatorAlgorithm() === "Companella"
+            || currentEstimatorAlgorithm() === "Mixed",
+    };
+    const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+    const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
+    let cached = null;
+    if (state.enableResultCache && state.lastBeatmapIdentity) {
+        const snapshot = resultCache.get(cacheKey);
+        if (snapshot
+            && snapshot.computed.graph === needComputed.graph
+            && snapshot.computed.pattern === needComputed.pattern
+            && snapshot.computed.ett === needComputed.ett
+            && snapshot.computed.interlude === needComputed.interlude) {
+            cached = snapshot;
+        }
+    }
+
     try {
-        const response = await fetch(getEndpoint(), {
-            method: "GET",
-            cache: "no-store",
-        });
-        if (isStaleRequest()) return;
+        let parsedInfo = null;
+        let rawText = null;
+        if (cached) {
+            parsedInfo = cached.parsedInfo;
+            const parsedKeycount = Number(parsedInfo.columnCount) || 0;
+            // In Full mode the graph block shows its own "Unsupported Keys" notice,
+            // so don't collapse the whole body to Pattern on unsupported keycounts.
+            const shouldFallbackBodyToPattern = parsedKeycount > 0
+                && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
+                && state.contentBar !== "None"
+                && state.contentBar !== "Full";
+            setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
+        } else {
+            const response = await fetch(getEndpoint(), {
+                method: "GET",
+                cache: "no-store",
+            });
+            if (isStaleRequest()) return;
 
-        if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            rawText = await response.text();
+            if (isStaleRequest()) return;
+            if (!rawText || !rawText.trim()) {
+                throw new Error("Empty beatmap content.");
+            }
+
+            parsedInfo = parseMetadataFromBeatmap(rawText);
+            const parsedKeycount = Number(parsedInfo.columnCount) || 0;
+            // In Full mode the graph block shows its own "Unsupported Keys" notice,
+            // so don't collapse the whole body to Pattern on unsupported keycounts.
+            const shouldFallbackBodyToPattern = parsedKeycount > 0
+                && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
+                && state.contentBar !== "None"
+                && state.contentBar !== "Full";
+            setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
         }
 
-        const rawText = await response.text();
-        if (isStaleRequest()) return;
-        if (!rawText || !rawText.trim()) {
-            throw new Error("Empty beatmap content.");
-        }
-
-        const parsedInfo = parseMetadataFromBeatmap(rawText);
-        const parsedKeycount = Number(parsedInfo.columnCount) || 0;
-        // In Full mode the graph block shows its own "Unsupported Keys" notice,
-        // so don't collapse the whole body to Pattern on unsupported keycounts.
-        const shouldFallbackBodyToPattern = parsedKeycount > 0
-            && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
-            && state.contentBar !== "None"
-            && state.contentBar !== "Full";
-        setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
+        // override 之后才计算 shows*/activeContentBar（恢复 main 顺序），
+        // 供下方各计算块与渲染段使用；needComputed 仍用 fetch 前的保守值。
         const activeContentBar = getActiveContentBar();
         const showsPattern = contentBarShows("Pattern");
         const showsEtterna = contentBarShows("Etterna");
@@ -331,6 +387,7 @@ export async function fetchBeatmapFile(reason) {
         let rework = null;
         let patternResult = null;
         let patternReport = null;
+        let mergedClusters = null;
         let ettResult = null;
         let interludeStar = Number.NaN;
         let isVibroMap = false;
@@ -365,103 +422,120 @@ export async function fetchBeatmapFile(reason) {
             || needMsdValue
             || estimatorNeedsCompanellaData;
 
-        try {
-            const estimatorOptions = {
-                speedRate: state.speedRate,
-                odFlag: state.odFlag,
-                cvtFlag: state.cvtFlag,
-                withGraph: state.diffText === "Graph" || showsGraph,
-                extendedEstimationRange: state.extendedEstimationRange,
-            };
+        if (cached) {
+            rework = cached.rework;
+            state.actualEstimatorAlgorithm = cached.actualEstimatorAlgorithm;
+            resolvedEstDiff = cached.rework.estDiff;
+            resolvedNumericDifficulty = cached.rework.numericDifficulty;
+            resolvedNumericDifficultyHint = cached.rework.numericDifficultyHint;
+            sixKConst = cached.sixKConst ?? null;
+        } else {
+            try {
+                const estimatorOptions = {
+                    speedRate: state.speedRate,
+                    odFlag: state.odFlag,
+                    cvtFlag: state.cvtFlag,
+                    withGraph: state.diffText === "Graph" || showsGraph,
+                    extendedEstimationRange: state.extendedEstimationRange,
+                };
 
-            const azusaOptions = {
-                ...estimatorOptions,
-                forceSunnyReferenceHo: state.azusaSunnyReferenceHo,
-            };
+                const azusaOptions = {
+                    ...estimatorOptions,
+                    forceSunnyReferenceHo: state.azusaSunnyReferenceHo,
+                };
 
-            let selectedRework = null;
-            let nextEstDiff = null;
-            let nextNumericDifficulty = null;
-            let nextNumericDifficultyHint = null;
-            let actualEstimatorAlgorithm = estimatorAlgorithm;
+                let selectedRework = null;
+                let nextEstDiff = null;
+                let nextNumericDifficulty = null;
+                let nextNumericDifficultyHint = null;
+                let actualEstimatorAlgorithm = estimatorAlgorithm;
 
-            const isValidEstimatorResult = (result) => Boolean(result)
-                && Number.isFinite(result.star)
-                && Number.isFinite(result.numericDifficulty)
-                && typeof result.estDiff === "string";
+                const isValidEstimatorResult = (result) => Boolean(result)
+                    && Number.isFinite(result.star)
+                    && Number.isFinite(result.numericDifficulty)
+                    && typeof result.estDiff === "string";
 
-            if (estimatorAlgorithm === "Daniel") {
-                const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
-                selectedRework = wp ? await wp : runDanielEstimatorFromText(rawText, estimatorOptions);
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-            } else if (estimatorAlgorithm === "Azusa") {
-                const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm, forceSunnyReferenceHo: state.azusaSunnyReferenceHo });
-                selectedRework = wp ? await wp : runAzusaEstimatorFromText(rawText, azusaOptions);
-                actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
-                if (!isValidEstimatorResult(selectedRework)) {
+                if (estimatorAlgorithm === "Daniel") {
+                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
+                    selectedRework = wp ? await wp : runDanielEstimatorFromText(rawText, estimatorOptions);
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                } else if (estimatorAlgorithm === "Azusa") {
+                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm, forceSunnyReferenceHo: state.azusaSunnyReferenceHo });
+                    selectedRework = wp ? await wp : runAzusaEstimatorFromText(rawText, azusaOptions);
+                    actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
+                    if (!isValidEstimatorResult(selectedRework)) {
+                        selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
+                        actualEstimatorAlgorithm = "Sunny";
+                    }
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                } else if (estimatorAlgorithm === "Roxy") {
+                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
+                    selectedRework = wp ? await wp : runRoxyEstimatorFromText(rawText, estimatorOptions);
+                    actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
+                    if (!isValidEstimatorResult(selectedRework)) {
+                        selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
+                        actualEstimatorAlgorithm = "Sunny";
+                    }
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                } else if (estimatorAlgorithm === "Companella") {
                     selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                    actualEstimatorAlgorithm = "Sunny";
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                    pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
+                } else if (estimatorAlgorithm === "Mixed") {
+                    selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+                    pendingMixedCompanellaContext = selectedRework.mixedCompanellaPlan || null;
+                } else {
+                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm: "Sunny" });
+                    selectedRework = wp ? await wp : runSunnyEstimatorFromText(rawText, estimatorOptions);
+                    nextEstDiff = selectedRework.estDiff;
+                    nextNumericDifficulty = selectedRework.numericDifficulty;
+                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
                 }
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-            } else if (estimatorAlgorithm === "Roxy") {
-                const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
-                selectedRework = wp ? await wp : runRoxyEstimatorFromText(rawText, estimatorOptions);
-                actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
-                if (!isValidEstimatorResult(selectedRework)) {
-                    selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                    actualEstimatorAlgorithm = "Sunny";
+
+                rework = selectedRework;
+                state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
+                if (isStaleRequest()) return;
+                resolvedEstDiff = nextEstDiff;
+                resolvedNumericDifficulty = nextNumericDifficulty;
+                resolvedNumericDifficultyHint = nextNumericDifficultyHint;
+
+                // 6K 定数: compute Sunny SR for constant rating display
+                sixKConst = null;
+                if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
+                    const sunnySrc = actualEstimatorAlgorithm === "Sunny"
+                        ? Number(rework.star)
+                        : Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star);
+                    state.sunnySR = sunnySrc;
+                    if (Number.isFinite(sunnySrc) && sunnySrc > 0) {
+                        sixKConst = sunnySrc * 200 / 81 + 7 / 6;
+                        sixKConst = Math.round(sixKConst * 100) / 100;
+                    }
                 }
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-            } else if (estimatorAlgorithm === "Companella") {
-                selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
-            } else if (estimatorAlgorithm === "Mixed") {
-                selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                pendingMixedCompanellaContext = selectedRework.mixedCompanellaPlan || null;
-            } else {
-                const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm: "Sunny" });
-                selectedRework = wp ? await wp : runSunnyEstimatorFromText(rawText, estimatorOptions);
-                nextEstDiff = selectedRework.estDiff;
-                nextNumericDifficulty = selectedRework.numericDifficulty;
-                nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
+            } catch (error) {
+                resetReworkDisplay();
+                if (state.diffText === "Graph" || showsGraph) {
+                    showDiffGraphError("Graph unavailable");
+                }
+                errors.push(`Rework failed: ${error.message}`);
             }
+        }
 
-            rework = selectedRework;
-            state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
-            if (isStaleRequest()) return;
-
-            // 6K 定数: compute Sunny SR for constant rating display
-            sixKConst = null;
-            if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
-                const sunnySrc = actualEstimatorAlgorithm === "Sunny"
-                    ? Number(rework.star)
-                    : Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star);
-                state.sunnySR = sunnySrc;
-                if (Number.isFinite(sunnySrc) && sunnySrc > 0) {
-                    sixKConst = sunnySrc * 200 / 81 + 7 / 6;
-                    sixKConst = Math.round(sixKConst * 100) / 100;
-                }
-            }
-
-            // 拿到结果、即将首次写入 star 区块时再触发入场动画，
-            // 与数值/难度名/图表的刷新同帧，换歌才整块入场，换难度只做轻量过渡。
+        // 拿到结果、即将首次写入 star 区块时再触发入场动画，
+        // 与数值/难度名/图表的刷新同帧，换歌才整块入场，换难度只做轻量过渡。
+        if (rework) {
             playStarBlockEntranceOnce();
             showNumericStarValue(rework.star);
-            resolvedEstDiff = nextEstDiff;
-            resolvedNumericDifficulty = nextNumericDifficulty;
-            resolvedNumericDifficultyHint = nextNumericDifficultyHint;
             updateDiffTextVisibility();
 
             if (state.diffText === "Graph" || showsGraph) {
@@ -481,86 +555,100 @@ export async function fetchBeatmapFile(reason) {
             resolvedMetaHtml = `LN%: ${lnPercent}<br/>Keys: ${rework.columnCount}`;
             reworkMetaEl.innerHTML = resolvedMetaHtml;
             reworkMetaEl.classList.remove("loading");
-        } catch (error) {
-            resetReworkDisplay();
-            if (state.diffText === "Graph" || showsGraph) {
-                showDiffGraphError("Graph unavailable");
-            }
-            errors.push(`Rework failed: ${error.message}`);
         }
 
         if (needInterludeValue) {
-            try {
-                interludeStar = await calculateInterludeStar(rawText, state.speedRate, state.cvtFlag);
-                if (isStaleRequest()) return;
-            } catch (error) {
-                errors.push(`Interlude analyze failed: ${error.message}`);
+            if (cached) {
+                interludeStar = cached.interludeStar;
+            } else {
+                try {
+                    interludeStar = await calculateInterludeStar(rawText, state.speedRate, state.cvtFlag);
+                    if (isStaleRequest()) return;
+                } catch (error) {
+                    errors.push(`Interlude analyze failed: ${error.message}`);
+                }
             }
         }
 
         if (needPatternAnalysis) {
-            try {
-                patternResult = analyzePatternFromText(rawText);
-                patternReport = patternResult?.report || null;
-                const allClusters = patternResult?.report?.Clusters || patternResult?.topFiveClusters || [];
-                const mergedClusters = mergeDuplicateClusters(allClusters);
+            let patternAnalysisError = null;
+            if (cached) {
+                patternResult = cached.patternReport ? { report: cached.patternReport } : null;
+                patternReport = cached.patternReport;
+                mergedClusters = cached.mergedClusters;
+            } else {
+                try {
+                    patternResult = analyzePatternFromText(rawText);
+                    patternReport = patternResult?.report || null;
+                    const allClusters = patternResult?.report?.Clusters || patternResult?.topFiveClusters || [];
+                    mergedClusters = mergeDuplicateClusters(allClusters);
 
-                if (state.debugUseAmount) {
-                    mergedClusters.sort((a, b) => b.Amount - a.Amount);
-                    if (patternReport && mergedClusters.length > 0) {
-                        const topSpecific = mergedClusters[0]?.SpecificTypes?.[0];
-                        if (topSpecific && Number(topSpecific[1]) > 0.05) {
-                            patternReport.Category = topSpecific[0];
-                        } else {
-                            patternReport.Category = mergedClusters[0].Pattern;
+                    if (state.debugUseAmount) {
+                        mergedClusters.sort((a, b) => b.Amount - a.Amount);
+                        if (patternReport && mergedClusters.length > 0) {
+                            const topSpecific = mergedClusters[0]?.SpecificTypes?.[0];
+                            if (topSpecific && Number(topSpecific[1]) > 0.05) {
+                                patternReport.Category = topSpecific[0];
+                            } else {
+                                patternReport.Category = mergedClusters[0].Pattern;
+                            }
                         }
                     }
+                } catch (error) {
+                    patternAnalysisError = error;
+                    errors.push(`Pattern analyze failed: ${error.message}`);
                 }
+            }
 
-                if (showsPattern) {
-                    if (!(await waitForBodyRenderReady())) return;
+            if (showsPattern) {
+                if (!(await waitForBodyRenderReady())) return;
+                if (patternAnalysisError) {
+                    renderBodySectionError("Pattern", patternAnalysisError.message);
+                } else {
                     renderPatternClusters(mergedClusters);
                 }
-            } catch (error) {
-                if (showsPattern) {
-                    if (!(await waitForBodyRenderReady())) return;
-                    renderBodySectionError("Pattern", error.message);
-                }
-                errors.push(`Pattern analyze failed: ${error.message}`);
             }
         } else {
             patternClustersEl.innerHTML = "";
         }
 
         if (needEtternaAnalysis) {
-            try {
-                ettResult = await analyzeEtternaFromText(
-                    rawText,
-                    buildEtternaAnalyzeOptions(state.etternaVersion),
-                );
-                if (isStaleRequest()) return;
+            let ettAnalysisError = null;
+            if (cached) {
+                ettResult = cached.ettResult;
+                isVibroMap = cached.isVibroMap;
+            } else {
+                try {
+                    ettResult = await analyzeEtternaFromText(
+                        rawText,
+                        buildEtternaAnalyzeOptions(state.etternaVersion),
+                    );
+                    if (isStaleRequest()) return;
 
-                const reworkStarValue = Number(rework?.star);
-                const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
-                isVibroMap = state.vibroDetection
-                    && vibroEligible
-                    && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
-
-                if (showsEtterna) {
-                    if (!(await waitForBodyRenderReady())) return;
-                    const columnCount = Number(rework?.columnCount) || Number(parsedInfo.columnCount) || 0;
-                    renderEtternaSkillBars(ettResult?.values || {}, columnCount);
+                    const reworkStarValue = Number(rework?.star);
+                    const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
+                    isVibroMap = state.vibroDetection
+                        && vibroEligible
+                        && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                } catch (error) {
+                    ettAnalysisError = error;
+                    const isKeycountError = /unsupported keycount/i.test(String(error?.message ?? ""));
+                    if (shouldReportEtternaError && !isKeycountError) {
+                        errors.push(`Etterna analyze failed: ${error.message}`);
+                    }
                 }
-            } catch (error) {
-                const isKeycountError = /unsupported keycount/i.test(String(error?.message ?? ""));
-                if (showsEtterna) {
-                    if (!(await waitForBodyRenderReady())) return;
-                    renderBodySectionError("Etterna", isKeycountError ? "Unsupported Keycount" : error.message);
+            }
+
+            if (showsEtterna) {
+                if (!(await waitForBodyRenderReady())) return;
+                if (ettAnalysisError) {
+                    const isKeycountError = /unsupported keycount/i.test(String(ettAnalysisError?.message ?? ""));
+                    renderBodySectionError("Etterna", isKeycountError ? "Unsupported Keycount" : ettAnalysisError.message);
                     state.etternaTechnicalHidden = false;
                     mainCardEl.classList.remove("bars-etterna-compact");
-                }
-                if (shouldReportEtternaError && !isKeycountError) {
-                    errors.push(`Etterna analyze failed: ${error.message}`);
+                } else {
+                    const columnCount = Number(rework?.columnCount) || Number(parsedInfo.columnCount) || 0;
+                    renderEtternaSkillBars(ettResult?.values || {}, columnCount);
                 }
             }
         } else {
@@ -573,7 +661,7 @@ export async function fetchBeatmapFile(reason) {
             const shouldRunCompanella = Number(rework.columnCount) === 4
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
 
-            if (shouldRunCompanella) {
+            if (shouldRunCompanella && !cached) {
                 let companellaMsdValues = ettResult?.values;
                 const companellaEtternaVersion = String(
                     state.companellaEtternaVersion || state.etternaVersion,
@@ -623,6 +711,42 @@ export async function fetchBeatmapFile(reason) {
                 } catch (error) {
                     console.warn(`Companella estimate failed: ${error.message}`);
                 }
+            }
+
+            // 写缓存：companella 完成后、SV/auto-profile 段之前。
+            // 门控：miss && 开关开 && 全成功 && generation 未变（防 clear 后旧分析写回）。
+            if (!cached && state.enableResultCache && state.lastBeatmapIdentity
+                && errors.length === 0
+                && rework && !isStaleRequest()
+                && genAtStart === resultCacheGeneration()) {
+                // clustering.js 的 cluster 对象带 format()/Importance 方法，
+                // structuredClone 无法拷贝（resultCache 契约要求 JSON-safe），
+                // 快照只存渲染所需的普通字段。
+                const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
+                resultCache.put(cacheKey, {
+                    rework: {
+                        star: rework.star,
+                        estDiff: resolvedEstDiff,
+                        numericDifficulty: resolvedNumericDifficulty,
+                        numericDifficultyHint: resolvedNumericDifficultyHint,
+                        graph: rework.graph,
+                        lnRatio: rework.lnRatio,
+                        columnCount: rework.columnCount,
+                    },
+                    patternReport: jsonSafe(patternReport),
+                    mergedClusters: jsonSafe(mergedClusters),
+                    ettResult,
+                    interludeStar,
+                    isVibroMap,
+                    sixKConst,
+                    actualEstimatorAlgorithm: state.actualEstimatorAlgorithm,
+                    parsedInfo: {
+                        metadata: parsedInfo.metadata,
+                        lnRatio: parsedInfo.lnRatio,
+                        columnCount: parsedInfo.columnCount,
+                    },
+                    computed: needComputed,
+                }, { skip: isMetaDegraded });
             }
 
             const rawDiffText = formatDiffForDisplay(resolvedEstDiff);

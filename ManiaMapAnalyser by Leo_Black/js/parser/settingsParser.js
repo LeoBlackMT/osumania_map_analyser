@@ -374,6 +374,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.pauseDetectionEnabled);
     }
 
+    function parseEnableResultCacheValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableResultCache");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableResultCache);
+    }
+
     function parseDisableVibroDetectionValue(settingsPayload) {
         return !parseVibroDetectionValue(settingsPayload);
     }
@@ -559,6 +564,7 @@ export function createSettingsParsers(appConfig) {
         parseEtternaVersionValue,
         parseCompanellaEtternaVersionValue,
         parseEnablePauseDetectionValue,
+        parseEnableResultCacheValue,
         parsePauseDetectionThresholdValue,
         parseDisableVibroDetectionValue,
         parseVibroDetectionValue,
