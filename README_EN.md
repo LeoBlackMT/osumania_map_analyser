@@ -113,6 +113,10 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **SV Detection**: Whether to enable SV beatmap detection.
         - When enabled, an SV tag will be displayed in the bottom-left corner when speed variation is detected.
         - Note: If the Map Tag Capsule display is not enabled, the SV tag will not be shown.
+    - **Extended Estimation Range**: Whether to enable the extended estimation range.
+        - When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
+        - Currently supported: 4K RC, 4K LN, 7K RC. 6K, 7K LN and the Daniel 4K algorithm are not affected.
+        - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.
