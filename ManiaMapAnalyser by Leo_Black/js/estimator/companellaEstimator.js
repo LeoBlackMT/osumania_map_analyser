@@ -19,6 +19,11 @@ const VARIANT_TEXT = {
 let ortNamespacePromise = null;
 let modelSessionPromise = null;
 
+// onnxruntime-web ships separate entries for browser (wasm-only bundle) and
+// Node.js (fs-based loader). The full `ort.min.mjs` bundle cannot run under
+// Node (its loader relies on fetch/blob/location), so pick per environment.
+const IS_NODE = typeof process !== "undefined" && !!process.versions?.node;
+
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
@@ -40,8 +45,11 @@ function resolveOrtNamespace(moduleValue) {
 
 async function getOrtNamespace() {
     if (!ortNamespacePromise) {
-        ortNamespacePromise = import("./companella/ort/ort.min.mjs")
-            .then(resolveOrtNamespace);
+        ortNamespacePromise = import(
+            IS_NODE
+                ? "./companella/ort/ort.node.min.mjs"
+                : "./companella/ort/ort.wasm.min.mjs"
+        ).then(resolveOrtNamespace);
     }
     return ortNamespacePromise;
 }
@@ -56,7 +64,12 @@ async function getModelSession() {
                 ort.env.wasm.numThreads = 1;
             }
 
-            const modelUrl = new URL("./companella/dan_model.onnx", import.meta.url).toString();
+            let modelUrl = new URL("./companella/dan_model.onnx", import.meta.url).toString();
+            if (IS_NODE) {
+                // Node fs does not accept file:// URL strings; convert to a path.
+                const { fileURLToPath } = await import("node:url");
+                modelUrl = fileURLToPath(modelUrl);
+            }
             return ort.InferenceSession.create(modelUrl, {
                 executionProviders: ["wasm"],
             });

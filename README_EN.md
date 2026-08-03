@@ -117,6 +117,11 @@ Note: It is recommended to start with the default settings and then adjust accor
         - When enabled, for 6K beatmaps only, the top-left star capsule will be overridden with the constant rating and display an "LV" badge.
         - Formula: `sunnySR × 200/81 + 7/6`, rounded to 2 decimal places.
         - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
+    - **Extended Estimation Range**: Whether to enable the extended estimation range.
+        - Not Recommended: When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
+        - Currently supported: 4K RC, 4K LN, 7K RC. 6K, 7K LN and the Daniel 4K algorithm are not affected.
+        - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
+        - The extended part's data source is come from [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.

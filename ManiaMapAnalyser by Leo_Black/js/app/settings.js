@@ -35,6 +35,7 @@ import {
     parseSrTextValue,
     parseSvDetectionValue,
     parseDisplay6kLevelValue,
+    parseExtendedEstimationRangeValue,
     parseVibroDetectionValue,
     parseWsEndpointValue,
     patternClustersEl,
@@ -334,6 +335,12 @@ export function applyDisplay6kLevelSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.display6kLevel);
     const changed = state.display6kLevel !== next;
     state.display6kLevel = next;
+    return changed;
+}
+export function applyExtendedEstimationRangeSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.extendedEstimationRange);
+    const changed = state.extendedEstimationRange !== next;
+    state.extendedEstimationRange = next;
     return changed;
 }
 
@@ -701,6 +708,7 @@ export function setupSettingsCommandListener() {
         const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
         const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
         const display6kLevelChanged = applyIf("display6kLevel", applyDisplay6kLevelSetting, parseDisplay6kLevelValue(payload));
+        const extendedEstimationRangeChanged = applyIf("extendedEstimationRange", applyExtendedEstimationRangeSetting, parseExtendedEstimationRangeValue(payload));
         const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
         const floatingTrianglesChanged = applyIf("enableFloatingTriangles", applyEnableFloatingTrianglesSetting, parseEnableFloatingTrianglesValue(payload));
         const coverArtChanged = applyIf("enableCoverArt", applyEnableCoverArtSetting, parseEnableCoverArtValue(payload));
@@ -742,6 +750,7 @@ export function setupSettingsCommandListener() {
             || customColorChanged
             || svChanged
             || display6kLevelChanged;
+            || extendedEstimationRangeChanged;
 
         const recomputeNeeded = contentBarChanged
             || srTextChanged
@@ -758,6 +767,7 @@ export function setupSettingsCommandListener() {
             || modeTagVisibilityChanged
             || svChanged
             || display6kLevelChanged;
+            || extendedEstimationRangeChanged;
 
         if (typeof state.initialSettingsResolver === "function") {
             const resolve = state.initialSettingsResolver;
@@ -844,6 +854,7 @@ export async function loadSettings() {
         applyCustomBackgroundColorSetting(parseCustomBackgroundColorValue(source));
         applyUseSvDetectionSetting(parseSvDetectionValue(source));
         applyDisplay6kLevelSetting(parseDisplay6kLevelValue(source));
+        applyExtendedEstimationRangeSetting(parseExtendedEstimationRangeValue(source));
     }
 
     // Apply file settings as baseline immediately
@@ -881,6 +892,7 @@ export async function loadSettings() {
             customBackgroundColor: APP_CONFIG.defaults.customBackgroundColor,
             useSvDetection: APP_CONFIG.defaults.useSvDetection,
             display6kLevel: APP_CONFIG.defaults.display6kLevel,
+            extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
         });
     }
 

@@ -280,6 +280,13 @@
 		"description": "Display the constant rating overlay on the star capsule for 6K beatmaps.",
 		"options": [],
 		"value": true
+  },
+		"uniqueID": "extendedEstimationRange",
+		"type": "checkbox",
+		"title": "Extended Estimation Range",
+		"description": "Extend the difficulty estimation soft cap using extended interval tables (4K RC, 4K LN, 7K RC). Estimates change and extended tiers are experimental - accuracy is not guaranteed. Does not affect Daniel 4K.",
+		"options": [],
+		"value": false
 	},
 	{
 		"uniqueID": "pauseDetectionThreshold",
