@@ -68,3 +68,7 @@ export const resultCache = createResultCache();
 export function clearResultCache() {
     resultCache.clear();
 }
+
+export function resultCacheGeneration() {
+    return resultCache.generation;
+}
