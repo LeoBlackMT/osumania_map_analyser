@@ -77,6 +77,8 @@ export const state = {
     userDiffText: APP_CONFIG.defaults.diffText,
     debugUseAmount: APP_CONFIG.defaults.debugUseAmount,
     useSvDetection: APP_CONFIG.defaults.useSvDetection,
+    display6kLevel: APP_CONFIG.defaults.display6kLevel,
+    sunnySR: null,
     extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
     diffText: APP_CONFIG.defaults.diffText,
     estimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
@@ -203,6 +205,7 @@ export const {
     parseEnableCoverArtValue,
     parseCustomBackgroundColorValue,
     parseSvDetectionValue,
+    parseDisplay6kLevelValue,
     parseExtendedEstimationRangeValue,
     parseWsEndpointValue,
 } = createSettingsParsers(APP_CONFIG);

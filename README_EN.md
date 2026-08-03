@@ -113,6 +113,10 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **SV Detection**: Whether to enable SV beatmap detection.
         - When enabled, an SV tag will be displayed in the bottom-left corner when speed variation is detected.
         - Note: If the Map Tag Capsule display is not enabled, the SV tag will not be shown.
+    - **Show 6K Constant Rating**: Whether to enable the 6K constant rating display.
+        - When enabled, for 6K beatmaps only, the top-left star capsule will be overridden with the constant rating and display an "LV" badge.
+        - Formula: `sunnySR × 200/81 + 7/6`, rounded to 2 decimal places.
+        - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
     - **Extended Estimation Range**: Whether to enable the extended estimation range.
         - Not Recommended: When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
         - Currently supported: 4K RC, 4K LN, 7K RC. 6K, 7K LN and the Daniel 4K algorithm are not affected.
