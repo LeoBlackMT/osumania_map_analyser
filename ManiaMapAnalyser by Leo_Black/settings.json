@@ -250,6 +250,14 @@
 		"value": true
 	},
 	{
+		"uniqueID": "enableResultCache",
+		"type": "checkbox",
+		"title": "Result Cache",
+		"description": "Cache analysis results to show instantly when revisiting a map. Disable if you suspect stale results.",
+		"options": [],
+		"value": true
+	},
+	{
 		"uniqueID": "enablePauseDetection",
 		"type": "checkbox",
 		"title": "Pause Detection",
