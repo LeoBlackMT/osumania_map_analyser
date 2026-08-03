@@ -12,7 +12,7 @@ export function runSunnyEstimatorFromText(osuText, options = {}) {
 
     return {
         ...parsed,
-        estDiff: estDiff(parsed.star, parsed.lnRatio, parsed.columnCount),
+        estDiff: estDiff(parsed.star, parsed.lnRatio, parsed.columnCount, options.extendedEstimationRange === true),
         numericDifficulty: null,
         numericDifficultyHint: null,
     };

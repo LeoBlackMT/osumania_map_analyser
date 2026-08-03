@@ -369,6 +369,7 @@ export async function fetchBeatmapFile(reason) {
                 odFlag: state.odFlag,
                 cvtFlag: state.cvtFlag,
                 withGraph: state.diffText === "Graph" || showsGraph,
+                extendedEstimationRange: state.extendedEstimationRange,
             };
 
             const azusaOptions = {

@@ -8,7 +8,7 @@ import { rc7K } from "./7k-rc.js";
 import { rcExt7K } from "./7k-rc-ext.js";
 import { ln7K } from "./7k-ln.js";
 import { rc10K } from "./10k-rc.js";
-import { wild7k } from "./7k-wild.js";
+import { wild7K } from "./7k-wild.js";
 
 export const DAN_INDEX = {
     4: {
