@@ -298,6 +298,30 @@
 		"value": false
 	},
 	{
+		"uniqueID": "forceSunnyWindow",
+		"type": "checkbox",
+		"title": "Improve Sunny LN Estimation",
+		"description": "Improve Sunny LN Estimation by removing rice parts of chart before analyze.",
+		"options": [],
+		"value": true
+	},
+	{
+    	"uniqueID": "enableLNDifficulty",
+    	"type": "checkbox",
+    	"title": "LN Star Rate",
+    	"description": "Show Star Rate values in LN algorithms.",
+    	"options": [],
+    	"value": false
+	},
+	{
+    	"uniqueID": "enableAnalyzeLN",
+    	"type": "checkbox",
+    	"title": "Analyze LN Parts",
+    	"description": "Analyze the percentage of LN/HB/Mix/RC parts in chart. You need to open \"Improve Sunny LN Estimation\" to use this function.",
+    	"options": [],
+    	"value": false
+	},
+	{
 		"uniqueID": "pauseDetectionThreshold",
 		"type": "options",
 		"title": "Pause Detection Threshold",
@@ -321,8 +345,7 @@
 			"Roxy",
 			"Sunny",
 			"Daniel",
-			"Companella",
-			"SunnyWindow"
+			"Companella"
 		],
 		"value": "Mixed"
 	},
@@ -353,38 +376,6 @@
 			"0.74.0"
 		],
 		"value": "0.74.0"
-	},
-	{
-		"uniqueID": "forceSunnyWindow",
-		"type": "checkbox",
-		"title": "Force Using SunnyWindow",
-		"description": "Force to use SunnyWindow to calculate LN difficulty.",
-		"options": [],
-		"value": true
-	},
-	{
-    	"uniqueID": "enableLNDifficulty",
-    	"type": "checkbox",
-    	"title": "LN Star Rate",
-    	"description": "Show Star Rate values in LN algorithms.",
-    	"options": [],
-    	"value": false
-	},
-	{
-    	"uniqueID": "enableAnalyzeLN",
-    	"type": "checkbox",
-    	"title": "Analyze LN Parts",
-    	"description": "TODO: Write a description here",
-    	"options": [],
-    	"value": false
-	},
-	{
-    	"uniqueID": "enableAlwaysShowLNDifficulty",
-    	"type": "checkbox",
-    	"title": "Always Show LN Difficulty",
-    	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
-    	"options": [],
-    	"value": false
 	},
 	{
 		"uniqueID": "hNetwork",
@@ -425,5 +416,12 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
+	},{
+    	"uniqueID": "enableAlwaysShowLNDifficulty",
+    	"type": "checkbox",
+    	"title": "Always Show LN Difficulty",
+    	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
+    	"options": [],
+    	"value": false
 	}
 ]

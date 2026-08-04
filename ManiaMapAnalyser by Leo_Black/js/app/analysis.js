@@ -496,13 +496,6 @@ export async function fetchBeatmapFile(reason) {
                     nextNumericDifficulty = selectedRework.numericDifficulty;
                     nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
                     pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
-                } else if (estimatorAlgorithm === "SunnyWindow") {
-                    selectedRework = runSunnyWindowEstimatorFromText(rawText, estimatorOptions);
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                    typePercentageData = selectedRework.typePercentageData;
-                    lnStar = selectedRework.lnStar;
                 } else if (estimatorAlgorithm === "Mixed") {
                     selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
                     nextEstDiff = selectedRework.estDiff;
@@ -525,7 +518,7 @@ export async function fetchBeatmapFile(reason) {
                 resolvedNumericDifficultyHint = nextNumericDifficultyHint;
 
                 // 如果强制使用SunnyWindow，在这里替换LN部分
-                if (shouldForceSunnyWindow && actualEstimatorAlgorithm != "SunnyWindow") {
+                if (shouldForceSunnyWindow) {
                   const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, estimatorOptions);
                   const sunnyWindowLNEstDiff = sunnyWindowRework.estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[1];
                   typePercentageData = sunnyWindowRework.typePercentageData;
