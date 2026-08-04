@@ -21,6 +21,7 @@
     pointer-events: none;
     transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease;
     margin: 0 2px;
+    display: inline-block;
 }
 
 .mode-tag.capsule-switch {
@@ -30,6 +31,9 @@
 .hidden-tag {
     opacity: 0;
     width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
 }
 
 .sv-tag {

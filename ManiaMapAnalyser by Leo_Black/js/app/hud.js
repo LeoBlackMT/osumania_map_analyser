@@ -163,8 +163,8 @@ export function setModeTag(tag) {
         restartAnimationClass(modeTagEl, "capsule-switch");
     }
 
-    while (modeTagSubGroupEl.children.length > 1) {
-        modeTagSubGroupEl.removeChild(modeTagSubGroupEl.children[1]);
+    for (let i = 1; i < modeTagSubGroupEl.children.length; i++) {
+        modeTagSubGroupEl.children[i].classList.add("hidden-tag");
     }
 }
 
@@ -209,7 +209,7 @@ export function setModeTagAdvanced(tag, lnRatio) {
         }
     }
     for (let i = tagList.length; i < modeTagSubGroupEl.children.length; i++) {
-        modeTagSubGroupEl.children[tagList.length].classList.add("hidden-tag");
+        modeTagSubGroupEl.children[i].classList.add("hidden-tag");
     }
 }
 
