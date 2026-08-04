@@ -28,7 +28,7 @@ export function runSunnyWindowEstimatorFromText(osuText, options = {}) {
 
     return {
         ...parsed,
-        estDiff: estDiff2(parsed.star, LNStar, parsed.columnCount),
+        estDiff: estDiff2(parsed.star, LNStar, parsed.columnCount, options.extendedEstimationRange === true),
         numericDifficulty: null,
         numericDifficultyHint: null,
         typePercentageData: parsedLN.typePercentageData,
