@@ -208,8 +208,8 @@ export function setModeTagAdvanced(tag, lnRatio) {
             restartAnimationClass(modeTagEl, "capsule-switch");
         }
     }
-    while (modeTagSubGroupEl.children.length > tagList.length) {
-        modeTagSubGroupEl.removeChild(modeTagSubGroupEl.children[tagList.length]);
+    for (let i = tagList.length; i < modeTagSubGroupEl.children.length; i++) {
+        modeTagSubGroupEl.children[tagList.length].classList.add("hidden-tag");
     }
 }
 
