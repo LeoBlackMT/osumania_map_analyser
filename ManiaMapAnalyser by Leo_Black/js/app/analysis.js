@@ -776,11 +776,17 @@ export async function fetchBeatmapFile(reason) {
                 }, { skip: isMetaDegraded });
             }
 
-            const rawDiffText = formatDiffForDisplay(resolvedEstDiff);
-            const diffText = (Number.isFinite(resolvedNumericDifficulty) && resolvedNumericDifficulty >= 18.5)
-                ? "> Cloverwisp Theta high"
-                : rawDiffText;
-            setEstimateDifficultyText(diffText);
+            if (Number.isFinite(resolvedNumericDifficulty) && resolvedNumericDifficulty >= 18.5) {
+                if (resolvedEstDiff) {
+                    const strList = resolvedEstDiff.split("||");
+                    strList[0] = "> Cloverwisp Theta high";
+                    setEstimateDifficultyText(formatDiffForDisplay(strList.join("||")));
+                }
+                else {
+                    setEstimateDifficultyText("> Cloverwisp Theta high");
+                }
+            }
+            else setEstimateDifficultyText(formatDiffForDisplay(resolvedEstDiff));
         }
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
