@@ -1,5 +1,6 @@
 /docs/file
-/docs/runner
+/docs/data
+.playwright-mcp/
 /temp
 /backup
 AGENTS.md

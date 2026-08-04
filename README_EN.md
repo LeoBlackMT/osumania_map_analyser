@@ -33,9 +33,9 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 5. For instructions on using the in-game interface and OBS, please refer to the relevant tosu documentation.
 
 ## Estimator Algorithm Benchmark
-- The difficulty estimation algorithms of this plugin have been benchmarked against real beatmap data, and the results can be viewed [here](https://leoblackmt.github.io/osumania_map_analyser/). The tests cover the performance of multiple algorithms across different types of beatmaps, helping players choose the one that suits them best.
+- The benchmark has been migrated to the separate repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and the results can be viewed [here](https://benchmark.leoblack.top/). The tests cover the performance of multiple algorithms across different types of beatmaps, helping players choose the one that suits them best.
 - It is important to note that while the benchmark provides a reference for algorithm performance, actual usage may be influenced by various factors such as beatmap characteristics and mod combinations. Players are encouraged to combine the benchmark results with their own gameplay experience for judgment.
-- You can download the beatmap data used for benchmarking [here](https://github.com/LeoBlackMT/osumania_map_analyser/tree/main/docs/data/files.7z). However, please read the disclaimer and use the data responsibly.
+- You can download the beatmap data used for benchmarking [here](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z). However, please read the disclaimer and use the data responsibly.
 
 ## Notes
 1. The plugin needs to run in the `static` directory of tosu. Ensure it is placed directly in that directory, not nested inside another folder.
@@ -163,7 +163,7 @@ Roxy is a 4K RC meta-structural estimator. Its core consists of two layers: the 
 Please note that as a tree-based model, the GBDT meta-model can exhibit boundary discontinuities: a miniscule change in input features (e.g., a 0.01× speed rate difference) may cross a decision tree split threshold and produce a disproportionately large jump in the output difficulty. Users should be aware of this inherent characteristic of tree-based estimators.
 
 ## Azusa Algorithm Explanation
-This algorithm builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](azusa_algorithm.md).
+This algorithm builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
 
 ## References
 - [tosu](https://tosu.app): The runtime environment and basic framework for this plugin.
