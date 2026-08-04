@@ -6,7 +6,7 @@
 ![Features](img/features.gif)
 
 <details>
-<summary>更新: 新主题效果图</summary>
+<summary>主题效果图</summary>
 <img src="img/themeLN.jpg" alt="LN" width="400">
 <img src="img/themeRC.jpg" alt="RC" width="400">
 <img src="img/full.jpg" alt="Full" width="400">
