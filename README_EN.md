@@ -8,7 +8,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ![Features](img/features.gif)
 
 <details>
-<summary>Update: New Theme Screenshots</summary>
+<summary>New Theme Screenshots</summary>
 <img src="img/themeLN.jpg" alt="LN" width="400">
 <img src="img/themeRC.jpg" alt="RC" width="400">
 <img src="img/full.jpg" alt="Full" width="400">
@@ -91,6 +91,9 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **Metadata Marquee**: Whether to enable horizontal scrolling for beatmap metadata.
     - **Numeric Difficulty**: Whether to display numerical difficulty values.
         - When enabled, numerical difficulty will be shown after the "ESTIMATE DIFFICULTY" label under the RC estimation algorithm.
+    - **LN Star Rating**: Show LN Star Rating
+        - Shows LN Star Rating after the "ESTIMATE DIFFICULTY" label.
+        - This option is only effective when "Improve Sunny LN Estimation" is enabled; otherwise, it will display the original Rework star rating.
     - **Reverse Card Extension**: Whether to reverse the card expansion direction.
         - When enabled, the card stays anchored at the bottom and grows upward; when disabled, it expands downward by default.
     - **Card Visibility**: Control when the card is shown.
@@ -129,13 +132,10 @@ Note: It is recommended to start with the default settings and then adjust accor
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.
     - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation
-        - Removes rice parts and LN parts which LN% is too low, before Sunny Algorithm calculate Star Rate.
-    - **LN Star Rate**: Show LN Star Rate
-        - Shows LN Star Rate in "Estimate Difficulty".
-        - If you open "Improve Sunny LN Estimation", it will display actual Star Rate after some parts are removed from chart.
-    - **Analyze LN Parts**: Analyze LN Parts
-        - Display the percentage of notes which are in LN/HB/Mix/RC parts.
-        - Mix Part means a Part that includes LN but LN% is too low to be seen as a HB Part.
+        - Removes rice parts and LN parts which LN% is too low, before Sunny Algorithm calculate Star Rate, making Sunny Algorithm more accurate on LN maps.
+        - Note: This option affects all features that use the Sunny algorithm.
+    - **Analyze LN Parts**: Analyze LN Parts by LN
+        - Display the percentage of beatmaps which are in LN/HB/Mix/RC parts, and show it in the bottom-left beatmap tag capsule.
     - **Estimator Algorithm**: Choose the algorithm used for difficulty estimation.
         - Mixed: (Recommended) A hybrid algorithm combining the four below, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
@@ -166,8 +166,8 @@ Note: It is recommended to start with the default settings and then adjust accor
         - When enabled, the Azusa algorithm will be forced to treat the beatmap as a pure RC (HO) map.
         - It is enabled by default; please do not disable it casually.
     - **Always Show LN Difficulty**
-        - When enabled, always show LN Difficulty.
-        - It is disabled by default. Don't open it when you doesn't open "Improve Sunny LN Estimation" or it will output wrong LN difficulty.
+        - When enabled, always show LN Difficulty. Default is disabled.
+        - This option only takes effect when "Improve Sunny LN Estimation" is enabled, or it may misjudge LN difficulty for non-LN maps.
 
 ## Roxy Algorithm Explanation
 Roxy is a 4K RC meta-structural estimator. Its core consists of two layers: the first layer performs structural analysis on the beatmap across 7 aspects, producing structured numerical difficulty; the second layer blends reference predictions from Azusa/Sunny/Daniel using a GBDT (Gradient Boosted Decision Tree) meta-model to output the final difficulty.
