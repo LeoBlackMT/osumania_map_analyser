@@ -239,6 +239,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
             lnRatio,
             columnCount,
             typePercentageData: null,
+            lnPartsRatio: 0,
     };
     }
     if (p.status === "NotMania") {
@@ -255,6 +256,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
             lnRatio,
             columnCount,
             typePercentageData: null,
+            lnPartsRatio: 0,
     };
     }
 
@@ -272,6 +274,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
             lnRatio,
             columnCount,
             typePercentageData: null,
+            lnPartsRatio: 0,
         };
     }
 
@@ -302,8 +305,6 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
     }
 
     function getTypePercentageData(p, HB_NoteSeq, osuText, speedRate, odFlag, cvtFlag) {
-        function getFullLength(count, value) {return count + (value[1] - value[0] + 1);}
-
         const Mix_Length = calcTypeMixLength (p);
         const HB_Length = HB_NoteSeq.length;
         const LNParts = getLNParts(true, osuText, speedRate, odFlag, cvtFlag);
@@ -346,6 +347,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
             lnRatio,
             columnCount,
             typePercentageData : shouldCalcData ? getTypePercentageData(p, [], osuText, speedRate, odFlag, cvtFlag) : null,
+            lnPartsRatio: 0,
         };
     }
 
@@ -380,7 +382,8 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
             lnSeqByColumn: [],
             lnRatio,
             columnCount,
-            typePercentageData
+            typePercentageData,
+            lnPartsRatio: 0,
         };
     }
 
@@ -424,7 +427,8 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
     lnSeqByColumn,
     lnRatio,
     columnCount,
-    typePercentageData
+    typePercentageData,
+    lnPartsRatio: noteSeq.length / p.columns.length,
     };
 }
 
@@ -1295,6 +1299,7 @@ export function calculateLN(osuText, speedRate = 1.0, odFlag = null, cvtFlag = n
     lnRatio,
     columnCount,
     typePercentageData,
+    lnPartsRatio,
     } = preprocessFile(osuText, speedRate, odFlag, cvtFlag);
 
     if (status === "Fail") return -1;
@@ -1401,7 +1406,8 @@ export function calculateLN(osuText, speedRate = 1.0, odFlag = null, cvtFlag = n
         star: sr,
         lnRatio,
         columnCount,
-        typePercentageData
+        typePercentageData,
+        lnPartsRatio
     }
     if (withGraph) {
         const DPre = applyProximityEnvelope(allCorners, DAll, noteSeq);

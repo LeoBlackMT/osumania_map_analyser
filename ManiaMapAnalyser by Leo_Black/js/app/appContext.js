@@ -107,6 +107,7 @@ export const state = {
     enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
     numericDifficulty: null,
     numericDifficultyHint: null,
+    lnStar: 0,
     forceHideNumericDifficulty: false,
     showModeTagCapsule: APP_CONFIG.defaults.showModeTagCapsule,
     showSvTag: false,

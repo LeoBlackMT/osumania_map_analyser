@@ -367,6 +367,7 @@ export async function fetchBeatmapFile(reason) {
             || estimatorNeedsCompanellaData;
         const shouldForceSunnyWindow = state.forceSunnyWindow;
 
+        let lnStar = null;
         try {
             const estimatorOptions = {
                 speedRate: state.speedRate,
@@ -437,6 +438,7 @@ export async function fetchBeatmapFile(reason) {
                 nextNumericDifficulty = selectedRework.numericDifficulty;
                 nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
                 typePercentageData = selectedRework.typePercentageData;
+                lnStar = selectedRework.lnStar;
             } else {
                 const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm: "Sunny" });
                 selectedRework = wp ? await wp : runSunnyEstimatorFromText(rawText, estimatorOptions);
@@ -469,6 +471,7 @@ export async function fetchBeatmapFile(reason) {
                         pendingMixedCompanellaContext.lnRatio = 4e65;
                     }
                 }
+                lnStar = sunnyWindowRework.lnStar;
             }
             updateDiffTextVisibility();
 
@@ -656,8 +659,10 @@ export async function fetchBeatmapFile(reason) {
             }
         }
 
+        const lnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio)
+        state.lnStar = lnStar ?? (state.enableAlwaysShowLNDifficulty || lnRatio > 0.15 ? rework?.star : 0) ?? 0;
         if (typePercentageData) {
-            setModeTagAdvanced(typePercentageData);
+            setModeTagAdvanced(typePercentageData, lnRatio);
         } else {
             setModeTag(resolvedModeTag);
         }

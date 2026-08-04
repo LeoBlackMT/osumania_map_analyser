@@ -235,6 +235,11 @@ function formatEstimateDifficultyCaption() {
     return base;
 }
 
+function formatLNStarCaption() {
+    if (!state.enableLNDifficulty || !state.lnStar || state.lnStar <= 0) return "";
+    return ` LN ${state.lnStar.toFixed(2)}*`
+}
+
 export function clearPauseMarkersDom(view = null) {
     if (view) {
         if (view.pauseMarkersEl) {
@@ -663,7 +668,7 @@ export function updateDiffTextVisibility() {
                 estDiffCaptionEl.textContent = "";
         }
     } else {
-        estDiffCaptionEl.textContent = formatEstimateDifficultyCaption();
+        estDiffCaptionEl.textContent = formatEstimateDifficultyCaption() + formatLNStarCaption();
     }
 
     if (!hasAnyGraphModeEnabled()) {

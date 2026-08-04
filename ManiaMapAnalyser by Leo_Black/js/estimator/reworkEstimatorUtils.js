@@ -100,11 +100,10 @@ export function estDiff(sr, lnRatio, columnCount) {
 
     const rcTable = keys.RC[Object.keys(keys.RC)[0]] ?? keys.RC.default;
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
-    if (lnRatio < 0.15) return rcDiff;
+    if (lnRatio < 0.15 && !state.enableAlwaysShowLNDifficulty) return rcDiff;
 
     const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
     const lnDiff = intervalLookup(sr, lnTable, "Unknown LN difficulty");
-    if (state.enableLNDifficulty) return `${rcDiff} || ${lnDiff} (${Math.round(sr*100)/100}*)`;
     return `${rcDiff} || ${lnDiff}`;
 }
 
@@ -118,7 +117,6 @@ export function estDiff2(sr, srLN, columnCount) {
 
     const lnTable = keys.LN[Object.keys(keys.LN)[0]] ?? keys.LN.default;
     const lnDiff = intervalLookup(srLN, lnTable, "Unknown LN difficulty");
-    if (state.enableLNDifficulty) return `${rcDiff} || ${lnDiff} (${Math.round(srLN*100)/100}*)`;
     return `${rcDiff} || ${lnDiff}`;
 }
 

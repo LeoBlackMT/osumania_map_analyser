@@ -168,7 +168,7 @@ export function setModeTag(tag) {
     }
 }
 
-export function setModeTagAdvanced(tag) {
+export function setModeTagAdvanced(tag, lnRatio) {
     let tagList = tag;
     if (typeof tagList !== "object") {
         const realTag = MODE_TAG_OPTIONS.includes(tag) ? tag : "Mix"
@@ -176,14 +176,17 @@ export function setModeTagAdvanced(tag) {
     }
     const allCount = tagList.shift()[1];
 
-    // 准备重写
     tagList.sort((a, b) => {
         if (a[1] == b[1]) return MODE_TAG_OPTIONS.indexOf(b[0]) - MODE_TAG_OPTIONS.indexOf(a[0]);
         else return b[1] - a[1]
     });
     tagList.forEach((a) => a[1] = a[1] *100 /allCount);
     tagList = tagList.filter((a) => a[1] > 0);
-    state.currentModeTag = tagList[0][0];
+
+    if (lnRatio > 0.15) { // currentModeTag用于graph的显示，我们保留这一逻辑
+        state.currentModeTag = tagList.filter((a) => a[0] == "LN" || a[0] == "HB")[0][0];
+    }
+    else state.currentModeTag = "RC";
 
     if (!modeTagSubGroupEl) {
         return;
