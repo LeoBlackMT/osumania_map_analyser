@@ -120,7 +120,7 @@
 		"uniqueID": "useOsuFont",
 		"type": "checkbox",
 		"title": "osu! Font",
-		"description": "Use the Osu Torus font on the analysis card only.",
+		"description": "Use the bundled 975 Yuan font on the analysis card only.",
 		"options": [],
 		"value": true
 	},

@@ -1,16 +1,16 @@
 .main-card.use-osu-font,
 .main-card.use-osu-font * {
-    font-family: "Torus", "Outfit", sans-serif;
+    font-family: "975 Yuan", "Outfit", sans-serif;
 }
 
 .main-card.use-osu-font .star-value,
 .main-card.use-osu-font .top-right-capsule,
 .main-card.use-osu-font .cluster-label,
 .main-card.use-osu-font .ett-skill-label {
-    font-family: "Torus", "Space Grotesk", sans-serif;
+    font-family: "975 Yuan", "Space Grotesk", sans-serif;
 }
 
 .main-card.use-osu-font .star-value.has-unit::after,
 .main-card.use-osu-font .top-right-capsule.has-unit::after {
-    font-family: "Torus", "Outfit", sans-serif;
+    font-family: "975 Yuan", "Outfit", sans-serif;
 }

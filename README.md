@@ -57,7 +57,7 @@
         - 注：对于非4/6/7K谱面，主体内容将自动回退为Pattern显示。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
-        - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
+        - ReworkSR: 显示内置 [sunny-rework-js](https://github.com/ZHAO20060708/sunny-rework-js) 兼容实现的 Sunny Rework 星数。
         - MSD: 显示Etterna MSD。*仅适配4/6/7K谱面。
         - InterludeSR: 显示[Interlude](https://github.com/YAVSRG/YAVSRG)星数。
         - Pattern: 显示整体键型。
@@ -75,7 +75,7 @@
 - **主题与效果**：
     - **osu!Lazer Card Theme**: 是否启用Lazer风格的卡片主题。
         - 启用后将使用类似于osu!lazer的卡片设计风格，并启用部分仅在Lazer主题下可用的设置项。
-    - **osu! Font**: 是否仅在卡片内使用内置 Torus 字体。
+    - **osu! Font**: 是否仅在卡片内使用内置 975 Yuan 字体。
     - **Floating Triangles Animation**: 是否启用卡片背景的浮动三角形动画效果。
         - 该选项仅在启用Lazer Card Theme时生效。
     - **Cover Art Background**: 是否将谱面背景图作为卡片背景。
@@ -167,7 +167,7 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 ## 参考内容
 - [tosu](https://tosu.app): 本插件的运行环境和基础框架。
 - [Etterna](https://github.com/etternagame/etterna): 使用了Etterna的MinaCalc进行难度估计和MSD计算。
-- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): 使用了Suuny Rework的算法进行难度估计。
+- [Sunny Rework](https://github.com/ZHAO20060708/sunny-rework-js): 使用项目内置的 `sunny-rework-js` 兼容实现（目标版本 2025-04-15）进行难度估计。
 - [Interlude](https://github.com/YAVSRG/YAVSRG): 使用了Interlude的RC键型分析算法并在基础上新增LN检测算法。
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。

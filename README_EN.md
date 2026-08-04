@@ -58,7 +58,7 @@ Note: It is recommended to start with the default settings and then adjust accor
         - Note: For non-4/6/7K beatmaps, body content automatically falls back to Pattern.
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.
-        - ReworkSR: Displays [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth) star rating.
+        - ReworkSR: Displays star rating from the bundled [sunny-rework-js](https://github.com/ZHAO20060708/sunny-rework-js) compatibility implementation.
         - MSD: Displays Etterna MSD. *Only compatible with 4/6/7K beatmaps.
         - InterludeSR: Displays [Interlude](https://github.com/YAVSRG/YAVSRG) star rating.
         - Pattern: Displays the overall pattern.
@@ -76,7 +76,7 @@ Note: It is recommended to start with the default settings and then adjust accor
 - **Theme & Effects**:
     - **osu!Lazer Card Theme**: Whether to enable the Lazer-style card theme.
         - When enabled, the card adopts a design style similar to osu!lazer, and enables certain settings only available under the Lazer theme.
-    - **osu! Font**: Whether to use the bundled Torus font inside the card only.
+    - **osu! Font**: Whether to use the bundled 975 Yuan font inside the card only.
     - **Floating Triangles Animation**: Whether to enable the floating triangle animation effect on the card background.
         - This option only takes effect when the Lazer Card Theme is enabled.
     - **Cover Art Background**: Whether to use the beatmap's background image as the card background.
@@ -168,7 +168,7 @@ This algorithm builds on the beatmap itself, combining the results of Daniel and
 ## References
 - [tosu](https://tosu.app): The runtime environment and basic framework for this plugin.
 - [Etterna](https://github.com/etternagame/etterna): Etterna's MinaCalc is used for difficulty estimation and MSD calculation.
-- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): Suuny Rework's algorithm is used for difficulty estimation.
+- [Sunny Rework](https://github.com/ZHAO20060708/sunny-rework-js): Uses the bundled `sunny-rework-js` compatibility implementation (target revision 2025-04-15) for difficulty estimation.
 - [Interlude](https://github.com/YAVSRG/YAVSRG): Interlude's RC pattern analysis algorithm is used, with LN detection logic added on top.
 - [Daniel](https://thebagelofman.github.io/Daniel/): Daniel's algorithm is used for difficulty estimation.
 - [Companella](https://github.com/Leinadix/companella): Companella's algorithm is used for difficulty estimation.
