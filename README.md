@@ -6,7 +6,7 @@
 ![Features](img/features.gif)
 
 <details>
-<summary>更新: 新主题效果图</summary>
+<summary>主题效果图</summary>
 <img src="img/themeLN.jpg" alt="LN" width="400">
 <img src="img/themeRC.jpg" alt="RC" width="400">
 <img src="img/full.jpg" alt="Full" width="400">
@@ -31,9 +31,9 @@
 5. 游戏内界面以及OBS的使用方法见 tosu 相关文档。
 
 ## 难度估计算法基准测试
-- 该插件的难度估计算法经过了基于真实谱面数据的基准测试，测试结果可以在[此处](https://leoblackmt.github.io/osumania_map_analyser/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
+- 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
 - 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
-- 你可以在[此处](https://github.com/LeoBlackMT/osumania_map_analyser/tree/main/docs/data/files.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
+- 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
 
 ## 注意事项
 1. 插件需要在 tosu 的 `static` 目录下运行，注意不要嵌套文件夹，确保正确放置。
@@ -162,7 +162,7 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 请注意，由于使用了树模型进行决策，GBDT 元模型可能会存在边界不连续的情况：输入特征的微小变化（例如倍速相差0.01）可能会跨过决策树的分割阈值，导致输出难度出现不成比例的大跳跃。用户在使用时应当注意到这是树模型固有的特性。
 
 ## Azusa 算法说明
-该算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](azusa_algorithm.md)(英文)查看详细说明。
+该算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
 ## 参考内容
 - [tosu](https://tosu.app): 本插件的运行环境和基础框架。
