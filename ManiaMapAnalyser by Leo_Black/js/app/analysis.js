@@ -433,6 +433,9 @@ export async function fetchBeatmapFile(reason) {
             resolvedNumericDifficulty = cached.rework.numericDifficulty;
             resolvedNumericDifficultyHint = cached.rework.numericDifficultyHint;
             sixKConst = cached.sixKConst ?? null;
+            lnStar = cached.rework.lnStar;
+            state.lnStar = cached.rework.lnStar;
+            typePercentageData = cached.rework.typePercentageData;
         } else {
             try {
                 const estimatorOptions = {
@@ -548,6 +551,9 @@ export async function fetchBeatmapFile(reason) {
                         sixKConst = Math.round(sixKConst * 100) / 100;
                     }
                 }
+
+
+                state.lnStar = lnStar ?? (state.enableAlwaysShowLNDifficulty || Number(rework?.lnRatio ?? parsedInfo.lnRatio) > 0.15 ? rework?.star : 0) ?? 0;
             } catch (error) {
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || showsGraph) {
@@ -758,6 +764,8 @@ export async function fetchBeatmapFile(reason) {
                         graph: rework.graph,
                         lnRatio: rework.lnRatio,
                         columnCount: rework.columnCount,
+                        lnStar: lnStar,
+                        typePercentageData: jsonSafe(typePercentageData)
                     },
                     patternReport: jsonSafe(patternReport),
                     mergedClusters: jsonSafe(mergedClusters),
@@ -798,9 +806,8 @@ export async function fetchBeatmapFile(reason) {
             }
         }
 
-        const lnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio)
-        state.lnStar = lnStar ?? (state.enableAlwaysShowLNDifficulty || lnRatio > 0.15 ? rework?.star : 0) ?? 0;
         if (typePercentageData) {
+            const lnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio)
             setModeTagAdvanced(typePercentageData, lnRatio);
         } else {
             setModeTag(resolvedModeTag);
