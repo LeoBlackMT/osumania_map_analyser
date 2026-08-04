@@ -128,6 +128,14 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.
+    - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation
+        - Removes rice parts and LN parts which LN% is too low, before Sunny Algorithm calculate Star Rate.
+    - **LN Star Rate**: Show LN Star Rate
+        - Shows LN Star Rate in "Estimate Difficulty".
+        - If you open "Improve Sunny LN Estimation", it will display actual Star Rate after some parts are removed from chart.
+    - **Analyze LN Parts**: Analyze LN Parts
+        - Display the percentage of notes which are in LN/HB/Mix/RC parts.
+        - Mix Part means a Part that includes LN but LN% is too low to be seen as a HB Part.
     - **Estimator Algorithm**: Choose the algorithm used for difficulty estimation.
         - Mixed: (Recommended) A hybrid algorithm combining the four below, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
@@ -157,6 +165,9 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **Azusa Sunny Reference Force HO**
         - When enabled, the Azusa algorithm will be forced to treat the beatmap as a pure RC (HO) map.
         - It is enabled by default; please do not disable it casually.
+    - **Always Show LN Difficulty**
+        - When enabled, always show LN Difficulty.
+        - It is disabled by default. Don't open it when you doesn't open "Improve Sunny LN Estimation" or it will output wrong LN difficulty.
 
 ## Roxy Algorithm Explanation
 Roxy is a 4K RC meta-structural estimator. Its core consists of two layers: the first layer performs structural analysis on the beatmap across 7 aspects, producing structured numerical difficulty; the second layer blends reference predictions from Azusa/Sunny/Daniel using a GBDT (Gradient Boosted Decision Tree) meta-model to output the final difficulty.
