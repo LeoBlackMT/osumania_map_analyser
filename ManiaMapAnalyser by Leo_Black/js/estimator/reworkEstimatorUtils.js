@@ -1,4 +1,5 @@
 import { DAN_INDEX } from "./intervals/index.js";
+import { state } from "../app/appContext.js";
 
 const DAN_MEANS = [
     [6.562, "Alpha"],
@@ -99,10 +100,23 @@ export function estDiff(sr, lnRatio, columnCount, useExtended = false) {
 
     const rcTable = keys.RC[useExtended ? "extended" : "default"] ?? keys.RC.default;
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
-    if (lnRatio < 0.15) return rcDiff;
+    if (lnRatio < 0.15 && !state.enableAlwaysShowLNDifficulty) return rcDiff;
 
     const lnTable = keys.LN[useExtended ? "extended" : "default"] ?? keys.LN.default;
     const lnDiff = intervalLookup(sr, lnTable, "Unknown LN difficulty");
+    return `${rcDiff} || ${lnDiff}`;
+}
+
+export function estDiff2(sr, srLN, columnCount, useExtended = false) {
+    const keys = DAN_INDEX[columnCount];
+    if (!keys) return "Unknown difficulty";
+
+    const rcTable = keys.RC[useExtended ? "extended" : "default"] ?? keys.RC.default;
+    const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
+    if (srLN <= 0) return rcDiff;
+
+    const lnTable = keys.LN[useExtended ? "extended" : "default"] ?? keys.LN.default;
+    const lnDiff = intervalLookup(srLN, lnTable, "Unknown LN difficulty");
     return `${rcDiff} || ${lnDiff}`;
 }
 
@@ -134,7 +148,7 @@ export function normalizeReworkResult(result) {
     }
 
     if (!Number.isFinite(sr) || !Number.isFinite(lnRatio) || !Number.isFinite(columnCount)) {
-        throw new Error("Invalid estimator output");
+        throw new Error("Invalid estimator output" + sr + lnRatio + columnCount);
     }
 
     return {

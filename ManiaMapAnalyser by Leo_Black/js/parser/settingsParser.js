@@ -551,6 +551,26 @@ export function createSettingsParsers(appConfig) {
         return normalizeWsEndpointValue(fallbackHost, "localhost:24050");
     }
 
+    function parseForceSunnyWindowValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "forceSunnyWindow");
+        return normalizeBooleanSetting(value, appConfig.defaults.forceSunnyWindow);
+    }
+
+    function parseEnableLNDifficultyValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableLNDifficulty");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableLNDifficulty);
+    }
+
+    function parseEnableAnalyzeLNValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableAnalyzeLN");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableAnalyzeLN);
+    }
+
+    function parseEnableAlwaysShowLNDifficultyValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableAlwaysShowLNDifficulty");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableAlwaysShowLNDifficulty);
+    }
+
     return {
         parseEnablePatternValue,
         parseContentBarValue,
@@ -587,5 +607,9 @@ export function createSettingsParsers(appConfig) {
         parseDisplay6kLevelValue,
         parseExtendedEstimationRangeValue,
         parseWsEndpointValue,
+        parseForceSunnyWindowValue,
+        parseEnableLNDifficultyValue,
+        parseEnableAnalyzeLNValue,
+        parseEnableAlwaysShowLNDifficultyValue,
     };
 }

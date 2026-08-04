@@ -96,7 +96,7 @@
 		"uniqueID": "showModeTagCapsule",
 		"type": "checkbox",
 		"title": "Map Tag Capsule",
-		"description": "Show the Map tag capsule (HB/RC/LN/Mix/SV) at bottom-left.",
+		"description": "Show the beatmap's tag capsule (HB/RC/LN/Mix/SV) at bottom-left.",
 		"options": [],
 		"value": true
 	},
@@ -171,6 +171,14 @@
 		"description": "Show numeric difficulty values in RC algorithms.",
 		"options": [],
 		"value": true
+	},
+	{
+    	"uniqueID": "enableLNDifficulty",
+    	"type": "checkbox",
+    	"title": "LN Star Rating",
+    	"description": "[Require Improve Sunny LN Estimation]Show Rework Star Rating values in LN algorithms.",
+    	"options": [],
+    	"value": false
 	},
 	{
 		"uniqueID": "reverseCardExtendDirection",
@@ -253,7 +261,7 @@
 		"uniqueID": "enableResultCache",
 		"type": "checkbox",
 		"title": "Result Cache",
-		"description": "Cache analysis results to show instantly when revisiting a map. Disable if you suspect stale results.",
+		"description": "Cache analysis results to show instantly when revisiting a beatmap. Disable if you suspect stale results.",
 		"options": [],
 		"value": true
 	},
@@ -296,6 +304,22 @@
 		"description": "Only effective with the Sunny estimator on some situations. Estimates change and extended tiers' accuracy is not guaranteed.",
 		"options": [],
 		"value": false
+	},
+	{
+		"uniqueID": "forceSunnyWindow",
+		"type": "checkbox",
+		"title": "Improve Sunny LN Estimation",
+		"description": "Improve Sunny LN Estimation by removing rice parts of beatmap before analyze.",
+		"options": [],
+		"value": true
+	},
+	{
+    	"uniqueID": "enableAnalyzeLN",
+    	"type": "checkbox",
+    	"title": "Analyze LN Parts",
+    	"description": "[Require Improve Sunny LN Estimation]Analyze the percentage of LN/HB/Mix/RC parts in beatmap.",
+    	"options": [],
+    	"value": false
 	},
 	{
 		"uniqueID": "pauseDetectionThreshold",
@@ -392,5 +416,12 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
+	},{
+    	"uniqueID": "enableAlwaysShowLNDifficulty",
+    	"type": "checkbox",
+    	"title": "Always Show LN Difficulty",
+    	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
+    	"options": [],
+    	"value": false
 	}
 ]

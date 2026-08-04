@@ -6,7 +6,7 @@ export const APP_CONFIG = {
         contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "Full"],
         srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
-        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Daniel", "Companella"],
+        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Daniel", "Companella", "SunnyWindow"],
         etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
         companellaEtternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
         cardOpacity: ["100%", "95%", "90%", "80%", "70%"],
@@ -108,6 +108,10 @@ export const APP_CONFIG = {
         srText: "ReworkSR",
         diffText: "Difficulty",
         debugUseAmount: false,
+        forceSunnyWindow: false,
+        enableLNDifficulty: false,
+        enableAnalyzeLN: false,
+        enableAlwaysShowLNDifficulty: true,
     },
 
     mods: {

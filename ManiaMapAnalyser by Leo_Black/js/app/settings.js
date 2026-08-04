@@ -39,6 +39,10 @@ import {
     parseExtendedEstimationRangeValue,
     parseVibroDetectionValue,
     parseWsEndpointValue,
+    parseForceSunnyWindowValue,
+    parseEnableLNDifficultyValue,
+    parseEnableAnalyzeLNValue,
+    parseEnableAlwaysShowLNDifficultyValue,
     patternClustersEl,
     reworkStarEl,
     socket,
@@ -355,6 +359,34 @@ export function applyWsEndpointSetting(value) {
         socket.setHost(next, true);
     }
 
+    return changed;
+}
+
+export function applyForceSunnyWindowSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.forceSunnyWindow);
+    const changed = state.forceSunnyWindow !== next;
+    state.forceSunnyWindow = next;
+    return changed;
+}
+
+export function applyEnableLNDifficultySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableLNDifficulty);
+    const changed = state.enableLNDifficulty !== next;
+    state.enableLNDifficulty = next;
+    return changed;
+}
+
+export function applyEnableAnalyzeLNSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableAnalyzeLN);
+    const changed = state.enableAnalyzeLN !== next;
+    state.enableAnalyzeLN = next;
+    return changed;
+}
+
+export function applyEnableAlwaysShowLNDifficultySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableAlwaysShowLNDifficulty);
+    const changed = state.enableAlwaysShowLNDifficulty !== next;
+    state.enableAlwaysShowLNDifficulty = next;
     return changed;
 }
 
@@ -723,6 +755,10 @@ export function setupSettingsCommandListener() {
         const reverseCardDirectionChanged = applyIf("reverseCardExtendDirection", applyReverseCardExtendDirectionSetting, parseReverseCardExtendDirectionValue(payload));
         const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
         const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
+        const forceSunnyWindowChanged = applyIf("forceSunnyWindow", applyForceSunnyWindowSetting, parseForceSunnyWindowValue(payload));
+        const enableLNDifficultyChanged = applyIf("enableLNDifficulty", applyEnableLNDifficultySetting, parseEnableLNDifficultyValue(payload));
+        const enableAnalyzeLNChanged = applyIf("enableAnalyzeLN", applyEnableAnalyzeLNSetting, parseEnableAnalyzeLNValue(payload));
+        const enableAlwaysShowLNDifficultyChanged = applyIf("enableAlwaysShowLNDifficulty", applyEnableAlwaysShowLNDifficultySetting, parseEnableAlwaysShowLNDifficultyValue(payload));
         const display6kLevelChanged = applyIf("display6kLevel", applyDisplay6kLevelSetting, parseDisplay6kLevelValue(payload));
         const extendedEstimationRangeChanged = applyIf("extendedEstimationRange", applyExtendedEstimationRangeSetting, parseExtendedEstimationRangeValue(payload));
         const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
@@ -766,6 +802,10 @@ export function setupSettingsCommandListener() {
             || coverArtChanged
             || customColorChanged
             || svChanged
+            || forceSunnyWindowChanged
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
             || display6kLevelChanged
             || extendedEstimationRangeChanged;
 
@@ -783,6 +823,10 @@ export function setupSettingsCommandListener() {
             || vibroChanged
             || modeTagVisibilityChanged
             || svChanged
+            || forceSunnyWindowChanged
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
             || display6kLevelChanged
             || extendedEstimationRangeChanged;
 
@@ -796,6 +840,10 @@ export function setupSettingsCommandListener() {
             || svChanged
             || vibroChanged
             || wsEndpointChanged
+            || forceSunnyWindowChanged
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
             || display6kLevelChanged
             || extendedEstimationRangeChanged) {
             clearResultCache();
@@ -886,6 +934,10 @@ export async function loadSettings() {
         applyEnableCoverArtSetting(parseEnableCoverArtValue(source));
         applyCustomBackgroundColorSetting(parseCustomBackgroundColorValue(source));
         applyUseSvDetectionSetting(parseSvDetectionValue(source));
+        applyForceSunnyWindowSetting(parseForceSunnyWindowValue(source));
+        applyEnableLNDifficultySetting(parseEnableLNDifficultyValue(source));
+        applyEnableAnalyzeLNSetting(parseEnableAnalyzeLNValue(source));
+        applyEnableAlwaysShowLNDifficultySetting(parseEnableAlwaysShowLNDifficultyValue(source));
         applyDisplay6kLevelSetting(parseDisplay6kLevelValue(source));
         applyExtendedEstimationRangeSetting(parseExtendedEstimationRangeValue(source));
     }
@@ -925,6 +977,10 @@ export async function loadSettings() {
             enableCoverArt: APP_CONFIG.defaults.enableCoverArt,
             customBackgroundColor: APP_CONFIG.defaults.customBackgroundColor,
             useSvDetection: APP_CONFIG.defaults.useSvDetection,
+            forceSunnyWindow: APP_CONFIG.defaults.forceSunnyWindow,
+            enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
+            enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
+            enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
             display6kLevel: APP_CONFIG.defaults.display6kLevel,
             extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
         });

@@ -57,7 +57,7 @@ export const overlayMessageEl = document.getElementById("overlay-message");
 export const mainCardEl = document.querySelector(".main-card");
 export const dashboardEl = document.querySelector(".dashboard");
 export const titleIconEl = document.querySelector(".title-icon");
-export const modeTagEl = document.getElementById("mode-tag");
+export const modeTagSubGroupEl = document.getElementById("mode-tag-subgroup");
 export const svTagEl = document.getElementById("sv-tag");
 export const starTipEl = document.getElementById("star-tip");
 
@@ -109,8 +109,13 @@ export const state = {
     enableCoverArt: APP_CONFIG.defaults.enableCoverArt,
     customBackgroundColor: APP_CONFIG.defaults.customBackgroundColor,
     vibroDetection: APP_CONFIG.defaults.vibroDetection,
+    forceSunnyWindow: APP_CONFIG.defaults.forceSunnyWindow,
+    enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
+    enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
+    enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
     numericDifficulty: null,
     numericDifficultyHint: null,
+    lnStar: 0,
     forceHideNumericDifficulty: false,
     showModeTagCapsule: APP_CONFIG.defaults.showModeTagCapsule,
     showSvTag: false,
@@ -142,7 +147,7 @@ export const state = {
     settingsReceivedFromCommand: false,
     initialSettingsResolver: null,
     analysisRequestSeq: 0,
-    wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST
+    wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
 };
 
 export const MODE_TAG_OPTIONS = APP_CONFIG.options.modeTag;
@@ -214,6 +219,10 @@ export const {
     parseDisplay6kLevelValue,
     parseExtendedEstimationRangeValue,
     parseWsEndpointValue,
+    parseForceSunnyWindowValue,
+    parseEnableLNDifficultyValue,
+    parseEnableAnalyzeLNValue,
+    parseEnableAlwaysShowLNDifficultyValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {

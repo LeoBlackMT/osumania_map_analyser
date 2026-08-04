@@ -90,6 +90,9 @@
     - **Metadata Marquee**: 是否启用滚动显示谱面信息功能。
     - **Numeric Difficulty**: 是否显示数值化难度。
         - 将在RC估计算法下于ESTIMATE DIFFICULTY字样后显示数值化难度。
+    - **LN Star Rating**: 显示LN星数。
+        - 启用后将在 ESTIMATE DIFFICULTY 括号内显示LN特化星数。
+        - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则将显示原始 Rework 星数。
     - **Reverse Card Extension**: 是否反转卡片延展方向。
         - 启用后卡片底边保持锚定，扩展时向上生长；关闭时默认向下扩展。
     - **Card Visibility**: 控制卡片的显示时机。
@@ -124,6 +127,11 @@
         - 仅对 Sunny 估算算法生效。扩展区间覆盖 4K RC、4K LN、7K RC；6K/7K LN 无扩展。
         - 注意：启用后估计值将发生变化；扩展区间部分纯属娱乐性质，不保证准确度。
         - 拓展部分的数据来源请见[此处](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)。
+    - **Improve Sunny LN Estimation**: 优化Sunny对于LN的算法
+        - 在Sunny算法判断星数时删去了谱面中的纯米部分和LN密度过低的部分。使得Sunny算法在LN谱面上的表现更为准确。
+        - 注意：该选项对所有使用了Sunny算法的功能生效。
+    - **Analyze LN Parts**: 按LN分析谱面成分。
+        - 显示谱面中有多少部分属于LN/HB/Mix/RC，并显示在左下角谱面标签胶囊中。
     - **Pause Detection Threshold**: 设置暂停检测的时间阈值（毫秒）。
         - 只有当游戏时间冻结超过该时长后，才会被判定为一次暂停。
         - 默认值为500ms。如果游戏卡顿导致误判，可适当提高该值。
@@ -156,6 +164,9 @@
     - **Azusa Sunny Reference Force HO**
         - 启用后将强制Azusa算法将谱面视为纯米。
         - 默认启用，请不要随意关闭。
+    - **Always Show LN Difficulty**
+        - 始终显示LN难度，默认关闭。
+        - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则会误判非LN图的LN难度。
 
 ## Roxy 算法说明
 Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 GBDT（梯度提升决策树）元模型融合 Azusa/Sunny/Daniel 的参考预测值，输出最终难度。
@@ -172,10 +183,11 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
 
-## 特别感谢
+## 贡献者
 - [inuiyumegan](https://github.com/inuiyumegan): 提供了大量谱面数据用于算法调试和Benchmark。
 - [greycsont](https://github.com/greycsont): 提供了部分功能。
 - [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式。
+- [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
 
 ---------
 本页累计访问量，自2026/6/21起统计，感谢大家的支持！

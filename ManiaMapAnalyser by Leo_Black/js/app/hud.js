@@ -1,6 +1,6 @@
 import {
     mainCardEl,
-    modeTagEl,
+    modeTagSubGroupEl,
     MODE_TAG_OPTIONS,
     overlayEl,
     overlayMessageEl,
@@ -141,27 +141,81 @@ export function refreshStatusRendering() {
 }
 
 export function setModeTag(tag) {
-    const normalized = MODE_TAG_OPTIONS.includes(tag) ? tag : "Mix";
-    state.currentModeTag = normalized;
+    state.currentModeTag = tag;
 
-    if (!modeTagEl) {
+    if (!modeTagSubGroupEl) {
         return;
     }
+    modeTagSubGroupEl.hidden = !state.showModeTagCapsule;
 
-    const nextClassName = `mode-tag mode-${normalized.toLowerCase()}`;
-    const changed = modeTagEl.textContent !== normalized || modeTagEl.className !== nextClassName;
-    modeTagEl.textContent = normalized;
+    if (modeTagSubGroupEl.children.length < 1) {
+        const span = document.createElement("span");
+        modeTagSubGroupEl.appendChild(span);
+    }
+
+    const modeTagEl = modeTagSubGroupEl.children[0];
+    const text = tag;
+    const nextClassName = `mode-tag mode-${tag.toLowerCase()}`;
+    const changed = modeTagEl.textContent !== text || modeTagEl.className !== nextClassName;
+    modeTagEl.textContent = text;
     modeTagEl.className = nextClassName;
-    modeTagEl.hidden = !state.showModeTagCapsule;
-
     if (changed && state.showModeTagCapsule) {
         restartAnimationClass(modeTagEl, "capsule-switch");
+    }
+
+    for (let i = 1; i < modeTagSubGroupEl.children.length; i++) {
+        modeTagSubGroupEl.children[i].classList.add("hidden-tag");
+    }
+}
+
+export function setModeTagAdvanced(tag, lnRatio) {
+    let tagList = tag;
+    if (typeof tagList !== "object") {
+        const realTag = MODE_TAG_OPTIONS.includes(tag) ? tag : "Mix"
+        tagList = [["All", 1], [realTag, 1]];
+    }
+    const allCount = tagList.shift()[1];
+
+    tagList.sort((a, b) => {
+        if (a[1] == b[1]) return MODE_TAG_OPTIONS.indexOf(b[0]) - MODE_TAG_OPTIONS.indexOf(a[0]);
+        else return b[1] - a[1]
+    });
+    tagList.forEach((a) => a[1] = a[1] *100 /allCount);
+    tagList = tagList.filter((a) => a[1] > 0);
+
+    if (lnRatio > 0.15) { // currentModeTag用于graph的显示，我们保留这一逻辑
+        state.currentModeTag = tagList.filter((a) => a[0] == "LN" || a[0] == "HB")[0][0];
+    }
+    else state.currentModeTag = "RC";
+
+    if (!modeTagSubGroupEl) {
+        return;
+    }
+    modeTagSubGroupEl.hidden = !state.showModeTagCapsule;
+
+    for (let i = 0; i < tagList.length; i++) {
+        if (modeTagSubGroupEl.children.length == i) {
+            const span = document.createElement("span");
+            modeTagSubGroupEl.appendChild(span);
+        }
+        const modeTagEl = modeTagSubGroupEl.children[i];
+        const text = tagList[i][1] === 100 ? tagList[i][0] : tagList[i][0] + " " + Math.round(tagList[i][1]) + "%";
+        const nextClassName = `mode-tag mode-${tagList[i][0].toLowerCase()}`;
+        const changed = modeTagEl.textContent !== text || modeTagEl.className !== nextClassName;
+        modeTagEl.textContent = text;
+        modeTagEl.className = nextClassName;
+        if (changed && state.showModeTagCapsule) {
+            restartAnimationClass(modeTagEl, "capsule-switch");
+        }
+    }
+    for (let i = tagList.length; i < modeTagSubGroupEl.children.length; i++) {
+        modeTagSubGroupEl.children[i].classList.add("hidden-tag");
     }
 }
 
 export function updateModeTagVisibility() {
-    if (modeTagEl) {
-        modeTagEl.hidden = !state.showModeTagCapsule;
+    if (modeTagSubGroupEl) {
+        modeTagSubGroupEl.hidden = !state.showModeTagCapsule;
     }
 
     if (!svTagEl) {

@@ -1,4 +1,5 @@
 import { runSunnyEstimatorFromText } from "../estimator/sunnyEstimator.js";
+import { runSunnyWindowEstimatorFromText } from "../estimator/sunnyWindowEstimator.js"
 import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
@@ -52,6 +53,7 @@ import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
     setModeTag,
+    setModeTagAdvanced,
     setStatus,
     setSvTagVisible,
     showOverlay,
@@ -395,6 +397,7 @@ export async function fetchBeatmapFile(reason) {
         let resolvedNumericDifficulty = null;
         let resolvedNumericDifficultyHint = null;
         let resolvedMetaHtml = "LN%: -<br/>Keys: -";
+        let typePercentageData = null;
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
         let sixKConst = null;
@@ -421,7 +424,8 @@ export async function fetchBeatmapFile(reason) {
         const shouldReportEtternaError = showsEtterna
             || needMsdValue
             || estimatorNeedsCompanellaData;
-
+        const shouldForceSunnyWindow = state.forceSunnyWindow;
+        let lnStar = null;
         if (cached) {
             rework = cached.rework;
             state.actualEstimatorAlgorithm = cached.actualEstimatorAlgorithm;
@@ -429,6 +433,9 @@ export async function fetchBeatmapFile(reason) {
             resolvedNumericDifficulty = cached.rework.numericDifficulty;
             resolvedNumericDifficultyHint = cached.rework.numericDifficultyHint;
             sixKConst = cached.sixKConst ?? null;
+            lnStar = cached.rework.lnStar;
+            state.lnStar = cached.rework.lnStar;
+            typePercentageData = cached.rework.typePercentageData;
         } else {
             try {
                 const estimatorOptions = {
@@ -510,6 +517,21 @@ export async function fetchBeatmapFile(reason) {
                 resolvedNumericDifficulty = nextNumericDifficulty;
                 resolvedNumericDifficultyHint = nextNumericDifficultyHint;
 
+                // 如果强制使用SunnyWindow，在这里替换LN部分
+                if (shouldForceSunnyWindow) {
+                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, estimatorOptions);
+                  const sunnyWindowLNEstDiff = sunnyWindowRework.estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[1];
+                  typePercentageData = sunnyWindowRework.typePercentageData;
+                  if (sunnyWindowLNEstDiff) {
+                    resolvedEstDiff = resolvedEstDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[0] + " || " + sunnyWindowLNEstDiff;
+                    if (pendingMixedCompanellaContext) {
+                        pendingMixedCompanellaContext.lnDifficulty = sunnyWindowLNEstDiff;
+                        pendingMixedCompanellaContext.lnRatio = 4e65;
+                    }
+                  }
+                lnStar = sunnyWindowRework.lnStar;
+                }
+
                 // 6K 定数: compute Sunny SR for constant rating display
                 sixKConst = null;
                 if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
@@ -522,6 +544,9 @@ export async function fetchBeatmapFile(reason) {
                         sixKConst = Math.round(sixKConst * 100) / 100;
                     }
                 }
+
+
+                state.lnStar = lnStar ?? (state.enableAlwaysShowLNDifficulty || Number(rework?.lnRatio ?? parsedInfo.lnRatio) > 0.15 ? rework?.star : 0) ?? 0;
             } catch (error) {
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || showsGraph) {
@@ -732,6 +757,8 @@ export async function fetchBeatmapFile(reason) {
                         graph: rework.graph,
                         lnRatio: rework.lnRatio,
                         columnCount: rework.columnCount,
+                        lnStar: lnStar,
+                        typePercentageData: jsonSafe(typePercentageData)
                     },
                     patternReport: jsonSafe(patternReport),
                     mergedClusters: jsonSafe(mergedClusters),
@@ -749,11 +776,17 @@ export async function fetchBeatmapFile(reason) {
                 }, { skip: isMetaDegraded });
             }
 
-            const rawDiffText = formatDiffForDisplay(resolvedEstDiff);
-            const diffText = (Number.isFinite(resolvedNumericDifficulty) && resolvedNumericDifficulty >= 18.5)
-                ? "> Cloverwisp Theta high"
-                : rawDiffText;
-            setEstimateDifficultyText(diffText);
+            if (Number.isFinite(resolvedNumericDifficulty) && resolvedNumericDifficulty >= 18.5) {
+                if (resolvedEstDiff) {
+                    const strList = resolvedEstDiff.split("||");
+                    strList[0] = "> Cloverwisp Theta high";
+                    setEstimateDifficultyText(formatDiffForDisplay(strList.join("||")));
+                }
+                else {
+                    setEstimateDifficultyText("> Cloverwisp Theta high");
+                }
+            }
+            else setEstimateDifficultyText(formatDiffForDisplay(resolvedEstDiff));
         }
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
@@ -772,7 +805,12 @@ export async function fetchBeatmapFile(reason) {
             }
         }
 
-        setModeTag(resolvedModeTag);
+        if (typePercentageData) {
+            const lnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio)
+            setModeTagAdvanced(typePercentageData, lnRatio);
+        } else {
+            setModeTag(resolvedModeTag);
+        }
         setSvTagVisible(shouldShowSvTag);
 
         if (rework) {

@@ -204,16 +204,17 @@ function formatEstimateDifficultyCaption() {
         : "";
 
     const base = `${prefix}Estimate Difficulty`;
-    if (!state.enableNumericDifficulty || state.forceHideNumericDifficulty) {
+    if ((!state.enableNumericDifficulty || state.forceHideNumericDifficulty) && !state.enableLNDifficulty) {
         return base;
     }
 
     const formatRcCaptionValue = (rawValue) => {
+        if ((!state.enableNumericDifficulty || state.forceHideNumericDifficulty)) return null;
         const text = String(rawValue ?? "").trim();
         if (!text) {
             return text;
         }
-        if (state.currentModeTag === "RC") {
+        if (state.currentModeTag === "RC" && !state.enableLNDifficulty) {
             return text;
         }
         if (/^RC\b/i.test(text)) {
@@ -222,16 +223,23 @@ function formatEstimateDifficultyCaption() {
         return `RC${text}`;
     };
 
+    const formatLnCaptionValue = (rawValue) => {
+        if (!state.enableLNDifficulty || !rawValue || rawValue <= 0) return null;
+        return `LN${rawValue.toFixed(2)}*`
+    }
+
+    let rcValue = null;
+    const lnValue = formatLnCaptionValue(state.lnStar);
     if (Number.isFinite(state.numericDifficulty)) {
-        const valueText = formatRcCaptionValue(state.numericDifficulty.toFixed(2));
-        return `${base}(${valueText})`;
+        rcValue = formatRcCaptionValue(state.numericDifficulty.toFixed(2));
     }
-
     if (typeof state.numericDifficultyHint === "string" && state.numericDifficultyHint.trim().length > 0) {
-        const valueText = formatRcCaptionValue(state.numericDifficultyHint.trim());
-        return `${base}(${valueText})`;
+        rcValue = formatRcCaptionValue(state.numericDifficultyHint.trim());
     }
 
+    if (rcValue && lnValue) return `${base}(${rcValue}|${lnValue})`;
+    else if (rcValue) return `${base}(${rcValue})`;
+    else if (lnValue) return `${base}(${lnValue})`;
     return base;
 }
 
