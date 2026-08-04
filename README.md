@@ -90,10 +90,10 @@
     - **Metadata Marquee**: 是否启用滚动显示谱面信息功能。
     - **Numeric Difficulty**: 是否显示数值化难度。
         - 将在RC估计算法下于ESTIMATE DIFFICULTY字样后显示数值化难度。
-    - **Card Visibility**: 控制卡片的显示时机。
-        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。
     - **Reverse Card Extension**: 是否反转卡片延展方向。
         - 启用后卡片底边保持锚定，扩展时向上生长；关闭时默认向下扩展。
+    - **Card Visibility**: 控制卡片的显示时机。
+        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。
     - **Card Opacity**: 设置卡片整体透明度。
         - 可选范围：100% / 95% / 90% / 80% / 70%。
     - **Content Background Blur**: 是否启用背景图片模糊效果。
@@ -107,11 +107,23 @@
         - 启用后默认每天最多检查一次 GitHub latest release。
         - 当从“关闭”切换到“开启”时，会立即额外触发一次检查。
         - 当发现新版本时，状态栏左侧星形图标会显示。
+    - **Result Cache**: 是否启用分析结果缓存。
+        - 启用后，切换到已分析过的谱面（或切换 mod 后又切回）将立即显示结果，无需重新计算。
+        - 该选项只影响显示速度，不影响计算结果。默认启用。
     - **Vibro Detection**: 是否启用Vibro检测功能。
         - 推荐启用：启用后将检测谱面是否为Vibro谱面，并在估计难度中显示为Vibro。否则您将看到被极度拉高的难度估计。
     - **SV Detection**: 是否启用SV谱面检测功能。
         - 启用后当检测到变速时，将在左下角显示SV标签。
         - 注意：如果未开启显示谱面标签胶囊，SV标签将不会显示。
+    - **Show 6K Constant Rating**: 是否启用6K定数显示功能。
+        - 当且仅当谱面为6K时，在左上角星数胶囊覆盖显示6K定数，胶囊角标显示"LV"。
+        - 定数计算公式：`sunnySR × 200/81 + 7/6`，保留小数点后两位。
+        - 开启后将在6K谱面时强制覆盖左上角胶囊显示内容为定数，不受Top-left Capsule Text设置影响。
+    - **Extended Estimation Range**: 是否启用扩展估计范围。
+        - 不推荐：启用后将使用扩展区间表进行难度估计，大幅提高估计软上限。
+        - 仅对 Sunny 估算算法生效。扩展区间覆盖 4K RC、4K LN、7K RC；6K/7K LN 无扩展。
+        - 注意：启用后估计值将发生变化；扩展区间部分纯属娱乐性质，不保证准确度。
+        - 拓展部分的数据来源请见[此处](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)。
     - **Pause Detection Threshold**: 设置暂停检测的时间阈值（毫秒）。
         - 只有当游戏时间冻结超过该时长后，才会被判定为一次暂停。
         - 默认值为500ms。如果游戏卡顿导致误判，可适当提高该值。

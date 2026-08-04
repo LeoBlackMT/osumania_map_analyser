@@ -375,6 +375,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.pauseDetectionEnabled);
     }
 
+    function parseEnableResultCacheValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableResultCache");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableResultCache);
+    }
+
     function parseDisableVibroDetectionValue(settingsPayload) {
         return !parseVibroDetectionValue(settingsPayload);
     }
@@ -516,9 +521,19 @@ export function createSettingsParsers(appConfig) {
         return appConfig.defaults.pauseDetectionThresholdMs;
     }
 
+    function parseDisplay6kLevelValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "display6kLevel");
+        return normalizeBooleanSetting(value, appConfig.defaults.display6kLevel);
+    }
+
     function parseSvDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "useSvDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.useSvDetection);
+    }
+
+    function parseExtendedEstimationRangeValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "extendedEstimationRange");
+        return normalizeBooleanSetting(value, appConfig.defaults.extendedEstimationRange);
     }
 
     function parseWsEndpointValue(settingsPayload) {
@@ -570,6 +585,7 @@ export function createSettingsParsers(appConfig) {
         parseEtternaVersionValue,
         parseCompanellaEtternaVersionValue,
         parseEnablePauseDetectionValue,
+        parseEnableResultCacheValue,
         parsePauseDetectionThresholdValue,
         parseDisableVibroDetectionValue,
         parseVibroDetectionValue,
@@ -589,6 +605,8 @@ export function createSettingsParsers(appConfig) {
         parseReverseCardExtendDirectionValue,
         parseUseOsuFontValue,
         parseSvDetectionValue,
+        parseDisplay6kLevelValue,
+        parseExtendedEstimationRangeValue,
         parseWsEndpointValue,
         parseForceSunnyWindowValue,
         parseEnableLNDifficultyValue,

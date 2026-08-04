@@ -29,6 +29,8 @@ export const reworkBlockEl = document.getElementById("rework");
 export const diffGraphWrapEl = document.getElementById("rework-diff-graph-wrap");
 export const diffGraphSvgEl = document.getElementById("rework-diff-graph");
 export const diffGraphFillEl = document.getElementById("rework-diff-graph-fill");
+export const diffGraphFillPlayEl = document.getElementById("rework-diff-graph-fill-play");
+export const diffGraphPlayClipRectEl = document.getElementById("rework-diff-graph-play-clip-rect");
 export const diffGraphLineEl = document.getElementById("rework-diff-graph-line");
 export const diffGraphCursorEl = document.getElementById("rework-diff-graph-cursor");
 export const diffGraphCursorDotEl = document.getElementById("rework-diff-graph-cursor-dot");
@@ -37,6 +39,8 @@ export const diffGraphErrorEl = document.getElementById("rework-diff-graph-error
 export const bodyGraphWrapEl = document.getElementById("body-graph-wrap");
 export const bodyGraphSvgEl = document.getElementById("body-graph");
 export const bodyGraphFillEl = document.getElementById("body-graph-fill");
+export const bodyGraphFillPlayEl = document.getElementById("body-graph-fill-play");
+export const bodyGraphPlayClipRectEl = document.getElementById("body-graph-play-clip-rect");
 export const bodyGraphLineEl = document.getElementById("body-graph-line");
 export const bodyGraphCursorEl = document.getElementById("body-graph-cursor");
 export const bodyGraphCursorDotEl = document.getElementById("body-graph-cursor-dot");
@@ -77,6 +81,9 @@ export const state = {
     userDiffText: APP_CONFIG.defaults.diffText,
     debugUseAmount: APP_CONFIG.defaults.debugUseAmount,
     useSvDetection: APP_CONFIG.defaults.useSvDetection,
+    display6kLevel: APP_CONFIG.defaults.display6kLevel,
+    sunnySR: null,
+    extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
     diffText: APP_CONFIG.defaults.diffText,
     estimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
     actualEstimatorAlgorithm: APP_CONFIG.defaults.estimatorAlgorithm,
@@ -93,6 +100,7 @@ export const state = {
     cardRadius: APP_CONFIG.defaults.cardRadius,
     cardBgBlur: APP_CONFIG.defaults.cardBgBlur,
     enableUpdateCheck: APP_CONFIG.defaults.enableUpdateCheck,
+    enableResultCache: APP_CONFIG.defaults.enableResultCache,
     hasAvailableUpdate: false,
     reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
     useOsuFont: APP_CONFIG.defaults.useOsuFont,
@@ -188,6 +196,7 @@ export const {
     parseEtternaVersionValue,
     parseCompanellaEtternaVersionValue,
     parseEnablePauseDetectionValue,
+    parseEnableResultCacheValue,
     parsePauseDetectionThresholdValue,
     parseDisableVibroDetectionValue,
     parseVibroDetectionValue,
@@ -207,6 +216,8 @@ export const {
     parseEnableCoverArtValue,
     parseCustomBackgroundColorValue,
     parseSvDetectionValue,
+    parseDisplay6kLevelValue,
+    parseExtendedEstimationRangeValue,
     parseWsEndpointValue,
     parseForceSunnyWindowValue,
     parseEnableLNDifficultyValue,
@@ -229,6 +240,8 @@ export const GRAPH_VIEW_DEFS = [
         wrapEl: diffGraphWrapEl,
         svgEl: diffGraphSvgEl,
         fillEl: diffGraphFillEl,
+        fillPlayEl: diffGraphFillPlayEl,
+        playClipRectEl: diffGraphPlayClipRectEl,
         lineEl: diffGraphLineEl,
         cursorEl: diffGraphCursorEl,
         cursorDotEl: diffGraphCursorDotEl,
@@ -241,6 +254,8 @@ export const GRAPH_VIEW_DEFS = [
         wrapEl: bodyGraphWrapEl,
         svgEl: bodyGraphSvgEl,
         fillEl: bodyGraphFillEl,
+        fillPlayEl: bodyGraphFillPlayEl,
+        playClipRectEl: bodyGraphPlayClipRectEl,
         lineEl: bodyGraphLineEl,
         cursorEl: bodyGraphCursorEl,
         cursorDotEl: bodyGraphCursorDotEl,

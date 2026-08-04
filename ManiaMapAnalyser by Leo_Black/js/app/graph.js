@@ -255,6 +255,18 @@ export function clearPauseMarkersDom(view = null) {
     });
 }
 
+function resetPlayedFill(view) {
+    if (!view) {
+        return;
+    }
+    if (view.playClipRectEl) {
+        view.playClipRectEl.setAttribute("width", "0");
+    }
+    if (view.fillPlayEl) {
+        view.fillPlayEl.setAttribute("d", "");
+    }
+}
+
 function drawPauseMarkersForView(view) {
     clearPauseMarkersDom(view);
 
@@ -335,6 +347,7 @@ export function clearDiffGraph() {
         if (view.fillEl) {
             view.fillEl.setAttribute("d", "");
         }
+        resetPlayedFill(view);
         if (view.lineEl) {
             view.lineEl.setAttribute("d", "");
         }
@@ -385,6 +398,8 @@ export function setGraphLoading(isLoading) {
             clearGraphScanEnter(view);
             view.lineEl.setAttribute("d", linePath);
             view.fillEl.setAttribute("d", fillPath);
+            view.fillEl.classList.remove("graph-unplayed"); // 加载骨架不继承上一张图的暗化
+            resetPlayedFill(view);
             setGraphLoadingTextVisible(view, true);
             clearPauseMarkersDom(view);
             if (view.cursorEl) {
@@ -424,6 +439,7 @@ export function showDiffGraphError(message) {
         if (view.fillEl) {
             view.fillEl.setAttribute("d", "");
         }
+        resetPlayedFill(view);
         if (view.lineEl) {
             view.lineEl.setAttribute("d", "");
         }
@@ -440,18 +456,21 @@ export function showDiffGraphError(message) {
 
 export function updateGraphCursor(explicitTimeMs = null) {
     if (!hasAnyGraphModeEnabled()) {
+        forEachGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }
 
     const series = state.graphSeries;
     if (!series) {
+        forEachEnabledGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }
 
     const timeMs = Number.isFinite(explicitTimeMs) ? explicitTimeMs : getInterpolatedPlaybackTime();
     if (!Number.isFinite(timeMs)) {
+        forEachEnabledGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }
@@ -487,6 +506,11 @@ export function updateGraphCursor(explicitTimeMs = null) {
         if (view.cursorDotEl) {
             view.cursorDotEl.setAttribute("cx", x.toFixed(2));
             view.cursorDotEl.setAttribute("cy", y.toFixed(2));
+        }
+
+        // clip 宽度 = 游标 x（viewBox 单位）= 已玩边界；暂停时 x 冻结、回退时 x 收缩，自动跟随
+        if (view.playClipRectEl) {
+            view.playClipRectEl.setAttribute("width", x.toFixed(2));
         }
     });
 
@@ -606,6 +630,9 @@ export function renderDiffGraph(graphData) {
         forEachEnabledGraphView((view) => {
             if (view.lineEl) view.lineEl.setAttribute("d", linePath);
             if (view.fillEl) view.fillEl.setAttribute("d", fillPath);
+            if (view.fillPlayEl) view.fillPlayEl.setAttribute("d", fillPath);
+            if (view.playClipRectEl) view.playClipRectEl.setAttribute("width", "0");
+            if (view.fillEl) view.fillEl.classList.add("graph-unplayed");
             if (view.errorEl) {
                 view.errorEl.hidden = true;
                 view.errorEl.textContent = "Graph unavailable";

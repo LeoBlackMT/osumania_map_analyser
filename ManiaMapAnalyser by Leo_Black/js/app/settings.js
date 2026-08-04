@@ -21,6 +21,7 @@ import {
     parseEnableCoverArtValue,
     parseCustomBackgroundColorValue,
     parseEnablePauseDetectionValue,
+    parseEnableResultCacheValue,
     parsePauseDetectionThresholdValue,
     parseEstimatorAlgorithmValue,
     parseAzusaSunnyReferenceHoValue,
@@ -34,6 +35,8 @@ import {
     parseUseOsuFontValue,
     parseSrTextValue,
     parseSvDetectionValue,
+    parseDisplay6kLevelValue,
+    parseExtendedEstimationRangeValue,
     parseVibroDetectionValue,
     parseWsEndpointValue,
     parseForceSunnyWindowValue,
@@ -76,6 +79,7 @@ import { applyCoverThemeForBeatmap, resetCoverTheme } from "./coverTheme.js";
 import { initTriangleField } from "./triangles.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
+import { clearResultCache } from "./resultCache.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -330,6 +334,19 @@ export function applyUseSvDetectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.useSvDetection);
     const changed = state.useSvDetection !== next;
     state.useSvDetection = next;
+    return changed;
+}
+
+export function applyDisplay6kLevelSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.display6kLevel);
+    const changed = state.display6kLevel !== next;
+    state.display6kLevel = next;
+    return changed;
+}
+export function applyExtendedEstimationRangeSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.extendedEstimationRange);
+    const changed = state.extendedEstimationRange !== next;
+    state.extendedEstimationRange = next;
     return changed;
 }
 
@@ -646,6 +663,19 @@ export function applyEnableUpdateCheckSetting(value) {
     return changed;
 }
 
+export function applyEnableResultCacheSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableResultCache);
+    const changed = state.enableResultCache !== next;
+    const wasEnabled = state.enableResultCache;
+    state.enableResultCache = next;
+
+    if (changed && wasEnabled && !next) {
+        clearResultCache();
+    }
+
+    return changed;
+}
+
 export function applyReverseCardExtendDirectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.reverseCardExtendDirection);
     const changed = state.reverseCardExtendDirection !== next;
@@ -721,6 +751,7 @@ export function setupSettingsCommandListener() {
         const cardRadiusChanged = applyIf("cardRadius", applyCardRadiusSetting, parseCardRadiusValue(payload));
         const cardBgBlurChanged = applyIf("cardBgBlur", applyCardBgBlurSetting, parseCardBgBlurValue(payload));
         const enableUpdateCheckChanged = applyIf("enableUpdateCheck", applyEnableUpdateCheckSetting, parseEnableUpdateCheckValue(payload));
+        const resultCacheChanged = applyIf("enableResultCache", applyEnableResultCacheSetting, parseEnableResultCacheValue(payload));
         const reverseCardDirectionChanged = applyIf("reverseCardExtendDirection", applyReverseCardExtendDirectionSetting, parseReverseCardExtendDirectionValue(payload));
         const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
         const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
@@ -728,6 +759,8 @@ export function setupSettingsCommandListener() {
         const enableLNDifficultyChanged = applyIf("enableLNDifficulty", applyEnableLNDifficultySetting, parseEnableLNDifficultyValue(payload));
         const enableAnalyzeLNChanged = applyIf("enableAnalyzeLN", applyEnableAnalyzeLNSetting, parseEnableAnalyzeLNValue(payload));
         const enableAlwaysShowLNDifficultyChanged = applyIf("enableAlwaysShowLNDifficulty", applyEnableAlwaysShowLNDifficultySetting, parseEnableAlwaysShowLNDifficultyValue(payload));
+        const display6kLevelChanged = applyIf("display6kLevel", applyDisplay6kLevelSetting, parseDisplay6kLevelValue(payload));
+        const extendedEstimationRangeChanged = applyIf("extendedEstimationRange", applyExtendedEstimationRangeSetting, parseExtendedEstimationRangeValue(payload));
         const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
         const floatingTrianglesChanged = applyIf("enableFloatingTriangles", applyEnableFloatingTrianglesSetting, parseEnableFloatingTrianglesValue(payload));
         const coverArtChanged = applyIf("enableCoverArt", applyEnableCoverArtSetting, parseEnableCoverArtValue(payload));
@@ -761,6 +794,7 @@ export function setupSettingsCommandListener() {
             || cardRadiusChanged
             || cardBgBlurChanged
             || enableUpdateCheckChanged
+            || resultCacheChanged
             || reverseCardDirectionChanged
             || osuFontChanged
             || osuThemeChanged
@@ -772,6 +806,8 @@ export function setupSettingsCommandListener() {
             || enableLNDifficultyChanged
             || enableAnalyzeLNChanged
             || enableAlwaysShowLNDifficultyChanged
+            || display6kLevelChanged
+            || extendedEstimationRangeChanged;
 
         const recomputeNeeded = contentBarChanged
             || srTextChanged
@@ -791,6 +827,27 @@ export function setupSettingsCommandListener() {
             || enableLNDifficultyChanged
             || enableAnalyzeLNChanged
             || enableAlwaysShowLNDifficultyChanged
+            || display6kLevelChanged
+            || extendedEstimationRangeChanged;
+
+        // Invalidate cached results when any computation-affecting setting changed.
+        // wsEndpointChanged lives in `changed` only (not recomputeNeeded), so it is listed here explicitly.
+        if (estimatorChanged
+            || azusaSunnyReferenceHoChanged
+            || etternaVersionChanged
+            || companellaEtternaVersionChanged
+            || debugChanged
+            || svChanged
+            || vibroChanged
+            || wsEndpointChanged
+            || forceSunnyWindowChanged
+            || enableLNDifficultyChanged
+            || enableAnalyzeLNChanged
+            || enableAlwaysShowLNDifficultyChanged
+            || display6kLevelChanged
+            || extendedEstimationRangeChanged) {
+            clearResultCache();
+        }
 
         if (typeof state.initialSettingsResolver === "function") {
             const resolve = state.initialSettingsResolver;
@@ -869,6 +926,7 @@ export async function loadSettings() {
         applyCardRadiusSetting(parseCardRadiusValue(source));
         applyCardBgBlurSetting(parseCardBgBlurValue(source));
         applyEnableUpdateCheckSetting(parseEnableUpdateCheckValue(source));
+        applyEnableResultCacheSetting(parseEnableResultCacheValue(source));
         applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(source));
         applyUseOsuFontSetting(parseUseOsuFontValue(source));
         applyEnableOsuThemeSetting(parseEnableOsuThemeValue(source));
@@ -880,6 +938,8 @@ export async function loadSettings() {
         applyEnableLNDifficultySetting(parseEnableLNDifficultyValue(source));
         applyEnableAnalyzeLNSetting(parseEnableAnalyzeLNValue(source));
         applyEnableAlwaysShowLNDifficultySetting(parseEnableAlwaysShowLNDifficultyValue(source));
+        applyDisplay6kLevelSetting(parseDisplay6kLevelValue(source));
+        applyExtendedEstimationRangeSetting(parseExtendedEstimationRangeValue(source));
     }
 
     // Apply file settings as baseline immediately
@@ -909,6 +969,7 @@ export async function loadSettings() {
             cardRadius: APP_CONFIG.defaults.cardRadius,
             cardBgBlur: APP_CONFIG.defaults.cardBgBlur,
             enableUpdateCheck: APP_CONFIG.defaults.enableUpdateCheck,
+            enableResultCache: APP_CONFIG.defaults.enableResultCache,
             reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
             useOsuFont: APP_CONFIG.defaults.useOsuFont,
             enableOsuTheme: APP_CONFIG.defaults.enableOsuTheme,
@@ -920,6 +981,8 @@ export async function loadSettings() {
             enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
             enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
             enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
+            display6kLevel: APP_CONFIG.defaults.display6kLevel,
+            extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
         });
     }
 

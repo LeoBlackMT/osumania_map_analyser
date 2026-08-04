@@ -91,10 +91,10 @@ Note: It is recommended to start with the default settings and then adjust accor
     - **Metadata Marquee**: Whether to enable horizontal scrolling for beatmap metadata.
     - **Numeric Difficulty**: Whether to display numerical difficulty values.
         - When enabled, numerical difficulty will be shown after the "ESTIMATE DIFFICULTY" label under the RC estimation algorithm.
-    - **Card Visibility**: Control when the card is shown.
-        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
     - **Reverse Card Extension**: Whether to reverse the card expansion direction.
         - When enabled, the card stays anchored at the bottom and grows upward; when disabled, it expands downward by default.
+    - **Card Visibility**: Control when the card is shown.
+        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
     - **Card Opacity**: Set the overall card opacity.
         - Available values: 100% / 95% / 90% / 80% / 70%.
     - **Content Background Blur**: Whether to enable background image blur for content sections.
@@ -108,11 +108,23 @@ Note: It is recommended to start with the default settings and then adjust accor
         - When enabled, it checks the GitHub latest release at most once per day by default.
         - When switching from disabled to enabled, it immediately triggers one extra check.
         - The star icon on the left side of the status bar is shown only when a newer version is available.
+    - **Result Cache**: Enable caching of analysis results.
+        - When enabled, revisiting an already analyzed map (or switching mods and back) shows results instantly without recomputing.
+        - This option only affects display speed, not the results themselves. Enabled by default.
     - **Vibro Detection**: Whether to enable vibro detection.
         - Recommended: When enabled, the plugin will detect if a beatmap is a vibro map and display it as "Vibro" in the estimated difficulty; otherwise, you will see an extremely inflated difficulty estimate.
     - **SV Detection**: Whether to enable SV beatmap detection.
         - When enabled, an SV tag will be displayed in the bottom-left corner when speed variation is detected.
         - Note: If the Map Tag Capsule display is not enabled, the SV tag will not be shown.
+    - **Show 6K Constant Rating**: Whether to enable the 6K constant rating display.
+        - When enabled, for 6K beatmaps only, the top-left star capsule will be overridden with the constant rating and display an "LV" badge.
+        - Formula: `sunnySR × 200/81 + 7/6`, rounded to 2 decimal places.
+        - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
+    - **Extended Estimation Range**: Whether to enable the extended estimation range.
+        - Not Recommended: When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
+        - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
+        - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
+        - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
     - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.

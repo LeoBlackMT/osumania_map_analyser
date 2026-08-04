@@ -33,7 +33,13 @@
                     <div class="star-subtitle" id="rework-diff">-</div>
                     <div class="star-graph-wrap" id="rework-diff-graph-wrap" hidden>
                         <svg id="rework-diff-graph" class="star-graph" viewBox="0 0 260 86" preserveAspectRatio="none" aria-label="Difficulty graph" role="img">
+                            <defs>
+                                <clipPath id="rework-diff-graph-play-clip" clipPathUnits="userSpaceOnUse">
+                                    <rect id="rework-diff-graph-play-clip-rect" x="0" y="0" width="0" height="86"></rect>
+                                </clipPath>
+                            </defs>
                             <path id="rework-diff-graph-fill" class="star-graph-fill" d=""></path>
+                            <path id="rework-diff-graph-fill-play" class="star-graph-fill-play" d="" clip-path="url(#rework-diff-graph-play-clip)"></path>
                             <path id="rework-diff-graph-line" class="star-graph-line" d=""></path>
                             <g id="rework-diff-graph-pause-markers"></g>
                             <line id="rework-diff-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86" hidden></line>
@@ -66,7 +72,13 @@
             <div class="full-separator" id="sep-graph" hidden>Graph</div>
             <div class="body-graph-wrap" id="body-graph-wrap" hidden>
                 <svg id="body-graph" class="body-graph" viewBox="0 0 260 86" preserveAspectRatio="xMidYMid meet" aria-label="Body difficulty graph" role="img">
+                    <defs>
+                        <clipPath id="body-graph-play-clip" clipPathUnits="userSpaceOnUse">
+                            <rect id="body-graph-play-clip-rect" x="0" y="0" width="0" height="86"></rect>
+                        </clipPath>
+                    </defs>
                     <path id="body-graph-fill" class="star-graph-fill" d=""></path>
+                    <path id="body-graph-fill-play" class="star-graph-fill-play" d="" clip-path="url(#body-graph-play-clip)"></path>
                     <path id="body-graph-line" class="star-graph-line" d=""></path>
                     <g id="body-graph-pause-markers"></g>
                     <line id="body-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86" hidden></line>
