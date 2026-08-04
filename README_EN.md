@@ -184,10 +184,11 @@ This algorithm builds on the beatmap itself, combining the results of Daniel and
 - [Daniel](https://thebagelofman.github.io/Daniel/): Daniel's algorithm is used for difficulty estimation.
 - [Companella](https://github.com/Leinadix/companella): Companella's algorithm is used for difficulty estimation.
 
-## Special Thanks
+## Contributors
 - [inuiyumegan](https://github.com/inuiyumegan): Provided a large amount of beatmap data for algorithm debugging and benchmarking.
 - [greycsont](https://github.com/greycsont): Contributed several features.
 - [ZHAO20060708](https://github.com/ZHAO20060708): Provided the polished Lazer theme and Full mode design.
+- [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): Provided the improved Sunny LN algorithm.
 
 ---------
 This page has been viewed since June 21, 2026, thanks for your support!

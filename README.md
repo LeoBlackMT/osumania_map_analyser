@@ -183,10 +183,11 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
 
-## 特别感谢
+## 贡献者
 - [inuiyumegan](https://github.com/inuiyumegan): 提供了大量谱面数据用于算法调试和Benchmark。
 - [greycsont](https://github.com/greycsont): 提供了部分功能。
 - [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式。
+- [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
 
 ---------
 本页累计访问量，自2026/6/21起统计，感谢大家的支持！
