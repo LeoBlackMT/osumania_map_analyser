@@ -13,7 +13,7 @@
 		"title": "Settings Guide(English)",
 		"description": "Go to the repo's README_EN.md file for settings usage instructions and more information.",
 		"options": [],
-		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/README_EN.md#settings"
+		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/settings.md#english"
 	},
 	{
 		"uniqueID": "GuideButtonCN",
@@ -21,7 +21,7 @@
 		"title": "设置说明(中文)",
 		"description": "前往 GitHub 页面查看下方所有设置的说明。",
 		"options": [],
-		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/README.md#%E8%AE%BE%E7%BD%AE%E8%AF%B4%E6%98%8E"
+		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/settings.md"
 	},
 	{
 		"uniqueID": "IssueButton",
@@ -37,7 +37,7 @@
 		"title": "Benchmark Results",
 		"description": "View estimator algorithm's benchmark results and performance data.",
 		"options": [],
-		"value": "https://leoblackmt.github.io/osumania_map_analyser"
+		"value": "https://benchmark.leoblack.top/"
 	},
 	{
 		"uniqueID": "hModules",
