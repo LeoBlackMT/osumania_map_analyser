@@ -28,7 +28,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ## Usage
 1. Go to the [Release](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest) page and download the latest version.
 2. Extract the downloaded file to any location.
-3. Place the entire folder in the `static` directory of tosu.
+3. Place the entire folder in the `static` directory of tosu if you haven't modified the `Counters Directory` setting.
 4. Launch tosu, go to the dashboard, and you will find the "ManiaMapAnalyser" plugin. Click the `Settings` button on the right to configure it.
 5. For instructions on using the in-game interface and OBS, please refer to the relevant tosu documentation.
 
@@ -56,10 +56,13 @@ Please note that as a tree-based model, the GBDT meta-model can exhibit boundary
 ## Azusa Algorithm Explanation
 This algorithm builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
 
+# Contribution Guide
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
 ## References
 - [tosu](https://tosu.app): The runtime environment and basic framework for this plugin.
 - [Etterna](https://github.com/etternagame/etterna): Etterna's MinaCalc is used for difficulty estimation and MSD calculation.
-- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): Suuny Rework's algorithm is used for difficulty estimation.
+- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): Sunny Rework's algorithm is used for difficulty estimation.
 - [Interlude](https://github.com/YAVSRG/YAVSRG): Interlude's RC pattern analysis algorithm is used, with LN detection logic added on top.
 - [Daniel](https://thebagelofman.github.io/Daniel/): Daniel's algorithm is used for difficulty estimation.
 - [Companella](https://github.com/Leinadix/companella): Companella's algorithm is used for difficulty estimation.
