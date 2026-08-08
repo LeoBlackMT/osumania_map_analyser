@@ -151,6 +151,6 @@ if (!state.isPaused) state.pauseTimeMs = 0;                         // :121-123
 2. **仅在游玩状态工作**：`socketHandlers.js:91` 要求 `state.isInPlayState` 为真，结算界面/选图界面不检测。
 3. **跳变不计数**：谱面时间跳动超过 2000ms（seek、重载、切难度）触发 `shouldClearMarkers` 清空标记，而不是记为暂停；从末尾向前的小回退（<2000ms）同理。
 4. **末尾缓冲**：进入谱面最后 500ms 后不再判定暂停（`atEnd`），避免结算前收尾帧被误判。
-5. **ε 容差默认 0**：`PAUSE_DETECT_EPSILON_MS` 为 0（`config.js:72`）意味着只有谱面时间**完全冻结**才进入冻结累积；若游戏在卡顿时仍上报微小变化的时间，可调大该常量（目前无对应设置项，需改代码）。
+5. **Epsilon 容差默认 0**：`PAUSE_DETECT_EPSILON_MS` 为 0（`config.js:72`）意味着只有谱面时间**完全冻结**才进入冻结累积；若游戏在卡顿时仍上报微小变化的时间，可调大该常量（目前无对应设置项，需改代码）。
 6. **倍速归一化**：所有时间判定基于倍速缩放后的谱面时间（`socketHandlers.js:54-55`），DT/HT 下暂停检测阈值语义保持一致（冻结的是谱面时间）。
 7. **禁用即清理**：关闭 `enablePauseDetection` 会立即清空已收集的标记与计数（`settings.js:549-556`），且 `computePauseTransition` 不再运行。

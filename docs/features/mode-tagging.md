@@ -152,7 +152,7 @@ isVibroMap = state.vibroDetection
 - `primitives.js:153` — 无 SV 事件直接返回 0。
 - `primitives.js:161-178` — 遍历 SV 事件，累计速度偏离 1 的时间段（判定基准 `PATTERNS_CONFIG.SV_SPEED_EPS`，`js/patterns/config.js:103 SV_SPEED_EPS: 0.05`）；同时统计非 1 速度区间段数 `nonOneIntervals`。
 - `primitives.js:184-186` — 非 1 区间段数 `<= 1` → 返回 0（单段变速不构成 SV 谱）。
-- `primitives.js:188-215` — 极端 BPM 检查：BPM 超出 `SV_EXTREME_BPM_MIN/MAX`（`config.js:104-105`，20/450）或相邻 BPM 比值 `>= SV_EXTREME_BPM_RATIO`（`config.js:106`，4.0）视为极端变速谱。
+- `primitives.js:188-215` — 极端 BPM 检查：BPM 超出 `SV_EXTREME_BPM_MIN/MAX`（`js/patterns/config.js:104-105`，20/450）或相邻 BPM 比值 `>= SV_EXTREME_BPM_RATIO`（`js/patterns/config.js:106`，4.0）视为极端变速谱。
 - `primitives.js:217-219` — 极端时返回 `Math.max(total, SV_AMOUNT_THRESHOLD + 1.0)`，确保必然超过判定阈值。
 
 输出通过 `ManiaMapAnalyser by Leo_Black/js/patterns/summary.js:66 svAmount = svTime(chart)` 写入报告 `summary.js:75 SVAmount: svAmount`。

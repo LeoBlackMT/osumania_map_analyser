@@ -76,7 +76,7 @@ main.js:13 setRecomputeHandler(fetchBeatmapFile) → analysis.js:248 fetchBeatma
 
 ## 4. 身份与 mod 构建（socketHandlers.js）
 
-`socket.js:146 socket.api_v2((data) => ...)` 的回调体 `socketHandlers.js:145 setupSocketListener` 里，先处理游玩状态切换（:147-164）、mod 数据（:166-169）、歌曲时间（:171 → `socketHandlers.js:47 updateSongTimeState`），然后才进入身份构建（:173 起，`data?.beatmap` 缺失直接 return）。
+`socketHandlers.js:146 socket.api_v2((data) => ...)` 的回调体 `socketHandlers.js:145 setupSocketListener` 里，先处理游玩状态切换（:147-164）、mod 数据（:166-169）、歌曲时间（:171 → `socketHandlers.js:47 updateSongTimeState`），然后才进入身份构建（:173 起，`data?.beatmap` 缺失直接 return）。
 
 ### 4.1 beatmapIdentity：id:/hash:/path: 组合 + meta: 降级
 

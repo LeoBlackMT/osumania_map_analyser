@@ -85,8 +85,8 @@ export const DAN_INDEX = {
 - 表文件：`4k-rc.js`、`4k-rc-ext.js`、`4k-ln.js`、`4k-ln-ext.js`、`6k-rc.js`、`6k-ln.js`、`7k-rc.js`、`7k-rc-ext.js`、`7k-ln.js`、`10k-rc.js`。
 - **ext 扩展表仅存在于 4K RC/LN 与 7K RC**（`4k-rc-ext.js`、`4k-ln-ext.js`、`7k-rc-ext.js`）。
 - **6K/7K-LN 静默回退默认表**：`estDiff` 中 `keys.LN[useExtended ? "extended" : "default"] ?? keys.LN.default` 的 `??` 兜底（`reworkEstimatorUtils.js:105`），RC 同理（`reworkEstimatorUtils.js:101`）。
-- **注意事项：`7k-wild.js` 被导入但未接入 `DAN_INDEX`**——`intervals/index.js:11` 导入了 `wild7K`，但 `DAN_INDEX` 中 7K 只有 `rc7K`/`rcExt7K`/`ln7K`，该表实际不可达。修改时不要误以为它生效。
-- 10K 仅存 RC 默认表（`intervals/index.js:26-28`）。
+- **注意事项：`7k-wild.js` 被导入但未接入 `DAN_INDEX`**——`js/estimator/intervals/index.js:11` 导入了 `wild7K`，但 `DAN_INDEX` 中 7K 只有 `rc7K`/`rcExt7K`/`ln7K`，该表实际不可达。修改时不要误以为它生效。
+- 10K 仅存 RC 默认表（`js/estimator/intervals/index.js:26-28`）。
 
 ## 6. extendedEstimationRange 作用域
 
