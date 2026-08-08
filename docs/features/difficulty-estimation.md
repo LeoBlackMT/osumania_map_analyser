@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-插件提供 **6 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#8-注意事项)）。
+插件提供 **6 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
 
 估算器内部依赖以下共享模块（这些模块同时被 Node benchmark runner 使用，不含任何浏览器 API）：
 

@@ -1,7 +1,7 @@
 # pattern-analysis.md — 键型分析（RC/LN Pattern）功能文档
 
 > 目标读者：AI / 开发者。本文档描述 `js/patterns/` 键型分析模块的完整管线、各模块职责、核心模式体系、LN 检测来源、`debugUseAmount` 设置影响及其与模式标签（mode tag）的衔接。
-> 路径约定：下文所有引用均以仓库根目录为基准，插件目录名精确为 `ManiaMapAnalyser by Leo_Black`（含空格）。`js/patterns/` 是共享模块（浏览器与 Node benchmark runner 均使用），**不依赖任何 DOM API**，文档中所有模块均可在 Node 环境运行。
+> 路径约定：引用路径相对仓库根目录，插件目录名精确为 `ManiaMapAnalyser by Leo_Black`（含空格）；`js/patterns/` 内的文件常以短名 `config.js`/`summary.js`/`findPatterns.js` 出现，均指 `ManiaMapAnalyser by Leo_Black/js/patterns/` 下同名文件（模块表见 §3）。`js/patterns/` 是共享模块（浏览器与 Node benchmark runner 均使用），**不依赖任何 DOM API**，文档中所有模块均可在 Node 环境运行。
 
 ---
 
