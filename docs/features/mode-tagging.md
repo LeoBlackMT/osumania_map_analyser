@@ -1,6 +1,6 @@
 # 模式标签功能文档（mode-tagging）
 
-> 面向 AI 的功能技术文档。描述插件的模式判定（HB/RC/LN/Mix）、SV 检测、vibro 检测、LN 成分分析（Analyze LN Parts）以及左下角标签胶囊 UI 的完整实现。
+> 面向 AI 的功能技术文档。描述插件的模式判定（HB/RC/LN/Mix）、SV 检测、vibro 检测、LN 成分分析（Analyze LN Parts）以及左下角标签胶囊 UI 的完整实现。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 >
 > 相关文档：[settings.md](../settings.md)（设置说明，人类）、[pattern-analysis.md](pattern-analysis.md)（键型分析）、[difficulty-estimation.md](difficulty-estimation.md)（难度估计）。
 

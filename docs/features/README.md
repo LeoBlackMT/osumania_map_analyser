@@ -18,3 +18,24 @@
 | [mode-tagging.md](mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 
 [返回 docs 索引](../README.md)
+
+# English
+
+## Summary & Requirements
+- This document is the guide and index for the docs/features/ directory.
+- This directory stores the plugin's feature technical documents, targeting AI (LLM), used to describe the implementation details, algorithm explanations, notes, and more for each feature module.
+- The documents target AI and do not restrict language, but only Chinese or English should be used; this directory defaults to Chinese.
+- When developing a new feature, write the corresponding feature technical document in this directory; when modifying an existing feature, update the corresponding document to keep it consistent with the actual feature.
+- When adding or removing documents, add or remove the corresponding entries in the index table below.
+
+## Document Index
+
+| Document or Path | Target | Description |
+| --- | --- | --- |
+| [difficulty-estimation.md](difficulty-estimation.md) | AI | Difficulty estimation document (6 algorithms, 4/6/7K, LN/RC dan tiers) |
+| [pattern-analysis.md](pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
+| [graph-visualization.md](graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
+| [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
+| [mode-tagging.md](mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
+
+[Back to docs index](../README.md)

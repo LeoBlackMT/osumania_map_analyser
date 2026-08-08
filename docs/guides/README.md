@@ -20,3 +20,26 @@
 | [module-conventions.md](module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
 
 [返回 docs 索引](../README.md)
+
+# English
+
+## Category Description
+
+- This document is the guide and index for the `docs/guides/` directory.
+- This directory stores guide documents (for AI), used to guide LLMs on the conventions and workflows to follow when adding features, modifying the pipeline, or maintaining this project.
+- Guide documents target AI readers; Chinese or English may be used, but no other language.
+- When writing guide documents, orient them around "how to operate", giving concrete steps, constraints, and notes, and cite relevant source code locations as the basis.
+- When making breaking changes to the pipeline, also update the corresponding pipeline documents and the guide documents in this directory.
+- When adding or removing guide documents, add or remove the corresponding index entries in this document and sync the updates in `docs/README.md`.
+
+## Document Index
+
+Use the links to jump to the corresponding document.
+
+| Document or Path | Target | Description |
+| --- | --- | --- |
+| [adding-a-setting.md](adding-a-setting.md) | AI | Complete guide for adding a setting (settings.json -> parser -> state -> cache invalidation) |
+| [cache-invalidation.md](cache-invalidation.md) | AI | Result cache invalidation notes and cautions when adding computation-affecting settings |
+| [module-conventions.md](module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
+
+[Back to docs index](../README.md)

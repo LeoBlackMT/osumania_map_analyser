@@ -1,8 +1,8 @@
 # 模块编写约定（module-conventions.md）
 
 > 面向 AI 的约定清单：新增/修改 `ManiaMapAnalyser by Leo_Black/js/` 下模块前的检查项。
-> 所有引用为 `path:line + symbol` 格式，行号可能随版本漂移，动手前请用 grep 复核。
-> 核心依据：`AGENTS.md`（Common pitfalls 段）、`CLAUDE.md`（要求限制段）。
+> 所有引用为 `path:line + symbol` 格式。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
+> 核心依据：`CLAUDE.md`（要求限制段）。
 
 ## 适用范围
 
@@ -19,7 +19,6 @@
 
 浏览器会把 `"./foo"` 解析为 `"./foo.js"`，Node **不会**——`esm-loader.mjs` 只强制 ESM format，**不**解析 extensionless specifier。`js/` 内新增文件的 import specifier 必须带 `.js`。
 
-- 依据：`AGENTS.md:110`（esm-loader.mjs 实际机制）、`AGENTS.md:144`（pitfall 3 "Import extensions"）
 - 反例：`import { x } from "./foo"` → Node 下报 `ERR_MODULE_NOT_FOUND`
 
 ### 2. Node/browser 拆分
@@ -31,8 +30,6 @@
 
 `appContext.js` 顶层就执行 `document.getElementById`（`js/app/appContext.js:23-62` `statusEl` 等 DOM refs）——共享模块**不得** import 它或任何 `js/app/` 模块。
 
-- 依据：`AGENTS.md:30`、`AGENTS.md:79-86`（Key modules 表）
-
 ### 3. `import.meta.url` 模式
 
 Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)`（相对**模块文件**解析），**勿**改成相对字符串——相对字符串会相对 `index.html` 解析而失效。
@@ -40,7 +37,6 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 - Worker 创建：`manager.js:18-21` `ensureWorker()` 内 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`
 - WASM 路径：`calc.js:56-59` `locateFile` 的 `new URL(\`./versions/${path}\`, import.meta.url)`；`calc.js:73` 同模式（Node 侧经 `toWasmPath` 转文件系统路径）
 - ONNX 路径：`companellaEstimator.js:63`（`ort.env.wasm.wasmPaths`）、`companellaEstimator.js:67`（`dan_model.onnx` URL）
-- 依据：`AGENTS.md:153`（pitfall 12 "import.meta.url patterns"）
 
 ### 4. 动态 `import()` 唯一场景
 
@@ -48,20 +44,15 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 新增功能**不得**再引入其他 `import()`——需要条件加载时优先用顶层静态 import 加环境分支。
 
-- 依据：`AGENTS.md:153`
-
 ### 5. WASM 处理
 
 - **不直接 import / `fs.readFileSync` `.wasm` 文件**：经 `js/ett/versions/` 的 JS glue（`minaclac-*.js`，Emscripten 导出）实例化；`.wasm` 作为静态资源由浏览器 fetch（`calc.js:56-59` `locateFile`）。
 - Node 下经 glue 的 `wasmBinary` 传入预读字节（`calc.js:65-74` `loadEtternaModule`），不要自己加载 `.wasm`。
 - 新增 Etterna 版本：`.wasm` + `.js` glue 成对放入 `js/ett/versions/`，并在 `js/ett/versions/index.js` 注册 loader（`calc.js:47-53` `WASM_FILE_BY_VERSION` 同步登记文件名）。
-- 依据：`AGENTS.md:14`、`AGENTS.md:71-73`、`AGENTS.md:143`（pitfall 2 "WASM in Node"）
 
 ### 6. 文件夹名精确
 
-插件文件夹名为 `ManiaMapAnalyser by Leo_Black`（**带空格**）。所有路径引用（代码、文档、脚本）必须逐字符一致；**禁止**重命名或 kebab-case 化。benchmark runner 依赖该精确路径 import `js/`（`AGENTS.md:20`）。
-
-- 依据：`AGENTS.md:18`（Folder naming quirk）
+插件文件夹名为 `ManiaMapAnalyser by Leo_Black`（**带空格**）。所有路径引用（代码、文档、脚本）必须逐字符一致；**禁止**重命名或 kebab-case 化。benchmark runner 依赖该精确路径 import `js/`。
 
 ### 7. 双层 state 约定
 
@@ -70,14 +61,14 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 - **写** `user*` 字段（用户真实偏好，可为 `"Auto"`）：`userContentBar`/`userSrText`/`userDiffText`（`appContext.js:79-81`）
 - **读** 解析后字段：`contentBar`/`srText`/`diffText`（`appContext.js:76-78, 87`）；`effectiveContentBar`（`appContext.js:77`）为谱面级覆盖
 - **估计算法双层**：`estimatorAlgorithm`（用户选择，`appContext.js:88`）vs `actualEstimatorAlgorithm`（实际执行，`appContext.js:89`，如 Azusa 因 LN 过高降级为 Sunny）——分析后读后者，缓存命中时从快照恢复，勿重算
-- 写入 `state.contentBar = "Auto"` 是 bug（`AGENTS.md:146` pitfall 5）
-- 依据：`AGENTS.md:120-121`；设置全流程见 [../pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)
+- 写入 `state.contentBar = "Auto"` 是 bug
+- 设置全流程见 [../pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)
 
 ### 8. 新计算影响设置必须进失效列表
 
-结果缓存 key 不包含计算类设置（`AGENTS.md:66`）→ **任何影响计算结果的设置**必须加入 `settings.js` 命令监听器的 `clearResultCache()` 失效列表（`AGENTS.md:122`）；纯展示设置**不得**加（由覆盖检查处理，`AGENTS.md:64`）——漏加 = 静默返回旧结果。
+结果缓存 key 不包含计算类设置 → **任何影响计算结果的设置**必须加入 `settings.js` 命令监听器的 `clearResultCache()` 失效列表；纯展示设置**不得**加（由覆盖检查处理）——漏加 = 静默返回旧结果。
 
-- 依据：`AGENTS.md:154`（pitfall 13 "Result cache correctness"）；详见 [cache-invalidation.md](cache-invalidation.md)
+- 详见 [cache-invalidation.md](cache-invalidation.md)
 
 ### 9. 版本号一致性
 
@@ -92,7 +83,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 11. Benchmark 影响面
 
-改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果（`AGENTS.md:112`）——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:67`）。
+改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:67`）。
 
 - 详见 [benchmark-guide.md](benchmark-guide.md)
 

@@ -16,3 +16,22 @@
 | [mod-handling.md](mod-handling.md) | AI | mod 处理：mod 代码解析、倍速/OD 影响、modSignature 的构成与作用 |
 
 [返回 docs 索引](../README.md)
+
+# English
+
+## Category Description
+
+This document is the guide and index for the `docs/pipeline/` directory.
+
+This directory contains technical documents for the plugin's internal data pipeline, intended for AI readers, to understand each stage of the data flow (beatmap fetch -> parse -> analyze -> result cache -> display), and to keep the documents consistent with the actual functionality when modifying the pipeline.
+
+## Document Index
+
+| Document or Path | Target | Description |
+| --- | --- | --- |
+| [analysis-pipeline.md](analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
+| [result-cache.md](result-cache.md) | AI | Result cache (LRU) mechanism: cache key, hit coverage check, write gate, invalidation timing |
+| [settings-pipeline.md](settings-pipeline.md) | AI | Settings pipeline: settings.json -> parse -> state injection -> cache invalidation and recompute trigger |
+| [mod-handling.md](mod-handling.md) | AI | Mod handling: mod code parsing, speed/OD effects, modSignature composition and purpose |
+
+[Back to docs index](../README.md)

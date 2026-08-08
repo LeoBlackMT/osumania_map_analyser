@@ -1,6 +1,6 @@
 # docs/pipeline/mod-handling.md — mod 处理管线
 
-> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。
+> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[result-cache.md](result-cache.md)（缓存键与失效）、[analysis-pipeline.md](analysis-pipeline.md)（分析管线总览）、[../features/difficulty-estimation.md](../features/difficulty-estimation.md)（Etterna WASM 入口与各估算器）。
 
 ## 1. mod 数据来源

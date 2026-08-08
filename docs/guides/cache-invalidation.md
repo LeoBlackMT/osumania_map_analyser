@@ -1,8 +1,8 @@
 # docs/guides/cache-invalidation.md — 结果缓存失效决策指南
 
-> 面向 AI 的指南文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。
+> 面向 AI 的指南文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[pipeline/result-cache.md](../pipeline/result-cache.md)（缓存机制详解——那篇是"怎么工作的"，本文是"该不该加失效"的决策指南）、[adding-a-setting.md](adding-a-setting.md)（新增设置项完整流程）、[pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)（设置管线，含失效触发）。
-> 使用场景：**新增或修改任何设置项时**，先读本文 §3 判定清单，再决定是否加入失效列表。
+> 使用场景：**新增或修改任何设置项时**，先读本文 §3 判定清单，再决定是否加入失效列表；**需要把新的分析产物写入缓存时**，读本文 §10 操作步骤。
 
 ## 1. 核心规则（一句话）
 
@@ -144,3 +144,101 @@ if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings
 ## 9. 新增设置工作流回顾
 
 新增/修改设置项的完整流程（settings.json → 解析器 → state → 挂监听链 → 失效决策）见 [adding-a-setting.md](adding-a-setting.md) 第 6 步。本指南只负责其中一环：**判断新设置是否计算影响，决定加入失效列表或交给覆盖检查**。落入失效列表时，还需同时挂进 `changed`/`recomputeNeeded` 链（`settings.js:776-831`），否则监听回调根本感知不到该设置变化——先有感知，才有失效。
+
+## 10. 如何将数据写入缓存（操作指南）
+
+> 本文其余章节回答"该不该失效"，本节回答"怎么写进缓存"。机制细节（LRU 语义、deepClone、写门逐条解释）见 [pipeline/result-cache.md](../pipeline/result-cache.md) §2/§3/§7——本节只给操作步骤，不重复机制。
+> 写入的**唯一入口**是 `analysis.js:743-776` 的写门块：位于 `fetchBeatmapFile`（`analysis.js:248`）内、companella 完成后、SV/auto-profile 段之前（`analysis.js:741-742` 注释）。新产物一律在该块内加字段，不要另起 `resultCache.put` 调用。
+
+### 10.1 何时写入：写门条件（`analysis.js:743-746`）
+
+```js
+if (!cached && state.enableResultCache && state.lastBeatmapIdentity
+    && errors.length === 0
+    && rework && !isStaleRequest()
+    && genAtStart === resultCacheGeneration()) {
+```
+
+| 条件 | 含义 |
+| --- | --- |
+| `!cached` | 必须是 miss——命中快照本来就在缓存里，无需再写 |
+| `state.enableResultCache` | 开关开启 |
+| `state.lastBeatmapIdentity` | 谱面身份存在（否则缓存键不完整，§10.5） |
+| `errors.length === 0` | 分析全程无错误（`errors` 数组定义于 `analysis.js:388`） |
+| `rework && !isStaleRequest()` | 估算结果真实存在，且请求未过期（`isStaleRequest` 定义于 `analysis.js:251`） |
+| `genAtStart === resultCacheGeneration()` | **代数守卫**：`genAtStart` 捕获于分析开始（`analysis.js:252`），期间 settings.js 调了 `clearResultCache()`（代数 +1，`resultCache.js:51`）则拒绝写回，防 clear 后旧分析污染新缓存 |
+
+这个 if 块就是最小模板：**在块内添加的新字段自动继承全部守卫**，不需要重复判断。
+
+### 10.2 写入什么：快照字段清单（`analysis.js:751-776`）
+
+| 字段 | 位置 | 说明 |
+| --- | --- | --- |
+| `rework` | `analysis.js:752-762` | 估算结果子对象：star/estDiff/numericDifficulty/numericDifficultyHint/graph/lnRatio/columnCount/lnStar/typePercentageData |
+| `patternReport` | `analysis.js:763` | 键型分析报告，jsonSafe 包装（§10.3） |
+| `mergedClusters` | `analysis.js:764` | 聚类结果，jsonSafe 包装（§10.3） |
+| `ettResult` | `analysis.js:765` | Etterna MSD 结果 |
+| `interludeStar` | `analysis.js:766` | Interlude 星数 |
+| `isVibroMap` | `analysis.js:767` | vibro 检测结果——固化进快照，故 vibroDetection 设置必须失效（本文 §5 第 7 项） |
+| `sixKConst` | `analysis.js:768` | 6K 恒定等级——同理 display6kLevel 必须失效（§5 第 13 项） |
+| `actualEstimatorAlgorithm` | `analysis.js:769` | 实际执行的算法（含 Azusa/Roxy 回退 Sunny 的记录），命中时原样恢复（§10.7） |
+| `parsedInfo` | `analysis.js:770-774` | 只存 metadata/lnRatio/columnCount 三个普通字段 |
+| `computed` | `analysis.js:775` | `needComputed` 快照，供命中覆盖检查（§10.6） |
+
+### 10.3 jsonSafe 剥壳（`analysis.js:750`）——最容易踩的坑
+
+clustering.js 的 cluster 对象带 `format()`/`Importance` 方法，`structuredClone` 无法拷贝；而 resultCache 的 get/put 双向 deepClone 要求值必须 JSON-safe（`resultCache.js:6-13`，详见 result-cache.md §2/§7）。因此：
+
+```js
+const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
+```
+
+需要 jsonSafe 的：`typePercentageData`（`analysis.js:761`）、`patternReport`（:763）、`mergedClusters`（:764）。纯值字段（ettResult/interludeStar/isVibroMap/sixKConst 等）不需要。**规则：字段来源是类实例或带方法的对象 → 先 jsonSafe；拿不准 → 包一层无害。**
+
+### 10.4 skip:isMetaDegraded（`analysis.js:776`）
+
+```js
+}, { skip: isMetaDegraded });
+```
+
+`isMetaDegraded` 在 `analysis.js:306` 判定（identity 以 `meta:` 开头）。meta 降级身份的快照**永不写入**：标题键碰撞风险、无 md5 无法检测文件替换（见 result-cache.md §8）。`skip:true` 时 `resultCache.put` 直接返回（`resultCache.js:35`），不写入、不占容量、不驱逐。**新写缓存代码必须带上这个 skip 参数**，漏了会让 meta 身份的快照污染 LRU。
+
+### 10.5 缓存键构造（`analysis.js:305`）
+
+```js
+const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+```
+
+三段：用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag`）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+
+### 10.6 needComputed 推导与随快照保存（`analysis.js:775`、:287-304、:310-314）
+
+- 写入时：`computed: needComputed` 保存"本次分析需要哪些计算产物"（pattern/ett/graph/interlude 四项布尔，推导见 `analysis.js:287-304`）。
+- 命中时：逐项比对 `snapshot.computed` 与当前 `needComputed`（`analysis.js:310-314`），四项全等才命中。
+- **新计算产物要接入覆盖检查** → 三处同步改：`needComputed` 加项（`analysis.js:287-304`）＋命中比对加项（:310-314）＋写门块 `computed` 一起存（:775）。
+
+### 10.7 命中恢复：写入与恢复成对（`analysis.js:429-438`）
+
+命中分支从快照恢复全部结果：`rework`（:430）、`actualEstimatorAlgorithm`（:431，**从快照恢复，绝不重算**——写入侧在 `analysis.js:769`）、`sixKConst`（:435）、`lnStar`（:436-437）、`typePercentageData`（:438）。**新增字段必须同时出现在写门块（:751-776）与命中恢复分支（:429-438）**，否则命中后该字段缺失/undefined——这是最常见的成对遗漏。
+
+### 10.8 常见遗漏检查清单
+
+写缓存前逐条自查：
+
+- [ ] **忘 jsonSafe**：带方法/类实例的对象（cluster 等）直接写入 → deepClone 抛错（§10.3）
+- [ ] **忘 skip:isMetaDegraded**：meta 身份快照写进 LRU → 标题碰撞污染（§10.4）
+- [ ] **写入非 JSON-safe 值**：函数、Date、`undefined` 顶层字段
+- [ ] **在 stale 请求中写入**：generation 守卫（`analysis.js:746`）只保护写门块内——块外另起 put 会绕过守卫
+- [ ] **新字段只写不恢复**：命中分支（`analysis.js:429-438`）没恢复该字段（§10.7）
+- [ ] **新计算产物没进 needComputed**：覆盖检查（:310-314）覆盖不到 → 需求变化仍命中旧快照（§10.6）
+- [ ] **新计算影响设置没进失效列表**：键不含该设置 → 静默陈旧，见 §5（`settings.js:835-848` 条件、`settings.js:849` 调用）
+
+### 10.9 新增功能时的操作步骤（checklist）
+
+面向 LLM 的流程：
+
+1. **新计算结果要进缓存** → 在写门块（`analysis.js:743-776`）put 对象内加字段（带 jsonSafe 与 skip 处理）＋ 命中分支（`analysis.js:429-438`）恢复该字段；若该产物参与显示需求判定，还需同步 §10.6 的三处覆盖检查位置。
+2. **新计算影响设置** → 加入失效列表（`settings.js:835-848`，`clearResultCache()` 在 `settings.js:849`）＋ 挂进 `changed`/`recomputeNeeded` 链（`settings.js:776-831`），见本文 §5、§9。
+3. **新显示类设置** → 不失效、不进缓存，由覆盖检查兜住（本文 §4）。
+
+> 验证口诀：写入块字段数 = 命中恢复块字段数；jsonSafe 覆盖所有对象字段；skip 参数永远带着。

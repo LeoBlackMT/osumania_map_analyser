@@ -1,6 +1,6 @@
 # docs/pipeline/result-cache.md — 结果缓存（LRU）
 
-> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。
+> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[settings-pipeline.md](settings-pipeline.md)（设置管线，含失效触发）、[analysis-pipeline.md](analysis-pipeline.md)（分析管线总览）、[guides/cache-invalidation.md](../guides/cache-invalidation.md)（决策指南：新设置该不该加入失效——本文是"怎么工作的"，那篇是"该不该加"）。
 
 ## 1. 定位与数据流位置

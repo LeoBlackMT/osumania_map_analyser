@@ -2,7 +2,7 @@
 
 > 目标：AI（LLM）｜语言：中文
 > 本文档描述插件「难度图表可视化」功能的实现细节：双图结构、图形数学、渲染流程、已玩/未玩双色填充、暂停标记与相关常量。
-> 文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。
+> 文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 
 ## 1. 功能概述
 
@@ -158,6 +158,6 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 - **显示切换**：`graph.js:655 updateDiffTextVisibility()` 统一按 `state.diffText` 切换右上区域（Difficulty 文本 / header 图 / MSD 等右胶囊）的可见性：`Graph` 显示 header 图（`graph.js:658`），`Difficulty` 显示估计难度（`graph.js:657`），`MSD/Pattern/ReworkSR/InterludeSR` 显示右胶囊（`graph.js:659-662`）；`None` 时隐藏 caption（`graph.js:680`）。无任何图表模式启用时调用 `clearDiffGraph()`（`graph.js:704-705`）。
 - **数值难度**：`graph.js:720 setNumericDifficultyValue(value, hint)` 写入 `state.numericDifficulty` / `numericDifficultyHint`；`graph.js:737 setForceHideNumericDifficulty(value)` 强制隐藏。两者仅在 `diffText === "Difficulty"` 时触发 caption 重渲染（`graph.js:732`、`graph.js:744`）。caption 文本由 `graph.js:199 formatEstimateDifficultyCaption()` 生成（含 `[实际算法]` 前缀、`RCxx|LNxx*` 双值格式）。
 - **游标可见性**：`graph.js:376 setGraphCursorVisible(visible)`——隐藏时对启用视图强制隐藏游标与游标点（`graph.js:378-385`），防止禁用视图残留游标。
-- **图表是否启用**：由 `state.diffText` 与 `contentBar` 共同判定（`hasAnyGraphModeEnabled`，见 §2.2），与缓存快照的 coverage 检查相关（见 AGENTS.md 结果缓存章节）。
+- **图表是否启用**：由 `state.diffText` 与 `contentBar` 共同判定（`hasAnyGraphModeEnabled`，见 §2.2），与缓存快照的 coverage 检查相关（详见 [result-cache.md](../pipeline/result-cache.md)）。
 - **样式**：`star-graph-fill.graph-unplayed`（暗底）与 `star-graph-fill-play`（亮层）、`star-graph-pause-marker`、`loading` 波浪动画、`scan-enter` 扫描动画等类名在 `styles/graph.css` 与 `styles/theme.css`（osu 主题变体 `html.ma-theme-osu` 使用 `--ma-accent`）中定义；本文档不展开 CSS 细节。
 - **性能**：`renderDiffGraph` 手工预分配 path 段数组并复用 `f1` 减少字符串拼接（`graph.js:582-587`）；动画循环仅在 `hasAnyGraphModeEnabled()` 时更新游标（`graph.js:531`）。

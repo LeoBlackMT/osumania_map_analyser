@@ -1,6 +1,6 @@
 # docs/pipeline/analysis-pipeline.md — 分析管线总览
 
-> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。
+> 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[result-cache.md](result-cache.md)（结果缓存：缓存键/覆盖检查/写门/失效，本文只概述并交叉引用）、[settings-pipeline.md](settings-pipeline.md)（设置管线：设置注入、失效触发、getSettings 命令）、[mod-handling.md](mod-handling.md)（mod 解析与 modSignature）、[../features/difficulty-estimation.md](../features/difficulty-estimation.md)（6 个估算算法各自的详细说明）。
 
 ## 1. 全链路数据流图

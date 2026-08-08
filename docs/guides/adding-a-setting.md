@@ -1,6 +1,6 @@
 # docs/guides/adding-a-setting.md — 新增设置项操作指南
 
-> 面向 AI 的操作指南。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。**照抄步骤不保证正确——每步引用的行号是编写时核实的，动手前请重新打开对应文件确认。**
+> 面向 AI 的操作指南。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。**照抄步骤不保证正确——每步引用的行号是编写时核实的，动手前请重新打开对应文件确认。**文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 配套文档：先读 [pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)（设置管线"怎么工作"）与 [pipeline/result-cache.md](../pipeline/result-cache.md)（缓存"怎么工作"）；本文是"怎么动手"。缓存失效的**该不该加**判断见 [cache-invalidation.md](cache-invalidation.md)。
 
 ## 0. 速览：新增一个设置要动 5 个文件
