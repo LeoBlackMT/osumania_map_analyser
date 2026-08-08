@@ -83,9 +83,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 11. Benchmark 影响面
 
-改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:67`）。
-
-- 详见 [benchmark-guide.md](benchmark-guide.md)
+ 改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:67`）。
 
 ### 12. 性能与兼容
 
