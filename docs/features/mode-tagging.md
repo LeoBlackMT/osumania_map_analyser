@@ -279,7 +279,7 @@ setSvTagVisible(shouldShowSvTag);
 
 状态字段对照（注意 uniqueID 与 state 字段的大小写差异）：`VibroDetection`（settings.json:277）→ `state.vibroDetection`（`appContext.js:111`）；其余同小驼峰。设置默认值见 `config.js` defaults：`vibroDetection: true`（`:88`）、`useSvDetection: true`（`:90`）、`showModeTagCapsule: true`（`:93`）、`enableAnalyzeLN: false`（`:113`）。
 
-⚠️ 已知不一致：`forceSunnyWindow` 在 `config.js:111` 默认 `false`，而 `settings.json:314` 默认 `true`（AGENTS.md 已记录该 mismatch）。依赖 `enableAnalyzeLN` 时以实际设置值为准。
+⚠️ 已知不一致：`forceSunnyWindow` 在 `config.js:111` 默认 `false`，而 `settings.json:314` 默认 `true`。依赖 `enableAnalyzeLN` 时以实际设置值为准。
 
 ## 9. 注意事项
 
@@ -289,7 +289,7 @@ setSvTagVisible(shouldShowSvTag);
 4. **`enableAnalyzeLN` 前置依赖**：`forceSunnyWindow` 关闭时 `typePercentageData` 恒为 `null`（`analysis.js:521-524`），标签胶囊退回单标签模式。改动 `analysis.js:521` 分支时需同步考虑该依赖。
 5. **currentModeTag 是 graph 的输入**：`hud.js:186-189` 注释明确"currentModeTag用于graph的显示"（`graph.js:217` 的 LN 难度门控）。修改标签判定时不要破坏 `state.currentModeTag` 的语义。
 6. **Vibro 判定门槛**：`reworkStar > 5.0`（`analysis.js:654`）与 `jackSpeed/overall >= 0.95`（`appContext.js:157 VIBRO_JACKSPEED_RATIO_THRESHOLD`）双重条件。改阈值只改 `config.js:49 vibroJackspeedRatioThreshold`，不要改 `appContext.js:157` 的引用关系。
-7. **缓存一致性**：`isVibroMap`、`typePercentageData`、`currentModeTag` 均参与结果快照（`analysis.js:751-776`），缓存命中时从快照恢复（`:438`、`:644`）。新增影响这些值的设置必须加入 `settings.js` 的 `clearResultCache()` 失效清单（见 AGENTS.md 配置架构节）。
+7. **缓存一致性**：`isVibroMap`、`typePercentageData`、`currentModeTag` 均参与结果快照（`analysis.js:751-776`），缓存命中时从快照恢复（`:438`、`:644`）。新增影响这些值的设置必须加入 `settings.js` 的 `clearResultCache()` 失效清单。
 
 ## 10. 引用索引（已验证）
 

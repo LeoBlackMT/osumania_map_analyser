@@ -1,6 +1,6 @@
 # 暂停检测功能文档（pause-detection.md）
 
-> 目标读者：AI / 开发者。描述插件在游玩过程中检测暂停并在难度图表与卡片上展示的功能实现。
+> 目标读者：AI。描述插件在游玩过程中检测暂停并在难度图表与卡片上展示的功能实现。
 > 相关文档：[graph-visualization.md](graph-visualization.md)（暂停标记的渲染细节）、[settings.md](../settings.md)（用户设置说明）。
 
 ## 1. 功能概述
@@ -143,7 +143,7 @@ if (!state.isPaused) state.pauseTimeMs = 0;                         // :121-123
 - 默认值：`config.js:84`（`pauseDetectionEnabled: true`）、`config.js:85`（`pauseDetectionThresholdMs: 500`）。
 - 时序常量：`config.js:68`（`songTimeJumpThresholdMs: 2000`）、`config.js:69`（`noteEndMarginMs: 500`）、`config.js:72`（`pauseDetectEpsilonMs: 0`）、`config.js:73`（`pauseDetectionThresholdMs: 500`），经 `appContext.js:170-173` 导出为 `SONG_TIME_JUMP_THRESHOLD_MS` / `NOTE_END_MARGIN_MS` / `PAUSE_DETECT_EPSILON_MS` / `PAUSE_DETECTION_THRESHOLD_MS`。
 
-注意：`pauseDetectionThreshold` 与 `enablePauseDetection` 均**不属于**计算影响设置（不影响估计结果），因此不在 `clearResultCache()` 失效列表中，也不会污染结果缓存键（见 AGENTS.md「Result cache」章节）。
+注意：`pauseDetectionThreshold` 与 `enablePauseDetection` 均**不属于**计算影响设置（不影响估计结果），因此不在 `clearResultCache()` 失效列表中，也不会污染结果缓存键。
 
 ## 6. 注意事项
 

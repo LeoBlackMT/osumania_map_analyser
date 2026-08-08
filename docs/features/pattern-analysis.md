@@ -1,6 +1,6 @@
 # pattern-analysis.md — 键型分析（RC/LN Pattern）功能文档
 
-> 目标读者：AI / 开发者。本文档描述 `js/patterns/` 键型分析模块的完整管线、各模块职责、核心模式体系、LN 检测来源、`debugUseAmount` 设置影响及其与模式标签（mode tag）的衔接。
+> 目标读者：AI。本文档描述 `js/patterns/` 键型分析模块的完整管线、各模块职责、核心模式体系、LN 检测来源、`debugUseAmount` 设置影响及其与模式标签（mode tag）的衔接。
 > 路径约定：引用路径相对仓库根目录，插件目录名精确为 `ManiaMapAnalyser by Leo_Black`（含空格）；`js/patterns/` 内的文件常以短名 `config.js`/`summary.js`/`findPatterns.js` 出现，均指 `ManiaMapAnalyser by Leo_Black/js/patterns/` 下同名文件（模块表见 §3）。`js/patterns/` 是共享模块（浏览器与 Node benchmark runner 均使用），**不依赖任何 DOM API**，文档中所有模块均可在 Node 环境运行。
 
 ---
@@ -200,7 +200,7 @@
 - 作用位置：`js/app/analysis.js:611-621`（**浏览器侧消费逻辑，不在共享的 `js/patterns/` 内**）。在 `mergeDuplicateClusters`（`display.js:307`，按 `Pattern` 合并同型簇、Amount 求和、BPM 取最大、子类型占比按 Amount 加权归一）之后：
   - **默认（false）**：`Category` 保持 `categoriseChart` 基于 **Importance** 的判定结果；
   - **开启（true）**：`mergedClusters` 改为按 **Amount** 降序（`analysis.js:612`），并把 `report.Category` 强制改为 Amount 最大的簇——其 `SpecificTypes[0]` 占比 > 0.05 时取具体子类型名，否则取核心模式名（`analysis.js:613-620`）。
-- 即：默认分类看"重要程度（Importance）"，开启后改看"时间总量（Amount）"。该设置**只改分类来源，不改簇本身的计算**；且它不参与结果缓存键（见 AGENTS.md 缓存说明），切换时会触发 `clearResultCache()`。
+- 即：默认分类看"重要程度（Importance）"，开启后改看"时间总量（Amount）"。该设置**只改分类来源，不改簇本身的计算**；且它不参与结果缓存键，切换时会触发 `clearResultCache()`。
 
 ## 8. 与 modeLogic 的衔接（模式标签）
 
@@ -218,7 +218,7 @@
 2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:798-806`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
 3. **vibro 检测的影响**：vibro 检测在 `js/app/vibro.js`——`detectVibro`（`vibro.js:16`，基于 Etterna 数值与 jack 速度比，`analysis.js:655-657`）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:824`）隐藏 Numeric Difficulty 显示。`config.js:107-108` 的 `LONGJACK_VIBRO_*` 阈值供 vibro 判定使用。
 4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
-5. **共享模块约束**：`js/patterns/` 与 `js/parser/patternOsuParser.js` 在 Node benchmark runner 中也会加载，禁止引入 `window`/`document`；新增文件 import 必须带 `.js` 扩展名（浏览器解析习惯与 Node esm-loader 的要求，见 AGENTS.md）。
+5. **共享模块约束**：`js/patterns/` 与 `js/parser/patternOsuParser.js` 在 Node benchmark runner 中也会加载，禁止引入 `window`/`document`；新增文件 import 必须带 `.js` 扩展名（浏览器解析习惯与 Node esm-loader 的要求）。
 6. **`rate` 参数未使用**：`service.js:4` 的 `rate` 目前被忽略（`void rate`），倍速换算由调用侧（`analysis.js` 传入原始文本）或显示层 `format(rate)`（`clustering.js:122`）处理。
 
 ## 10. 相关文件

@@ -52,8 +52,6 @@ main.js:13 setRecomputeHandler(fetchBeatmapFile) → analysis.js:248 fetchBeatma
        └─ [9] 收尾：analysis.js:902-917 状态行（formatMetadataStatus display.js:776）；finally 移除 loading
 ```
 
-对照 AGENTS.md 的简化数据流，本文档补充了：身份/mod 构建细节（§4）、请求序号（§6）、估算分派细节（§7.4）、渲染出口触发点（§10）、时序参数（§11）。
-
 ## 2. 入口装配（main.js）
 
 `main.js:15 initialize()` 是唯一启动入口（被 `index.html` 的模块脚本调用）：

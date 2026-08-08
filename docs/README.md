@@ -41,7 +41,6 @@
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | 新增设置项的完整流程指南（settings.json -> 解析器 -> state -> 缓存失效） |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | 结果缓存失效机制说明与新增计算相关设置时的注意事项 |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
-| [guides/benchmark-guide.md](guides/benchmark-guide.md) | AI | Benchmark 使用指南（算法验证流程与注意事项） |
 
 # English
 
@@ -83,4 +82,3 @@ Use the links to jump to the corresponding document. For documents with the same
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | Complete guide for adding a setting (settings.json -> parser -> state -> cache invalidation) |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | Result cache invalidation notes and cautions when adding computation-affecting settings |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
-| [guides/benchmark-guide.md](guides/benchmark-guide.md) | AI | Benchmark usage guide (algorithm verification workflow and notes) |
