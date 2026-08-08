@@ -26,7 +26,7 @@
 ## 使用方法
 1. 前往[Release](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest)下载最新版本。
 2. 将下载的文件解压到任意位置。
-3. 将整个文件夹放置在 tosu 的 `static` 目录下。
+3. 将整个文件夹放置在 tosu 的 `static` 目录下，如果你没有修改`Counters Directory`设置项的话。
 4. 启动 tosu，进入 dashborad，即可找到 "ManiaMapAnalyser" 插件，可以点击右侧`Settings`按钮进行相关设置。
 5. 游戏内界面以及OBS的使用方法见 tosu 相关文档。
 
@@ -55,10 +55,13 @@ Roxy 是一个 4K RC 元结构估算器。其核心分为两层：第一层对�
 ## Azusa 算法说明
 该算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
+## 贡献指南
+详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 参考内容
 - [tosu](https://tosu.app): 本插件的运行环境和基础框架。
 - [Etterna](https://github.com/etternagame/etterna): 使用了Etterna的MinaCalc进行难度估计和MSD计算。
-- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): 使用了Suuny Rework的算法进行难度估计。
+- [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth): 使用了Sunny Rework的算法进行难度估计。
 - [Interlude](https://github.com/YAVSRG/YAVSRG): 使用了Interlude的RC键型分析算法并在基础上新增LN检测算法。
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
