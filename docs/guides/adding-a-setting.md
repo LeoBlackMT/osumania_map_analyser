@@ -80,7 +80,7 @@ enableExample: false,
 exampleMode: ["Off", "Light", "Full"],
 ```
 
-> ⚠️ 陷阱：**defaults 的默认值必须与 settings.json 的 `value` 同步**。项目存在两处方向相反的历史不匹配（`forceSunnyWindow`、`enableAlwaysShowLNDifficulty`，见 settings-pipeline.md §7），只在 settings.json 拉取失败时暴露——新设置不要重蹈覆辙。
+> ⚠️ 陷阱：**defaults 的默认值必须与 settings.json 的 `value` 同步**。历史上 `forceSunnyWindow`、`enableAlwaysShowLNDifficulty` 曾两处方向相反（见 settings-pipeline.md §7，已修复），只在 settings.json 拉取失败时暴露——新设置不要重蹈覆辙。
 
 ---
 

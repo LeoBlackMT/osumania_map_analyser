@@ -22,7 +22,7 @@
 - **Network Configuration（header `hNetwork` settings.json:381）**：`wsEndpoint` settings.json:389
 - **Debug Options（header `hDebug` settings.json:397）**：`debugUseAmount` settings.json:405、`azusaSunnyReferenceHo` settings.json:413、`enableAlwaysShowLNDifficulty` settings.json:420
 
-config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字段一一对应，但存在已知不匹配（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:234-244）。
+config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字段一一对应，默认值需保持同步（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:234-244）。
 
 ## 2. 启动流程
 
@@ -89,14 +89,9 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
   - `parseEnableUpdateCheckValue` settingsParser.js:498-499：遗留键 `showTitleIcon`。
   - `parseWsEndpointValue` settingsParser.js:540-549：遗留键 `wsHost`。
 
-## 7. settings↔config 不匹配（已知注意事项，不修复）
+## 7. settings↔config 默认值同步（已知注意事项）
 
-config.js `defaults` 与 settings.json 存在两处**方向相反**的默认值不匹配。正常运行时无感（启动基线来自 settings.json 或命令通道），差异仅在**首次启动且 settings.json 拉取失败**时暴露——此时走 config defaults（settings.js:950-986）：
-
-| 设置 | settings.json | config.js | 无文件基线时的行为差异 |
-| --- | --- | --- | --- |
-| `forceSunnyWindow` | settings.json:314 `true` | config.js:111 `false` | config 基线会关闭 Sunny LN 优化（移除 rice 部分后再分析），LN 估计可能偏高 |
-| `enableAlwaysShowLNDifficulty` | settings.json:425 `false` | config.js:114 `true` | config 基线会强制显示 LN 难度，即使 LN% 过低或 LN 过简 |
+config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史上存在两处方向相反的不匹配，已修复（2026-08）：`forceSunnyWindow` 均为 `true`（settings.json:314 / config.js:111）、`enableAlwaysShowLNDifficulty` 均为 `false`（settings.json:425 / config.js:114）。正常运行时基线来自 settings.json 或命令通道，config defaults 仅在**首次启动且 settings.json 拉取失败**时生效（settings.js:950-986）——若不同步，该场景下行为会偏离预期。
 
 修改任何一处默认值时，必须同步另一处，否则上述差异会被重新引入。
 

@@ -279,7 +279,7 @@ setSvTagVisible(shouldShowSvTag);
 
 状态字段对照（注意 uniqueID 与 state 字段的大小写差异）：`VibroDetection`（settings.json:277）→ `state.vibroDetection`（`appContext.js:111`）；其余同小驼峰。设置默认值见 `config.js` defaults：`vibroDetection: true`（`:88`）、`useSvDetection: true`（`:90`）、`showModeTagCapsule: true`（`:93`）、`enableAnalyzeLN: false`（`:113`）。
 
-⚠️ 已知不一致：`forceSunnyWindow` 在 `config.js:111` 默认 `false`，而 `settings.json:314` 默认 `true`。依赖 `enableAnalyzeLN` 时以实际设置值为准。
+`forceSunnyWindow` 默认值已同步：`config.js:111` 与 `settings.json:314` 均为 `true`（历史不一致已修复）。
 
 ## 9. 注意事项
 
