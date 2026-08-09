@@ -322,6 +322,9 @@ function getKeyUsage400(K, noteSeq, baseCorners) {
         keyUsage400[k] = new Float64Array(baseCorners.length);
     }
 
+    // Loop-invariant coefficient — hoisted out of the per-note loops.
+    const k400Scale = 3.75 / (400 ** 2);
+
     for (const [k, h] of noteSeq) {
         const left400Idx = bisectLeft(baseCorners, h - 400);
         const centerIdx = bisectLeft(baseCorners, h);
@@ -332,11 +335,11 @@ function getKeyUsage400(K, noteSeq, baseCorners) {
         }
 
         for (let idx = left400Idx; idx < centerIdx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * ((baseCorners[idx] - h) ** 2);
+            keyUsage400[k][idx] += 3.75 - k400Scale * ((baseCorners[idx] - h) ** 2);
         }
 
         for (let idx = centerIdx + 1; idx < right400Idx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * ((baseCorners[idx] - h) ** 2);
+            keyUsage400[k][idx] += 3.75 - k400Scale * ((baseCorners[idx] - h) ** 2);
         }
     }
 
@@ -373,6 +376,9 @@ function computeAnchor(K, keyUsage400, baseCorners) {
 function computeJbar(K, x, noteSeqByColumn, baseCorners) {
     const jackNerfer = (delta) => 1 - 7e-5 * ((0.15 + Math.abs(delta - 0.08)) ** (-4));
 
+    // Loop-invariant term (depends only on x) — hoisted out of the per-note loop.
+    const xPowQuarter = 0.11 * (x ** 0.25);
+
     const Jks = {};
     const deltaKs = {};
     for (let k = 0; k < K; k += 1) {
@@ -392,7 +398,7 @@ function computeJbar(K, x, noteSeqByColumn, baseCorners) {
             if (leftIdx >= rightIdx) continue;
 
             const delta = 0.001 * (end - start);
-            const val = (delta ** -1) * ((delta + 0.11 * (x ** 0.25)) ** -1) * jackNerfer(delta);
+            const val = (delta ** -1) * ((delta + xPowQuarter) ** -1) * jackNerfer(delta);
 
             for (let idx = leftIdx; idx < rightIdx; idx += 1) {
                 Jks[k][idx] = val;
@@ -453,8 +459,12 @@ function computeXbar(K, x, noteSeqByColumn, activeColumns, baseCorners) {
         } else if (k === K) {
             notesInPair = noteSeqByColumn[K - 1] || [];
         } else {
-            notesInPair = [...(noteSeqByColumn[k - 1] || []), ...(noteSeqByColumn[k] || [])]
-                .sort((a, b) => a[1] - b[1]);
+            // mergeByHead merges the two time-sorted columns in O(n) with the same
+            // tie-break as a stable sort (a[i][1] <= b[j][1] keeps the lower column
+            // first, matching V8 Array#sort stability on the concatenation), so it is
+            // element-for-element identical to concat+sort. Verified: 508 random +
+            // boundary cases incl. equal timestamps -> identical (.omo/evidence/task-7-daniel.txt).
+            notesInPair = mergeByHead(noteSeqByColumn[k - 1] || [], noteSeqByColumn[k] || []);
         }
 
         for (let i = 1; i < notesInPair.length; i += 1) {
@@ -521,13 +531,20 @@ function computePbar(x, noteSeq, anchor, baseCorners) {
 
     const PStep = new Float64Array(baseCorners.length);
 
+    // Loop-invariant terms (depend only on x) — hoisted out of the per-note loop.
+    const xInv = x ** -1;
+    const xSixth = x / 6;
+    const xHalf = x / 2;
+    const twoThirdsX = (2 * x) / 3;
+    const baseInc = (0.08 * xInv * (1 - 24 * xInv * (xSixth ** 2))) ** 0.25;
+    const spike = 1000 * ((0.02 * (4 / x - 24)) ** 0.25);
+
     for (let i = 0; i < noteSeq.length - 1; i += 1) {
         const hL = noteSeq[i][1];
         const hR = noteSeq[i + 1][1];
         const deltaTime = hR - hL;
 
         if (deltaTime < 1e-9) {
-            const spike = 1000 * ((0.02 * (4 / x - 24)) ** 0.25);
             const leftIdx = bisectLeft(baseCorners, hL);
             const rightIdx = bisectRight(baseCorners, hL);
             for (let idx = leftIdx; idx < rightIdx; idx += 1) {
@@ -542,12 +559,11 @@ function computePbar(x, noteSeq, anchor, baseCorners) {
 
         const delta = 0.001 * deltaTime;
         const bVal = streamBooster(delta);
-        const baseInc = (0.08 * (x ** -1) * (1 - 24 * (x ** -1) * ((x / 6) ** 2))) ** 0.25;
 
         let inc;
-        if (delta < (2 * x) / 3) {
+        if (delta < twoThirdsX) {
             inc = (delta ** -1)
-                * ((0.08 * (x ** -1) * (1 - 24 * (x ** -1) * ((delta - x / 2) ** 2))) ** 0.25)
+                * ((0.08 * xInv * (1 - 24 * xInv * ((delta - xHalf) ** 2))) ** 0.25)
                 * Math.max(bVal, 1);
         } else {
             inc = (delta ** -1) * baseInc * Math.max(bVal, 1);
