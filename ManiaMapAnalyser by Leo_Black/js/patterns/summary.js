@@ -1,4 +1,4 @@
-﻿import { PATTERNS_CONFIG } from "./config.js";
+﻿import { PATTERNS_CONFIG, modeTagFromLnRatio } from "./config.js";
 import { find } from "./findPatterns.js";
 import { calculateClusteredPatterns } from "./clustering.js";
 import { CORE_PATTERN_LIST } from "./patternsDef.js";
@@ -26,8 +26,8 @@ function hbRowRatio(chart) {
 }
 
 function resolveModeTag(lnRatio, hbRatio) {
-    if (lnRatio <= PATTERNS_CONFIG.LN_MODE_LOW_THRESHOLD) return "RC";
-    if (lnRatio >= PATTERNS_CONFIG.LN_MODE_HIGH_THRESHOLD) return "LN";
+    const tag = modeTagFromLnRatio(lnRatio);
+    if (tag !== "Mix") return tag;
     if (hbRatio >= PATTERNS_CONFIG.HB_ROW_RATIO_THRESHOLD) return "HB";
     return "Mix";
 }

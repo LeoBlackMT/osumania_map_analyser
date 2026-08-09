@@ -2,6 +2,7 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
+import { modeTagFromLnRatio } from "../patterns/config.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 const AZUSA_RC_PREFERENCE = Object.freeze({
@@ -14,19 +15,6 @@ const AZUSA_RC_PREFERENCE = Object.freeze({
     azusaLowerScreenMaxDelta: -0.55,
     azusaLowerMaxDelta: -0.7,
 });
-
-function modeTagFromLnRatio(lnRatio) {
-    if (!Number.isFinite(lnRatio)) {
-        return "Mix";
-    }
-    if (lnRatio <= 0.15) {
-        return "RC";
-    }
-    if (lnRatio >= 0.9) {
-        return "LN";
-    }
-    return "Mix";
-}
 
 function parseCvtFlags(value) {
     const normalized = String(value ?? "").toUpperCase();

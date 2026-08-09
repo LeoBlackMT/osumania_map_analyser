@@ -3,8 +3,7 @@ import {
     DEFAULT_SCORE_GOAL,
     DISPLAY_SKILLSET_ORDER,
 } from "./calc.js";
-
-const SUPPORTED_KEYS = new Set([4, 6, 7]);
+import { SUPPORTED_KEYS } from "./constants.js";
 
 function normalizeKeyOverride(value) {
     const parsed = Number(value);

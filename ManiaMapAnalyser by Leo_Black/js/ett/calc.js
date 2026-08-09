@@ -1,11 +1,11 @@
 import { OsuFileParser } from "../parser/osuFileParser.js";
+import { ETTERNA_VERSION_KEYS, SUPPORTED_KEYS } from "./constants.js";
 import {
     DEFAULT_ETTERNA_VERSION,
     resolveEtternaVersionLoaderForKeycount,
 } from "./versions/index.js";
 
 const DEFAULT_SCORE_GOAL = 0.93;
-const SUPPORTED_KEYS = new Set([4, 6, 7]);
 const OFFICIAL_OUTPUT_ORDER = [
     "Overall",
     "Stream",
@@ -44,13 +44,19 @@ function toWasmPath(fileUrl) {
     return p;
 }
 
-const WASM_FILE_BY_VERSION = {
+// Version -> wasm filename mapping. Keys are guaranteed by ETTERNA_VERSION_KEYS
+// (versions missing a filename entry fall back to the loader's own fetch path).
+const WASM_FILE_NAME_BY_VERSION = Object.freeze({
     "0.68.0-Unofficial": "minaclac-68.0-unofficial.wasm",
     "0.70.0": "minaclac-70.0.wasm",
     "0.72.0": "minaclac-72.0.wasm",
     "0.72.3": "minaclac-72.3.wasm",
     "0.74.0": "minaclac-74.0.wasm",
-};
+});
+
+const WASM_FILE_BY_VERSION = Object.freeze(Object.fromEntries(
+    ETTERNA_VERSION_KEYS.map((version) => [version, WASM_FILE_NAME_BY_VERSION[version]]),
+));
 
 async function loadEtternaModule(version, loader) {
     const locateFile = (path) => {
