@@ -19,6 +19,21 @@ function setNoteType(row, key, noteType) {
     }
 }
 
+// First index in sortedAsc where value > target; sortedAsc.length if none.
+function lowerBoundGreater(sortedAsc, target) {
+    let lo = 0;
+    let hi = sortedAsc.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sortedAsc[mid] <= target) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
 function getOrCreateRow(rowMap, keyCount, time) {
     if (!rowMap.has(time)) {
         rowMap.set(time, createEmptyRow(keyCount));
@@ -106,14 +121,14 @@ function buildRowsFromParsed(parsed) {
 
     const sortedTimes = Array.from(rowMap.keys()).sort((a, b) => a - b);
 
+    // ponytail: sortedTimes is sorted above, so each hold span only needs its
+    // first row time > startTime (binary search), then a linear scan until
+    // endTime. O(rows per span) instead of O(rows per span + all rows).
     for (let i = 0; i < holdSpans.length; i += 1) {
         const { key, startTime, endTime } = holdSpans[i];
-        for (let t = 0; t < sortedTimes.length; t += 1) {
-            const time = sortedTimes[t];
-            if (time <= startTime || time >= endTime) {
-                continue;
-            }
-            const row = rowMap.get(time);
+        let t = lowerBoundGreater(sortedTimes, startTime);
+        for (; t < sortedTimes.length && sortedTimes[t] < endTime; t += 1) {
+            const row = rowMap.get(sortedTimes[t]);
             if (row[key] === NoteType.NOTHING) {
                 row[key] = NoteType.HOLDBODY;
             }
