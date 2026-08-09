@@ -52,14 +52,8 @@ import {
 } from "./appContext.js";
 import {
     normalizeBooleanSetting,
-    normalizeCardOpacityValue,
-    normalizeCardRadiusValue,
-    normalizeCardBgBlurValue,
     normalizeContentBarValue,
     normalizeDiffTextValue,
-    normalizeEtternaVersionValue,
-    normalizeEstimatorAlgorithmValue,
-    normalizeWsEndpointValue,
     normalizeSrTextValue,
 } from "../parser/settingsParser.js";
 import {
@@ -276,7 +270,8 @@ export function applyEnableCoverArtSetting(value) {
 }
 
 export function applyCustomBackgroundColorSetting(value) {
-    const next = parseCustomBackgroundColorValue([{ uniqueID: "customBackgroundColor", value: value }]);
+    // 输入已由 parseCustomBackgroundColorValue 归一化（#rrggbb 或 #000000）——不再二次 parse。
+    const next = value || "#000000";
     const changed = state.customBackgroundColor !== next;
     state.customBackgroundColor = next;
 
@@ -351,7 +346,8 @@ export function applyExtendedEstimationRangeSetting(value) {
 }
 
 export function applyWsEndpointSetting(value) {
-    const next = normalizeWsEndpointValue(value, APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost);
+    // 输入已由 parseWsEndpointValue 归一化（trim、剥协议/路径）——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost;
     const changed = state.wsEndpoint !== next;
     state.wsEndpoint = next;
 
@@ -476,7 +472,8 @@ export function refreshAutoDisplayProfile(modeTag = state.currentModeTag || "Mix
 }
 
 export function applyContentBarSetting(contentBar) {
-    const nextBar = normalizeContentBarValue(contentBar) || "Pattern";
+    // 输入已由 parseContentBarValue 归一化并校验（contentBarSet 成员）——不再二次 normalize。
+    const nextBar = contentBar || "Pattern";
     const changed = state.userContentBar !== nextBar;
     state.userContentBar = nextBar;
 
@@ -490,7 +487,8 @@ export function applyContentBarSetting(contentBar) {
 }
 
 export function applySrTextSetting(srText) {
-    const nextText = normalizeSrTextValue(srText) || "ReworkSR";
+    // 输入已由 parseSrTextValue 归一化并校验——不再二次 normalize。
+    const nextText = srText || "ReworkSR";
     const changed = state.userSrText !== nextText;
     state.userSrText = nextText;
 
@@ -504,7 +502,8 @@ export function applySrTextSetting(srText) {
 }
 
 export function applyDiffTextSetting(value) {
-    const next = normalizeDiffTextValue(value) || "Difficulty";
+    // 输入已由 parseDiffTextValue 归一化并校验——不再二次 normalize。
+    const next = value || "Difficulty";
     const changed = state.userDiffText !== next;
     state.userDiffText = next;
 
@@ -514,7 +513,8 @@ export function applyDiffTextSetting(value) {
 }
 
 export function applyEstimatorAlgorithmSetting(value) {
-    const next = normalizeEstimatorAlgorithmValue(value) || APP_CONFIG.defaults.estimatorAlgorithm;
+    // 输入已由 parseEstimatorAlgorithmValue 归一化并校验——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.estimatorAlgorithm;
     const changed = state.estimatorAlgorithm !== next;
     state.estimatorAlgorithm = next;
     return changed;
@@ -528,14 +528,16 @@ export function applyAzusaSunnyReferenceHoSetting(value) {
 }
 
 export function applyEtternaVersionSetting(value) {
-    const next = normalizeEtternaVersionValue(value) || APP_CONFIG.defaults.etternaVersion;
+    // 输入已由 parseEtternaVersionValue 归一化并校验——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.etternaVersion;
     const changed = state.etternaVersion !== next;
     state.etternaVersion = next;
     return changed;
 }
 
 export function applyCompanellaEtternaVersionSetting(value) {
-    const next = normalizeEtternaVersionValue(value) || APP_CONFIG.defaults.companellaEtternaVersion;
+    // 输入已由 parseCompanellaEtternaVersionValue 归一化并校验——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.companellaEtternaVersion;
     const changed = state.companellaEtternaVersion !== next;
     state.companellaEtternaVersion = next;
     return changed;
@@ -623,7 +625,8 @@ export function applyCardVisibilitySetting(value) {
 }
 
 export function applyCardOpacitySetting(value) {
-    const next = normalizeCardOpacityValue(value) || APP_CONFIG.defaults.cardOpacity;
+    // 输入已由 parseCardOpacityValue 归一化并校验（cardOpacitySet 成员）——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.cardOpacity;
     const changed = state.cardOpacity !== next;
     state.cardOpacity = next;
     applyVisualStyleSettings();
@@ -631,7 +634,8 @@ export function applyCardOpacitySetting(value) {
 }
 
 export function applyCardRadiusSetting(value) {
-    const next = normalizeCardRadiusValue(value) || APP_CONFIG.defaults.cardRadius;
+    // 输入已由 parseCardRadiusValue 归一化并校验（cardRadiusSet 成员）——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.cardRadius;
     const changed = state.cardRadius !== next;
     state.cardRadius = next;
     applyVisualStyleSettings();
@@ -639,7 +643,8 @@ export function applyCardRadiusSetting(value) {
 }
 
 export function applyCardBgBlurSetting(value) {
-    const next = normalizeCardBgBlurValue(value) || APP_CONFIG.defaults.cardBgBlur;
+    // 输入已由 parseCardBgBlurValue 归一化并校验（cardBgBlurSet 成员）——不再二次 normalize。
+    const next = value || APP_CONFIG.defaults.cardBgBlur;
     const changed = state.cardBgBlur !== next;
     state.cardBgBlur = next;
     applyVisualStyleSettings();
@@ -832,11 +837,14 @@ export function setupSettingsCommandListener() {
 
         // Invalidate cached results when any computation-affecting setting changed.
         // wsEndpointChanged lives in `changed` only (not recomputeNeeded), so it is listed here explicitly.
+        // debugChanged + display6kLevelChanged are display-only (toggle-diff proved zero output-contract
+        // diffs; task 13 evidence): they stay in recomputeNeeded so the cache HIT path re-derives
+        // (sixKConst / debugUseAmount post-processing) without clearing the cache or re-fetching.
+        // enableAlwaysShowLNDifficulty stays here — toggle-diff showed real estDiff diffs on lnRatio<0.15 maps.
         if (estimatorChanged
             || azusaSunnyReferenceHoChanged
             || etternaVersionChanged
             || companellaEtternaVersionChanged
-            || debugChanged
             || svChanged
             || vibroChanged
             || wsEndpointChanged
@@ -844,7 +852,6 @@ export function setupSettingsCommandListener() {
             || enableLNDifficultyChanged
             || enableAnalyzeLNChanged
             || enableAlwaysShowLNDifficultyChanged
-            || display6kLevelChanged
             || extendedEstimationRangeChanged) {
             clearResultCache();
         }

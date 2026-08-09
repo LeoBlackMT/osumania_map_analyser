@@ -475,7 +475,15 @@ export async function fetchBeatmapFile(reason) {
             resolvedEstDiff = cached.rework.estDiff;
             resolvedNumericDifficulty = cached.rework.numericDifficulty;
             resolvedNumericDifficultyHint = cached.rework.numericDifficultyHint;
-            sixKConst = cached.sixKConst ?? null;
+            // 命中重派生：display6kLevel 已移出失效清单（toggle-diff 零输出契约差异，证据
+            // task-13-settings.txt）。缓存的 sixKConst 反映写时刻的 display6kLevel——按
+            // runAnalysisPipeline §6 同公式从缓存 star 重算（4K 恒 null；6K 下 rework.star
+            // 恒为 Sunny sr，公式逐字一致），写关时置 null，写开时与缓存值逐位相同。
+            const hitSunnySrc = Number(rework.star);
+            sixKConst = state.display6kLevel && Number(rework.columnCount) === 6
+                && Number.isFinite(hitSunnySrc) && hitSunnySrc > 0
+                ? Math.round((hitSunnySrc * 200 / 81 + 7 / 6) * 100) / 100
+                : null;
             lnStar = cached.rework.lnStar;
             state.lnStar = cached.rework.lnStar;
             typePercentageData = cached.rework.typePercentageData;
@@ -573,29 +581,40 @@ export async function fetchBeatmapFile(reason) {
 
         if (needPatternAnalysis) {
             let patternAnalysisError = null;
-            // 从 pattern 结果对象设置 patternReport/mergedClusters + debugUseAmount 后处理（hit/miss 共用）。
+            // debugUseAmount 后处理：按 Amount 排序 + Category 覆盖。hit/miss 共用
+            // （任务 13 提取；miss 的 applyPatternData 与 hit 的缓存重放都走这里）。
+            const applyDebugUseAmountPostProcess = (clusters, report) => {
+                if (!state.debugUseAmount) {
+                    return clusters;
+                }
+                clusters.sort((a, b) => b.Amount - a.Amount);
+                if (report && clusters.length > 0) {
+                    const topSpecific = clusters[0]?.SpecificTypes?.[0];
+                    if (topSpecific && Number(topSpecific[1]) > 0.05) {
+                        report.Category = topSpecific[0];
+                    } else {
+                        report.Category = clusters[0].Pattern;
+                    }
+                }
+                return clusters;
+            };
+            // 从 pattern 结果对象设置 patternReport/mergedClusters + debugUseAmount 后处理。
             const applyPatternData = (result) => {
                 patternResult = result;
                 patternReport = result?.report || null;
                 const allClusters = result?.report?.Clusters || result?.topFiveClusters || [];
                 mergedClusters = mergeDuplicateClusters(allClusters);
-
-                if (state.debugUseAmount) {
-                    mergedClusters.sort((a, b) => b.Amount - a.Amount);
-                    if (patternReport && mergedClusters.length > 0) {
-                        const topSpecific = mergedClusters[0]?.SpecificTypes?.[0];
-                        if (topSpecific && Number(topSpecific[1]) > 0.05) {
-                            patternReport.Category = topSpecific[0];
-                        } else {
-                            patternReport.Category = mergedClusters[0].Pattern;
-                        }
-                    }
-                }
+                applyDebugUseAmountPostProcess(mergedClusters, patternReport);
             };
             if (cached) {
                 patternResult = cached.patternReport ? { report: cached.patternReport } : null;
                 patternReport = cached.patternReport;
-                mergedClusters = cached.mergedClusters;
+                // 命中重派生：缓存存的是写时刻的 mergedClusters（debugUseAmount 可能已变，
+                // 已移出失效清单）——从缓存 report.Clusters 重放 merge + 后处理，与 miss 同路径。
+                mergedClusters = mergeDuplicateClusters(
+                    cached.patternReport?.Clusters || cached.mergedClusters || [],
+                );
+                applyDebugUseAmountPostProcess(mergedClusters, patternReport);
             } else if (pipelineResult?.patternReport || pipelineResult?.patternError) {
                 if (pipelineResult.patternError) {
                     patternAnalysisError = new Error(pipelineResult.patternError);

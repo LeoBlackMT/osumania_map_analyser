@@ -6,14 +6,18 @@
 
 ## 1. 核心规则（一句话）
 
-新增**计算影响**设置 → 必须加入失效列表（`settings.js:835-849` 的 if 块，最终 `clearResultCache()` 调用在 `settings.js:849`）；
-新增**显示类**设置 → 禁止加入（显示需求差异由覆盖检查兜住，`analysis.js:311-314`）。
+新增**计算影响**设置 → 必须加入失效列表（`settings.js:835-848` 的 if 块，最终 `clearResultCache()` 调用在 `settings.js:849`）；
+新增**显示类**设置 → 禁止加入（显示需求差异由覆盖检查兜住，`analysis.js:311-314`）；
+新增**显示派生**设置（效果固化进快照、但可从快照其他字段重算）→ 命中重派生（§5 末），也不加失效。
 
 ```
 新增设置
- ├─ 计算影响 → 加入失效列表（settings.js:835-849）＋ 挂进 changed/recomputeNeeded 链（settings.js:776-831）
- └─ 显示类   → 什么都不做（覆盖检查已兜住）
+ ├─ 计算影响   → 加入失效列表（settings.js:835-848）＋ 挂进 changed/recomputeNeeded 链（settings.js:776-831）
+ ├─ 显示派生   → 命中重派生（analysis.js:439-446 sixKConst / :604-632 debugUseAmount 模式）
+ └─ 显示类     → 什么都不做（覆盖检查已兜住）
 ```
+
+**判定顺序**：先按 §3 判"计算影响 vs 显示类"；若判为显示类，再检查其效果是否固化进快照（写门块 `analysis.js:751-776` 的字段）——若是，则需命中重派生（否则切换设置后命中分支渲染旧派生值）。
 
 ## 2. 为什么：缓存键不含这些设置
 
@@ -25,25 +29,30 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 即 `star-v2|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是星数统一语义的缓存版本前缀，改星数口径时 bump 它以作废旧快照）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
-键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
+键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表 + 命中重派生。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 
 ```js
-// 用户把 display6kLevel 从 4 切到 3（state.display6kLevel 已更新，键不含它）
+// 用户把 enableAlwaysShowLNDifficulty 从关切到开（state 已更新，键不含它）
 const cacheKey = "Azusa|hash:1a2b…|1.00000000|none|none"; // 与切换前完全相同！
 
 const snapshot = resultCache.get(cacheKey); // 命中！
 // 覆盖检查（analysis.js:311-314）也通过——计算需求四项没变
-// → 直接渲染快照：快照里还是 display6kLevel=4 时代算出的 6K 结果
+// → 直接渲染快照：快照里还是开关关着时算出的 estDiff（lnRatio<0.15 谱面无 " || LN" 段）
 // → 用户看到的是旧设置下的分析，无任何报错（静默陈旧）
 ```
+
+> task 13 后 `display6kLevel`/`debugUseAmount` 不再属于此类——它们已移出失效列表并实现命中重派生（§5 末）。此例用仍会失效的 `enableAlwaysShowLNDifficulty`。
 
 失效流程（设置变化时）：
 
 ```
 tosu 下发设置 → settings.js 命令监听回调（settings.js:714）
- ├─ 命中 14 项失效条件之一 → clearResultCache()（settings.js:849）
+ ├─ 命中 12 项失效条件之一 → clearResultCache()（settings.js:849）
  │    → 代数 +1（resultCache.js:51）→ 下次分析 get() miss → 全量重算
  │    → 写门前校验代数（analysis.js:746 genAtStart === resultCacheGeneration()），拒绝过期分析写回
+ ├─ 命中重派生设置（debugUseAmount/display6kLevel）→ 不动缓存
+ │    → recomputeNeeded（settings.js:814/830）→ 下次分析 get() 命中
+ │    → 命中分支按当前设置重算 sixKConst / 重放 debugUseAmount 后处理（analysis.js:439-446、:604-632）
  └─ 显示类设置 → 不动缓存 → 下次分析 get() 命中
       → 覆盖检查（analysis.js:311-314）比较 needComputed 四项
       ├─ 计算需求变了 → miss → 重算
@@ -87,9 +96,9 @@ snapshot.computed.graph === needComputed.graph
 - 纯显示设置（cardOpacity、主题、字体……）根本不进 needComputed，也不进快照 → 命中后渲染时从 state 取新值，天然正确。
 - 注意 `needComputed` 用 fetch 前的保守值（`analysis.js:284-286` 注释：未经谱面级 `effectiveContentBar` override），仅用于覆盖检查；实际 shows*/need* 在执行块内 override 后重算（`analysis.js:362-365`）。
 
-## 5. 完整失效列表（14 项）与每条为何失效
+## 5. 完整失效列表（12 项）与每条为何失效
 
-if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings.js:849`。以下 14 项任一为真 → 全缓存清空（`resultCache.js:49-52 clear`，代数 +1）。
+if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings.js:849`。以下 12 项任一为真 → 全缓存清空（`resultCache.js:49-52 clear`，代数 +1）。
 
 | # | 条件变量（settings.js:835-848） | 设置 | 为何影响计算结果 |
 | --- | --- | --- | --- |
@@ -97,18 +106,26 @@ if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings
 | 2 | `azusaSunnyReferenceHoChanged` | azusaSunnyReferenceHo | 改变 Azusa 的 Sunny 参考阈值 → 改变谱面被接受/回退的判定 → 改变实际结果与 `actualEstimatorAlgorithm` |
 | 3 | `etternaVersionChanged` | etternaVersion | 不同 MinaCalc 版本算出的 MSD 不同（快照含 `ettResult`） |
 | 4 | `companellaEtternaVersionChanged` | companellaEtternaVersion | Companella 自带 Ett 版本，同上影响 MSD |
-| 5 | `debugChanged` | debugUseAmount | 调试分类标志，改变分析明细的分类结果（固化进快照） |
-| 6 | `svChanged` | useSvDetection | SV 检测覆盖模式判定为 SV → 改变 `needComputed.pattern`（`analysis.js:291`）与存储的模式标签 |
-| 7 | `vibroChanged` | VibroDetection（uniqueID 大写 V，state 字段 `state.vibroDetection`） | `isVibroMap` 固化进快照（`analysis.js:767`）；且影响 `needComputed.pattern/ett`（`analysis.js:292`、:297） |
-| 8 | `wsEndpointChanged` | wsEndpoint | 数据源变化（lazer/stable 切换、端口变更）→ 同一身份下谱面内容/计算上下文可能不同。它只在 `changed` 不在 `recomputeNeeded`，故显式列出（`settings.js:834` 注释） |
-| 9 | `forceSunnyWindowChanged` | forceSunnyWindow | 强制 SunnyWindow LN 覆盖 → 改变实际执行与结果 |
-| 10 | `enableLNDifficultyChanged` | enableLNDifficulty | 控制 LN 难度计算 → 改变 `lnStar`/estDiff（快照字段 `analysis.js:760`、:436-437） |
-| 11 | `enableAnalyzeLNChanged` | enableAnalyzeLN | LN 分析开关 → 改变键型分析内容与 `needComputed` |
-| 12 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty | 控制 LN 难度是否常算/常显 → 改变快照内 LN 结果 |
-| 13 | `display6kLevelChanged` | display6kLevel | 改变 6K 恒定等级计算 → `sixKConst` 固化进快照（`analysis.js:768`、:435），且影响 6K estDiff |
-| 14 | `extendedEstimationRangeChanged` | extendedEstimationRange | Sunny 家族使用扩展星数表 → 改变 estDiff（选项传入估算器 `analysis.js:446`） |
+| 5 | `svChanged` | useSvDetection | SV 检测覆盖模式判定为 SV → 改变 `needComputed.pattern`（`analysis.js:291`）与存储的模式标签 |
+| 6 | `vibroChanged` | VibroDetection（uniqueID 大写 V，state 字段 `state.vibroDetection`） | `isVibroMap` 固化进快照（`analysis.js:767`）；且影响 `needComputed.pattern/ett`（`analysis.js:292`、:297） |
+| 7 | `wsEndpointChanged` | wsEndpoint | 数据源变化（lazer/stable 切换、端口变更）→ 同一身份下谱面内容/计算上下文可能不同。它只在 `changed` 不在 `recomputeNeeded`，故显式列出（`settings.js:834` 注释） |
+| 8 | `forceSunnyWindowChanged` | forceSunnyWindow | 强制 SunnyWindow LN 覆盖 → 改变实际执行与结果 |
+| 9 | `enableLNDifficultyChanged` | enableLNDifficulty | 控制 LN 难度计算 → 改变 `lnStar`/estDiff（快照字段 `analysis.js:760`、:436-437） |
+| 10 | `enableAnalyzeLNChanged` | enableAnalyzeLN | LN 分析开关 → 改变键型分析内容与 `needComputed` |
+| 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty | 控制 LN 难度是否常算/常显 → 改变快照内 estDiff/lnStar（toggle-diff 实证：lnRatio<0.15 谱面 estDiff 字符串有真实差异，`.omo/evidence/task-13-settings.txt`） |
+| 12 | `extendedEstimationRangeChanged` | extendedEstimationRange | Sunny 家族使用扩展星数表 → 改变 estDiff（选项传入估算器 `analysis.js:446`） |
 
-**共同点**：除第 1 项外全部**不在缓存键中**，且都改变快照 `analysis.js:751-776` 里存储的字段。第 6、7、11 项同时改变"算不算"（needComputed）与"存什么"（快照字段）。
+**共同点**：全部**不在缓存键中**，且都改变快照 `analysis.js:751-776` 里存储的字段。第 5、6、10 项同时改变"算不算"（needComputed）与"存什么"（快照字段）。
+
+### 显示派生设置：命中重派生替代失效（task 13）
+
+`debugUseAmount` 与 `display6kLevel` 曾在本列表（旧第 5、13 项），toggle-diff 实证（30 样本子集，`.omo/evidence/task-13-settings.txt`）其输出契约**零差异**后移出。它们的显示效果固化进快照派生字段（`mergedClusters` 排序/Category、`sixKConst`），命中时必须按当前设置重派生：
+
+- `debugUseAmount` → 命中时从 `cached.patternReport.Clusters` 重放 `mergeDuplicateClusters` + `applyDebugUseAmountPostProcess`（analysis.js:604-632，与 miss 共用）。
+- `display6kLevel` → 命中时按 `runAnalysisPipeline` §6 同公式从缓存 star 重算 `sixKConst`（analysis.js:439-446）。
+- 两者仍挂在 `recomputeNeeded`（settings.js:814/830）：切换设置会触发一次调度重算，走**缓存命中分支**重新渲染（不 fetch、不跑 pipeline）。
+
+**新显示派生设置的落地检查**：效果字段是否在写门块（analysis.js:751-776）里？是 → 要么加失效（白丢命中），要么实现命中重派生；重派生公式必须与 miss 路径（pipeline/applyPatternData）**逐字一致**，并以 toggle-diff 证明输出契约零差异为前置。
 
 ## 6. 反例警示：显示类设置加入失效列表的代价
 
@@ -180,7 +197,7 @@ if (!cached && state.enableResultCache && state.lastBeatmapIdentity
 | `ettResult` | `analysis.js:765` | Etterna MSD 结果 |
 | `interludeStar` | `analysis.js:766` | Interlude 星数 |
 | `isVibroMap` | `analysis.js:767` | vibro 检测结果——固化进快照，故 vibroDetection 设置必须失效（本文 §5 第 7 项） |
-| `sixKConst` | `analysis.js:768` | 6K 恒定等级——同理 display6kLevel 必须失效（§5 第 13 项） |
+| `sixKConst` | `analysis.js:768` | 6K 恒定等级——命中重派生字段：写入值反映写时刻 `display6kLevel`，命中时按当前设置从 star 重算（§5 末，不再因该设置失效） |
 | `actualEstimatorAlgorithm` | `analysis.js:769` | 实际执行的算法（含 Azusa/Roxy 回退 Sunny 的记录），命中时原样恢复（§10.7） |
 | `parsedInfo` | `analysis.js:770-774` | 只存 metadata/lnRatio/columnCount 三个普通字段 |
 | `computed` | `analysis.js:775` | `needComputed` 快照，供命中覆盖检查（§10.6） |
@@ -217,9 +234,11 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 - 命中时：逐项比对 `snapshot.computed` 与当前 `needComputed`（`analysis.js:310-314`），四项全等才命中。
 - **新计算产物要接入覆盖检查** → 三处同步改：`needComputed` 加项（`analysis.js:287-304`）＋命中比对加项（:310-314）＋写门块 `computed` 一起存（:775）。
 
-### 10.7 命中恢复：写入与恢复成对（`analysis.js:429-438`）
+### 10.7 命中恢复：写入与恢复成对（`analysis.js:429-446`）
 
-命中分支从快照恢复全部结果：`rework`（:430）、`actualEstimatorAlgorithm`（:431，**从快照恢复，绝不重算**——写入侧在 `analysis.js:769`）、`sixKConst`（:435）、`lnStar`（:436-437）、`typePercentageData`（:438）。**新增字段必须同时出现在写门块（:751-776）与命中恢复分支（:429-438）**，否则命中后该字段缺失/undefined——这是最常见的成对遗漏。
+命中分支从快照恢复全部结果：`rework`（:430）、`actualEstimatorAlgorithm`（:431，**从快照恢复，绝不重算**——写入侧在 `analysis.js:769`）、`lnStar`（:436-437）、`typePercentageData`（:438）。**新增字段必须同时出现在写门块（:751-776）与命中恢复分支（:429-446）**，否则命中后该字段缺失/undefined——这是最常见的成对遗漏。
+
+**显示派生字段不直接恢复，而是重派生**（task 13）：`sixKConst`（:439-446）与 `mergedClusters`（:604-632）在命中分支按**当前**设置从快照原始数据重算（见 §5 末）——快照里的派生值只作 miss 路径的写入来源，命中路径永远以"缓存原始字段 + 当前设置"为准。
 
 ### 10.8 常见遗漏检查清单
 
@@ -229,16 +248,18 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 - [ ] **忘 skip:isMetaDegraded**：meta 身份快照写进 LRU → 标题碰撞污染（§10.4）
 - [ ] **写入非 JSON-safe 值**：函数、Date、`undefined` 顶层字段
 - [ ] **在 stale 请求中写入**：generation 守卫（`analysis.js:746`）只保护写门块内——块外另起 put 会绕过守卫
-- [ ] **新字段只写不恢复**：命中分支（`analysis.js:429-438`）没恢复该字段（§10.7）
+- [ ] **新字段只写不恢复**：命中分支（`analysis.js:429-446`）没恢复该字段（§10.7）
 - [ ] **新计算产物没进 needComputed**：覆盖检查（:310-314）覆盖不到 → 需求变化仍命中旧快照（§10.6）
 - [ ] **新计算影响设置没进失效列表**：键不含该设置 → 静默陈旧，见 §5（`settings.js:835-848` 条件、`settings.js:849` 调用）
+- [ ] **显示派生设置既没失效也没重派生**：效果固化进快照（写门块字段）但切换设置后命中分支渲染旧值——按 §5 末实现命中重派生（先 toggle-diff 实证零差异）
 
 ### 10.9 新增功能时的操作步骤（checklist）
 
 面向 LLM 的流程：
 
-1. **新计算结果要进缓存** → 在写门块（`analysis.js:743-776`）put 对象内加字段（带 jsonSafe 与 skip 处理）＋ 命中分支（`analysis.js:429-438`）恢复该字段；若该产物参与显示需求判定，还需同步 §10.6 的三处覆盖检查位置。
+1. **新计算结果要进缓存** → 在写门块（`analysis.js:743-776`）put 对象内加字段（带 jsonSafe 与 skip 处理）＋ 命中分支（`analysis.js:429-446`）恢复该字段；若该产物参与显示需求判定，还需同步 §10.6 的三处覆盖检查位置。
 2. **新计算影响设置** → 加入失效列表（`settings.js:835-848`，`clearResultCache()` 在 `settings.js:849`）＋ 挂进 `changed`/`recomputeNeeded` 链（`settings.js:776-831`），见本文 §5、§9。
 3. **新显示类设置** → 不失效、不进缓存，由覆盖检查兜住（本文 §4）。
+4. **新显示派生设置**（显示类但效果固化进快照字段）→ 不进失效列表，实现命中重派生（§5 末）：先 toggle-diff 实证零输出契约差异，再把重派生逻辑做成 hit/miss 共用函数。
 
-> 验证口诀：写入块字段数 = 命中恢复块字段数；jsonSafe 覆盖所有对象字段；skip 参数永远带着。
+> 验证口诀：写入块字段数 = 命中恢复块字段数（派生字段除外，走重派生）；jsonSafe 覆盖所有对象字段；skip 参数永远带着。
