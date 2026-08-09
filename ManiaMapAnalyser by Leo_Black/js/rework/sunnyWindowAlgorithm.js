@@ -194,9 +194,35 @@ function findNextNoteInColumn(note, times, noteSeqByColumn) {
     return idx + 1 < noteSeqByColumn[k].length ? noteSeqByColumn[k][idx + 1] : [0, 1e9, 1e9];
 }
 
-function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = false) {
-    const pObj = new OsuFileParser(osuText);
-    pObj.process();
+// Field-copy clone of a processed OsuFileParser (see sunnyAlgorithm.js clone).
+// modIN/modHO mutate in place; a shared `parsed` instance must be isolated on a
+// clone before converting so later consumers read un-converted data.
+function cloneOsuParser(src) {
+    const p = new OsuFileParser("");
+    p.od = src.od;
+    p.columnCount = src.columnCount;
+    p.columns = [...src.columns];
+    p.noteStarts = [...src.noteStarts];
+    p.noteEnds = [...src.noteEnds];
+    p.noteTypes = [...src.noteTypes];
+    p.gameMode = src.gameMode;
+    p.status = src.status;
+    p.lnRatio = src.lnRatio;
+    p.metaData = { ...src.metaData };
+    p.breaks = src.breaks.map((b) => [...b]);
+    p.objectIntervals = src.objectIntervals.map((o) => [...o]);
+    p.timingPoints = src.timingPoints.map((tp) => [...tp]);
+    return p;
+}
+
+function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = false, parsed = null) {
+    // parsed: a shared OsuFileParser instance already processed by the caller.
+    // Conversion (modIN/modHO) mutates in place -> run it on a clone so the
+    // shared instance stays pristine for later consumers.
+    const needsConvert = Boolean(cvtFlag) && (String(cvtFlag).includes("IN") || String(cvtFlag).includes("HO"));
+    const pObj = parsed
+        ? (needsConvert ? cloneOsuParser(parsed) : parsed)
+        : (() => { const p = new OsuFileParser(osuText); p.process(); return p; })();
     let p = pObj.getParsedData();
     let lnRatio;
 
@@ -217,8 +243,12 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = f
     }
     }
 
-    pObj.noteTimes = pObj.getNoteTimes();
-    pObj.objectIntervals = pObj.getObjectIntervals();
+    // Already computed by process()/modIN/modHO; only recompute on owned
+    // (non-shared) parsers so the shared instance stays read-only.
+    if (!parsed) {
+        pObj.noteTimes = pObj.getNoteTimes();
+        pObj.objectIntervals = pObj.getObjectIntervals();
+    }
     p = pObj.getParsedData();
     lnRatio = pObj.getLNRatio();
 
@@ -303,10 +333,10 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = f
         return getCuttedNoteSeq(noteSeq).length;
     }
 
-    function getTypePercentageData(p, HB_NoteSeq, osuText, speedRate, odFlag, cvtFlag) {
+    function getTypePercentageData(p, HB_NoteSeq, osuText, speedRate, odFlag, cvtFlag, parsed = null) {
         const Mix_Length = calcTypeMixLength (p);
         const HB_Length = HB_NoteSeq.length;
-        const LNParts = getLNParts(true, osuText, speedRate, odFlag, cvtFlag);
+        const LNParts = getLNParts(true, osuText, speedRate, odFlag, cvtFlag, parsed);
         const LN_NoteSeq = []
         for (let LNPartsIndex = 0; LNPartsIndex < LNParts.length; LNPartsIndex++){
         for (let i = LNParts[LNPartsIndex][0]; i <= LNParts[LNPartsIndex][1]; i += 1) {
@@ -329,7 +359,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = f
         ]
     }
 
-    const LNParts = getLNParts(false, osuText, speedRate, odFlag, cvtFlag);
+    const LNParts = getLNParts(false, osuText, speedRate, odFlag, cvtFlag, parsed);
 
     // enableAnalyzeLN default false = config.js defaults.enableAnalyzeLN;
     // caller (calculateLN via its options) passes the resolved state value.
@@ -347,7 +377,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = f
             lnSeqByColumn: [],
             lnRatio,
             columnCount,
-            typePercentageData : shouldCalcData ? getTypePercentageData(p, [], osuText, speedRate, odFlag, cvtFlag) : null,
+            typePercentageData : shouldCalcData ? getTypePercentageData(p, [], osuText, speedRate, odFlag, cvtFlag, parsed) : null,
             lnPartsRatio: 0,
         };
     }
@@ -369,7 +399,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN = f
 
     const noteSeq = getCuttedNoteSeq(noteSeq_Temp);
 
-    const typePercentageData = shouldCalcData ? getTypePercentageData(p, noteSeq, osuText, speedRate, odFlag, cvtFlag) : null;
+    const typePercentageData = shouldCalcData ? getTypePercentageData(p, noteSeq, osuText, speedRate, odFlag, cvtFlag, parsed) : null;
     if (noteSeq.length <= 0) {
         return {
             status: "NoLN",
@@ -1075,10 +1105,15 @@ function computeLNDuration(p, timeStart, timeEnd, noteStartIdx, noteEndIdx) {
     return merged;
 }
 
-function getLNParts(pureLN, osuText, _speedRate, odFlag, cvtFlag) {
+function getLNParts(pureLN, osuText, _speedRate, odFlag, cvtFlag, parsed = null) {
     const MinLNDensity = pureLN ? TYPELN_MIN_LN_DENSITY : MIN_LN_DENSITY;
-    const pObj = new OsuFileParser(osuText);
-    pObj.process();
+    // parsed: shared OsuFileParser instance for the note data; SV/timing
+    // detection below still parses [TimingPoints] from text (parseTimingsAndDetectSV),
+    // which is not part of the parsed chart — keep that text path.
+    const needsConvert = Boolean(cvtFlag) && (String(cvtFlag).includes("IN") || String(cvtFlag).includes("HO"));
+    const pObj = parsed
+        ? (needsConvert ? cloneOsuParser(parsed) : parsed)
+        : (() => { const p = new OsuFileParser(osuText); p.process(); return p; })();
     let p = pObj.getParsedData();
     let lnRatio;
 
@@ -1099,8 +1134,10 @@ function getLNParts(pureLN, osuText, _speedRate, odFlag, cvtFlag) {
     }
     }
 
-    pObj.noteTimes = pObj.getNoteTimes();
-    pObj.objectIntervals = pObj.getObjectIntervals();
+    if (!parsed) {
+        pObj.noteTimes = pObj.getNoteTimes();
+        pObj.objectIntervals = pObj.getObjectIntervals();
+    }
     p = pObj.getParsedData();
     lnRatio = pObj.getLNRatio();
 
@@ -1285,7 +1322,7 @@ function getCuttedNoteSeq(noteSeq_Temp) {
     return noteSeq;
 }
 
-export function calculateLN(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}) {
+export function calculateLN(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
     const enableAnalyzeLN = options?.enableAnalyzeLN === true;
 
@@ -1302,7 +1339,7 @@ export function calculateLN(osuText, speedRate = 1.0, odFlag = null, cvtFlag = n
     columnCount,
     typePercentageData,
     lnPartsRatio,
-    } = preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN);
+    } = preprocessFile(osuText, speedRate, odFlag, cvtFlag, enableAnalyzeLN, parsed);
 
     if (status === "Fail") return -1;
     if (status === "NotMania") return -2;

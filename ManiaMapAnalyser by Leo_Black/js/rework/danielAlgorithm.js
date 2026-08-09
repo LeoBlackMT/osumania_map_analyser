@@ -174,15 +174,18 @@ function mergeByHead(a, b) {
     return result;
 }
 
-function preprocessDaniel(osuText, speedRate, _odFlag) {
-    const parser = new OsuFileParser(osuText);
-    parser.process();
-    const parsed = parser.getParsedData();
+function preprocessDaniel(osuText, speedRate, _odFlag, parsed = null) {
+    // parsed: a shared OsuFileParser instance already processed by the caller.
+    // Daniel has no cvtFlag conversion and only reads the parsed chart, so the
+    // shared instance is used directly (read-only) when provided.
+    const parser = parsed ?? new OsuFileParser(osuText);
+    if (!parsed) parser.process();
+    const parsedData = parser.getParsedData();
 
-    const lnRatio = Number(parsed.lnRatio) || 0;
-    const columnCount = Number(parsed.columnCount) || 0;
+    const lnRatio = Number(parsedData.lnRatio) || 0;
+    const columnCount = Number(parsedData.columnCount) || 0;
 
-    if (parsed.status === "Fail") {
+    if (parsedData.status === "Fail") {
         return {
             status: "Fail",
             x: 0,
@@ -195,7 +198,7 @@ function preprocessDaniel(osuText, speedRate, _odFlag) {
         };
     }
 
-    if (parsed.status === "NotMania") {
+    if (parsedData.status === "NotMania") {
         return {
             status: "NotMania",
             x: 0,
@@ -228,9 +231,9 @@ function preprocessDaniel(osuText, speedRate, _odFlag) {
     const timeScale = speedRate !== 0 ? 1 / speedRate : 1;
 
     const noteSeq = [];
-    for (let i = 0; i < parsed.columns.length; i += 1) {
-        const k = parsed.columns[i];
-        let h = parsed.noteStarts[i];
+    for (let i = 0; i < parsedData.columns.length; i += 1) {
+        const k = parsedData.columns[i];
+        let h = parsedData.noteStarts[i];
         h = Math.floor(h * timeScale);
         noteSeq.push([k, h]);
     }
@@ -732,7 +735,7 @@ function smoothDForGraph(allCorners, DAll, noteSeq) {
     return Array.from(interpValues(allCorners, uniformTimes, smoothed));
 }
 
-export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options = {}) {
+export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
 
     const {
@@ -744,7 +747,7 @@ export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options
         noteSeqByColumn,
         lnRatio,
         columnCount,
-    } = preprocessDaniel(osuText, speedRate, odFlag);
+    } = preprocessDaniel(osuText, speedRate, odFlag, parsed);
 
     if (status === "Fail") return -1;
     if (status === "NotMania") return -2;

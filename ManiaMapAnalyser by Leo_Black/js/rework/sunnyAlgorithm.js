@@ -193,9 +193,38 @@ function findNextNoteInColumn(note, times, noteSeqByColumn) {
     return idx + 1 < noteSeqByColumn[k].length ? noteSeqByColumn[k][idx + 1] : [0, 1e9, 1e9];
 }
 
-function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
-    const pObj = new OsuFileParser(osuText);
-    pObj.process();
+// Field-copy clone of a processed OsuFileParser. modIN/modHO mutate the parser
+// in place (columns/noteStarts/noteTypes/noteEnds/breaks), so a shared `parsed`
+// instance must be isolated on a clone before converting — the shared chart
+// stays pristine for later consumers (mutability audit, perf task 9).
+function cloneOsuParser(src) {
+    const p = new OsuFileParser("");
+    p.od = src.od;
+    p.columnCount = src.columnCount;
+    p.columns = [...src.columns];
+    p.noteStarts = [...src.noteStarts];
+    p.noteEnds = [...src.noteEnds];
+    p.noteTypes = [...src.noteTypes];
+    p.gameMode = src.gameMode;
+    p.status = src.status;
+    p.lnRatio = src.lnRatio;
+    p.metaData = { ...src.metaData };
+    p.breaks = src.breaks.map((b) => [...b]);
+    p.objectIntervals = src.objectIntervals.map((o) => [...o]);
+    p.timingPoints = src.timingPoints.map((tp) => [...tp]);
+    return p;
+}
+
+function preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed = null) {
+    // parsed: a shared OsuFileParser instance already processed by the caller.
+    // Skips the parse; modIN/modHO conversion still runs on the parsed result.
+    // Conversion mutates in place -> run it on a clone so the shared instance
+    // (and any later consumer) sees un-converted data, matching the fresh-parse
+    // behavior where each core parses its own copy.
+    const needsConvert = Boolean(cvtFlag) && (String(cvtFlag).includes("IN") || String(cvtFlag).includes("HO"));
+    const pObj = parsed
+        ? (needsConvert ? cloneOsuParser(parsed) : parsed)
+        : (() => { const p = new OsuFileParser(osuText); p.process(); return p; })();
     let p = pObj.getParsedData();
     let lnRatio = p.lnRatio;
 
@@ -218,8 +247,13 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag) {
     }
     }
 
-    pObj.noteTimes = pObj.getNoteTimes();
-    pObj.objectIntervals = pObj.getObjectIntervals();
+    // On a shared parsed instance these were already computed by process()
+    // (and by modIN/modHO when converting) — recomputing writes identical
+    // values but mutates the shared object; skip for read-only sharing.
+    if (!parsed) {
+        pObj.noteTimes = pObj.getNoteTimes();
+        pObj.objectIntervals = pObj.getObjectIntervals();
+    }
     p = pObj.getParsedData();
     lnRatio = pObj.getLNRatio();
 
@@ -879,7 +913,7 @@ function smoothDForGraph(allCorners, DAll, noteSeq) {
     return Array.from(interpValues(allCorners, uniformTimes, smoothed));
 }
 
-export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}) {
+export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
 
     const {
@@ -893,7 +927,7 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     tailSeq,
     lnRatio,
     columnCount,
-    } = preprocessFile(osuText, speedRate, odFlag, cvtFlag);
+    } = preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed);
 
     if (status === "Fail") return -1;
     if (status === "NotMania") return -2;
