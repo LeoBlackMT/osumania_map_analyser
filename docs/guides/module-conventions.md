@@ -41,6 +41,10 @@
 - **模式内聚**：估算器/归一化/SunnyWindow/Interlude 共享同一 `OsuFileParser` 实例（parse-once）；pattern 保留独立 patternOsuParser 解析、ett 保留自身解析——新附加段并入 pipeline 时同样按"能共享则共享、必须独立则独立"处理并记录决策。
 - 浏览器专属逻辑（`detectVibro`、渲染、缓存写门）一律留在 `js/app/`。
 
+### 2.2 `js/rework/reworkMathCore.js` 共享数学内核
+
+`reworkMathCore.js` 保存 sunny/daniel 两个 rework 算法**逐字相同**（忽略空白/注释）的数学工具函数与常量（bisect/cumsum/smooth/interp/gaussian/rescale/mergeByHead/computeCAndKs/applyProximityEnvelope/smoothDForGraph + `jackNerfer`/`targetPercentiles` + 图表平滑窗口常量）。该文件是**逐字抽取**，不是"择优合并"：任何数值/求值顺序改动都会同时改变两个估算器。**有差异的函数不得合并进本文件**——各算法保留自己的本地版本（如 `computeJbar`/`computePbar` 的差异实现仍在各自文件），本文件只收两处调用形态完全兼容的逐字相同单元。改动本文件前必须跑 `node test/compare-golden.mjs` 全量比对。
+
 ### 3. `import.meta.url` 模式
 
 Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)`（相对**模块文件**解析），**勿**改成相对字符串——相对字符串会相对 `index.html` 解析而失效。
