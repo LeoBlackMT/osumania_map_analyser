@@ -17,13 +17,13 @@
 
 ## 2. 为什么：缓存键不含这些设置
 
-缓存键只有三段（`analysis.js:305`）：
+缓存键是版本前缀 + 三段（`analysis.js:305`）：
 
 ```js
-const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-即 `算法|谱面身份|mod 签名`。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
+即 `star-v2|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是星数统一语义的缓存版本前缀，改星数口径时 bump 它以作废旧快照）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
 键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 
@@ -206,10 +206,10 @@ const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(v
 ### 10.5 缓存键构造（`analysis.js:305`）
 
 ```js
-const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-三段：用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag`）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+版本前缀 + 三段：缓存语义版本（`star-v2`，星数统一后作废旧快照）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag`）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
 
 ### 10.6 needComputed 推导与随快照保存（`analysis.js:775`、:287-304、:310-314）
 

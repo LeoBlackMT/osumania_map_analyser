@@ -142,7 +142,7 @@ state.pendingChangeKind = changeKind;   // :286
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:257-261 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `estimatorAlgorithm|beatmapIdentity|modSignature`（构成见 modData.js:218-222，`speedRate|odFlag|cvtFlag`，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `star-v2|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v2` 是星数统一语义的版本前缀；构成见 modData.js:218-222，`speedRate|odFlag|cvtFlag`，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -175,7 +175,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:299；Companella/Mixed 需要 ett 与 interlude，:298、:302-303）。
-- `analysis.js:305 cacheKey`：`${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`。
+- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v2` + 三段）。
 - `analysis.js:306 isMetaDegraded`：identity 以 `meta:` 开头。
 - `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 四项与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
 
