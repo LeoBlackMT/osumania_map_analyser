@@ -33,11 +33,10 @@ main.js:13 setRecomputeHandler(fetchBeatmapFile) → analysis.js:248 fetchBeatma
        ├─ [2] 缓存查找：analysis.js:308-317 —— 命中走快照（:322-331/:429-438），详见 result-cache.md
        ├─ [3] miss → fetch .osu：analysis.js:333-336 fetch(getEndpoint())（config.js:2 endpoint）
        ├─ [4] 解析：analysis.js:349 parseMetadataFromBeatmap → osuFileParser.js:19 OsuFileParser
-       ├─ [5] 估算分派：analysis.js:465-511
-       │     ├─ Worker：analysis.js:466 runInWorker（manager.js:41）→ compute.worker.js:17 分派
-       │     │         （Sunny/Daniel/Azusa/Roxy；Azusa/Roxy 无效结果回退 Sunny）
-       │     ├─ 主线程：Mixed（mixedEstimator.js:192）/ Companella（companellaEstimator.js:181，ONNX）
-       │     └─ 回退：worker 不可用时 manager.js:43 返回 null → 主线程同步执行
+        ├─ [5] 估算分派：analysis.js:449-458 runAnalysisPipeline（pipeline/runAnalysisPipeline.js）
+        │     ├─ Worker：analysis.js:457 runInWorker（manager.js:41）→ compute.worker.js "pipeline" 分支
+        │     │         （解析/分派/归一化/SunnyWindow/派生值一次往返；Azusa/Roxy 无效回退 Sunny）
+        │     └─ 回退：worker 不可用时 manager.js:43 返回 null → 主线程同步执行 runAnalysisPipeline
        ├─ [6] 附属计算（各自独立 try/catch，错误入 errors[]，analysis.js:388）
        │     ├─ Interlude：analysis.js:590 calculateInterludeStar（interlude/index.js:14）
        │     ├─ Pattern：analysis.js:606 analyzePatternFromText（patterns/service.js:4）
@@ -197,24 +196,25 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 随后 `analysis.js:350-357`：keycount 不在 `GRAPH_SUPPORTED_KEY_SET`（appContext.js:180，即 {4,6,7}）且非 None/Full 模式时，`setEffectiveContentBarForMap("Pattern")` 把主体降级为 Pattern（谱面级 override，存 `state.effectiveContentBar`）。
 
-### 7.4 估算分派（worker vs 主线程）
+### 7.4 估算分派（runAnalysisPipeline：worker 一次往返）
 
-算法判定 `analysis.js:405 currentEstimatorAlgorithm()`（settings.js:999，即 `state.estimatorAlgorithm`）。分派结构 `analysis.js:465-511`：
+算法判定 `analysis.js:405 currentEstimatorAlgorithm()`（settings.js:999，即 `state.estimatorAlgorithm`）。估算分派收敛为**一次 pipeline 调用**：`analysis.js` 构造 `pipelineInput = { rawText, estimatorAlgorithm, options }`（options 含 speedRate/odFlag/cvtFlag/withGraph/forceSunnyReferenceHo/forceSunnyWindow/enableAnalyzeLN/enableAlwaysShowLNDifficulty/display6kLevel/extendedEstimationRange，全部显式传参，pipeline 不读 state），交给 `runInWorker(pipelineInput)`（manager.js:41）；worker 不可用（构造失败返回 null）时主线程同步调 `runAnalysisPipeline`（pipeline/runAnalysisPipeline.js）。
 
-| 算法 | 路径 | 回退 |
-| --- | --- | --- |
-| Daniel | `analysis.js:466-467` worker（`runInWorker`）；null 时主线程 `runDanielEstimatorFromText`（danielEstimator.js:9） | 无（Daniel 无 LN 支持） |
-| Azusa | `analysis.js:472-473` worker 或主线程 `runAzusaEstimatorFromText`（azusaEstimator.js:822） | **无效结果**（`isValidEstimatorResult` :460-464）→ 主线程 `runSunnyEstimatorFromText` 并置 `actualEstimatorAlgorithm = "Sunny"`（:475-478） |
-| Roxy | `analysis.js:483-484` worker 或主线程 `runRoxyEstimatorFromText`（roxyEstimator.js:1400） | 同上回退 Sunny（:486-489） |
-| Companella | `analysis.js:494` **主线程** `runSunnyEstimatorFromText` 打底，4K 时置 `pendingCompanellaEstimate`（:498），Companella 本体在 §7.5 异步追加 | Companella 失败仅 console.warn，保留 Sunny 底（:736-738） |
-| Mixed | `analysis.js:500` **主线程** `runMixedEstimatorFromText`（mixedEstimator.js:192） | 4K 时 Companella 追加（:723-735） |
-| Sunny / 其他 | `analysis.js:506-507` worker 或主线程 `runSunnyEstimatorFromText`（sunnyEstimator.js:4） | worker null 时主线程同步执行 |
+`runAnalysisPipeline` 是共享纯函数（DOM-free/state-free/JSON-safe，Node 与浏览器一致），逐段顺序与旧分派完全一致：
 
-- **worker 回退链**：`manager.js:41 runInWorker` 在 Worker 构造失败时返回 null（manager.js:43），所有分支统一 `wp ? await wp : 同步函数` 模式——worker 是纯加速，行为等价。
-- worker 内部分派：`compute.worker.js:17 self.onmessage`，`compute.worker.js:15 ESTIMATORS` 白名单，Azusa/Roxy 的无效回退在 worker 内也有（:38-41、:44-47），结果带 `actualEstimatorAlgorithm` 字段回传（:54）。
-- `shouldForceSunnyWindow`（:427、:521-533）：SunnyWindow 结果替换 LN 段难度（详见 difficulty-estimation.md 对应章节）。
-- 6K 定数 `sixKConst`：:536-546，`state.display6kLevel && columnCount === 6` 时用 Sunny SR 换算（`*200/81 + 7/6`）。
-- **估算失败**：整个 try（:440-556）catch → `resetReworkDisplay()`（:551）+ `errors.push("Rework failed: ...")`（:555）。
+| 步骤 | 内容 |
+| --- | --- |
+| 1 解析一次 | `OsuFileParser` `process()` → 估算器共享同一实例（任务 9/10 已验证 parsed 路径逐位一致），输出 `parsedSummary {metadata, lnRatio, columnCount}` |
+| 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`（白名单与回退语义同 compute.worker.js:17-54） |
+| 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0}` |
+| 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文） |
+| 5 SunnyWindow | `forceSunnyWindow` 时 `runSunnyWindowEstimatorFromText(rawText, {...options, enableAnalyzeLN}, parser)`（calculateSunny + calculateLN 均带 parsed），输出 `sunnyWindow` |
+| 6 派生 | `sixKConst`（`display6kLevel && columnCount===6` 时 `star*200/81+7/6` 2dp） |
+
+- **worker 往返**：manager 发 `{id, type:"pipeline", input}`，compute.worker.js 的 `"pipeline"` 消息分支调 `runAnalysisPipeline(input)` 原样回传（原 4 估算器消息保留不动）；latestId + 30s 超时语义不变。
+- **归一化星数复用决策**（仅影响性能，不改数值）：Mixed 与 Azusa(`forceSunnyReferenceHo=false`) 的内部 Sunny 与归一化调用使用相同 options → 预计算一份 Sunny 结果经 `precomputedSunnyResult` 喂给估算器并复用其 star；Azusa(`forceSunnyReferenceHo=true`) 内部用 `cvtFlag:"HO"`、Roxy 内部用 canonicalized 文本 → 独立计算（决策表见 `.omo/evidence/task-11-pipeline.txt`）。
+- **估算失败**：pipeline 不吞错——估算器/SunnyWindow 抛错直接向上传播，analysis.js 外层 catch（:502-507）`resetReworkDisplay()` + `errors.push("Rework failed: ...")` 语义不变；`errors[]` 恒为空（预留软失败通道），合并与写门条件不变。
+- **SunnyWindow 合并留在 analysis.js**（:476-491）：`sunnyWindow.estDiff` 的 LN 段替换 `resolvedEstDiff`、`typePercentageData`、`lnStar`、`pendingMixedCompanellaContext.lnDifficulty` 等展示/缓存逻辑仍在原处，逐行未变。
 
 ### 7.5 附属计算（Companella 追加）
 
@@ -241,7 +241,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 `state.actualEstimatorAlgorithm`（appContext.js:89，初值 = estimatorAlgorithm）记录**实际执行**的算法，与用户选择 `state.estimatorAlgorithm` 分离：
 
-- **分析后设置**：`analysis.js:514 state.actualEstimatorAlgorithm = actualEstimatorAlgorithm`——Azusa/Roxy 因结果无效回退 Sunny 时由回退分支改写（:477、:488）；worker 路径的回退已通过返回值的 `actualEstimatorAlgorithm` 字段带回（analysis.js:474、:485，源头 compute.worker.js:54）。
+- **分析后设置**：`analysis.js:461 state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm`——由 pipeline 返回（Azusa/Roxy 无效回退 Sunny 时 pipeline 内已改写为 "Sunny"），worker 路径同源。
 - **缓存命中恢复，绝不重算**：`analysis.js:431 state.actualEstimatorAlgorithm = cached.actualEstimatorAlgorithm`（命中分支 :429-438 整体从快照恢复，见 result-cache.md §10）。
 - **重置**：`analysis.js:216 resetReworkDisplay` 开头 `state.actualEstimatorAlgorithm = state.estimatorAlgorithm`（失败/清屏时回到用户选择）。
 - 展示层一律读 `state.actualEstimatorAlgorithm`。
@@ -304,7 +304,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **stale 请求不写缓存**：写门含 `!isStaleRequest()`（analysis.js:745）与代数守卫 `genAtStart === resultCacheGeneration()`（:746）双保险——前者防"过期分析结果覆盖新结果"（含缓存），后者防"clear 之后旧分析写回"（result-cache.md §7）。
 - **meta 降级 identity 不缓存**：`analysis.js:776` `put(cacheKey, {...}, { skip: isMetaDegraded })`——meta: 身份只读不写，碰撞风险下宁可每张图重算（result-cache.md §8）。
 - **分析失败路径**：估算块 catch → `analysis.js:551 resetReworkDisplay()`（定义 :215-246）——重置 actualEstimatorAlgorithm、数值/胶囊/图/meta 全清、mode tag 回 "Mix"、SV 标签隐藏、必要时显示 "Graph unavailable"；外层 catch（:918-933，fetch/解析失败）同样调用并在 overlay 显示 "Load failed"。
-- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退（analysis.js:467 等），Worker 构造失败（manager.js:23-25）与 30s 超时（manager.js:68-73）都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
+- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退（analysis.js:458），Worker 构造失败（manager.js:23-25）与 30s 超时（manager.js:68-73）都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
 - **缓存键不含显示类设置**：`display6kLevel`、`forceSunnyWindow`、etterna 版本等不进键，正确性依赖 settings.js 失效列表——任何新计算影响设置漏加失效 = 静默过期结果（result-cache.md §9）。
 - **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导（analysis.js:284-286 注释），仅供覆盖检查；实际 shows*/need* 在 override 后重算（:362-365）——修改 needComputed 推导时注意保持两处一致。
 - **changeKind 只消费一次**：`analysis.js:262` 取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理（:258-261），避免换歌动画重复播放。

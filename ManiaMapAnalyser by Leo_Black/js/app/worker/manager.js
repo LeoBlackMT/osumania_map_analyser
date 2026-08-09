@@ -32,13 +32,12 @@ function generateId() {
 }
 
 /**
- * Run an estimator in the worker thread.
+ * Run the estimation pipeline in the worker thread.
  *
- * @param {string} osuText - beatmap .osu file content
- * @param {object} options - { speedRate, estimatorAlgorithm, ... }
- * @returns {Promise<object>} estimator result (same shape as sync functions)
+ * @param {object} input - { rawText, estimatorAlgorithm, options } for runAnalysisPipeline
+ * @returns {Promise<object>} pipeline result (same shape as runAnalysisPipeline)
  */
-export function runInWorker(osuText, options) {
+export function runInWorker(input) {
     const w = ensureWorker();
     if (!w) return null; // caller should fall back to sync
 
@@ -62,7 +61,7 @@ export function runInWorker(osuText, options) {
         };
 
         w.addEventListener("message", handler);
-        w.postMessage({ id, osuText, options });
+        w.postMessage({ id, type: "pipeline", input });
 
         // Safety timeout (30s) to prevent hanging
         setTimeout(() => {

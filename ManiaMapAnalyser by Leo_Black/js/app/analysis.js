@@ -1,12 +1,5 @@
-import { runSunnyEstimatorFromText } from "../estimator/sunnyEstimator.js";
-import { runSunnyWindowEstimatorFromText } from "../estimator/sunnyWindowEstimator.js"
-import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
-import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
-import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
-import {
-    applyCompanellaToMixedResult,
-    runMixedEstimatorFromText,
-} from "../estimator/mixedEstimator.js";
+import { runAnalysisPipeline } from "../pipeline/runAnalysisPipeline.js";
+import { applyCompanellaToMixedResult } from "../estimator/mixedEstimator.js";
 import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 import { analyzePatternFromText } from "../patterns/service.js";
@@ -403,6 +396,8 @@ export async function fetchBeatmapFile(reason) {
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
         let sixKConst = null;
+        // vibro 星数门槛：pipeline 用归一化前的 star 判定（与旧 selectedRework?.star 意图一致）。
+        let vibroEligible = false;
 
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
@@ -449,94 +444,41 @@ export async function fetchBeatmapFile(reason) {
                     enableAlwaysShowLNDifficulty: state.enableAlwaysShowLNDifficulty,
                 };
 
-                const azusaOptions = {
+                // 估算分派 + 归一化 + SunnyWindow + 派生值（sixKConst/vibro）收敛为一次
+                // pipeline 调用（worker 或主线程同步回退）。pipeline 内逐段顺序与旧分派
+                // 完全一致（估算 → 归一化 → SunnyWindow → 派生），输出 rework 已归一化
+                // （Azusa/Roxy/Mixed 未回退时 star = Sunny sr）；渲染段与缓存键/写门不变。
+                const pipelineOptions = {
                     ...estimatorOptions,
                     forceSunnyReferenceHo: state.azusaSunnyReferenceHo,
+                    forceSunnyWindow: state.forceSunnyWindow,
+                    enableAnalyzeLN: state.enableAnalyzeLN,
+                    display6kLevel: state.display6kLevel,
                 };
+                const pipelineInput = { rawText, estimatorAlgorithm, options: pipelineOptions };
+                const wp = runInWorker(pipelineInput);
+                const pipelineResult = wp ? await wp : runAnalysisPipeline(pipelineInput);
 
-                let selectedRework = null;
-                let nextEstDiff = null;
-                let nextNumericDifficulty = null;
-                let nextNumericDifficultyHint = null;
-                let actualEstimatorAlgorithm = estimatorAlgorithm;
-
-                // Sunny 结果的 numericDifficulty 恒为 null（Number.isFinite(null) === false），
-                // 若不允许 null 通过，Azusa/Roxy 在 worker 回退到 Sunny 后这里会误判为无效，
-                // 导致主线程再同步重算一次 Sunny。允许 null 后该冗余消失，结果不变。
-                const isValidEstimatorResult = (result) => Boolean(result)
-                    && Number.isFinite(result.star)
-                    && (Number.isFinite(result.numericDifficulty) || result.numericDifficulty === null)
-                    && typeof result.estDiff === "string";
-
-                if (estimatorAlgorithm === "Daniel") {
-                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
-                    selectedRework = wp ? await wp : runDanielEstimatorFromText(rawText, estimatorOptions);
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                } else if (estimatorAlgorithm === "Azusa") {
-                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm, forceSunnyReferenceHo: state.azusaSunnyReferenceHo });
-                    selectedRework = wp ? await wp : runAzusaEstimatorFromText(rawText, azusaOptions);
-                    actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
-                    if (!isValidEstimatorResult(selectedRework)) {
-                        selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                        actualEstimatorAlgorithm = "Sunny";
-                    }
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                } else if (estimatorAlgorithm === "Roxy") {
-                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm });
-                    selectedRework = wp ? await wp : runRoxyEstimatorFromText(rawText, estimatorOptions);
-                    actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
-                    if (!isValidEstimatorResult(selectedRework)) {
-                        selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                        actualEstimatorAlgorithm = "Sunny";
-                    }
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                } else if (estimatorAlgorithm === "Companella") {
-                    selectedRework = runSunnyEstimatorFromText(rawText, estimatorOptions);
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                    pendingCompanellaEstimate = Number(selectedRework.columnCount) === 4;
-                } else if (estimatorAlgorithm === "Mixed") {
-                    selectedRework = runMixedEstimatorFromText(rawText, estimatorOptions);
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                    pendingMixedCompanellaContext = selectedRework.mixedCompanellaPlan || null;
-                } else {
-                    const wp = runInWorker(rawText, { ...estimatorOptions, estimatorAlgorithm: "Sunny" });
-                    selectedRework = wp ? await wp : runSunnyEstimatorFromText(rawText, estimatorOptions);
-                    nextEstDiff = selectedRework.estDiff;
-                    nextNumericDifficulty = selectedRework.numericDifficulty;
-                    nextNumericDifficultyHint = selectedRework.numericDifficultyHint;
-                }
-
-                rework = selectedRework;
-                state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
+                rework = pipelineResult.rework;
+                state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm;
+                vibroEligible = pipelineResult.vibro.eligible;
+                errors.push(...pipelineResult.errors);
                 if (isStaleRequest()) return;
 
-                // 星数胶囊统一为 Sunny 原始 sr：Azusa/Roxy/Mixed 的 star 是自身 numeric 的线性映射
-                // （3.4 + 0.38 * numericDifficulty），与 sunnyAlgorithm.js 输出的 sr 口径不同。
-                // 对未回退到 Sunny 的这些算法，用与"Sunny 算法选择"完全相同的调用重算 sr 并覆盖，
-                // 保证左上角星数胶囊（及 ReworkSR 模式的右胶囊）始终显示 Sunny 原始输出。
-                // Daniel 使用独立改进算法（非 Sunny 口径），排除；Companella/SunnyWindow 的 star 本就是 Sunny sr。
-                if (actualEstimatorAlgorithm === "Azusa"
-                    || actualEstimatorAlgorithm === "Roxy"
-                    || actualEstimatorAlgorithm === "Mixed") {
-                    rework = { ...rework, star: Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star) };
+                resolvedEstDiff = pipelineResult.rework.estDiff;
+                resolvedNumericDifficulty = pipelineResult.rework.numericDifficulty;
+                resolvedNumericDifficultyHint = pipelineResult.rework.numericDifficultyHint;
+
+                if (estimatorAlgorithm === "Companella") {
+                    pendingCompanellaEstimate = Number(pipelineResult.rework.columnCount) === 4;
                 }
-                resolvedEstDiff = nextEstDiff;
-                resolvedNumericDifficulty = nextNumericDifficulty;
-                resolvedNumericDifficultyHint = nextNumericDifficultyHint;
+                if (estimatorAlgorithm === "Mixed") {
+                    pendingMixedCompanellaContext = pipelineResult.rework.mixedCompanellaPlan || null;
+                }
 
                 // 如果强制使用SunnyWindow，在这里替换LN部分
-                if (shouldForceSunnyWindow) {
-                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, { ...estimatorOptions, enableAnalyzeLN: state.enableAnalyzeLN });
+                const sunnyWindowRework = pipelineResult.sunnyWindow;
+                if (sunnyWindowRework) {
                   const sunnyWindowLNEstDiff = sunnyWindowRework.estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[1];
                   typePercentageData = sunnyWindowRework.typePercentageData;
                   if (sunnyWindowLNEstDiff) {
@@ -551,16 +493,11 @@ export async function fetchBeatmapFile(reason) {
 
                 // 6K 定数: compute Sunny SR for constant rating display
                 // 6K 谱面下 rework.star 恒为 Sunny sr（Daniel/Azusa/Roxy 非 4K 均回退 Sunny，
-                // Mixed 走 sunnyBaseline，Companella 直接跑 Sunny，且上方已对未回退算法归一化），
-                // 直接使用即可，无需按算法分支重算。
-                sixKConst = null;
-                if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
-                    const sunnySrc = Number(rework.star);
-                    state.sunnySR = sunnySrc;
-                    if (Number.isFinite(sunnySrc) && sunnySrc > 0) {
-                        sixKConst = sunnySrc * 200 / 81 + 7 / 6;
-                        sixKConst = Math.round(sixKConst * 100) / 100;
-                    }
+                // Mixed 走 sunnyBaseline，Companella 直接跑 Sunny，且 pipeline 已对未回退算法归一化），
+                // pipeline 按同一公式计算；此处仅回写 sunnySR 状态字段（write-only）。
+                sixKConst = pipelineResult.sixKConst;
+                if (sixKConst !== null) {
+                    state.sunnySR = Number(rework.star);
                 }
 
 
@@ -668,9 +605,7 @@ export async function fetchBeatmapFile(reason) {
                     );
                     if (isStaleRequest()) return;
 
-                    // 用算法自身 star 判定（selectedRework 未经星数归一化），保持 vibro 检测既有行为不变。
-                    const reworkStarValue = Number(selectedRework?.star);
-                    const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
+                    // 用算法自身 star 判定（pipeline 保留归一化前的 star），保持 vibro 检测既有行为不变。
                     isVibroMap = state.vibroDetection
                         && vibroEligible
                         && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
