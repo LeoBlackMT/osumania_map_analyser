@@ -35,13 +35,16 @@
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [pipeline/README.md](pipeline/README.md) | AI | 管线技术文档类别索引（分析、缓存、设置、mod） |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | 分析管线总览：tosu WebSocket -> 谱面获取 -> 解析 -> 估算 -> 显示 的完整数据流 |
+| [pipeline/worker.md](pipeline/worker.md) | AI | Worker 与 runAnalysisPipeline 架构：worker 生命周期、消息协议、纯函数契约、共享解析、WASM-in-worker、stale 粒度 |
 | [pipeline/result-cache.md](pipeline/result-cache.md) | AI | 结果缓存（LRU）机制：缓存键、命中覆盖检查、写入门槛与失效时机 |
 | [pipeline/settings-pipeline.md](pipeline/settings-pipeline.md) | AI | 设置管线：settings.json -> 解析 -> 状态注入 -> 缓存失效与重算触发 |
 | [pipeline/mod-handling.md](pipeline/mod-handling.md) | AI | mod 处理：mod 代码解析、倍速/OD 影响、modSignature 的构成与作用 |
 | [guides/README.md](guides/README.md) | AI | 指南文档类别索引（新增设置、缓存失效等） |
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | 新增设置项的完整流程指南（settings.json -> 解析器 -> state -> 缓存失效） |
+| [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | 新增估算器/管线阶段到 worker 的完整流程指南（入口纯化 -> 注册 -> 消费接线 -> golden 扩展） |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | 结果缓存失效机制说明与新增计算相关设置时的注意事项 |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
+| [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 
 # English
 
@@ -77,10 +80,13 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [pipeline/README.md](pipeline/README.md) | AI | Index of pipeline technical documents (analysis, cache, settings, mods) |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
+| [pipeline/worker.md](pipeline/worker.md) | AI | Worker and runAnalysisPipeline architecture: worker lifecycle, message protocol, pure-function contract, shared parsing, WASM-in-worker, stale granularity |
 | [pipeline/result-cache.md](pipeline/result-cache.md) | AI | Result cache (LRU) mechanism: cache key, hit coverage check, write gate, invalidation timing |
 | [pipeline/settings-pipeline.md](pipeline/settings-pipeline.md) | AI | Settings pipeline: settings.json -> parse -> state injection -> cache invalidation and recompute trigger |
 | [pipeline/mod-handling.md](pipeline/mod-handling.md) | AI | Mod handling: mod code parsing, speed/OD effects, modSignature composition and purpose |
 | [guides/README.md](guides/README.md) | AI | Index of guide documents (adding a setting, cache invalidation, etc.) |
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | Complete guide for adding a setting (settings.json -> parser -> state -> cache invalidation) |
+| [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | Complete guide for adding an estimator/pipeline stage to the worker (entry purification -> registration -> consumer wiring -> golden extension) |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | Result cache invalidation notes and cautions when adding computation-affecting settings |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
+| [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
