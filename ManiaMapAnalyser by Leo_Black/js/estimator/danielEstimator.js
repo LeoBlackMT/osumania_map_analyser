@@ -22,6 +22,7 @@ export function runDanielEstimatorFromText(osuText, options = {}) {
             cvtFlag,
             withGraph,
             extendedEstimationRange: options.extendedEstimationRange,
+            enableAlwaysShowLNDifficulty: options.enableAlwaysShowLNDifficulty,
         });
     }
 
@@ -34,7 +35,7 @@ export function runDanielEstimatorFromText(osuText, options = {}) {
         ...parsed,
         estDiff: useDanielDifficulty
             ? danielDifficulty.label
-            : estDiff(parsed.star, parsed.lnRatio, parsed.columnCount, options.extendedEstimationRange === true),
+            : estDiff(parsed.star, parsed.lnRatio, parsed.columnCount, options.extendedEstimationRange === true, options.enableAlwaysShowLNDifficulty === true),
         numericDifficulty,
         numericDifficultyHint: useDanielDifficulty && !Number.isFinite(numericDifficulty)
             ? "N/A"

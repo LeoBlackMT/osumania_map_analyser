@@ -15,6 +15,7 @@ import {
 } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 import { getModData } from "../app/modData.js";
+import { state } from "../app/appContext.js";
 import {
     evaluateRoxyOverfitVariant,
     ROXY_OVERFIT_REPORT,
@@ -422,6 +423,7 @@ function runOptionsFromPayload(data) {
             odFlag: modData.odFlag,
             cvtFlag: modData.cvtFlag,
             withGraph: false,
+            enableAlwaysShowLNDifficulty: state.enableAlwaysShowLNDifficulty,
         },
         modData,
     };

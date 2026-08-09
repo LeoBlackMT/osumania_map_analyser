@@ -446,6 +446,7 @@ export async function fetchBeatmapFile(reason) {
                     cvtFlag: state.cvtFlag,
                     withGraph: state.diffText === "Graph" || showsGraph,
                     extendedEstimationRange: state.extendedEstimationRange,
+                    enableAlwaysShowLNDifficulty: state.enableAlwaysShowLNDifficulty,
                 };
 
                 const azusaOptions = {
@@ -535,7 +536,7 @@ export async function fetchBeatmapFile(reason) {
 
                 // 如果强制使用SunnyWindow，在这里替换LN部分
                 if (shouldForceSunnyWindow) {
-                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, estimatorOptions);
+                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, { ...estimatorOptions, enableAnalyzeLN: state.enableAnalyzeLN });
                   const sunnyWindowLNEstDiff = sunnyWindowRework.estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[1];
                   typePercentageData = sunnyWindowRework.typePercentageData;
                   if (sunnyWindowLNEstDiff) {
