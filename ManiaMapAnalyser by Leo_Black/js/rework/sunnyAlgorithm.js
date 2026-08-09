@@ -392,6 +392,9 @@ function getKeyUsage400(K, T, noteSeq, baseCorners) {
     keyUsage400[k] = new Array(baseCorners.length).fill(0);
     }
 
+    // ponytail: loop-invariant across notes — cornerCoeff computed once instead of per (note, corner)
+    const cornerCoeff = 3.75 / (400 ** 2);
+
     for (const [k, h, t] of noteSeq) {
     const startTime = Math.max(h, 0);
     const endTime = t < 0 ? h : Math.min(t, T - 1);
@@ -401,16 +404,18 @@ function getKeyUsage400(K, T, noteSeq, baseCorners) {
     const rightIdx = bisectLeft(baseCorners, endTime);
     const right400Idx = bisectLeft(baseCorners, endTime + 400);
 
+    const rampValue = 3.75 + Math.min(endTime - startTime, 1500) / 150;
+
     for (let idx = leftIdx; idx < rightIdx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 + Math.min(endTime - startTime, 1500) / 150;
+            keyUsage400[k][idx] += rampValue;
     }
 
     for (let idx = left400Idx; idx < leftIdx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * ((baseCorners[idx] - startTime) ** 2);
+            keyUsage400[k][idx] += 3.75 - cornerCoeff * ((baseCorners[idx] - startTime) ** 2);
     }
 
     for (let idx = rightIdx; idx < right400Idx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * (Math.abs(baseCorners[idx] - endTime) ** 2);
+            keyUsage400[k][idx] += 3.75 - cornerCoeff * (Math.abs(baseCorners[idx] - endTime) ** 2);
     }
     }
 
@@ -675,8 +680,11 @@ function computePbar(x, noteSeq, lnRep, anchor, baseCorners) {
             inc = (delta ** -1) * ((0.08 * (x ** -1) * (1 - 24 * (x ** -1) * ((x / 6) ** 2))) ** 0.25) * Math.max(bVal, v);
     }
 
+    // ponytail: loop-invariant across corners — incMax computed once per note
+    const incMax = Math.max(inc, inc * 2 - 10);
+
     for (let idx = leftIdx; idx < rightIdx; idx += 1) {
-            pStep[idx] += Math.min(inc * anchor[idx], Math.max(inc, inc * 2 - 10));
+            pStep[idx] += Math.min(inc * anchor[idx], incMax);
     }
     }
 
@@ -974,7 +982,6 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     const weightedMean = (num / den) ** (1 / 5);
 
     let sr = (0.88 * percentile93) * 0.25 + (0.94 * percentile83) * 0.2 + weightedMean * 0.55;
-    sr = (sr ** 1) / (8 ** 1) * 8;
 
     let lnLengthTerm = 0;
     for (const [, h, t] of lnSeq) {
