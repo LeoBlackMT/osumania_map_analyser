@@ -1397,7 +1397,7 @@ function computeHighReferenceStructuralFloor(referencePredictions, numericDetail
     };
 }
 
-export function runRoxyEstimatorFromText(osuText, options = {}) {
+export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
     try {
         if (typeof osuText !== "string" || osuText.trim().length === 0) {
             return buildErrorResult("EmptyInput", "Beatmap text is empty");
@@ -1418,19 +1418,36 @@ export function runRoxyEstimatorFromText(osuText, options = {}) {
             speedRate: analysisSpeedRate,
         };
 
-        const parser = new OsuFileParser(analysisText);
-        parser.process();
-        applyConversionFlag(parser, effectiveOptions.cvtFlag);
-        const parsed = parser.getParsedData();
-        const odDetails = computeOdDetails(parsed?.od, odFlag);
+        // Share the caller's parsed instance only when the analysis text is
+        // equivalent to the original. canonicalizeOsuTiming rewrites the text
+        // at EVERY valid speedRate (scale + shift to
+        // ROXY_CANONICAL_FIRST_OBJECT_MS). At speedRate=1 the rewrite is a
+        // pure constant time-shift and the structural pipeline is delta-based
+        // (shift-invariant) -> sharing yields bit-identical output
+        // (QA-verified). At speedRate!=1 times are scaled (deltas change) ->
+        // the canonicalized text must be re-parsed. cvtFlag HO/IN additionally
+        // mutates the parser in place (modHO/modIN) -> excluded from sharing
+        // so the caller's instance stays pristine.
+        const cvt = normalizeCvtFlag(effectiveOptions.cvtFlag);
+        const canShareParsed = parsed != null && speedRate === 1 && cvt !== "HO" && cvt !== "IN";
+        let parser;
+        if (canShareParsed) {
+            parser = parsed;
+        } else {
+            parser = new OsuFileParser(analysisText);
+            parser.process();
+            applyConversionFlag(parser, effectiveOptions.cvtFlag);
+        }
+        const parsedData = parser.getParsedData();
+        const odDetails = computeOdDetails(parsedData?.od, odFlag);
 
-        const lnRatio = Number(parsed.lnRatio) || 0;
-        const columnCount = Number(parsed.columnCount) || 0;
+        const lnRatio = Number(parsedData.lnRatio) || 0;
+        const columnCount = Number(parsedData.columnCount) || 0;
 
-        if (parsed.status === "Fail") {
+        if (parsedData.status === "Fail") {
             return buildErrorResult("ParseFailed", "Beatmap parse failed", { lnRatio, columnCount });
         }
-        if (parsed.status === "NotMania") {
+        if (parsedData.status === "NotMania") {
             return buildErrorResult("NotMania", "Beatmap mode is not mania", { lnRatio, columnCount });
         }
         if (columnCount !== 4) {
@@ -1444,7 +1461,7 @@ export function runRoxyEstimatorFromText(osuText, options = {}) {
             );
         }
 
-        const { taps, rows } = buildTapRows(parsed, analysisSpeedRate, ROXY_CONFIG.rowToleranceMs);
+        const { taps, rows } = buildTapRows(parsedData, analysisSpeedRate, ROXY_CONFIG.rowToleranceMs);
         if (taps.length < ROXY_CONFIG.minNotes || rows.length < 2) {
             return buildErrorResult("TooFewNotes", "Not enough RC tap notes", { lnRatio, columnCount });
         }

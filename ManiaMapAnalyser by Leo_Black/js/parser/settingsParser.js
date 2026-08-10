@@ -309,11 +309,6 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.autoMode);
     }
 
-    function parseUseDanielAlgorithmValue(settingsPayload) {
-        const estimator = parseEstimatorAlgorithmValue(settingsPayload);
-        return estimator === "Daniel";
-    }
-
     function parseEstimatorAlgorithmValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "estimatorAlgorithm");
         const normalized = normalizeEstimatorAlgorithmValue(value);
@@ -377,10 +372,6 @@ export function createSettingsParsers(appConfig) {
     function parseEnableResultCacheValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "enableResultCache");
         return normalizeBooleanSetting(value, appConfig.defaults.enableResultCache);
-    }
-
-    function parseDisableVibroDetectionValue(settingsPayload) {
-        return !parseVibroDetectionValue(settingsPayload);
     }
 
     function parseVibroDetectionValue(settingsPayload) {
@@ -578,7 +569,6 @@ export function createSettingsParsers(appConfig) {
         parseDebugUseAmountValue,
         parseDiffTextValue,
         parseAutoModeValue,
-        parseUseDanielAlgorithmValue,
         parseEstimatorAlgorithmValue,
         parseAzusaSunnyReferenceHoValue,
         parseEtternaVersionValue,
@@ -586,7 +576,6 @@ export function createSettingsParsers(appConfig) {
         parseEnablePauseDetectionValue,
         parseEnableResultCacheValue,
         parsePauseDetectionThresholdValue,
-        parseDisableVibroDetectionValue,
         parseVibroDetectionValue,
         parseEnableEtternaRainbowBarsValue,
         parseEnableStatusMarqueeValue,

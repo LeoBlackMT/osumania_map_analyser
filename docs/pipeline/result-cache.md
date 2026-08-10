@@ -148,7 +148,7 @@ if (identityParts.length === 0 && hasMetadataIdentity) {
 
 ## 9. 失效列表（settings.js:833-850）
 
-settings.js 的命令监听回调在**任何计算相关设置变化**时调 `clearResultCache()`（`settings.js:849`）。完整 14 个条件（`settings.js:835-848`）：
+settings.js 的命令监听回调在**任何计算相关设置变化**时调 `clearResultCache()`（`settings.js:849`）。完整 12 个条件（`settings.js:835-848`）：
 
 | # | 条件变量 | 对应设置 |
 | --- | --- | --- |
@@ -156,35 +156,45 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 | 2 | `azusaSunnyReferenceHoChanged` | azusaSunnyReferenceHo |
 | 3 | `etternaVersionChanged` | etternaVersion |
 | 4 | `companellaEtternaVersionChanged` | companellaEtternaVersion |
-| 5 | `debugChanged` | debugUseAmount |
-| 6 | `svChanged` | useSvDetection |
-| 7 | `vibroChanged` | VibroDetection（uniqueID 大写 V，state 字段小写 `state.vibroDetection`） |
-| 8 | `wsEndpointChanged` | wsEndpoint（仅在 `changed` 不在 `recomputeNeeded`，故显式列出——`settings.js:834` 注释） |
-| 9 | `forceSunnyWindowChanged` | forceSunnyWindow |
-| 10 | `enableLNDifficultyChanged` | enableLNDifficulty |
-| 11 | `enableAnalyzeLNChanged` | enableAnalyzeLN |
-| 12 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty |
-| 13 | `display6kLevelChanged` | display6kLevel |
-| 14 | `extendedEstimationRangeChanged` | extendedEstimationRange |
+| 5 | `svChanged` | useSvDetection |
+| 6 | `vibroChanged` | VibroDetection（uniqueID 大写 V，state 字段小写 `state.vibroDetection`） |
+| 7 | `wsEndpointChanged` | wsEndpoint（仅在 `changed` 不在 `recomputeNeeded`，故显式列出——`settings.js:834` 注释） |
+| 8 | `forceSunnyWindowChanged` | forceSunnyWindow |
+| 9 | `enableLNDifficultyChanged` | enableLNDifficulty |
+| 10 | `enableAnalyzeLNChanged` | enableAnalyzeLN |
+| 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty |
+| 12 | `extendedEstimationRangeChanged` | extendedEstimationRange |
+
+**已移出失效列表的显示派生设置**（toggle-diff 实证零输出契约差异，30 样本子集）：
+
+- `debugUseAmount`（debugChanged）——命中时重放排序 + Category 覆盖（§10）。
+- `display6kLevel`（display6kLevelChanged）——命中时按缓存 star 重算 sixKConst（§10）。
+
+两者**仍保留在 recomputeNeeded**（`settings.js:814`、:830）：设置变化仍会触发一次调度重算，但重算走**缓存命中分支**（不 fetch、不跑 pipeline），只做命中恢复 + 重派生 + 重新渲染——这就是显示更新机制。`enableAlwaysShowLNDifficulty` **不能**移出（toggle-diff 显示 estDiff 在 lnRatio<0.15 谱面上有真实差异——它改变了计算产出的 estDiff 字符串）。
 
 **规则**：
 
 - 新增**计算影响**设置必须加入此列表——缓存键不含它（§5），漏加会静默提供过期结果。
-- 纯**显示**设置**不得**加入——覆盖检查（§6）已处理，加入只会白白丢命中。
+- 纯**显示**设置**不得**加入——覆盖检查（§6）已处理；若该设置改变的是"写时快照内的显示派生值"，则需要 §10 的命中重派生而不是失效（否则白丢命中）。
 - **不要与关闭清除混淆**：`settings.js:672-674` 是 `applyEnableResultCacheSetting`（`settings.js:666`）内"缓存从开启切到关闭时清一次缓存"，语义是停用前清理残留；`settings.js:833-850` 才是运行期失效列表。前者是设置本身的副作用（settings-pipeline.md §8），后者是任何计算设置变化的统一失效点。
 
-## 10. 命中恢复（actualEstimatorAlgorithm）
+## 10. 命中恢复（actualEstimatorAlgorithm + 显示派生重算）
 
 命中时快照直接恢复全部结果（`analysis.js:429-438` cached 分支）：
 
 - `analysis.js:431` `state.actualEstimatorAlgorithm = cached.actualEstimatorAlgorithm`——**从快照恢复，绝不重算**。Azusa/Roxy 因谱面被拒而回退 Sunny 的判定结果存在快照里（写入侧 `analysis.js:769` `actualEstimatorAlgorithm: state.actualEstimatorAlgorithm`），命中时直接还原。
-- 其余恢复项：`rework`（:430）、`resolvedEstDiff`/`resolvedNumericDifficulty`/`resolvedNumericDifficultyHint`（:432-434）、`sixKConst`（:435）、`lnStar`/`state.lnStar`（:436-437）、`typePercentageData`（:438）。
+- 其余恢复项：`rework`（:430）、`resolvedEstDiff`/`resolvedNumericDifficulty`/`resolvedNumericDifficultyHint`（:432-434）、`lnStar`/`state.lnStar`（:436-437）、`typePercentageData`（:438）。
+
+**命中重派生**（task 13）：快照内有两个字段是"写时刻的显示派生值"——`sixKConst` 与 `mergedClusters`——它们依赖写时刻的 `display6kLevel`/`debugUseAmount`。这两个设置已移出失效列表（§9），命中时必须按当前设置重派生：
+
+- **sixKConst**（`analysis.js:439-446`）：不再直接取 `cached.sixKConst`，而是按 `runAnalysisPipeline` §6 同公式从缓存数据重算——`state.display6kLevel && columnCount === 6 && star 有限且 > 0` 时 `Math.round((star * 200 / 81 + 7 / 6) * 100) / 100`，否则 `null`。公式与 pipeline 逐字一致（6K 下 rework.star 恒为 Sunny sr），已验证与 pipeline 输出位级相同；4K 恒 null。这样"写时开→命中时关"置 null、"写时关→命中时开"按 star 补算。
+- **mergedClusters + debugUseAmount 后处理**（`analysis.js:604-632`）：缓存里的 `mergedClusters` 是写时刻（可能已排序/覆盖过 Category 的）结果。命中时从 `cached.patternReport?.Clusters`（与 miss 路径同一原始来源）重放 `mergeDuplicateClusters`（display.js 纯数据字段，JSON-safe），再对**当前** `debugUseAmount` 重放 `applyDebugUseAmountPostProcess(clusters, report)`（按 Amount 降序排序 + 用首位 cluster 的 SpecificTypes[0]/Pattern 覆盖 `patternReport.Category`）——hit/miss 共用同一辅助函数。
 
 读展示层时始终用 `state.actualEstimatorAlgorithm`（用户选择仍留在 `state.estimatorAlgorithm`）。
 
 ## 11. 注意事项
 
-- **缓存键不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等——正确性完全依赖 §9 的失效列表。任何新计算影响设置漏加失效 = 静默过期结果。
+- **缓存键不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等——正确性完全依赖 §9 的失效列表 + §10 的命中重派生。任何新计算影响设置漏加失效 = 静默过期结果；任何"显示派生值进了快照"的新设置，要么加失效、要么按 §10 模式实现命中重派生（toggle-diff 实证差异再决定）。
 - **关闭清除**：`enableResultCache` 从开切关时立即 `clearResultCache()`（`settings.js:672-674`），防残留快照在重新开启后命中旧数据。
 - **JSON-safe 契约**：get 与 put 双向 deepClone（§2），值含函数/Date/带方法对象会炸——cluster 等必须走 jsonSafe 剥壳（`analysis.js:750`）。
 - **deepClone 成本**：每次 get/put 各克隆一次，命中快照较大时（含 graph 数据）有开销；这是"只读快照、防外部篡改"的取舍。

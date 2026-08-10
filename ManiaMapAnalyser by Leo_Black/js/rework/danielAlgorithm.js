@@ -1,188 +1,45 @@
 import { OsuFileParser } from "../parser/osuFileParser.js";
+import {
+    bisectLeft,
+    bisectRight,
+    cumulativeSum,
+    queryCumsum,
+    smoothOnCorners,
+    interpValues,
+    stepInterp,
+    gaussianFilter1d,
+    rescaleHigh,
+    mergeByHead,
+    computeCAndKs,
+    applyProximityEnvelope,
+    smoothDForGraph,
+    jackNerfer,
+    targetPercentiles,
+} from "./reworkMathCore.js";
 
-const BREAK_ZERO_THRESHOLD_MS = 400;
-const GRAPH_RESAMPLE_INTERVAL_MS = 100;
-const SMOOTH_SIGMA_MS = 800;
 
-function bisectLeft(arr, target) {
-    let lo = 0;
-    let hi = arr.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (arr[mid] < target) lo = mid + 1;
-        else hi = mid;
-    }
-    return lo;
-}
 
-function bisectRight(arr, target) {
-    let lo = 0;
-    let hi = arr.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (arr[mid] <= target) lo = mid + 1;
-        else hi = mid;
-    }
-    return lo;
-}
 
-function cumulativeSum(x, f) {
-    const F = new Float64Array(x.length);
-    for (let i = 1; i < x.length; i += 1) {
-        F[i] = F[i - 1] + f[i - 1] * (x[i] - x[i - 1]);
-    }
-    return F;
-}
 
-function queryCumsum(q, x, F, f) {
-    if (q <= x[0]) return 0;
-    if (q >= x[x.length - 1]) return F[F.length - 1];
-    const i = bisectRight(x, q) - 1;
-    return F[i] + f[i] * (q - x[i]);
-}
 
-function smoothOnCorners(x, f, window, scale = 1.0, mode = "sum") {
-    const F = cumulativeSum(x, f);
-    const g = new Float64Array(f.length);
-    for (let i = 0; i < x.length; i += 1) {
-        const s = x[i];
-        const a = Math.max(s - window, x[0]);
-        const b = Math.min(s + window, x[x.length - 1]);
-        const val = queryCumsum(b, x, F, f) - queryCumsum(a, x, F, f);
-        if (mode === "avg") {
-            g[i] = b - a > 0 ? val / (b - a) : 0;
-        } else {
-            g[i] = scale * val;
-        }
-    }
-    return g;
-}
 
-function interpValues(newX, oldX, oldVals) {
-    const out = new Float64Array(newX.length);
-    let idx = 0;
 
-    for (let i = 0; i < newX.length; i += 1) {
-        const x = newX[i];
 
-        if (x <= oldX[0]) {
-            out[i] = oldVals[0];
-            continue;
-        }
-        if (x >= oldX[oldX.length - 1]) {
-            out[i] = oldVals[oldVals.length - 1];
-            continue;
-        }
 
-        while (idx + 1 < oldX.length && oldX[idx + 1] < x) {
-            idx += 1;
-        }
 
-        const x0 = oldX[idx];
-        const x1 = oldX[idx + 1];
-        const y0 = oldVals[idx];
-        const y1 = oldVals[idx + 1];
 
-        if (x1 === x0) {
-            out[i] = y0;
-            continue;
-        }
+function preprocessDaniel(osuText, speedRate, _odFlag, parsed = null) {
+    // parsed: a shared OsuFileParser instance already processed by the caller.
+    // Daniel has no cvtFlag conversion and only reads the parsed chart, so the
+    // shared instance is used directly (read-only) when provided.
+    const parser = parsed ?? new OsuFileParser(osuText);
+    if (!parsed) parser.process();
+    const parsedData = parser.getParsedData();
 
-        const t = (x - x0) / (x1 - x0);
-        out[i] = y0 + t * (y1 - y0);
-    }
+    const lnRatio = Number(parsedData.lnRatio) || 0;
+    const columnCount = Number(parsedData.columnCount) || 0;
 
-    return out;
-}
-
-function stepInterp(newX, oldX, oldVals) {
-    const out = new Float64Array(newX.length);
-    let idx = 0;
-    for (let i = 0; i < newX.length; i += 1) {
-        const x = newX[i];
-        while (idx + 1 < oldX.length && oldX[idx + 1] <= x) {
-            idx += 1;
-        }
-        const clamped = Math.max(0, Math.min(idx, oldVals.length - 1));
-        out[i] = oldVals[clamped];
-    }
-    return out;
-}
-
-function gaussianFilter1d(data, sigmaSamples) {
-    if (!Number.isFinite(sigmaSamples) || sigmaSamples <= 0) {
-        return Array.from(data);
-    }
-
-    const radius = Math.max(1, Math.trunc(4 * sigmaSamples + 0.5));
-    const kernelSize = radius * 2 + 1;
-    const kernel = new Float64Array(kernelSize);
-    let kernelSum = 0;
-
-    for (let i = -radius; i <= radius; i += 1) {
-        const v = Math.exp(-0.5 * ((i / sigmaSamples) ** 2));
-        kernel[i + radius] = v;
-        kernelSum += v;
-    }
-    for (let i = 0; i < kernelSize; i += 1) {
-        kernel[i] /= kernelSum;
-    }
-
-    const padded = new Float64Array(data.length + radius * 2);
-    for (let i = 0; i < data.length; i += 1) {
-        padded[i + radius] = data[i];
-    }
-
-    const out = new Float64Array(data.length);
-    for (let i = 0; i < data.length; i += 1) {
-        let acc = 0;
-        for (let k = 0; k < kernelSize; k += 1) {
-            acc += padded[i + k] * kernel[k];
-        }
-        out[i] = acc;
-    }
-
-    return Array.from(out);
-}
-
-function rescaleHigh(sr) {
-    if (sr <= 9) return sr;
-    return 9 + (sr - 9) * (1 / 1.2);
-}
-
-function mergeByHead(a, b) {
-    const result = [];
-    let i = 0;
-    let j = 0;
-    while (i < a.length && j < b.length) {
-        if (a[i][1] <= b[j][1]) {
-            result.push(a[i]);
-            i += 1;
-        } else {
-            result.push(b[j]);
-            j += 1;
-        }
-    }
-    while (i < a.length) {
-        result.push(a[i]);
-        i += 1;
-    }
-    while (j < b.length) {
-        result.push(b[j]);
-        j += 1;
-    }
-    return result;
-}
-
-function preprocessDaniel(osuText, speedRate, _odFlag) {
-    const parser = new OsuFileParser(osuText);
-    parser.process();
-    const parsed = parser.getParsedData();
-
-    const lnRatio = Number(parsed.lnRatio) || 0;
-    const columnCount = Number(parsed.columnCount) || 0;
-
-    if (parsed.status === "Fail") {
+    if (parsedData.status === "Fail") {
         return {
             status: "Fail",
             x: 0,
@@ -195,7 +52,7 @@ function preprocessDaniel(osuText, speedRate, _odFlag) {
         };
     }
 
-    if (parsed.status === "NotMania") {
+    if (parsedData.status === "NotMania") {
         return {
             status: "NotMania",
             x: 0,
@@ -228,9 +85,9 @@ function preprocessDaniel(osuText, speedRate, _odFlag) {
     const timeScale = speedRate !== 0 ? 1 / speedRate : 1;
 
     const noteSeq = [];
-    for (let i = 0; i < parsed.columns.length; i += 1) {
-        const k = parsed.columns[i];
-        let h = parsed.noteStarts[i];
+    for (let i = 0; i < parsedData.columns.length; i += 1) {
+        const k = parsedData.columns[i];
+        let h = parsedData.noteStarts[i];
         h = Math.floor(h * timeScale);
         noteSeq.push([k, h]);
     }
@@ -322,6 +179,9 @@ function getKeyUsage400(K, noteSeq, baseCorners) {
         keyUsage400[k] = new Float64Array(baseCorners.length);
     }
 
+    // Loop-invariant coefficient — hoisted out of the per-note loops.
+    const k400Scale = 3.75 / (400 ** 2);
+
     for (const [k, h] of noteSeq) {
         const left400Idx = bisectLeft(baseCorners, h - 400);
         const centerIdx = bisectLeft(baseCorners, h);
@@ -332,11 +192,11 @@ function getKeyUsage400(K, noteSeq, baseCorners) {
         }
 
         for (let idx = left400Idx; idx < centerIdx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * ((baseCorners[idx] - h) ** 2);
+            keyUsage400[k][idx] += 3.75 - k400Scale * ((baseCorners[idx] - h) ** 2);
         }
 
         for (let idx = centerIdx + 1; idx < right400Idx; idx += 1) {
-            keyUsage400[k][idx] += 3.75 - (3.75 / (400 ** 2)) * ((baseCorners[idx] - h) ** 2);
+            keyUsage400[k][idx] += 3.75 - k400Scale * ((baseCorners[idx] - h) ** 2);
         }
     }
 
@@ -371,7 +231,9 @@ function computeAnchor(K, keyUsage400, baseCorners) {
 }
 
 function computeJbar(K, x, noteSeqByColumn, baseCorners) {
-    const jackNerfer = (delta) => 1 - 7e-5 * ((0.15 + Math.abs(delta - 0.08)) ** (-4));
+
+    // Loop-invariant term (depends only on x) — hoisted out of the per-note loop.
+    const xPowQuarter = 0.11 * (x ** 0.25);
 
     const Jks = {};
     const deltaKs = {};
@@ -392,7 +254,7 @@ function computeJbar(K, x, noteSeqByColumn, baseCorners) {
             if (leftIdx >= rightIdx) continue;
 
             const delta = 0.001 * (end - start);
-            const val = (delta ** -1) * ((delta + 0.11 * (x ** 0.25)) ** -1) * jackNerfer(delta);
+            const val = (delta ** -1) * ((delta + xPowQuarter) ** -1) * jackNerfer(delta);
 
             for (let idx = leftIdx; idx < rightIdx; idx += 1) {
                 Jks[k][idx] = val;
@@ -453,8 +315,12 @@ function computeXbar(K, x, noteSeqByColumn, activeColumns, baseCorners) {
         } else if (k === K) {
             notesInPair = noteSeqByColumn[K - 1] || [];
         } else {
-            notesInPair = [...(noteSeqByColumn[k - 1] || []), ...(noteSeqByColumn[k] || [])]
-                .sort((a, b) => a[1] - b[1]);
+            // mergeByHead merges the two time-sorted columns in O(n) with the same
+            // tie-break as a stable sort (a[i][1] <= b[j][1] keeps the lower column
+            // first, matching V8 Array#sort stability on the concatenation), so it is
+            // element-for-element identical to concat+sort. Verified: 508 random +
+            // boundary cases incl. equal timestamps -> identical (.omo/evidence/task-7-daniel.txt).
+            notesInPair = mergeByHead(noteSeqByColumn[k - 1] || [], noteSeqByColumn[k] || []);
         }
 
         for (let i = 1; i < notesInPair.length; i += 1) {
@@ -521,13 +387,20 @@ function computePbar(x, noteSeq, anchor, baseCorners) {
 
     const PStep = new Float64Array(baseCorners.length);
 
+    // Loop-invariant terms (depend only on x) — hoisted out of the per-note loop.
+    const xInv = x ** -1;
+    const xSixth = x / 6;
+    const xHalf = x / 2;
+    const twoThirdsX = (2 * x) / 3;
+    const baseInc = (0.08 * xInv * (1 - 24 * xInv * (xSixth ** 2))) ** 0.25;
+    const spike = 1000 * ((0.02 * (4 / x - 24)) ** 0.25);
+
     for (let i = 0; i < noteSeq.length - 1; i += 1) {
         const hL = noteSeq[i][1];
         const hR = noteSeq[i + 1][1];
         const deltaTime = hR - hL;
 
         if (deltaTime < 1e-9) {
-            const spike = 1000 * ((0.02 * (4 / x - 24)) ** 0.25);
             const leftIdx = bisectLeft(baseCorners, hL);
             const rightIdx = bisectRight(baseCorners, hL);
             for (let idx = leftIdx; idx < rightIdx; idx += 1) {
@@ -542,12 +415,11 @@ function computePbar(x, noteSeq, anchor, baseCorners) {
 
         const delta = 0.001 * deltaTime;
         const bVal = streamBooster(delta);
-        const baseInc = (0.08 * (x ** -1) * (1 - 24 * (x ** -1) * ((x / 6) ** 2))) ** 0.25;
 
         let inc;
-        if (delta < (2 * x) / 3) {
+        if (delta < twoThirdsX) {
             inc = (delta ** -1)
-                * ((0.08 * (x ** -1) * (1 - 24 * (x ** -1) * ((delta - x / 2) ** 2))) ** 0.25)
+                * ((0.08 * xInv * (1 - 24 * xInv * ((delta - xHalf) ** 2))) ** 0.25)
                 * Math.max(bVal, 1);
         } else {
             inc = (delta ** -1) * baseInc * Math.max(bVal, 1);
@@ -603,120 +475,10 @@ function computeAbar(K, activeColumns, deltaKs, ACorners, baseCorners) {
     return smoothOnCorners(ACorners, AStep, 250, 1.0, "avg");
 }
 
-function computeCAndKs(K, noteSeq, keyUsage, baseCorners) {
-    const noteHitTimes = noteSeq.map((n) => n[1]).sort((a, b) => a - b);
 
-    const CStep = new Float64Array(baseCorners.length);
-    let lo = 0;
-    let hi = 0;
-    for (let i = 0; i < baseCorners.length; i += 1) {
-        const s = baseCorners[i];
-        const low = s - 500;
-        const high = s + 500;
 
-        while (lo < noteHitTimes.length && noteHitTimes[lo] < low) {
-            lo += 1;
-        }
-        while (hi < noteHitTimes.length && noteHitTimes[hi] < high) {
-            hi += 1;
-        }
 
-        CStep[i] = hi - lo;
-    }
-
-    const KsStep = new Float64Array(baseCorners.length);
-    for (let i = 0; i < baseCorners.length; i += 1) {
-        let count = 0;
-        for (let k = 0; k < K; k += 1) {
-            if (keyUsage[k][i]) count += 1;
-        }
-        KsStep[i] = Math.max(count, 1);
-    }
-
-    return { CStep, KsStep };
-}
-
-function applyProximityEnvelope(allCorners, DAll, noteSeq) {
-    if (!noteSeq.length) {
-        return Array.from(DAll);
-    }
-
-    const noteTimes = noteSeq
-        .map((n) => Number(n[1]))
-        .filter((v) => Number.isFinite(v))
-        .sort((a, b) => a - b);
-
-    if (!noteTimes.length) {
-        return Array.from(DAll);
-    }
-
-    const proximityFadeMs = 500;
-    const out = new Float64Array(allCorners.length);
-    for (let i = 0; i < allCorners.length; i += 1) {
-        const t = allCorners[i];
-        const idx = bisectLeft(noteTimes, t);
-        const after = idx < noteTimes.length ? Math.abs(noteTimes[idx] - t) : Number.POSITIVE_INFINITY;
-        const before = idx > 0 ? Math.abs(noteTimes[idx - 1] - t) : Number.POSITIVE_INFINITY;
-        const d = Math.min(after, before);
-        const ratio = Math.max(0, Math.min(d / proximityFadeMs, 1));
-        const envelope = 0.5 * (1 + Math.cos(Math.PI * ratio));
-        out[i] = DAll[i] * envelope;
-    }
-    return Array.from(out);
-}
-
-function smoothDForGraph(allCorners, DAll, noteSeq) {
-    if (!allCorners.length || !DAll.length) {
-        return [];
-    }
-
-    const tStart = allCorners[0];
-    const tEnd = allCorners[allCorners.length - 1];
-    const uniformTimes = [];
-    for (let t = tStart; t <= tEnd + GRAPH_RESAMPLE_INTERVAL_MS; t += GRAPH_RESAMPLE_INTERVAL_MS) {
-        uniformTimes.push(t);
-    }
-
-    const noteTimes = noteSeq
-        .map((n) => Number(n[1]))
-        .filter((v) => Number.isFinite(v))
-        .sort((a, b) => a - b);
-
-    const uniformD = interpValues(uniformTimes, allCorners, DAll);
-
-    if (noteTimes.length) {
-        for (let i = 0; i < uniformTimes.length; i += 1) {
-            const t = uniformTimes[i];
-            const idx = bisectLeft(noteTimes, t);
-            const after = idx < noteTimes.length ? Math.abs(noteTimes[idx] - t) : Number.POSITIVE_INFINITY;
-            const before = idx > 0 ? Math.abs(noteTimes[idx - 1] - t) : Number.POSITIVE_INFINITY;
-            const dist = Math.min(after, before);
-            if (dist > BREAK_ZERO_THRESHOLD_MS) {
-                uniformD[i] = 0;
-            }
-        }
-    }
-
-    const sigmaSamples = SMOOTH_SIGMA_MS / GRAPH_RESAMPLE_INTERVAL_MS;
-    const smoothed = gaussianFilter1d(uniformD, sigmaSamples);
-
-    if (noteTimes.length) {
-        for (let i = 0; i < uniformTimes.length; i += 1) {
-            const t = uniformTimes[i];
-            const idx = bisectLeft(noteTimes, t);
-            const after = idx < noteTimes.length ? Math.abs(noteTimes[idx] - t) : Number.POSITIVE_INFINITY;
-            const before = idx > 0 ? Math.abs(noteTimes[idx - 1] - t) : Number.POSITIVE_INFINITY;
-            const dist = Math.min(after, before);
-            if (dist > BREAK_ZERO_THRESHOLD_MS) {
-                smoothed[i] = 0;
-            }
-        }
-    }
-
-    return Array.from(interpValues(allCorners, uniformTimes, smoothed));
-}
-
-export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options = {}) {
+export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
 
     const {
@@ -728,7 +490,7 @@ export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options
         noteSeqByColumn,
         lnRatio,
         columnCount,
-    } = preprocessDaniel(osuText, speedRate, odFlag);
+    } = preprocessDaniel(osuText, speedRate, odFlag, parsed);
 
     if (status === "Fail") return -1;
     if (status === "NotMania") return -2;
@@ -810,7 +572,6 @@ export function calculateDaniel(osuText, speedRate = 1.0, odFlag = null, options
 
     const normCumWeights = cumWeights.map((w) => w / totalWeight);
 
-    const targetPercentiles = [0.945, 0.935, 0.925, 0.915, 0.845, 0.835, 0.825, 0.815];
     const percentileIndices = targetPercentiles.map((p) => bisectLeft(normCumWeights, p));
 
     const firstGroup = percentileIndices.slice(0, 4).map((idx) => DSorted[Math.min(idx, DSorted.length - 1)]);

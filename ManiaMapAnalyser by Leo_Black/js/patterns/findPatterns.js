@@ -88,11 +88,20 @@ function appendCoreMatches(results, pattern, coreN, specificList, remaining, las
     appendFoundPattern(results, pattern, specificType, Math.max(coreN, m), remaining, lastNote);
 }
 
-function matches(specificPatterns, lastNote, primitives) {
-    let remaining = [...primitives];
-    const results = [];
+// ponytail: matchers only read a bounded head window (max 8: COORDINATION_COLUMN_LOCK
+// slice(0,8), WILDCARD_JACK slice(0,6), RELEASE slice(0,4), inverseReady slice(0,5),
+// headRows/destructures <= 5) and use xs.length only as a window guard; appendFoundPattern
+// reads at most index 5 (n2 = max(coreN, specific) <= 5). So an 8-element head-window
+// slice per iteration is bit-for-bit equivalent to the old full-tail view, while the
+// old per-iteration full-tail copy (O(n) per iteration -> O(n^2)) is gone.
+const MATCHER_WINDOW = 8;
 
-    while (remaining.length > 0) {
+function matches(specificPatterns, lastNote, primitives) {
+    const results = [];
+    let start = 0;
+
+    while (start < primitives.length) {
+    const remaining = primitives.slice(start, start + MATCHER_WINDOW);
     appendCoreMatches(results, CorePattern.Stream, CORE_STREAM(remaining), specificPatterns.Stream, remaining, lastNote);
     appendCoreMatches(results, CorePattern.Chordstream, CORE_CHORDSTREAM(remaining), specificPatterns.Chordstream, remaining, lastNote);
     appendCoreMatches(results, CorePattern.Jacks, CORE_JACKS(remaining), specificPatterns.Jack, remaining, lastNote);
@@ -100,7 +109,7 @@ function matches(specificPatterns, lastNote, primitives) {
     appendCoreMatches(results, CorePattern.Density, CORE_DENSITY(remaining), specificPatterns.Density, remaining, lastNote);
     appendCoreMatches(results, CorePattern.Wildcard, CORE_WILDCARD(remaining), specificPatterns.Wildcard, remaining, lastNote);
 
-    remaining = remaining.slice(1);
+    start += 1;
     }
 
     return results;

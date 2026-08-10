@@ -1,4 +1,6 @@
-﻿function stringToInt(value) {
+﻿import { xToColumn } from "./noteColumn.js";
+
+function stringToInt(value) {
     return Math.trunc(Number.parseFloat(value));
 }
 
@@ -182,8 +184,7 @@ export class OsuFileParser {
             if (this.columnCount > 0) {
         // Keep lane mapping proportional to 512 width to avoid skew on keymodes
         // where 512 is not divisible by key count.
-        column = Math.trunc((x * this.columnCount) / 512);
-        column = Math.min(this.columnCount - 1, Math.max(0, column));
+        column = xToColumn(x, this.columnCount);
             }
             this.columns.push(column);
 

@@ -122,3 +122,18 @@ export const PATTERNS_CONFIG = {
     JACKY_CONTEXT_WINDOW: 6,
     JACKY_FALLBACK_MAX_MSPB: 185.0,
 };
+
+// Shared mode-tag threshold logic. Browser side (js/app/modeLogic.js)
+// re-exports this; estimator + patterns consumers import it directly.
+export function modeTagFromLnRatio(lnRatio) {
+    if (!Number.isFinite(lnRatio)) {
+        return "Mix";
+    }
+    if (lnRatio <= PATTERNS_CONFIG.LN_MODE_LOW_THRESHOLD) {
+        return "RC";
+    }
+    if (lnRatio >= PATTERNS_CONFIG.LN_MODE_HIGH_THRESHOLD) {
+        return "LN";
+    }
+    return "Mix";
+}

@@ -7,6 +7,7 @@
  * The `id` field is echoed back for request matching in the manager.
  */
 
+import { runAnalysisPipeline } from "../../pipeline/runAnalysisPipeline.js";
 import { runSunnyEstimatorFromText } from "../../estimator/sunnyEstimator.js";
 import { runDanielEstimatorFromText } from "../../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../../estimator/azusaEstimator.js";
@@ -15,7 +16,28 @@ import { runRoxyEstimatorFromText } from "../../estimator/roxyEstimator.js";
 const ESTIMATORS = { Sunny: "Sunny", Daniel: "Daniel", Azusa: "Azusa", Roxy: "Roxy" };
 
 self.onmessage = (event) => {
-    const { id, osuText, options } = event.data || {};
+    const data = event.data || {};
+
+    // pipeline 消息：整段分析（解析/分派/归一化/SunnyWindow/派生/Interlude/Pattern/Ett/Companella 二次 Ett）
+    // 一次往返。runAnalysisPipeline 是异步的（ett WASM + interlude），结果经 then 回传。
+    if (data.type === "pipeline") {
+        const { id, input } = data;
+        if (!id || !input || !input.rawText) {
+            self.postMessage({ id, error: "Missing pipeline input" });
+            return;
+        }
+        runAnalysisPipeline(input)
+            .then((result) => {
+                self.postMessage({ id, result }, []);
+            })
+            .catch((err) => {
+                self.postMessage({ id, error: err?.message || String(err) });
+            });
+        return;
+    }
+
+    // 原 4 估算器消息（保留不动）。
+    const { id, osuText, options } = data;
     if (!osuText || !id) {
         self.postMessage({ id, error: "Missing osuText or id" });
         return;

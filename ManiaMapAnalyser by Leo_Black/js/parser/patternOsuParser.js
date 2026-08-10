@@ -1,4 +1,5 @@
 import { createBPM, createChart, createTimeItem, NoteType } from "../patterns/chart.js";
+import { xToColumn } from "./noteColumn.js";
 
 function parseSections(lines) {
     let sec = null;
@@ -26,13 +27,6 @@ function parseKV(sectionLines) {
         out[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
     }
     return out;
-}
-
-function xToColumn(x, keys) {
-    let col = Math.trunc((x / 512.0) * keys);
-    if (col < 0) col = 0;
-    if (col > keys - 1) col = keys - 1;
-    return col;
 }
 
 function findEarliestUpcomingRelease(holdingUntil) {

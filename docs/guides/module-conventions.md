@@ -26,9 +26,24 @@
 | 目录 | 环境 | 约束 |
 |---|---|---|
 | `js/app/` | 浏览器专属 | 可用 `window`/`document` |
+| `js/pipeline/` | 共享（Node benchmark 使用） | **禁止** `window`/`document`；纯函数、显式 options 传参、不读 state（见 §2.1） |
 | `js/estimator/`、`js/ett/`、`js/interlude/`、`js/parser/`、`js/patterns/`、`js/rework/` | 共享（Node benchmark 使用） | **禁止** `window`/`document` |
 
 `appContext.js` 顶层就执行 `document.getElementById`（`js/app/appContext.js:23-62` `statusEl` 等 DOM refs）——共享模块**不得** import 它或任何 `js/app/` 模块。
+
+### 2.1 `js/pipeline/` 目录规则
+
+`runAnalysisPipeline.js` 是分析管线的共享纯函数（worker 与主线程同步回退共用同一份）：
+
+- **纯函数 + state-free**：所有输入经 `{ rawText, estimatorAlgorithm, options, parsed? }` 显式传入，**禁止读 `state`**（含 `js/app/appContext.js`）；返回 JSON-safe 的普通对象。
+- **异步**：ett WASM 与 interlude 均为异步，`runAnalysisPipeline` 是 async 函数——worker 的 `"pipeline"` 消息分支必须经 then/catch 回传（`compute.worker.js`），调用方一律 `await`。
+- **软失败通道**：附属段（pattern/ett/interlude/companella-ett）各自 try/catch，失败置空字段 + 独立 `xxxError` 文本，**不并入 `errors[]`**（旧代码的 errors.push 带展示条件，由 analysis.js 按旧条件决定）。
+- **模式内聚**：估算器/归一化/SunnyWindow/Interlude 共享同一 `OsuFileParser` 实例（parse-once）；pattern 保留独立 patternOsuParser 解析、ett 保留自身解析——新附加段并入 pipeline 时同样按"能共享则共享、必须独立则独立"处理并记录决策。
+- 浏览器专属逻辑（`detectVibro`、渲染、缓存写门）一律留在 `js/app/`。
+
+### 2.2 `js/rework/reworkMathCore.js` 共享数学内核
+
+`reworkMathCore.js` 保存 sunny/daniel 两个 rework 算法**逐字相同**（忽略空白/注释）的数学工具函数与常量（bisect/cumsum/smooth/interp/gaussian/rescale/mergeByHead/computeCAndKs/applyProximityEnvelope/smoothDForGraph + `jackNerfer`/`targetPercentiles` + 图表平滑窗口常量）。该文件是**逐字抽取**，不是"择优合并"：任何数值/求值顺序改动都会同时改变两个估算器。**有差异的函数不得合并进本文件**——各算法保留自己的本地版本（如 `computeJbar`/`computePbar` 的差异实现仍在各自文件），本文件只收两处调用形态完全兼容的逐字相同单元。改动本文件前必须跑全量回归比对（748 样本全量比对）。
 
 ### 3. `import.meta.url` 模式
 
@@ -36,6 +51,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 - Worker 创建：`manager.js:18-21` `ensureWorker()` 内 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`
 - WASM 路径：`calc.js:56-59` `locateFile` 的 `new URL(\`./versions/${path}\`, import.meta.url)`；`calc.js:73` 同模式（Node 侧经 `toWasmPath` 转文件系统路径）
+- **worker 内 WASM 已验证可用**：`import.meta.url` 按**模块文件**解析（calc.js 自己的 URL），worker 中与主线程一致——`locateFile` 生成的 wasm URL 指向同源静态资源，fetch 实例化正常（task 12 实测，无需改动 loader）。
 - ONNX 路径：`companellaEstimator.js:63`（`ort.env.wasm.wasmPaths`）、`companellaEstimator.js:67`（`dan_model.onnx` URL）
 
 ### 4. 动态 `import()` 唯一场景

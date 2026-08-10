@@ -11,6 +11,7 @@
 | 文档或路径 | 目标 | 说明 |
 | --- | --- | --- |
 | [analysis-pipeline.md](analysis-pipeline.md) | AI | 插件分析管线总览：tosu WebSocket → 谱面获取 → 解析 → 估算 → 显示 的完整数据流 |
+| [worker.md](worker.md) | AI | Worker 与 runAnalysisPipeline 架构：worker 生命周期、消息协议、纯函数契约、共享解析、WASM-in-worker、stale 粒度 |
 | [result-cache.md](result-cache.md) | AI | 结果缓存（LRU）机制：缓存键、命中覆盖检查、写入门槛与失效时机 |
 | [settings-pipeline.md](settings-pipeline.md) | AI | 设置管线：settings.json → 解析 → 状态注入 → 缓存失效与重算触发 |
 | [mod-handling.md](mod-handling.md) | AI | mod 处理：mod 代码解析、倍速/OD 影响、modSignature 的构成与作用 |
@@ -30,6 +31,7 @@ This directory contains technical documents for the plugin's internal data pipel
 | Document or Path | Target | Description |
 | --- | --- | --- |
 | [analysis-pipeline.md](analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
+| [worker.md](worker.md) | AI | Worker and runAnalysisPipeline architecture: worker lifecycle, message protocol, pure-function contract, shared parsing, WASM-in-worker, stale granularity |
 | [result-cache.md](result-cache.md) | AI | Result cache (LRU) mechanism: cache key, hit coverage check, write gate, invalidation timing |
 | [settings-pipeline.md](settings-pipeline.md) | AI | Settings pipeline: settings.json -> parse -> state injection -> cache invalidation and recompute trigger |
 | [mod-handling.md](mod-handling.md) | AI | Mod handling: mod code parsing, speed/OD effects, modSignature composition and purpose |

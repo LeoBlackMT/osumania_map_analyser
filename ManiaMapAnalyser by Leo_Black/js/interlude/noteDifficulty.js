@@ -1,6 +1,7 @@
 import { keysOnLeftHand } from "./layout.js";
 import { isPlayableNoteType } from "./types.js";
 import { f32 } from "./numberUtils.js";
+import { jackBpm } from "../patterns/patternsDef.js";
 
 const JACK_CURVE_CUTOFF = f32(230.0);
 const STREAM_CURVE_CUTOFF = f32(10.0);
@@ -10,7 +11,7 @@ const STREAM_SCALE = f32(6.0);
 const STREAM_POW = f32(0.5);
 
 function msToJackBpm(delta) {
-    const value = f32(15000.0 / delta);
+    const value = f32(jackBpm(delta));
     return value < JACK_CURVE_CUTOFF ? value : JACK_CURVE_CUTOFF;
 }
 

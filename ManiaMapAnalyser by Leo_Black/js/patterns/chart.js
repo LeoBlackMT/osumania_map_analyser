@@ -1,10 +1,10 @@
-﻿export const NoteType = {
+﻿export const NoteType = Object.freeze({
     NOTHING: 0,
     NORMAL: 1,
     HOLDHEAD: 2,
     HOLDBODY: 3,
     HOLDTAIL: 4,
-};
+});
 
 export function createTimeItem(time, data) {
     return { Time: Number(time), Data: data };

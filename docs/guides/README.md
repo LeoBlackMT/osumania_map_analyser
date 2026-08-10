@@ -16,6 +16,7 @@
 | 文档或路径 | 目标 | 说明 |
 | --- | --- | --- |
 | [adding-a-setting.md](adding-a-setting.md) | AI | 新增设置项的完整流程指南（settings.json → 解析器 → state → 缓存失效） |
+| [adding-to-worker.md](adding-to-worker.md) | AI | 新增估算器/管线阶段到 worker 的完整流程指南（入口纯化 → 注册 → 消费接线 → golden 扩展） |
 | [cache-invalidation.md](cache-invalidation.md) | AI | 结果缓存失效机制说明与新增计算相关设置时的注意事项 |
 | [module-conventions.md](module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
 
@@ -39,6 +40,7 @@ Use the links to jump to the corresponding document.
 | Document or Path | Target | Description |
 | --- | --- | --- |
 | [adding-a-setting.md](adding-a-setting.md) | AI | Complete guide for adding a setting (settings.json -> parser -> state -> cache invalidation) |
+| [adding-to-worker.md](adding-to-worker.md) | AI | Complete guide for adding an estimator/pipeline stage to the worker (entry purification -> registration -> consumer wiring -> golden extension) |
 | [cache-invalidation.md](cache-invalidation.md) | AI | Result cache invalidation notes and cautions when adding computation-affecting settings |
 | [module-conventions.md](module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
 

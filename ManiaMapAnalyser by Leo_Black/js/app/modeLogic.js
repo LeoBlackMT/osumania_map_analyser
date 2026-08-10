@@ -1,15 +1,6 @@
-export function modeTagFromLnRatio(lnRatio) {
-    if (!Number.isFinite(lnRatio)) {
-        return "Mix";
-    }
-    if (lnRatio <= 0.15) {
-        return "RC";
-    }
-    if (lnRatio >= 0.9) {
-        return "LN";
-    }
-    return "Mix";
-}
+// Shared threshold logic (js/patterns/config.js) re-exported for the
+// browser side; analysis.js imports it from here.
+export { modeTagFromLnRatio } from "../patterns/config.js";
 
 export function normalizeClientStateName(value) {
     return String(value || "")

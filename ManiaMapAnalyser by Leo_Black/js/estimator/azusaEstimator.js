@@ -819,25 +819,25 @@ function computeReferenceCorrection(azusaEst, danielNumeric, sunnyNumeric) {
     return clamp(correction * gate, -1.2, 1.2);
 }
 
-export function runAzusaEstimatorFromText(osuText, options = {}) {
+export function runAzusaEstimatorFromText(osuText, options = {}, parsed = null) {
     const speedRate = Number.isFinite(options.speedRate) && options.speedRate > 0 ? Number(options.speedRate) : 1.0;
     const withGraph = options.withGraph === true;
     const forceSunnyReferenceHo = options.forceSunnyReferenceHo !== false;
     const precomputedDanielResult = options.precomputedDanielResult || null;
     const precomputedSunnyResult = options.precomputedSunnyResult || null;
 
-    const parser = new OsuFileParser(osuText);
-    parser.process();
-    const parsed = parser.getParsedData();
+    const parser = parsed != null ? parsed : new OsuFileParser(osuText);
+    if (parsed == null) parser.process();
+    const parsedData = parser.getParsedData();
 
-    const lnRatio = Number(parsed?.lnRatio) || 0;
-    const columnCount = Number(parsed?.columnCount) || 0;
+    const lnRatio = Number(parsedData?.lnRatio) || 0;
+    const columnCount = Number(parsedData?.columnCount) || 0;
 
-    if (parsed?.status === "Fail") {
+    if (parsedData?.status === "Fail") {
         return buildErrorResult("ParseFailed", "Beatmap parse failed", { lnRatio, columnCount });
     }
 
-    if (parsed?.status === "NotMania") {
+    if (parsedData?.status === "NotMania") {
         return buildErrorResult("NotMania", "Beatmap mode is not mania", { lnRatio, columnCount });
     }
 
@@ -845,7 +845,7 @@ export function runAzusaEstimatorFromText(osuText, options = {}) {
         return buildErrorResult("UnsupportedKeys", "Azusa only supports 4K", { lnRatio, columnCount });
     }
 
-    const taps = buildTapNotes(parsed);
+    const taps = buildTapNotes(parsedData);
     if (taps.length < AZUSA_CONFIG.minNotes) {
         return buildErrorResult(
             "TooShort",
@@ -884,7 +884,7 @@ export function runAzusaEstimatorFromText(osuText, options = {}) {
         danielHasNativeNumeric = hasDanielNativeNumeric(precomputedDanielResult);
     } else {
         try {
-            danielResult = runDanielEstimatorFromText(osuText, options);
+            danielResult = runDanielEstimatorFromText(osuText, options, parsed);
             danielNumeric = estimateDanielNumeric(danielResult);
             danielHasNativeNumeric = hasDanielNativeNumeric(danielResult);
         } catch {
@@ -901,7 +901,7 @@ export function runAzusaEstimatorFromText(osuText, options = {}) {
             const sunnyOptions = forceSunnyReferenceHo
                 ? { ...options, cvtFlag: "HO" }
                 : options;
-            sunnyResult = runSunnyEstimatorFromText(osuText, sunnyOptions);
+            sunnyResult = runSunnyEstimatorFromText(osuText, sunnyOptions, parsed);
             sunnyNumeric = estimateSunnyNumeric(sunnyResult);
         } catch {
             sunnyNumeric = null;

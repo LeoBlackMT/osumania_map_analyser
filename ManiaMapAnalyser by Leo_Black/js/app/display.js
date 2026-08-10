@@ -247,7 +247,8 @@ function parseRcDifficultyLevel(diffText) {
     }
 
     // For combined "RC || LN", take only the RC part (first line after formatDiffForDisplay split)
-    const rcPart = diffText.split("\n")[0].trim();
+    // Lowercased: Daniel's DAN labels are Title-case ("Epsilon High"), RC suffixes are lowercase.
+    const rcPart = diffText.split("\n")[0].trim().toLowerCase();
     if (!rcPart) {
         return 0;
     }

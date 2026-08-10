@@ -6,13 +6,13 @@ import {
     normalizeReworkResult,
 } from "./reworkEstimatorUtils.js";
 
-export function runDanielEstimatorFromText(osuText, options = {}) {
+export function runDanielEstimatorFromText(osuText, options = {}, parsed = null) {
     const speedRate = options.speedRate ?? 1.0;
     const odFlag = options.odFlag ?? null;
     const cvtFlag = options.cvtFlag ?? null;
     const withGraph = options.withGraph === true;
 
-    const danielResult = calculateDaniel(osuText, speedRate, odFlag, { withGraph });
+    const danielResult = calculateDaniel(osuText, speedRate, odFlag, { withGraph }, parsed);
 
     // Keep previous behavior: Daniel only supports 4K and falls back to Sunny.
     if (danielResult === -3) {
@@ -23,19 +23,19 @@ export function runDanielEstimatorFromText(osuText, options = {}) {
             withGraph,
             extendedEstimationRange: options.extendedEstimationRange,
             enableAlwaysShowLNDifficulty: options.enableAlwaysShowLNDifficulty,
-        });
+        }, parsed);
     }
 
-    const parsed = normalizeReworkResult(danielResult);
-    const useDanielDifficulty = parsed.columnCount === 4;
-    const danielDifficulty = useDanielDifficulty ? estimateDanielDan(parsed.star) : null;
+    const parsedResult = normalizeReworkResult(danielResult);
+    const useDanielDifficulty = parsedResult.columnCount === 4;
+    const danielDifficulty = useDanielDifficulty ? estimateDanielDan(parsedResult.star) : null;
     const numericDifficulty = useDanielDifficulty ? danielDifficulty.numeric : null;
 
     return {
-        ...parsed,
+        ...parsedResult,
         estDiff: useDanielDifficulty
             ? danielDifficulty.label
-            : estDiff(parsed.star, parsed.lnRatio, parsed.columnCount, options.extendedEstimationRange === true, options.enableAlwaysShowLNDifficulty === true),
+            : estDiff(parsedResult.star, parsedResult.lnRatio, parsedResult.columnCount, options.extendedEstimationRange === true, options.enableAlwaysShowLNDifficulty === true),
         numericDifficulty,
         numericDifficultyHint: useDanielDifficulty && !Number.isFinite(numericDifficulty)
             ? "N/A"

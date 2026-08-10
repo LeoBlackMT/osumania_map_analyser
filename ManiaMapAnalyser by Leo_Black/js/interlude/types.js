@@ -1,10 +1,7 @@
-export const NoteType = Object.freeze({
-    NOTHING: 0,
-    NORMAL: 1,
-    HOLDHEAD: 2,
-    HOLDBODY: 3,
-    HOLDTAIL: 4,
-});
+import { NoteType } from "../patterns/chart.js";
+
+// Re-exported single source (js/patterns/chart.js) — see module conventions.
+export { NoteType } from "../patterns/chart.js";
 
 export function createEmptyRow(keyCount) {
     return new Array(keyCount).fill(NoteType.NOTHING);

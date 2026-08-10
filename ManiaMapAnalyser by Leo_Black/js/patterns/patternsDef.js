@@ -122,7 +122,9 @@ function isSameHandAdjacent(colA, colB, split) {
     return (colA < split) === (colB < split);
 }
 
-function jackBpm(deltaMs) {
+// Raw jack BPM formula (no f32 wrapper). Shared with interlude/noteDifficulty,
+// which applies its own f32 rounding at the call site.
+export function jackBpm(deltaMs) {
     if (deltaMs <= 0) return 230;
     return Math.min(15000 / deltaMs, 230);
 }
