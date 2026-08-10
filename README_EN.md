@@ -8,7 +8,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ![Features](img/features.gif)
 
 <details>
-<summary>New Theme Screenshots</summary>
+<summary>Theme Screenshots</summary>
 <img src="img/themeLN.jpg" alt="LN" width="400">
 <img src="img/themeRC.jpg" alt="RC" width="400">
 <img src="img/full.jpg" alt="Full" width="400">

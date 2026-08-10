@@ -6,7 +6,7 @@
 - 本目录存放**重大破坏性更改说明文档**（给人类和 AI 共同阅读），记录修改内容与修改原因，便于后续代码审查和测试。
 - 命名约定：**时间戳 + 修改内容**（如 `2026-08-09-perf-analysis-pipeline.md`），与 `docs/README.md:17`（中文）/ `:59`（English）的"按时间戳和修改内容命名"约定一致。
 - 写作要求：
-  - 文档**必须双语**（每节中英并列），人类与 AI 共同阅读（docs/README.md:17）。
+  - 文档**必须双语**，人类与 AI 共同阅读（docs/README.md:17）。
   - 每项破坏性更改含五要素：**修改内容（What changed）/ 修改原因（Why，关联性能依据）/ 影响范围（Scope）/ 兼容策略（Compat）/ 验证方式（Verification）**。
   - 验证方式写为回归验证结论与实测摘要（不引用本地命令或证据路径）。
   - 所有内容描述**实际落地代码**，不写"将要在未来"的推测。
@@ -30,7 +30,7 @@
 - This directory stores **major breaking-changes documents** (for both humans and AI), recording what changed and why, to make future code review and testing easier.
 - Naming convention: **timestamp + change description** (e.g. `2026-08-09-perf-analysis-pipeline.md`), consistent with `docs/README.md:17` (Chinese) / `:59` (English) "named with a timestamp and the change description".
 - Writing requirements:
-  - Documents **must be bilingual** (Chinese and English per section) since both humans and AI read them (docs/README.md:17).
+  - Documents **must be bilingual** since both humans and AI read them (docs/README.md:17).
   - Each breaking change carries five elements: **What changed / Why (with perf evidence) / Scope / Compatibility / Verification**.
   - Verification is written as regression-comparison conclusions and measurement summaries (no local commands or evidence paths).
   - All content describes **actual landed code**, never "will be implemented in the future" speculation.

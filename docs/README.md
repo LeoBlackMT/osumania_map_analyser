@@ -7,7 +7,7 @@
 - 本文档是docs/目录下的说明和索引文档。
 - 本目录包含了项目功能/管线技术文档和指南文档（给AI），以及项目的说明文档和使用文档（给人类）。
 - 对于给AI的文档，一般不考虑其语言，但是不应当使用除中文和英文之外的语言。
-- 对于给人类的文档，使用中英双语。如果文档过长，则拆分到 `*_en.md` 和 `*.md` 两个文件中，前者为英文，后者为中文。
+- 对于给人类的文档，使用中英双语。先使用中文，在全部结束之后下方使用英文。如果文档过长，则拆分到 `*_en.md` 和 `*.md` 两个文件中，前者为英文，后者为中文。
 - 对于非技术文档，目标为普通用户，请勿使用过于专业的术语，尽量使用通俗易懂的语言，直白地描述功能。
 - 对于技术文档，目标为开发者，请尽量使用专业术语，准确地描述功能和实现细节。
 - 对于一个类别的文档，请放在子目录中，并在子目录中放置一个README.md文件，作为该类别的说明文档和索引文档。
@@ -52,7 +52,7 @@
 - This document is the guide and index for the docs/ directory.
 - The directory contains feature/pipeline technical documents and guide documents (for AI), as well as project description documents and usage documents (for humans).
 - For AI documents, the language does not matter in general, but no language other than Chinese or English should be used.
-- For human documents, use both Chinese and English. If a document is too long, split it into `*_en.md` and `*.md` files, the former in English and the latter in Chinese.
+- For human documents, use both Chinese and English. Use Chinese first, followed by the English translation. If a document is too long, split it into `*_en.md` and `*.md` files, the former in English and the latter in Chinese.
 - For non-technical documents, the target is ordinary users; avoid overly professional terminology, use plain and easy-to-understand language, and describe features directly.
 - For technical documents, the target is developers; use professional terminology and describe features and implementation details accurately.
 - Documents of one category should be placed in a subdirectory, with a README.md inside that subdirectory serving as the category's guide and index document.
