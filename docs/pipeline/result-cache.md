@@ -165,7 +165,7 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 | 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty |
 | 12 | `extendedEstimationRangeChanged` | extendedEstimationRange |
 
-**已移出失效列表的显示派生设置**（toggle-diff 实证零输出契约差异，见 `.omo/evidence/task-13-settings.txt`）：
+**已移出失效列表的显示派生设置**（toggle-diff 实证零输出契约差异，30 样本子集）：
 
 - `debugUseAmount`（debugChanged）——命中时重放排序 + Category 覆盖（§10）。
 - `display6kLevel`（display6kLevelChanged）——命中时按缓存 star 重算 sixKConst（§10）。

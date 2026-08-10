@@ -8,7 +8,7 @@
 - 写作要求：
   - 文档**必须双语**（每节中英并列），人类与 AI 共同阅读（docs/README.md:17）。
   - 每项破坏性更改含五要素：**修改内容（What changed）/ 修改原因（Why，关联性能依据）/ 影响范围（Scope）/ 兼容策略（Compat）/ 验证方式（Verification）**。
-  - 验证方式指向 `test/compare-golden.mjs` 命令与 `.omo/evidence/` 证据路径。
+  - 验证方式写为回归验证结论与实测摘要（不引用本地命令或证据路径）。
   - 所有内容描述**实际落地代码**，不写"将要在未来"的推测。
 - 何时新增：对管线/共享模块/缓存语义做出重大破坏性更改时（docs/README.md:17）；同时更新对应的管线文档和指南文档（docs/README.md:16），并在 `docs/README.md` 登记索引（docs/README.md:18）。
 
@@ -32,7 +32,7 @@
 - Writing requirements:
   - Documents **must be bilingual** (Chinese and English per section) since both humans and AI read them (docs/README.md:17).
   - Each breaking change carries five elements: **What changed / Why (with perf evidence) / Scope / Compatibility / Verification**.
-  - Verification points to the `test/compare-golden.mjs` commands and `.omo/evidence/` evidence paths.
+  - Verification is written as regression-comparison conclusions and measurement summaries (no local commands or evidence paths).
   - All content describes **actual landed code**, never "will be implemented in the future" speculation.
 - When to add: when making major breaking changes to the pipeline / shared modules / cache semantics (docs/README.md:17); also update the corresponding pipeline and guide documents (docs/README.md:16) and register the entry in `docs/README.md` (docs/README.md:18).
 

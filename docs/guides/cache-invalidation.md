@@ -112,14 +112,14 @@ if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings
 | 8 | `forceSunnyWindowChanged` | forceSunnyWindow | 强制 SunnyWindow LN 覆盖 → 改变实际执行与结果 |
 | 9 | `enableLNDifficultyChanged` | enableLNDifficulty | 控制 LN 难度计算 → 改变 `lnStar`/estDiff（快照字段 `analysis.js:760`、:436-437） |
 | 10 | `enableAnalyzeLNChanged` | enableAnalyzeLN | LN 分析开关 → 改变键型分析内容与 `needComputed` |
-| 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty | 控制 LN 难度是否常算/常显 → 改变快照内 estDiff/lnStar（toggle-diff 实证：lnRatio<0.15 谱面 estDiff 字符串有真实差异，`.omo/evidence/task-13-settings.txt`） |
+| 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty | 控制 LN 难度是否常算/常显 → 改变快照内 estDiff/lnStar（toggle-diff 实证：lnRatio<0.15 谱面 estDiff 字符串有真实差异） |
 | 12 | `extendedEstimationRangeChanged` | extendedEstimationRange | Sunny 家族使用扩展星数表 → 改变 estDiff（选项传入估算器 `analysis.js:446`） |
 
 **共同点**：全部**不在缓存键中**，且都改变快照 `analysis.js:751-776` 里存储的字段。第 5、6、10 项同时改变"算不算"（needComputed）与"存什么"（快照字段）。
 
 ### 显示派生设置：命中重派生替代失效（task 13）
 
-`debugUseAmount` 与 `display6kLevel` 曾在本列表（旧第 5、13 项），toggle-diff 实证（30 样本子集，`.omo/evidence/task-13-settings.txt`）其输出契约**零差异**后移出。它们的显示效果固化进快照派生字段（`mergedClusters` 排序/Category、`sixKConst`），命中时必须按当前设置重派生：
+`debugUseAmount` 与 `display6kLevel` 曾在本列表（旧第 5、13 项），toggle-diff 实证（30 样本子集）其输出契约**零差异**后移出。它们的显示效果固化进快照派生字段（`mergedClusters` 排序/Category、`sixKConst`），命中时必须按当前设置重派生：
 
 - `debugUseAmount` → 命中时从 `cached.patternReport.Clusters` 重放 `mergeDuplicateClusters` + `applyDebugUseAmountPostProcess`（analysis.js:604-632，与 miss 共用）。
 - `display6kLevel` → 命中时按 `runAnalysisPipeline` §6 同公式从缓存 star 重算 `sixKConst`（analysis.js:439-446）。

@@ -43,7 +43,7 @@
 
 ### 2.2 `js/rework/reworkMathCore.js` 共享数学内核
 
-`reworkMathCore.js` 保存 sunny/daniel 两个 rework 算法**逐字相同**（忽略空白/注释）的数学工具函数与常量（bisect/cumsum/smooth/interp/gaussian/rescale/mergeByHead/computeCAndKs/applyProximityEnvelope/smoothDForGraph + `jackNerfer`/`targetPercentiles` + 图表平滑窗口常量）。该文件是**逐字抽取**，不是"择优合并"：任何数值/求值顺序改动都会同时改变两个估算器。**有差异的函数不得合并进本文件**——各算法保留自己的本地版本（如 `computeJbar`/`computePbar` 的差异实现仍在各自文件），本文件只收两处调用形态完全兼容的逐字相同单元。改动本文件前必须跑 `node test/compare-golden.mjs` 全量比对。
+`reworkMathCore.js` 保存 sunny/daniel 两个 rework 算法**逐字相同**（忽略空白/注释）的数学工具函数与常量（bisect/cumsum/smooth/interp/gaussian/rescale/mergeByHead/computeCAndKs/applyProximityEnvelope/smoothDForGraph + `jackNerfer`/`targetPercentiles` + 图表平滑窗口常量）。该文件是**逐字抽取**，不是"择优合并"：任何数值/求值顺序改动都会同时改变两个估算器。**有差异的函数不得合并进本文件**——各算法保留自己的本地版本（如 `computeJbar`/`computePbar` 的差异实现仍在各自文件），本文件只收两处调用形态完全兼容的逐字相同单元。改动本文件前必须跑全量回归比对（748 样本全量比对）。
 
 ### 3. `import.meta.url` 模式
 

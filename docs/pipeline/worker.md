@@ -14,7 +14,7 @@ analysis.js:374 runInWorker(pipelineInput)         ← manager.js:40 runInWorker
   ▼
 analysis.js:375  wp ? await wp : await runAnalysisPipeline(pipelineInput)   ← 主线程同步回退，同一函数
   ▼
-Node harness（test/pipeline-runner.mjs computeOutput）直接 await runAnalysisPipeline（第三端，无 worker）
+Node 回归脚本（computeOutput）直接 await runAnalysisPipeline（第三端，无 worker）
 ```
 
 三端共用同一份 `runAnalysisPipeline`（`js/pipeline/runAnalysisPipeline.js`），保证 worker 路径、同步回退路径、Node 回归路径输出逐位一致（748 golden 全绿的基础）。
@@ -86,7 +86,7 @@ worker 端处理（compute.worker.js:23-37）：
 - **DOM-free / state-free / JSON-safe**：所有输入显式传入，**禁止读 `state`/`window`/`document`**（含 appContext）；共享模块纯度约束见 module-conventions.md §2。
 - **异步**：ett WASM（`analyzeEtternaFromText`）与 interlude（`calculateInterludeStar`）均 async。
 - 逐段顺序与旧 analysis.js 完全一致：解析 → 估算分派 → vibro 输入 → 归一化 → SunnyWindow → 派生（sixKConst）→ Interlude → Pattern → Ett → Companella 二次 Ett。
-- **错误通道**：估算器/SunnyWindow 抛错**向上传播**（调用方处理）；附属段各自 try/catch 软失败（§4.4）；`errors[]` 恒为空（硬错误预留字段，逐字一致承诺见 task-11 evidence §4）。
+- **错误通道**：估算器/SunnyWindow 抛错**向上传播**（调用方处理）；附属段各自 try/catch 软失败（§4.4）；`errors[]` 恒为空（硬错误预留字段，逐字一致承诺见实测记录）。
 
 ### 4.2 输入选项清单（全部显式传参）
 
@@ -160,7 +160,7 @@ worker 端处理（compute.worker.js:23-37）：
 | Roxy | canonicalizeOsuTiming 改写文本 + `precomputedSunnyResult: null` 硬编码 | **否**（文本被改写） | 独立计算 |
 | Sunny/Daniel/Companella | 无归一化 | 不适用 | 无 |
 
-决策表证据：`.omo/evidence/task-11-pipeline.txt` §2。
+决策表证据：task-11 实测记录 §2。
 
 ## 5. 共享解析（parse-once）
 
@@ -185,7 +185,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 - `canonicalizeOsuTiming` 在**任意** speedRate 下都改写文本（`raw - firstTime + ROXY_CANONICAL_FIRST_OBJECT_MS(1000)`，speedRate=1 是常数平移，≠1 还缩放时间差）→ 改写文本必须重新解析，不能吃共享实例。
 - cvtFlag ∈ {HO, IN} 排除：`applyConversionFlag` 原地变异 parser（§5.2），会弄脏调用方实例。
-- 速度 1 时平移不变性已被实证（roxy NM 20/20 identical，task-10 evidence）。
+- 速度 1 时平移不变性已被实证（roxy NM 20/20 identical，task-10 实测）。
 
 ### 5.4 各段的解析归属（能共享则共享，必须独立则独立）
 
@@ -217,7 +217,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 7.2 graph 留 pipeline（实测决策）
 
-graph 数组占 withGraph 消息体 ~99%，但 **structuredClone 耗时 0.6~3.2ms**（3.6 万点马拉松谱面 = 1.76MB/3.2ms）。搬主线程需重跑估算器 withGraph（Sunny 30~100ms / Mixed 100~400ms），是 10~100x 回归，且与 worker offload 目标直接冲突。**决策：graph 留在 pipeline（worker）内**。测量证据：`.omo/evidence/task-12-pipeline-ext.txt` §2。
+graph 数组占 withGraph 消息体 ~99%，但 **structuredClone 耗时 0.6~3.2ms**（3.6 万点马拉松谱面 = 1.76MB/3.2ms）。搬主线程需重跑估算器 withGraph（Sunny 30~100ms / Mixed 100~400ms），是 10~100x 回归，且与 worker offload 目标直接冲突。**决策：graph 留在 pipeline（worker）内**。测量证据：task-12 实测记录 §2。
 
 约束：`normalizeGraphSeries` 不降采样（只补缺刻时间），全量点参与渲染。worker 端任何摘要/重采样都会改变图形（渲染逐字约束）。
 

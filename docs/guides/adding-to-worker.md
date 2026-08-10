@@ -10,7 +10,7 @@ ManiaMapAnalyser by Leo_Black/js/
 ├── estimator/xxxEstimator.js        ← ① 入口纯化（本指南核心）
 ├── pipeline/runAnalysisPipeline.js  ← ② 注册到管线（或 compute.worker.js 白名单）
 ├── app/analysis.js                  ← ③ 消费侧接线 + 展示（浏览器专属，多为旧路径改造）
-└── （可选）test/pipeline-runner.mjs ← ④ golden matrix 扩展（Node 回归）
+└── （可选）Node 回归脚本 ← ④ golden 矩阵扩展（Node 回归）
 ```
 
 同步回退与 Node harness **不需要额外代码**：它们与 worker 共用 `runAnalysisPipeline`（同一函数）。本文以"新增一个估算器"为主线，管线阶段（pattern/ett/interlude 类附属段）的差异用 ⚠️ 标注。
@@ -63,7 +63,7 @@ grep -rn "state\.\|window\.\|document\." ManiaMapAnalyser\ by\ Leo_Black/js/esti
 - **管线阶段**：在 `runAnalysisPipeline.js` 内按顺序插入（当前顺序：Interlude :210-219 → Pattern :221-233 → Ett :235-249 → Companella 二次 Ett :251-272），附属段开关（`withXxx`）加入 options 并默认 false。
 - **⚠️ 不建议**往 `compute.worker.js:39-81` 旧 4 估算器白名单加分支，该分支已无调用方（analysis.js 全走 pipeline），保留仅为兼容。新增逻辑一律进 pipeline。
 
-**同步回退与 Node harness 自动获得**：`analysis.js:375` 与 `test/pipeline-runner.mjs computeOutput` 都调同一个 `runAnalysisPipeline`，注册即三端生效，不需要额外接线。
+**同步回退与 Node 回归脚本自动获得**：`analysis.js:375` 与回归脚本的 `computeOutput` 都调同一个 `runAnalysisPipeline`，注册即三端生效，不需要额外接线。
 
 ---
 
@@ -78,14 +78,14 @@ grep -rn "state\.\|window\.\|document\." ManiaMapAnalyser\ by\ Leo_Black/js/esti
 
 ---
 
-## 步骤 4：golden matrix 扩展（harness）
+## 步骤 4：golden matrix 扩展（Node 回归）
 
-`test/pipeline-runner.mjs` 的 `computeOutput` 与 `SETTING_COMBOS`（任务 13 后为 options-only）：
+Node 回归脚本的 `computeOutput` 与 `SETTING_COMBOS`（任务 13 后为 options-only）：
 
-- 新估算器：在 computeOutput 加阶段（keycount 分布见 `--matrix keys`；输出契约格式见 test/README.md"Per-sample output contract"）。
-- 新选项/设置：加进 `SETTING_COMBOS` 后 `node test/capture-golden.mjs --matrix settings` 重新捕获（60 files，5 combos × 12）+ `node test/compare-golden.mjs --matrix settings` 比对。
-- **全量门**：`node test/compare-golden.mjs` → `748 files compared, 0 diffs` + exit 0。
-- ⚠️ golden 覆盖盲区：748 样本 100% 4K（`{"4": 748}`），6K/7K 路径零覆盖，6K/7K 改动用合成样本（temp/ 内）或浏览器冒烟补验（test/README.md"Keycount coverage gap"）。
+- 新估算器：在 computeOutput 加阶段（keycount 分布见 `--matrix keys`；输出契约格式见回归脚本的 per-sample 输出契约）。
+- 新选项/设置：加进 `SETTING_COMBOS` 后按设置矩阵重新捕获（60 files，5 combos × 12）并全量比对。
+- **全量门**：748 样本全量比对，0 diffs + exit 0。
+- ⚠️ golden 覆盖盲区：748 样本 100% 4K（`{"4": 748}`），6K/7K 路径零覆盖，6K/7K 改动用合成样本或浏览器冒烟补验。
 - ⚠️ 修改估算器会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果，需按 benchmark 流程验证；**不得读取 benchmark repo 的 samples/ 谱面数据**（防过拟合，CLAUDE.md:67）。
 
 ---
@@ -126,7 +126,7 @@ grep -rn "state\.\|window\.\|document\." ManiaMapAnalyser\ by\ Leo_Black/js/esti
 - [ ] 输出 JSON-safe：无方法/getter（§1.4）
 - [ ] 已注册到 runAnalysisPipeline 分派/阶段（§2）
 - [ ] analysis.js 消费侧含主线程回退分支（§3）
-- [ ] golden matrix 扩展 + 全量门 748/0（§4）
+- [ ] golden matrix 扩展 + 全量门 748 样本 0 diffs（§4）
 - [ ] 大体积输出已做消息体量实测（§5）
 - [ ] 文档已同步 + breakings 双语说明（§6）
 - [ ] 修改前已备份（CLAUDE.md 备份规则：破坏性编辑先拷到 `backup/<时间戳>-<描述>/`）
@@ -134,7 +134,7 @@ grep -rn "state\.\|window\.\|document\." ManiaMapAnalyser\ by\ Leo_Black/js/esti
 
 ## 禁止模式
 
-- **数学改写**：任何数值/公式/求值顺序改动都必须过 `node test/compare-golden.mjs` 全量门；共享数学函数只进 `reworkMathCore.js`（逐字抽取，见 module-conventions.md §2.2）。
+- **数学改写**：任何数值/公式/求值顺序改动都必须过全量回归门（748 样本全量比对）；共享数学函数只进 `reworkMathCore.js`（逐字抽取，见 module-conventions.md §2.2）。
 - **共享对象变异**：不得原地修改传入的 parsed 实例/options/上游对象（worker 内无第二份拷贝，变异会静默改变其他消费段结果）。
 - **f32 位置移动**：`Math.fround` 相关代码移动/重排会改变浮点舍入位（interlude 的 `f32(jackBpm(delta))` 模式），保持原位。
 - **向 compute.worker.js 旧白名单加分支**：已无调用方，新增逻辑一律进 pipeline（§2）。

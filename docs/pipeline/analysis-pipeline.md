@@ -215,10 +215,10 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **附属段开关**：`withPattern/withEtterna/withInterlude` 取自 needComputed（fetch 前的保守值，与缓存覆盖检查同源，analysis.js:365-368）。默认 false——仅请求需要的段，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界：主线程消费段有回退分支，见下）。
 - **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。
 - **worker 往返**：manager 发 `{id, type:"pipeline", input}`，compute.worker.js 的 `"pipeline"` 消息分支**异步**调 `runAnalysisPipeline(input)` 经 then/catch 回传（原 4 估算器消息保留不动）；latestId + 30s 超时语义不变。
-- **归一化星数复用决策**（仅影响性能，不改数值）：Mixed 与 Azusa(`forceSunnyReferenceHo=false`) 的内部 Sunny 与归一化调用使用相同 options → 预计算一份 Sunny 结果经 `precomputedSunnyResult` 喂给估算器并复用其 star；Azusa(`forceSunnyReferenceHo=true`) 内部用 `cvtFlag:"HO"`、Roxy 内部用 canonicalized 文本 → 独立计算（决策表见 `.omo/evidence/task-11-pipeline.txt`）。
+- **归一化星数复用决策**（仅影响性能，不改数值）：Mixed 与 Azusa(`forceSunnyReferenceHo=false`) 的内部 Sunny 与归一化调用使用相同 options → 预计算一份 Sunny 结果经 `precomputedSunnyResult` 喂给估算器并复用其 star；Azusa(`forceSunnyReferenceHo=true`) 内部用 `cvtFlag:"HO"`、Roxy 内部用 canonicalized 文本 → 独立计算（决策表见 worker.md §4.5）。
 - **估算失败**：pipeline 不吞估算器/SunnyWindow 抛错——直接向上传播，analysis.js 外层 catch（:377-399）`resetReworkDisplay()` + `errors.push("Rework failed: ...")` + 失败路径回退元信息解析（pipeline 抛错时 parsedSummary 未返回，catch 内用最小 OsuFileParser 补齐 parsedInfo 供渲染降级，与旧 parseMetadataFromBeatmap 行为一致）；`errors[]` 恒为空（预留软失败通道），合并与写门条件不变。
 - **SunnyWindow 合并留在 analysis.js**（:483-496）：`sunnyWindow.estDiff` 的 LN 段替换 `resolvedEstDiff`、`typePercentageData`、`lnStar`、`pendingMixedCompanellaContext.lnDifficulty` 等展示/缓存逻辑仍在原处，逐行未变。
-- **graph 去留决策**（实测记录见 `.omo/evidence/task-12-pipeline-ext.txt`）：graph 数组占 pipeline 消息体 ~99%（withGraph 时），但 structuredClone 耗时仅 0.6–3.2ms（3.6 万点马拉松谱面）vs 主线程重算估算器 30–400ms——graph 留在 pipeline（worker）内，不搬主线程。
+- **graph 去留决策**（实测记录）：graph 数组占 pipeline 消息体 ~99%（withGraph 时），但 structuredClone 耗时仅 0.6–3.2ms（3.6 万点马拉松谱面）vs 主线程重算估算器 30–400ms——graph 留在 pipeline（worker）内，不搬主线程。
 
 ### 7.5 Companella（ONNX 追加，输入来自 pipeline）
 

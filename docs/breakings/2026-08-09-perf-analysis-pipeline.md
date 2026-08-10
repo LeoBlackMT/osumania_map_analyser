@@ -2,7 +2,7 @@
 
 > 重大破坏性更改说明（双语，人类与 AI 共同阅读）。
 > 日期：2026-08-09 ｜ 分支：perf/analysis-pipeline-optimization
-> 本文件记录该分支引入的**破坏性更改**（消息协议、纯函数语义、共享模块约束、缓存失效、验收口径等），每项含修改内容/原因/影响范围/兼容策略/验证方式五要素。所有内容以**实际落地代码**为准；验证命令与证据路径见文末。
+> 本文件记录该分支引入的**破坏性更改**（消息协议、纯函数语义、共享模块约束、缓存失效、验收口径等），每项含修改内容/原因/影响范围/兼容策略/验证方式五要素。所有内容以**实际落地代码**为准；验证结论见文末。
 
 ---
 
@@ -10,7 +10,7 @@
 
 > Major breaking-changes notice (bilingual, for both humans and AI).
 > Date: 2026-08-09 | Branch: perf/analysis-pipeline-optimization
-> This file records the **breaking changes** introduced by this branch (message protocol, pure-function semantics, shared-module purity constraints, cache invalidation, acceptance criteria, etc.). Each item carries five elements: What changed / Why / Scope / Compatibility / Verification. Everything reflects the **actual landed code**; verification commands and evidence paths are at the end.
+> This file records the **breaking changes** introduced by this branch (message protocol, pure-function semantics, shared-module purity constraints, cache invalidation, acceptance criteria, etc.). Each item carries five elements: What changed / Why / Scope / Compatibility / Verification. Everything reflects the **actual landed code**; verification conclusions are at the end.
 
 ---
 
@@ -51,15 +51,15 @@
 
 **English**：Legacy message branch kept (defensive); `latestId` stale-discard (manager.js:53) and 30s timeout (manager.js:67-72) semantics unchanged; Worker-ctor failure still returns null → main-thread sync fallback (analysis.js:375).
 
-**验证方式（Verification）**：`node test/compare-golden.mjs` 全量 748/0；浏览器冒烟 worker 路径 0 console errors（.omo/evidence/task-11-pipeline.txt §6、task-12-pipeline-ext.txt §5）。
+**验证方式（Verification）**：全量回归验证通过（748 样本全量比对，精确浮点比对）；浏览器冒烟 worker 路径 0 console errors（实测记录）。
 
 ---
 
 ## ② runAnalysisPipeline 纯函数（三端共用）/ Pure-function pipeline (shared by three consumers)
 
-**修改内容（What changed）**：新增 `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`，异步返回 16 业务字段 + `errors[]`（契约见 worker.md §4.3）。**三端共用同一函数**：worker（compute.worker.js:29）、主线程同步回退（analysis.js:375）、Node harness（test/pipeline-runner.mjs computeOutput）。逐段顺序与旧 analysis.js 一致（解析 → 估算分派 → vibro 输入 → 归一化 → SunnyWindow → sixKConst → Interlude → Pattern → Ett → Companella 二次 Ett）。
+**修改内容（What changed）**：新增 `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`，异步返回 16 业务字段 + `errors[]`（契约见 worker.md §4.3）。**三端共用同一函数**：worker（compute.worker.js:29）、主线程同步回退（analysis.js:375）、Node 回归脚本（computeOutput）。逐段顺序与旧 analysis.js 一致（解析 → 估算分派 → vibro 输入 → 归一化 → SunnyWindow → sixKConst → Interlude → Pattern → Ett → Companella 二次 Ett）。
 
-**English**：New `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`, async, returns 16 business fields plus `errors[]` (contract in worker.md §4.3). **One function shared by three consumers**: worker (compute.worker.js:29), main-thread sync fallback (analysis.js:375), Node harness (test/pipeline-runner.mjs computeOutput). Stage order matches the old analysis.js exactly.
+**English**：New `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`, async, returns 16 business fields plus `errors[]` (contract in worker.md §4.3). **One function shared by three consumers**: worker (compute.worker.js:29), main-thread sync fallback (analysis.js:375), Node regression script (computeOutput). Stage order matches the old analysis.js exactly.
 
 **修改原因（Why）**：单一实现消除 worker/同步回退/harness 三份分派代码的漂移风险；parse-once（解析一次共享给估算器/归一化/SunnyWindow/Interlude，主线程不再二次解析，analysis.js:376）。
 
@@ -73,7 +73,7 @@
 
 **English**：`errors[]` always empty (reserved); estimator/SunnyWindow throws propagate up and analysis.js outer catch reports "Rework failed: ..." in the old format (analysis.js:378-400); soft-failure fields are merged into errors[] by analysis.js per the old display gates (worker.md §4.4).
 
-**验证方式（Verification）**：`node test/compare-golden.mjs` 全量 748/0（harness 已切到 pipeline 同步路径，task-11 evidence §1/§5）。
+**验证方式（Verification）**：全量回归验证通过（748 样本全量比对，回归脚本已切到 pipeline 同步路径，实测记录）。
 
 ---
 
@@ -95,7 +95,7 @@
 
 **English**：Signature is backward compatible (3rd param defaults to null); all old call sites (incl. benchmark repo runners importing directly) keep original behavior by omission.
 
-**验证方式（Verification）**：task-9/10 QA 逐位一致（parsed 路径 273/273 + 120/120，.omo/evidence/task-9-parsed.txt、task-10-estimators.txt）；`node test/compare-golden.mjs` 全量 748/0。
+**验证方式（Verification）**：task-9/10 QA 逐位一致（parsed 路径 273/273 + 120/120）；全量回归验证通过（748 样本全量比对）。
 
 ---
 
@@ -117,7 +117,7 @@
 
 **English**：Signature unchanged (only the read source changed from state to options); direct callers relying on the old state value must pass it explicitly.
 
-**验证方式（Verification）**：`node test/compare-golden.mjs --matrix settings`（enableAnalyzeLN-on combo 有真实 typePercentageData 指纹）60/0；全量 748/0。
+**验证方式（Verification）**：设置矩阵回归验证通过（enableAnalyzeLN-on combo 有真实 typePercentageData 指纹，60 文件全量比对）；全量 748 样本回归验证通过。
 
 ---
 
@@ -127,9 +127,9 @@
 
 **English**：`estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false)` (reworkEstimatorUtils.js:98): the 5th param replaces the old `state.enableAlwaysShowLNDifficulty` read. Callers pass it explicitly: sunnyEstimator.js:15, danielEstimator.js:38 (both `options.enableAlwaysShowLNDifficulty === true`).
 
-**修改原因（Why）**：reworkEstimatorUtils 是共享模块（sunny/daniel/azusa/roxy/mixed 全链 import），读 state 即 import appContext → worker 加载即崩（⑥ 根因链的一部分）；该字段是唯一的 state 读取点（issues.md 实锤）。
+**修改原因（Why）**：reworkEstimatorUtils 是共享模块（sunny/daniel/azusa/roxy/mixed 全链 import），读 state 即 import appContext → worker 加载即崩（⑥ 根因链的一部分）；该字段是唯一的 state 读取点（根因分析确认）。
 
-**English**：reworkEstimatorUtils is a shared module (imported by the whole sunny/daniel/azusa/roxy/mixed chain); reading state means importing appContext → the worker crashes on load (part of the ⑥ root-cause chain); this field was the only state read (confirmed in issues.md).
+**English**：reworkEstimatorUtils is a shared module (imported by the whole sunny/daniel/azusa/roxy/mixed chain); reading state means importing appContext → the worker crashes on load (part of the ⑥ root-cause chain); this field was the only state read (confirmed by root-cause analysis).
 
 **影响范围（Scope）**：所有调用 estDiff 的估算器输出路径；`estDiff2`（:111）与 `normalizeReworkResult`（:124）本就不读 state，未改。
 
@@ -139,7 +139,7 @@
 
 **English**：Default false = config.js `defaults.enableAlwaysShowLNDifficulty`; old call sites omitting it keep the old default behavior.
 
-**验证方式（Verification）**：`node test/compare-golden.mjs` 全量 748/0；matrix settings（enableAlwaysShowLNDifficulty-on combo）60/0。
+**验证方式（Verification）**：全量回归验证通过（748 样本全量比对）；设置矩阵（enableAlwaysShowLNDifficulty-on combo）60 文件全量比对通过。
 
 ---
 
@@ -149,9 +149,9 @@
 
 **English**：Three `state`/appContext pollution points in shared estimation/parsing modules were cleared: `reworkEstimatorUtils.js` (estDiff 5th param, ⑤), `sunnyWindowEstimator.js` (④), `sunnyWindowAlgorithm.js` (enableAnalyzeLN threaded via options, task-2 fix). Shared module dirs (estimator/ett/interlude/parser/patterns/rework/pipeline) must **not** import `js/app/`, read `state`, or touch `window/document` (module-conventions.md §2).
 
-**修改原因（Why）**：**根因修复：worker 从未真正工作**。污染链：`compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` 顶层 `document.getElementById`。Web Worker 无 document → worker 脚本加载即抛 ReferenceError → manager 回退/超时 → **所有估算实际在主线程执行**（卡顿根源，issues.md 实锤）。清零后 worker 首次真正可用。
+**修改原因（Why）**：**根因修复：worker 从未真正工作**。污染链：`compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` 顶层 `document.getElementById`。Web Worker 无 document → worker 脚本加载即抛 ReferenceError → manager 回退/超时 → **所有估算实际在主线程执行**（卡顿根源，根因分析确认）。清零后 worker 首次真正可用。
 
-**English**：**Root-cause fix: the worker never actually worked.** Pollution chain: `compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` top-level `document.getElementById`. Web Workers have no document → the worker script throws ReferenceError on load → manager falls back/times out → **all estimation actually ran on the main thread** (root of the jank, confirmed in issues.md). After the cleanup the worker works for the first time.
+**English**：**Root-cause fix: the worker never actually worked.** Pollution chain: `compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` top-level `document.getElementById`. Web Workers have no document → the worker script throws ReferenceError on load → manager falls back/times out → **all estimation actually ran on the main thread** (root of the jank, confirmed by root-cause analysis). After the cleanup the worker works for the first time.
 
 **影响范围（Scope）**：所有共享模块（worker 路径 + Node benchmark runner：`esm-loader.mjs` 只强制 ESM format、**不 shim document**，清零前 Node 侧直接 import 也会崩）；浏览器行为不变（显式传值 = 旧 state 值）。
 
@@ -161,7 +161,7 @@
 
 **English**：Value semantics unchanged (defaults aligned with config.js); public API signatures backward compatible (③④⑤).
 
-**验证方式（Verification）**：plain `node test/compare-golden.mjs`（无 document shim 依赖）748/0；浏览器冒烟 worker 路径 0 console errors（task-11 evidence §6）；`node test/capture-golden.mjs --matrix settings` 60/0（task-13 evidence §6 证实无 shim 可跑）。
+**验证方式（Verification）**：plain Node 回归（无 document shim 依赖）748 样本全量比对通过；浏览器冒烟 worker 路径 0 console errors（实测记录）；设置矩阵 60 文件捕获与比对通过（task-13 实测证实无 shim 可跑）。
 
 ---
 
@@ -171,19 +171,19 @@
 
 **English**：The `clearResultCache()` conditions (settings.js:844-857) **dropped** `display6kLevelChanged` and `debugChanged` (debugUseAmount); `enableAlwaysShowLNDifficultyChanged` **stays**. All three remain in `recomputeNeeded` (settings.js:817-836), so toggling still schedules a recompute (hit-path re-render, no fetch, no pipeline).
 
-**修改原因（Why）**：toggle-diff 实证（30 样本，.omo/evidence/task-13-settings.txt §1）：`display6kLevel` **0/30 diff**（corpus 100% 4K，sixKConst gate `display6kLevel && columnCount===6` 永不触发）；`debugUseAmount` **0/30 diff**（浏览器后处理，pipeline 不消费）；`enableAlwaysShowLNDifficulty` **25/30 diff**（lnRatio<0.15 谱面的 estDiff 加 " || LN ..." 段，真实输出差异）→ **不可移出**。
+**修改原因（Why）**：toggle-diff 实证（30 样本，实测记录）：`display6kLevel` **0/30 diff**（corpus 100% 4K，sixKConst gate `display6kLevel && columnCount===6` 永不触发）；`debugUseAmount` **0/30 diff**（浏览器后处理，pipeline 不消费）；`enableAlwaysShowLNDifficulty` **25/30 diff**（lnRatio<0.15 谱面的 estDiff 加 " || LN ..." 段，真实输出差异）→ **不可移出**。
 
-**English**：Toggle-diff evidence (30 samples, .omo/evidence/task-13-settings.txt §1): `display6kLevel` **0/30 diff** (corpus is 100% 4K; the sixKConst gate `display6kLevel && columnCount===6` never fires); `debugUseAmount` **0/30 diff** (browser-only post-processing; the pipeline never consumes it); `enableAlwaysShowLNDifficulty` **25/30 diff** (estDiff gains " || LN ..." on lnRatio<0.15 maps, a real output change) → **must stay**.
+**English**：Toggle-diff evidence (30 samples, measured): `display6kLevel` **0/30 diff** (corpus is 100% 4K; the sixKConst gate `display6kLevel && columnCount===6` never fires); `debugUseAmount` **0/30 diff** (browser-only post-processing; the pipeline never consumes it); `enableAlwaysShowLNDifficulty` **25/30 diff** (estDiff gains " || LN ..." on lnRatio<0.15 maps, a real output change) → **must stay**.
 
 **影响范围（Scope）**：缓存命中率（两个设置不再清缓存 → 命中保留）；hit 路径需重派生这两个展示值（⑧）。
 
 **English**：Cache hit rate (these two settings no longer clear the cache → hits persist); the hit path must re-derive these two display values (⑧).
 
-**兼容策略（Compat）**：**若未来把 enableAlwaysShowLNDifficulty 移出失效链**，其 estDiff 重派生需要 DAN_INDEX 区间表 + sunnyWindow/Companella 后处理，**无法仅凭缓存字段重建**（task-13 evidence §1 记录），维持现状（保留失效）是唯一正确选项。
+**兼容策略（Compat）**：**若未来把 enableAlwaysShowLNDifficulty 移出失效链**，其 estDiff 重派生需要 DAN_INDEX 区间表 + sunnyWindow/Companella 后处理，**无法仅凭缓存字段重建**（task-13 实测记录），维持现状（保留失效）是唯一正确选项。
 
-**English**：**If enableAlwaysShowLNDifficulty were ever moved out of the invalidation chain**, its estDiff re-derivation needs the DAN_INDEX interval tables + sunnyWindow/Companella post-processing, which is **not reconstructable from cached fields alone** (task-13 evidence §1): keeping it in the chain is the only correct option.
+**English**：**If enableAlwaysShowLNDifficulty were ever moved out of the invalidation chain**, its estDiff re-derivation needs the DAN_INDEX interval tables + sunnyWindow/Companella post-processing, which is **not reconstructable from cached fields alone** (task-13 measurement): keeping it in the chain is the only correct option.
 
-**验证方式（Verification）**：浏览器缓存行为冒烟（task-13 evidence §7）：display6kLevel/debugUseAmount 切换后 CACHE-LOOKUP hit=yes、fetch/pipeline 计数不变；extendedEstimationRange 切换 hit=no、代数 +1、pipeline 重跑。
+**验证方式（Verification）**：浏览器缓存行为冒烟（实测记录）：display6kLevel/debugUseAmount 切换后 CACHE-LOOKUP hit=yes、fetch/pipeline 计数不变；extendedEstimationRange 切换 hit=no、代数 +1、pipeline 重跑。
 
 ---
 
@@ -205,7 +205,7 @@
 
 **English**：Re-derivation must be **exactly the pipeline/miss arithmetic** (same gate, same rounding, formula/path identity, never recompute); the gate short-circuits to null on 4K, and on 6K the result is bit-identical to the cached value (formula identity proven in Node).
 
-**验证方式（Verification）**：Node 公式恒等（合成 6K 谱面：pipeline sixKConst 20.1 == hit 公式 20.1；OFF → null，task-13 evidence §2a）；浏览器冒烟 display6kLevel/debugUseAmount 切换 hit=yes 且渲染正确（task-13 evidence §7）。
+**验证方式（Verification）**：Node 公式恒等（合成 6K 谱面：pipeline sixKConst 20.1 == hit 公式 20.1；OFF → null，实测记录）；浏览器冒烟 display6kLevel/debugUseAmount 切换 hit=yes 且渲染正确（实测记录）。
 
 ---
 
@@ -227,7 +227,7 @@
 
 **English**：Original exports kept; the 8 differing functions (computeJbar/computePbar etc.) do **not** enter mathCore (each algorithm keeps its local copy, module-conventions.md §2.2); `summary.js resolveModeTag`'s non-identical branch was rewritten into an equivalent form (proven over a 70-case grid).
 
-**验证方式（Verification）**：`node test/compare-golden.mjs` 全量 748/0；70-case 网格 + 位级恒等脚本（.omo/evidence/task-14-constants.txt、task-15-mathcore.txt）。
+**验证方式（Verification）**：全量回归验证通过（748 样本全量比对）；70-case 网格 + 位级恒等脚本（实测记录）。
 
 ---
 
@@ -249,7 +249,7 @@
 
 **English**：The gate (>5.0) matches the old intended behavior; there is no setting to disable "the fix" (it is a fix, not a new toggle).
 
-**验证方式（Verification）**：代码审查（pipeline vibro 顺序 + analysis.js 消费链）+ F3 浏览器冒烟覆盖 vibro 场景（issues.md 处置记录）；golden 748/0 证明非 vibro 路径无回归。
+**验证方式（Verification）**：代码审查（pipeline vibro 顺序 + analysis.js 消费链）+ F3 浏览器冒烟覆盖 vibro 场景（处置记录）；golden 748 样本全量比对证明非 vibro 路径无回归。
 
 ---
 
@@ -271,7 +271,7 @@
 
 **English**：N/A (non-breaking; declared to rule out misjudgment).
 
-**验证方式（Verification）**：`node test/compare-golden.mjs` 全量 748/0（含异常样本 3ef6d23c5d1517bb 的确定性解析错误，两测一致）；等价证明证据 .omo/evidence/task-4-findpatterns.txt、task-7-daniel.txt。
+**验证方式（Verification）**：全量回归验证通过（748 样本全量比对，含异常样本 3ef6d23c5d1517bb 的确定性解析错误，两测一致）；等价证明见实测记录。
 
 ---
 
@@ -281,9 +281,9 @@
 
 **English**：The original acceptance criterion "**median pipeline time ≥30%**" (based on task-3 harness measurement) is **retired and revised** to three verifiable criteria: ① main-thread blocking → ~0 (worker offload); ② single-algorithm pipeline total time **-15~25%** (measurable in Node); ③ parse count **13 → 1-2** (grep/code proof).
 
-**修改原因（Why）**：**测量口径与真实路径不符**。harness 口径 = 5 算法依次全跑（测试矩阵成本），非浏览器真实路径（单算法 + 归一化 + 主线程）。实测：sum-of-summaries 指标**数学下限 ≈380ms**（azusa+roxy+mixed 算法本身 ≈294ms，受"不改公式"约束不可压缩），目标 ≤302ms 不可达；且机器负载摆动 ±40%（同代码 291↔530ms），>30% 的"快态窗口"读数无法在当前机器状态复现（.omo/evidence/task-12-pipeline-ext.txt §4）。真实收益（worker offload、主线程零阻塞、一次往返）在 Node 同步 harness 的测量面之外，由浏览器冒烟证明。
+**修改原因（Why）**：**测量口径与真实路径不符**。harness 口径 = 5 算法依次全跑（测试矩阵成本），非浏览器真实路径（单算法 + 归一化 + 主线程）。实测：sum-of-summaries 指标**数学下限 ≈380ms**（azusa+roxy+mixed 算法本身 ≈294ms，受"不改公式"约束不可压缩），目标 ≤302ms 不可达；且机器负载摆动 ±40%（同代码 291↔530ms），>30% 的"快态窗口"读数无法在当前机器状态复现（task-12 实测记录）。真实收益（worker offload、主线程零阻塞、一次往返）在 Node 同步 harness 的测量面之外，由浏览器冒烟证明。
 
-**English**：**The measurement basis did not match the real path.** The harness metric = 5 algorithms run sequentially (test-matrix cost), not the real browser path (single algorithm + normalization + main thread). Measured: the sum-of-summaries metric has a **mathematical floor ≈380ms** (azusa+roxy+mixed algorithm cost alone ≈294ms, incompressible under the "no formula change" constraint), so ≤302ms is unreachable; machine load swings ±40% (same code 291↔530ms), and the >30% "fast-state window" reading cannot be reproduced on the current machine (task-12 evidence §4). The real wins (worker offload, zero main-thread blocking, single round trip) sit outside the sync Node harness measurement surface and are proven by browser smoke.
+**English**：**The measurement basis did not match the real path.** The harness metric = 5 algorithms run sequentially (test-matrix cost), not the real browser path (single algorithm + normalization + main thread). Measured: the sum-of-summaries metric has a **mathematical floor ≈380ms** (azusa+roxy+mixed algorithm cost alone ≈294ms, incompressible under the "no formula change" constraint), so ≤302ms is unreachable; machine load swings ±40% (same code 291↔530ms), and the >30% "fast-state window" reading cannot be reproduced on the current machine (task-12 measurement). The real wins (worker offload, zero main-thread blocking, single round trip) sit outside the sync Node harness measurement surface and are proven by browser smoke.
 
 **影响范围（Scope）**：后续 perf 任务的验收基准；不得再用"中位管线耗时 -30%"作为门槛表述。
 
@@ -293,7 +293,7 @@
 
 **English**：Methodology keeps the "measure both sides the same way" rule (identical protocol + identical sample set), quoting both metrics (Node-measurable + browser-observed).
 
-**验证方式（Verification）**：浏览器冒烟证明主线程零阻塞 + worker 路径渲染一致（task-11/12 evidence §6/§5，截图 .omo/evidence/task-11-page.png、task-12-4k.png 等）；单算法 pipeline 对比用同一 12 样本 matrixSubset（perf-baseline.json 复刻协议）；解析次数 13→1-2 由代码结构证明（pipeline 单解析 + patternOsuParser 独立 + ett 独立）。
+**验证方式（Verification）**：浏览器冒烟证明主线程零阻塞 + worker 路径渲染一致（task-11/12 实测记录，截图见本地实证目录）；单算法 pipeline 对比用同一 12 样本子集（复刻基线测量协议）；解析次数 13→1-2 由代码结构证明（pipeline 单解析 + patternOsuParser 独立 + ett 独立）。
 
 ---
 
@@ -301,36 +301,21 @@
 
 ### Node 回归门（golden）
 
-```powershell
-# 全量（748 样本，建议给足超时；本机负载高时可能 5-15 分钟）
-node test/compare-golden.mjs
-# 期望输出：748 files compared, 0 diffs，exit 0
+全量回归验证：748 样本全量比对（精确浮点比对，含 NaN/±Inf/-0 哨兵、数组指纹），期望 0 diffs、exit 0。支持快速子集（按样本目录过滤/限量）先过快门再跑全量。设置矩阵（5 combos × 12 = 60 文件）同协议比对，期望 0 diffs、exit 0。Node ≥ 20.10（本机 v24.4.0）；`--experimental-detect-module` 为 Node 24 默认，plain `node` 即可。本机负载高时全量运行可能 5-15 分钟，建议给足超时。
 
-# 快速子集（先过快门再跑全量）
-node test/compare-golden.mjs --limit 50
-node test/compare-golden.mjs --filter "samples/stamina/*.osu" --limit 3
-
-# 设置矩阵（5 combos × 12 = 60 文件）
-node test/compare-golden.mjs --matrix settings
-# 期望：60 files compared, 0 diffs，exit 0
-```
-
-- exit code：0 = 全部一致；1 = 有 diff/缺 golden；2 = 环境错误（samples 目录缺失）。详见 test/README.md。
-- Node ≥ 20.10（本机 v24.4.0）；`--experimental-detect-module` 为 Node 24 默认，plain `node` 即可。
-
-### 浏览器冒烟（Playwright，指向 .omo/evidence/）
+### 浏览器冒烟（Playwright）
 
 冒烟方法（routeWebSocket + 本地静态 server + addInitScript Worker 包装计数）与通过记录：
 
-| 场景 | 证据 | 断言 |
-| --- | --- | --- |
-| worker 路径 | .omo/evidence/task-11-pipeline.txt §6、task-11-page.png | star/diff 正确、**0 console errors**、worker 实例化 |
-| 同步回退（Worker 构造抛错） | task-11 evidence §6 phase 2 | 与 worker 路径逐位一致、0 console errors |
-| Companella 全链路（二次 Ett） | task-12-pipeline-ext.txt §5、task-12-4k.png | star=7.12、Overall=25.74（0.74.0）、pattern 渲染 |
-| 6K/7K 合成样本 | task-12-6k.png / task-12-7k.png | sixKConst（6K only）、keycount-aware ett 回退、渲染正常 |
-| 缓存命中重派生 | task-13-settings.txt §7、task-13-smoke.png | display6kLevel/debugUseAmount 切换 hit=yes 且不 fetch；extendedEstimationRange 切换 miss |
-| vibro（修复后） | F3 浏览器冒烟（issues.md 处置记录） | vibro 谱面显示 "VIBRO" + 隐藏图内数值 |
+| 场景 | 断言 |
+| --- | --- |
+| worker 路径 | star/diff 正确、**0 console errors**、worker 实例化 |
+| 同步回退（Worker 构造抛错） | 与 worker 路径逐位一致、0 console errors |
+| Companella 全链路（二次 Ett） | star=7.12、Overall=25.74（0.74.0）、pattern 渲染 |
+| 6K/7K 合成样本 | sixKConst（6K only）、keycount-aware ett 回退、渲染正常 |
+| 缓存命中重派生 | display6kLevel/debugUseAmount 切换 hit=yes 且不 fetch；extendedEstimationRange 切换 miss |
+| vibro（修复后） | vibro 谱面显示 "VIBRO" + 隐藏图内数值 |
 
-### 证据索引
+### 实证摘要
 
-本分支全部实证记录在 `.omo/evidence/`：`task-11-pipeline.txt`（pipeline 契约/决策表/冒烟）、`task-12-pipeline-ext.txt`（消息体量实测/graph 决策/perf 口径）、`task-13-settings.txt`（toggle-diff/失效收窄/命中重派生/矩阵修复）、`task-14-constants.txt`、`task-15-mathcore.txt`（去重与恒等证明）、`task-9-parsed.txt`/`task-10-estimators.txt`（parsed 路径 QA）、`task-4-findpatterns.txt`/`task-7-daniel.txt`（等价证明）。perf 基线：`test/perf-baseline.json`。
+本分支全部实证结论（pipeline 契约/决策表/冒烟、消息体量实测/graph 决策/perf 口径、toggle-diff/失效收窄/命中重派生、去重与恒等证明、parsed 路径 QA、等价证明）已在上文各节验证方式中给出；perf 基线采用同一 12 样本子集与相同测量协议（详见 worker.md §7.2 与 analysis-pipeline.md §7.4）。
