@@ -403,6 +403,7 @@ export async function fetchBeatmapFile(reason) {
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
         let sixKConst = null;
+        let vibroGateStar = null;
 
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
@@ -517,6 +518,8 @@ export async function fetchBeatmapFile(reason) {
                 }
 
                 rework = selectedRework;
+                // 算法自身 star（未经 :531 的星数归一化），供 vibro 检测使用。
+                vibroGateStar = Number(selectedRework?.star);
                 state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
                 if (isStaleRequest()) return;
 
@@ -668,8 +671,8 @@ export async function fetchBeatmapFile(reason) {
                     );
                     if (isStaleRequest()) return;
 
-                    // 用算法自身 star 判定（selectedRework 未经星数归一化），保持 vibro 检测既有行为不变。
-                    const reworkStarValue = Number(selectedRework?.star);
+                    // 用算法自身 star 判定（vibroGateStar 在估算器分派时保存，未经星数归一化），保持 vibro 检测既有行为不变。
+                    const reworkStarValue = Number(vibroGateStar);
                     const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
                     isVibroMap = state.vibroDetection
                         && vibroEligible
