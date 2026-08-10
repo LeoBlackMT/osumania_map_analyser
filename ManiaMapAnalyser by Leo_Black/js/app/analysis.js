@@ -302,7 +302,9 @@ export async function fetchBeatmapFile(reason) {
             || currentEstimatorAlgorithm() === "Companella"
             || currentEstimatorAlgorithm() === "Mixed",
     };
-    const cacheKey = `${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+    // 缓存键加版本段：star 口径统一为 Sunny 原始 sr 后，旧快照（存的是 Azusa/Roxy 映射 star）必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2";
+    const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
     if (state.enableResultCache && state.lastBeatmapIdentity) {
@@ -401,6 +403,7 @@ export async function fetchBeatmapFile(reason) {
         let pendingCompanellaEstimate = false;
         let pendingMixedCompanellaContext = null;
         let sixKConst = null;
+        let vibroGateStar = null;
 
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         const estimatorNeedsCompanellaData = estimatorAlgorithm === "Companella"
@@ -444,6 +447,7 @@ export async function fetchBeatmapFile(reason) {
                     cvtFlag: state.cvtFlag,
                     withGraph: state.diffText === "Graph" || showsGraph,
                     extendedEstimationRange: state.extendedEstimationRange,
+                    enableAlwaysShowLNDifficulty: state.enableAlwaysShowLNDifficulty,
                 };
 
                 const azusaOptions = {
@@ -457,9 +461,12 @@ export async function fetchBeatmapFile(reason) {
                 let nextNumericDifficultyHint = null;
                 let actualEstimatorAlgorithm = estimatorAlgorithm;
 
+                // Sunny 结果的 numericDifficulty 恒为 null（Number.isFinite(null) === false），
+                // 若不允许 null 通过，Azusa/Roxy 在 worker 回退到 Sunny 后这里会误判为无效，
+                // 导致主线程再同步重算一次 Sunny。允许 null 后该冗余消失，结果不变。
                 const isValidEstimatorResult = (result) => Boolean(result)
                     && Number.isFinite(result.star)
-                    && Number.isFinite(result.numericDifficulty)
+                    && (Number.isFinite(result.numericDifficulty) || result.numericDifficulty === null)
                     && typeof result.estDiff === "string";
 
                 if (estimatorAlgorithm === "Daniel") {
@@ -511,15 +518,28 @@ export async function fetchBeatmapFile(reason) {
                 }
 
                 rework = selectedRework;
+                // 算法自身 star（未经 :531 的星数归一化），供 vibro 检测使用。
+                vibroGateStar = Number(selectedRework?.star);
                 state.actualEstimatorAlgorithm = actualEstimatorAlgorithm;
                 if (isStaleRequest()) return;
+
+                // 星数胶囊统一为 Sunny 原始 sr：Azusa/Roxy/Mixed 的 star 是自身 numeric 的线性映射
+                // （3.4 + 0.38 * numericDifficulty），与 sunnyAlgorithm.js 输出的 sr 口径不同。
+                // 对未回退到 Sunny 的这些算法，用与"Sunny 算法选择"完全相同的调用重算 sr 并覆盖，
+                // 保证左上角星数胶囊（及 ReworkSR 模式的右胶囊）始终显示 Sunny 原始输出。
+                // Daniel 使用独立改进算法（非 Sunny 口径），排除；Companella/SunnyWindow 的 star 本就是 Sunny sr。
+                if (actualEstimatorAlgorithm === "Azusa"
+                    || actualEstimatorAlgorithm === "Roxy"
+                    || actualEstimatorAlgorithm === "Mixed") {
+                    rework = { ...rework, star: Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star) };
+                }
                 resolvedEstDiff = nextEstDiff;
                 resolvedNumericDifficulty = nextNumericDifficulty;
                 resolvedNumericDifficultyHint = nextNumericDifficultyHint;
 
                 // 如果强制使用SunnyWindow，在这里替换LN部分
                 if (shouldForceSunnyWindow) {
-                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, estimatorOptions);
+                  const sunnyWindowRework = runSunnyWindowEstimatorFromText(rawText, { ...estimatorOptions, enableAnalyzeLN: state.enableAnalyzeLN });
                   const sunnyWindowLNEstDiff = sunnyWindowRework.estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0)[1];
                   typePercentageData = sunnyWindowRework.typePercentageData;
                   if (sunnyWindowLNEstDiff) {
@@ -533,11 +553,12 @@ export async function fetchBeatmapFile(reason) {
                 }
 
                 // 6K 定数: compute Sunny SR for constant rating display
+                // 6K 谱面下 rework.star 恒为 Sunny sr（Daniel/Azusa/Roxy 非 4K 均回退 Sunny，
+                // Mixed 走 sunnyBaseline，Companella 直接跑 Sunny，且上方已对未回退算法归一化），
+                // 直接使用即可，无需按算法分支重算。
                 sixKConst = null;
                 if (state.display6kLevel && Number(parsedInfo.columnCount) === 6) {
-                    const sunnySrc = actualEstimatorAlgorithm === "Sunny"
-                        ? Number(rework.star)
-                        : Number(runSunnyEstimatorFromText(rawText, estimatorOptions).star);
+                    const sunnySrc = Number(rework.star);
                     state.sunnySR = sunnySrc;
                     if (Number.isFinite(sunnySrc) && sunnySrc > 0) {
                         sixKConst = sunnySrc * 200 / 81 + 7 / 6;
@@ -650,7 +671,8 @@ export async function fetchBeatmapFile(reason) {
                     );
                     if (isStaleRequest()) return;
 
-                    const reworkStarValue = Number(rework?.star);
+                    // 用算法自身 star 判定（vibroGateStar 在估算器分派时保存，未经星数归一化），保持 vibro 检测既有行为不变。
+                    const reworkStarValue = Number(vibroGateStar);
                     const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
                     isVibroMap = state.vibroDetection
                         && vibroEligible

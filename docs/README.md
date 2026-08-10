@@ -14,6 +14,7 @@
 - 当开发新功能时，请编写其对应的技术文档。该文档应当包含功能说明、使用方法、注意事项、算法说明等内容。
 - 当修改现有功能时，请修改对应的技术文档，确保其内容与实际功能一致。
 - 当对管线做出破坏性更改时，请修改对应的管线文档和指南文档。
+- 当做出重大破坏性更改时，请编写文档说明，标注修改内容和修改原因，以便后续进行代码审查和测试。该文档主要给人类和AI阅读，因此需要双语。文档请按时间戳和修改内容命名并放在 docs/breakings 目录下。
 - 新增/删除文档需要在docs/README.md中添加/删除对应的索引条目。
 
 ## 文档索引
@@ -55,6 +56,7 @@
 - When developing a new feature, write its corresponding technical document. The document should include feature description, usage, notes, algorithm description, and so on.
 - When modifying an existing feature, update the corresponding technical document to keep it consistent with the actual feature.
 - When making breaking changes to the pipeline, update the corresponding pipeline documents and guide documents.
+- When making major breaking changes, write a document explaining the changes, marking what was changed and why, to facilitate future code review and testing. The document should be named with a timestamp and the change description, and placed in the docs/breakings directory.
 - When adding or removing documents, add or remove the corresponding index entries in docs/README.md.
 
 ## Document Index

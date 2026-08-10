@@ -51,6 +51,17 @@ Mixed 与 Companella 不经过 Worker：
 - 用户选择存于 `state.estimatorAlgorithm`，**实际执行**的算法记录在 `state.actualEstimatorAlgorithm`（`analysis.js:514`）；
 - 缓存命中时从快照恢复，不重新计算（见 `docs/features/` 下的结果缓存文档）。
 
+### 3.4 显示星数统一为 Sunny 原始 sr
+
+左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:580` `showNumericStarValue`）。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：
+
+- Azusa / Roxy / Mixed 的 `star` 字段是自身 numeric 难度的线性映射（`3.4 + 0.38 * numericDifficulty`，`azusaEstimator.js:952`、`roxyEstimator.js:1509`），**不是** Sunny sr；Mixed 的 star 还可能继承被选中的 Roxy/Azusa/Daniel 子算法（`mixedEstimator.js:304-311`）；
+- `analysis.js:527-531`：当 `actualEstimatorAlgorithm` 为 Azusa/Roxy/Mixed（即未回退 Sunny）时，用与"Sunny 算法选择"完全相同的调用 `runSunnyEstimatorFromText(rawText, estimatorOptions)` 重算 sr 并覆盖 `rework.star`（同一函数、同一 options，逐位一致）；
+- **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
+- **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`analysis.js:494`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
+- **vibro 检测**仍用算法自身 star 判定（`analysis.js:671` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
+- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:753`），命中恢复一致；缓存键带 `star-v2` 版本前缀使旧快照（存算法自身 star）失效。
+
 ## 4. Worker 回退（主线程同步执行）
 
 `js/app/worker/manager.js` 管理 Worker 生命周期：
@@ -130,3 +141,4 @@ export const DAN_INDEX = {
 3. **LN 阈值**：`estDiff` 中 LN 标签仅在 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时展示，否则只返回 RC 标签（`reworkEstimatorUtils.js:103`）；SunnyWindow 用 `estDiff2` 以 LN 星数为准（`reworkEstimatorUtils.js:110`）。
 4. **标签结构**：RC/LN 复合标签以 `"RC || LN"` 形式返回（`reworkEstimatorUtils.js:107`），解析时按 `||` 分割。
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
+6. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed 的 star 仅是内部口径，不作为显示值。

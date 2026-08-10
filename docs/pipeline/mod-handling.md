@@ -143,7 +143,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 ## 7. modSignature 在缓存键中的作用
 
-缓存键 = `state.estimatorAlgorithm|state.lastBeatmapIdentity|state.modSignature`（`js/app/analysis.js:305`）：
+缓存键 = `star-v2|state.estimatorAlgorithm|state.lastBeatmapIdentity|state.modSignature`（`js/app/analysis.js:305`，`star-v2` 为星数统一语义的版本前缀）：
 
 - mod 变化 → `modSignature` 变化 → 缓存键变化 → 旧快照 miss → 重新计算。同一谱面开 DT 与不开 DT 是**两个缓存条目**，互不污染。
 - 键的第三段就是 §3 的三元组签名（速率/OD/cvt 任一变化即换键）。

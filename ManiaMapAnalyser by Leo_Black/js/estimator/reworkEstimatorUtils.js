@@ -1,5 +1,4 @@
 import { DAN_INDEX } from "./intervals/index.js";
-import { state } from "../app/appContext.js";
 
 const DAN_MEANS = [
     [6.562, "Alpha"],
@@ -94,13 +93,15 @@ function intervalLookup(sr, table, fallbackLabel) {
     return fallbackLabel;
 }
 
-export function estDiff(sr, lnRatio, columnCount, useExtended = false) {
+// enableAlwaysShowLNDifficulty default false = config.js defaults.enableAlwaysShowLNDifficulty.
+// Callers (analysis.js etc.) pass the resolved state value explicitly.
+export function estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false) {
     const keys = DAN_INDEX[columnCount];
     if (!keys) return "Unknown difficulty";
 
     const rcTable = keys.RC[useExtended ? "extended" : "default"] ?? keys.RC.default;
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
-    if (lnRatio < 0.15 && !state.enableAlwaysShowLNDifficulty) return rcDiff;
+    if (lnRatio < 0.15 && !enableAlwaysShowLNDifficulty) return rcDiff;
 
     const lnTable = keys.LN[useExtended ? "extended" : "default"] ?? keys.LN.default;
     const lnDiff = intervalLookup(sr, lnTable, "Unknown LN difficulty");
