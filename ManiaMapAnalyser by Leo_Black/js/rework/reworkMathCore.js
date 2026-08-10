@@ -6,6 +6,13 @@
 // computation; any numeric/order change here silently changes both estimators.
 // See docs/guides/module-conventions.md. Do NOT import this file from
 // sunnyWindowAlgorithm.js yet (out of scope for the extraction PR).
+//
+// EXCEPTION since 042ccee (PR #47 C# osu-author-port sync): stepInterp and
+// computeCAndKs are now used ONLY by danielAlgorithm — sunnyAlgorithm.js keeps
+// local D1/D2 versions (stepInterp `<=`→`<` exact-match sampling; computeCAndKs
+// gains CStepV2/noteHitTimesV2 for effectiveWeights) that differ from daniel's
+// old semantics. Do NOT move them back into this shared core: sunny and daniel
+// intentionally diverge here.
 
 // Graph-smoothing window constants — used only by smoothDForGraph below.
 const BREAK_ZERO_THRESHOLD_MS = 400;

@@ -6,11 +6,9 @@ import {
     queryCumsum,
     smoothOnCorners,
     interpValues,
-    stepInterp,
     gaussianFilter1d,
     rescaleHigh,
     mergeByHead,
-    computeCAndKs,
     applyProximityEnvelope,
     smoothDForGraph,
     jackNerfer,
@@ -40,6 +38,22 @@ function interpSingle(newX, oldX, oldVals) {
 
 
 
+function stepInterp(newX, oldX, oldVals) {
+    const out = new Float64Array(newX.length);
+    let idx = 0;
+    for (let i = 0; i < newX.length; i += 1) {
+    const x = newX[i];
+    // D1: exact match takes the previous sample (cs StepInterp: BinarySearch + idx - 1).
+    // Sunny-specific since 042ccee (cs osu-author-port sync); daniel keeps the old
+    // semantics via reworkMathCore.stepInterp — do NOT move this back into the core.
+    while (idx + 1 < oldX.length && oldX[idx + 1] < x) {
+        idx += 1;
+    }
+    const clamped = Math.max(0, Math.min(idx, oldVals.length - 1));
+    out[i] = oldVals[clamped];
+    }
+    return out;
+}
 
 function findNextNoteInColumn(note, times, noteSeqByColumn) {
     const k = note[0];
@@ -177,6 +191,8 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed = null) {
     if (a[1] !== b[1]) return a[1] - b[1];
     return a[0] - b[0];
     });
+    // D3: drop the earliest note, aligning with cs `for (int i = 1; ...)` in ManiaDifficultyCalculator
+    noteSeq.shift();
 
     const K = p.columnCount;
     const noteSeqByColumn = Array.from({ length: K }, () => []);
@@ -654,8 +670,55 @@ function computeRbar(K, x, noteSeqByColumn, tailSeq, baseCorners) {
     return smoothOnCorners(baseCorners, RStep, 500, 0.001, "sum");
 }
 
+function computeCAndKs(K, noteSeq, keyUsage, baseCorners) {
+    const noteHitTimes = noteSeq.map((n) => n[1]).sort((a, b) => a - b);
+    // D2: V2 = heads + LN tails (cs noteHitTimesV2), used for effectiveWeights
+    const noteHitTimesV2 = noteSeq
+    .flatMap((n) => (n[2] >= 0 ? [n[1], n[2]] : [n[1]]))
+    .sort((a, b) => a - b);
+
+    const CStep = new Float64Array(baseCorners.length);
+    const CStepV2 = new Float64Array(baseCorners.length);
+    let lo = 0;
+    let hi = 0;
+    let lo2 = 0;
+    let hi2 = 0;
+    for (let i = 0; i < baseCorners.length; i += 1) {
+    const s = baseCorners[i];
+    const low = s - 500;
+    const high = s + 500;
+
+    while (lo < noteHitTimes.length && noteHitTimes[lo] < low) {
+            lo += 1;
+    }
+    while (hi < noteHitTimes.length && noteHitTimes[hi] < high) {
+            hi += 1;
+    }
 
 
+    CStep[i] = hi - lo;
+
+    while (lo2 < noteHitTimesV2.length && noteHitTimesV2[lo2] < low) {
+            lo2 += 1;
+    }
+    while (hi2 < noteHitTimesV2.length && noteHitTimesV2[hi2] < high) {
+            hi2 += 1;
+    }
+
+    CStepV2[i] = hi2 - lo2;
+    }
+
+    const KsStep = new Float64Array(baseCorners.length);
+    for (let i = 0; i < baseCorners.length; i += 1) {
+    let count = 0;
+    for (let k = 0; k < K; k += 1) {
+            if (keyUsage[k][i]) count += 1;
+    }
+    KsStep[i] = Math.max(count, 1);
+    }
+
+    return { CStep, CStepV2, KsStep };
+}
 
 export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
@@ -707,8 +770,9 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     const RbarBase = computeRbar(K, x, noteSeqByColumn, tailSeq, baseCorners);
     const Rbar = interpValues(allCorners, baseCorners, RbarBase);
 
-    const { CStep, KsStep } = computeCAndKs(K, noteSeq, keyUsage, baseCorners);
+    const { CStep, CStepV2, KsStep } = computeCAndKs(K, noteSeq, keyUsage, baseCorners);
     const CArr = stepInterp(allCorners, baseCorners, CStep);
+    const CArrV2 = stepInterp(allCorners, baseCorners, CStepV2);
     const KsArr = stepInterp(allCorners, baseCorners, KsStep);
 
     const DAll = new Array(allCorners.length).fill(0);
@@ -727,7 +791,8 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     gaps[i] = (allCorners[i + 1] - allCorners[i - 1]) / 2;
     }
 
-    const effectiveWeights = CArr.map((c, i) => c * gaps[i]);
+    // D2: effectiveWeights uses C_arrV2 (js has no ModClassic → ContainsCL=false, cs :841)
+    const effectiveWeights = CArrV2.map((c, i) => c * gaps[i]);
     const sortedIndices = DAll.map((_, i) => i).sort((a, b) => DAll[a] - DAll[b]);
     const DSorted = sortedIndices.map((i) => DAll[i]);
     const wSorted = sortedIndices.map((i) => effectiveWeights[i]);
