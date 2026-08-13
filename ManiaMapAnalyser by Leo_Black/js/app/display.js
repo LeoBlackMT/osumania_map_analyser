@@ -6,6 +6,7 @@ import {
     contentBarShows,
     mainCardEl,
     patternClustersEl,
+    ppBarsEl,
     reworkBlockEl,
     reworkDiffEl,
     reworkRightCapsuleEl,
@@ -382,6 +383,7 @@ export function renderEtternaSkeleton() {
 export function renderContentSkeleton() {
     renderClusterSkeleton();
     renderEtternaSkeleton();
+    renderReworkPpSkeleton();
 }
 
 export function setEstimateDifficultyText(value) {
@@ -754,6 +756,149 @@ export function renderEtternaSkillBars(values, columnCount) {
                 </li>
             `)
         .join("");
+}
+
+// ─── ReworkPP bars ────────────────────────────────────────────────────────────
+// DOM/CSS contract with Task 11 (styles/bars.css):
+//   .pp-bars            — <ol> container (id="pp-bars")
+//   .pp-item            — <li> row; centered rows also carry .pp-item--center
+//   .pp-label           — row label
+//   .pp-track/.pp-track-inner — track frame (same nesting as .ett-skill-*)
+//   .pp-fill            — fill bar; width driven by --pp-width (inline style)
+//   .pp-fill--center    — centered row variant; anchored at the track's 50%
+//                         point (where value 1.0 sits). Positioning via the
+//                         inline `--pp-side` var: "left" → left:50% +
+//                         transform-origin:left (grows rightward),
+//                         "right" → right:50% + transform-origin:right
+//                         (grows leftward). Width still via --pp-width.
+//   .pp-head            — value pill; positioned by --label-pos (as % of track)
+//   Rainbow (optional): --ett-fill-bg + --ett-fill-bg-size on .pp-fill
+//                       (same vars the .ett-skill-fill rainbow path uses)
+const PP_ROW_COUNT = 5;
+const PP_CENTER_LABEL_POS = 50; // % of track where value 1.0 anchors
+
+function buildReworkPpRowData(item, index, mode) {
+    const value = Number(item.value);
+    const min = Number(item.min);
+    const max = Number(item.max);
+    const range = max - min || 1;
+    const centered = Boolean(item.centered);
+    // Row 1 (pp) label depends on the live/max mode, not the caller's label.
+    const label = index === 0
+        ? (mode === "live" ? "Live PP" : "Max PP")
+        : item.label;
+
+    let widthPct;
+    let labelPos;
+    let side = "";
+    if (centered) {
+        // Multiplier rows anchor at value 1.0 (track center): value >= 1.0
+        // extends right from the center, < 1.0 extends left. The pill sits at
+        // the fill's far end (away from the center anchor).
+        widthPct = Math.min((Math.abs(value - 1.0) / range) * 100, 100);
+        side = value >= 1.0 ? "left" : "right";
+        labelPos = value >= 1.0
+            ? PP_CENTER_LABEL_POS + widthPct
+            : PP_CENTER_LABEL_POS - widthPct;
+    } else {
+        widthPct = Math.max(0, Math.min((value - min) / range, 1)) * 100;
+        labelPos = widthPct;
+    }
+    // Pill must not overflow the card edges (8~97 keeps the 3dp capsule inside).
+    labelPos = Math.max(8.0, Math.min(labelPos, 97.0));
+
+    const ratio = widthPct / 100;
+    const baseStyle = state.enableEtternaRainbowBars
+        ? `--pp-width:${widthPct.toFixed(2)}%;--ett-fill-bg:${ETT_FULL_TRACK_RAINBOW_GRADIENT};--ett-fill-bg-size:${(100 / Math.max(ratio, 0.001)).toFixed(3)}% 100%`
+        : `--pp-width:${widthPct.toFixed(2)}%`;
+    const fillStyle = centered
+        ? `--pp-side:${side};${baseStyle}`
+        : baseStyle;
+
+    return {
+        label,
+        value: value.toFixed(3),
+        labelPos: labelPos.toFixed(2),
+        fillStyle,
+        centered,
+        side,
+    };
+}
+
+export function renderReworkPpBars(data) {
+    if (!contentBarShows("ReworkPP")) {
+        ppBarsEl.innerHTML = "";
+        return;
+    }
+
+    const mode = data && data.mode === "live" ? "live" : "max";
+    const rows = data && Array.isArray(data.rows) ? data.rows : [];
+    const rowData = rows.map((item, index) => buildReworkPpRowData(item, index, mode));
+
+    if (rowData.length === 0) {
+        ppBarsEl.innerHTML = '<li class="pp-item empty">No data</li>';
+        return;
+    }
+
+    // 换难度 / 改设置且条目数量不变时，原地更新 label/值/样式，进度条平滑过渡；
+    // 换歌或行数变化时回到整组重建并重放逐条弹入动画（与 etterna 双路径一致）。
+    if (canUpdateBarsInPlace(ppBarsEl, rowData.length, ".pp-fill")) {
+        ppBarsEl.classList.add("bars-live");
+        const items = ppBarsEl.querySelectorAll(":scope > li");
+        rowData.forEach((item, index) => {
+            const row = items[index];
+            const labelEl = row.querySelector(".pp-label");
+            const fillEl = row.querySelector(".pp-fill");
+            const headEl = row.querySelector(".pp-head");
+            row.classList.toggle("pp-item--center", item.centered);
+            if (labelEl) labelEl.textContent = item.label;
+            if (fillEl) {
+                fillEl.classList.toggle("pp-fill--center", item.centered);
+                fillEl.setAttribute("style", item.fillStyle);
+            }
+            if (headEl) {
+                headEl.textContent = item.value;
+                headEl.style.setProperty("--label-pos", `${item.labelPos}%`);
+            }
+        });
+        return;
+    }
+
+    ppBarsEl.classList.remove("bars-live");
+    ppBarsEl.innerHTML = rowData
+        .map((item, index) => `
+                <li class="pp-item${item.centered ? " pp-item--center" : ""}" style="--item-delay:${index * 60}ms">
+                    <div class="pp-label">${item.label}</div>
+                    <div class="pp-track">
+                        <div class="pp-track-inner">
+                            <div class="pp-fill${item.centered ? " pp-fill--center" : ""}" style="${item.fillStyle}"></div>
+                        </div>
+                        <div class="pp-head" style="--label-pos:${item.labelPos}%">${item.value}</div>
+                    </div>
+                </li>
+            `)
+        .join("");
+}
+
+export function renderReworkPpSkeleton() {
+    if (!contentBarShows("ReworkPP")) {
+        ppBarsEl.innerHTML = "";
+        return;
+    }
+
+    ppBarsEl.innerHTML = Array.from({ length: PP_ROW_COUNT })
+        .map(() => `
+            <li class="pp-item skeleton">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-track"></div>
+            </li>
+        `)
+        .join("");
+}
+
+export function clearReworkPpBody() {
+    ppBarsEl.classList.remove("bars-live");
+    ppBarsEl.innerHTML = "";
 }
 
 export function formatDiffForDisplay(diffText) {
