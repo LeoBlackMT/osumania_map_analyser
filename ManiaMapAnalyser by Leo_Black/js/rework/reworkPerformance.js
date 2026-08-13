@@ -31,9 +31,11 @@ function calculatePerformanceProportion(acc) {
 }
 
 /// Variety multiplier (dart `_varietyMultiplier`, C# `varietyMultiplier`):
-/// `0.945 + 0.11 / (1 + Math.exp(-3 * (variety - 3.25)))`
+/// `floor + (cap - floor) / (1 + Math.exp(-3 * (variety - 3.25)))`,
+/// `floor = 0.945`, `cap = 1.055` (C# computes `L = cap - floor`, so the
+/// multiplier width is `1.055 - 0.945`, NOT the literal `0.11`).
 function varietyMultiplier(variety) {
-    return 0.945 + 0.11 / (1 + Math.exp(-3 * (variety - 3.25)));
+    return 0.945 + (1.055 - 0.945) / (1 + Math.exp(-3 * (variety - 3.25)));
 }
 
 /// Accuracy multiplier (dart `_accMultiplier`, C# `accMultiplier`):
