@@ -46,6 +46,7 @@ import {
     show6KConstValue,
     renderFullModeSeparators,
 } from "./display.js";
+import { resetLivePp } from "./livePp.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
@@ -247,6 +248,7 @@ export function resetReworkDisplay() {
     state.actualEstimatorAlgorithm = state.estimatorAlgorithm;
     state.ppMetrics = null;
     clearReworkPpBody();
+    resetLivePp();
     setNumericDifficultyValue(null);
     setForceHideNumericDifficulty(false);
     reworkStarEl.textContent = "-";

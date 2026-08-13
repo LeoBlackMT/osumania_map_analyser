@@ -29,6 +29,7 @@ import { updateCardPlayVisibility } from "./hud.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { getCounterPathForCommand } from "./settings.js";
 import { applyCoverThemeForBeatmap } from "./coverTheme.js";
+import { updateLivePp } from "./livePp.js";
 
 
 function getModData(data) {
@@ -173,6 +174,10 @@ export function setupSocketListener() {
         }
 
         updateSongTimeState(data);
+
+        // 每消息实时 PP：内部自带 early-return 守卫（成本极低），必须在
+        // beatmap 守卫之前，保证 play/resultScreen 状态变化也走此路径。
+        updateLivePp(data);
 
         const beatmap = data?.beatmap;
         if (!beatmap) return;
