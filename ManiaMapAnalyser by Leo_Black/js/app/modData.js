@@ -215,9 +215,9 @@ export function getModData(data, {
     const hasExplicitNoModSignal = hasExplicitNoMod
         && !hasRelevantModInfo;
 
-    const classic = client === "lazer"
-        ? modCodes.has("CL")
-        : !modCodes.has("SV2");
+    // SV2 模组存在 → ScoreV2 计分 → 非 Classic（stable 导入 lazer 的成绩可带 CL+SV2 → 非 Classic）
+    const classic = !modCodes.has("SV2")
+        && (client !== "lazer" || modCodes.has("CL"));
 
     // Only include calculation-relevant dimensions in signature.
     // This avoids recompute thrash when unrelated lazer mod payload fields fluctuate.

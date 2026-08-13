@@ -39,8 +39,8 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 | `IN` | Inverse | 是（cvtFlag="IN"，仅 lazer） | LN 反转转换（modIN） |
 | `HO` | Hidden 类（lazer mania） | 是（cvtFlag="HO"，仅 lazer） | LN→RC 转换（modHO） |
 | `MR` | Mirror | 否 | 被识别但**无任何计算分支使用**，仅影响 `hasModInfo` |
-| `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：lazer 带 CL → classic=true |
-| `SV2` | ScoreV2（仅 stable） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；stable 开 SV2 → classic=false |
+| `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：无 SV2 且 lazer 带 CL → classic=true |
+| `SV2` | ScoreV2（计分方式） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；**只要存在 SV2（无论 client）→ classic=false，优先级最高** |
 
 - `APP_CONFIG.mods.knownCodes`（config.js:118）共 **12** 个代码；`APP_CONFIG.mods.bitFlags`（config.js:119-125）覆盖 stable 位标志对应项：`EZ:2, HR:16, DT:64, HT:256, NC:512, SV2:536870912`（EZ/HR/DT/HT/NC/SV2 与 osu bitflag 一一对应；DA/DC/IN/HO/MR/CL 无 bitflag，是 lazer 专属代码，走字符串路径。`CL` 在字符串/acronym 路径被收集，`SV2` 在 stable 走 bitflag 路径，lazer 下也可能以 acronym 出现）。
 - **派生导出**（`js/app/appContext.js:182-185`）：
@@ -52,18 +52,19 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 `getModData` 返回对象新增 `classic` 布尔与 `modCodes` 数组（modData.js:237-238）：
 
 ```js
-const classic = client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2");
+const classic = !modCodes.has("SV2") && (client !== "lazer" || modCodes.has("CL"));
 ```
 
 | client | mods | classic |
 | --- | --- | --- |
-| lazer | 带 CL | true |
-| lazer | 无 CL | false |
+| lazer | 带 CL、无 SV2 | true |
+| lazer | 带 CL **+ SV2**（stable 导入） | false |
+| lazer | 无 CL、无 SV2 | false |
 | stable | 带 SV2 | false |
 | stable | 无 SV2 | true |
 | unknown/空 | 无 SV2 | true（按非 lazer 处理） |
 
-语义："stable 开启 sv2 = Lazer 什么都不开；stable 不开 sv2 = Lazer 开启 Classic"。classic 进 modSignature 第 4 段（§3），并透传至估算器 options（`classicMod`）切换 Sunny 星数密度（C_arr vs C_arrV2，见 features/rework-pp.md §3）。**只影响星数密度，不影响准确率（v2Acc）**。`modCodes` 是排序后的数组（JSON-safe），供 ReworkPP 的 NF/EZ mod 修正使用。
+语义：**计分方式优先**——只要带 SV2（ScoreV2 计分）即非 Classic，无论 client/CL；反之（ScoreV1/Classic 计分）无 SV2 时，lazer 需 CL 才为 Classic，stable/unknown 恒为 Classic。stable 导入 lazer 的成绩若用 ScoreV2 计分会同时带 CL+SV2 → 判非 Classic。classic 进 modSignature 第 4 段（§3），并透传至估算器 options（`classicMod`）切换 Sunny 星数密度（C_arr vs C_arrV2，见 features/rework-pp.md §3）。**只影响星数密度，不影响准确率（v2Acc）**。`modCodes` 是排序后的数组（JSON-safe），供 ReworkPP 的 NF/EZ mod 修正使用。
 
 ## 3. modSignature 构成与何时应用
 

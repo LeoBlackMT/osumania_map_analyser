@@ -77,15 +77,14 @@ ppMetrics = { star, variety, accScalar, totalNotes, spikiness, switches }
 
 ## 3. Classic 语义（全局 Classic 感知星数）
 
-Classic 判定在 `js/app/modData.js:218-220 getModData`：
+Classic 判定在 `js/app/modData.js:218-221 getModData`：
 
 ```js
-const classic = client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2");
+const classic = !modCodes.has("SV2") && (client !== "lazer" || modCodes.has("CL"));
 ```
 
-- **lazer**：带 `CL`（Classic）mod → classic=true；否则 false。
-- **stable**：未开 `SV2`（ScoreV2）→ classic=true；开了 SV2 → false（"stable 开 sv2 = lazer 什么都不开"）。
-- unknown/空 client 按非 lazer 处理 → 除非带 SV2 否则 classic=true。
+- **计分方式优先**：只要存在 `SV2`（ScoreV2 计分）→ classic=false，与 client/CL 无关。stable 导入 lazer 的成绩若用 ScoreV2 计分会同时带 `CL`+`SV2` → 判非 Classic。
+- **无 SV2 时**：lazer 带 `CL`（Classic）mod → classic=true，否则 false；stable / unknown/空 client 恒为 classic=true（ScoreV1 计分）。
 
 Classic 只影响**星数密度**（sunnyAlgorithm.js:938-940）：
 
