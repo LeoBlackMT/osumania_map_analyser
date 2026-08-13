@@ -11,6 +11,7 @@
         - Pattern: 显示键型分析。
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
+        - ReworkPP: 显示 Rework PP 难度表现面板：Max PP/Live PP、Proportion、各乘子柱状图，游玩/结算时实时更新。
         - Full: 显示完整内容，包括键型分析、难度图表和Etterna分数。不推荐日常使用，可能会比较拥挤。
         - 注：对于非4/6/7K谱面，主体内容将自动回退为Pattern显示。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
@@ -137,6 +138,7 @@
         - Pattern: Displays pattern analysis.
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
+        - ReworkPP: Displays the Rework PP performance panel: Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
         - Full: Displays full content including pattern analysis, difficulty graph, and Etterna scores. Not recommended for daily use — may feel crowded.
         - Note: For non-4/6/7K beatmaps, body content automatically falls back to Pattern.
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.

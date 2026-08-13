@@ -51,6 +51,19 @@ Mixed 与 Companella 不经过 Worker：
 - 用户选择存于 `state.estimatorAlgorithm`，**实际执行**的算法记录在 `state.actualEstimatorAlgorithm`（`analysis.js:514`）；
 - 缓存命中时从快照恢复，不重新计算（见 `docs/features/` 下的结果缓存文档）。
 
+### 3.5 Classic 感知星数（Sunny 密度切换）
+
+Classic 语义只影响 **Sunny 家族的星数密度**（`sunnyAlgorithm.js:938-940`）：
+
+```js
+const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, i) => c * gaps[i]);
+```
+
+- `CArr`（Classic 密度）与 `CArrV2` 均由 `computeCAndKs` 计算（sunnyAlgorithm.js:918-919），effectiveWeights 是**唯一切换行**——Classic 开时用 C_arr，否则用 C_arrV2（对标 C# MACalculator.cs ContainsCL 分支与 genirx dart `containsCL ? cArr : cArrV2`）。
+- **classicMod 选项**：`options.classicMod === true` 时切换；`undefined/false`（缺省）时输出与改动前**逐位一致**（回归锚点，基准 runner 不传 classicMod → 预期零差异）。classicMod 沿 options 链透传：analysis.js `classicMod: state.classicMod === true`（pipeline options）→ sunnyEstimator → calculate。
+- **classic 判定**：`client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2")`（modData.js:218-220，见 mod-handling.md §2.1），经 modSignature 第 4 段进缓存键——classic 状态切换自动触发重算。
+- 只改星数密度，**不影响** v2Acc/PP 公式与 Azusa/Roxy/Daniel 等非 Sunny 主算法的自身口径（Azusa/Roxy 内部参考 Sunny 调用同参透传）。
+
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
 左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:580` `showNumericStarValue`）。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：

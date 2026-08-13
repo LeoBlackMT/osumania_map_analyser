@@ -33,10 +33,10 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 ```js
 // 用户把 enableAlwaysShowLNDifficulty 从关切到开（state 已更新，键不含它）
-const cacheKey = "Azusa|hash:1a2b…|1.00000000|none|none"; // 与切换前完全相同！
+const cacheKey = "Azusa|hash:1a2b…|1.00000|none|none|0"; // 与切换前完全相同！
 
 const snapshot = resultCache.get(cacheKey); // 命中！
-// 覆盖检查（analysis.js:311-314）也通过——计算需求四项没变
+// 覆盖检查（analysis.js:348-355）也通过——计算需求五项没变
 // → 直接渲染快照：快照里还是开关关着时算出的 estDiff（lnRatio<0.15 谱面无 " || LN" 段）
 // → 用户看到的是旧设置下的分析，无任何报错（静默陈旧）
 ```
@@ -53,8 +53,8 @@ tosu 下发设置 → settings.js 命令监听回调（settings.js:714）
  ├─ 命中重派生设置（debugUseAmount/display6kLevel）→ 不动缓存
  │    → recomputeNeeded（settings.js:814/830）→ 下次分析 get() 命中
  │    → 命中分支按当前设置重算 sixKConst / 重放 debugUseAmount 后处理（analysis.js:439-446、:604-632）
- └─ 显示类设置 → 不动缓存 → 下次分析 get() 命中
-      → 覆盖检查（analysis.js:311-314）比较 needComputed 四项
+  └─ 显示类设置 → 不动缓存 → 下次分析 get() 命中
+      → 覆盖检查（analysis.js:348-355）比较 needComputed 五项
       ├─ 计算需求变了 → miss → 重算
       └─ 计算需求没变 → 命中 → 渲染时从 state 即时读新值
 ```
@@ -83,16 +83,17 @@ tosu 下发设置 → settings.js 命令监听回调（settings.js:714）
 
 ## 4. 覆盖检查如何兜住显示类差异
 
-`needComputed` 是"本次分析需要哪些计算产物"的布尔集（`analysis.js:287-304`），四项：`pattern`（键型）、`ett`（Etterna MSD）、`graph`（难度图）、`interlude`（Interlude 星数）。写入时随快照保存（`analysis.js:775` `computed: needComputed`），命中时逐项比对（`analysis.js:311-314`）：
+`needComputed` 是"本次分析需要哪些计算产物"的布尔集（`analysis.js:322-340`），**五项**：`pattern`（键型）、`ett`（Etterna MSD）、`graph`（难度图）、`interlude`（Interlude 星数）、`pp`（ReworkPP 谱面侧指标，`contentBarShows("ReworkPP")`，`analysis.js:339`）。写入时随快照保存（`analysis.js:775` `computed: needComputed`），命中时逐项比对（`analysis.js:348-355`）：
 
 ```js
 snapshot.computed.graph === needComputed.graph
 && snapshot.computed.pattern === needComputed.pattern
 && snapshot.computed.ett === needComputed.ett
 && snapshot.computed.interlude === needComputed.interlude
+&& snapshot.computed.pp === needComputed.pp
 ```
 
-- contentBar/srText/diffText 是**特殊显示类**：它们被织入 needComputed（`analysis.js:288-303`，如 `state.diffText === "Graph"` → graph、`state.srText === "MSD"` → ett）。改显示需求但没改计算需求 → 命中（如 diffText 在 "Difficulty" 类选项间切换）；改计算需求（如切到 "Graph"）→ 检查自动判 miss 重算。因此它们不在失效列表。
+- contentBar/srText/diffText 是**特殊显示类**：它们被织入 needComputed（`analysis.js:322-339`，如 `state.diffText === "Graph"` → graph、`state.srText === "MSD"` → ett、`contentBarShows("ReworkPP")` → pp）。改显示需求但没改计算需求 → 命中（如 diffText 在 "Difficulty" 类选项间切换）；改计算需求（如切到 "Graph" 或 ReworkPP 主体）→ 检查自动判 miss 重算。因此它们不在失效列表。
 - 纯显示设置（cardOpacity、主题、字体……）根本不进 needComputed，也不进快照 → 命中后渲染时从 state 取新值，天然正确。
 - 注意 `needComputed` 用 fetch 前的保守值（`analysis.js:284-286` 注释：未经谱面级 `effectiveContentBar` override），仅用于覆盖检查；实际 shows*/need* 在执行块内 override 后重算（`analysis.js:362-365`）。
 
@@ -200,6 +201,7 @@ if (!cached && state.enableResultCache && state.lastBeatmapIdentity
 | `sixKConst` | `analysis.js:768` | 6K 恒定等级——命中重派生字段：写入值反映写时刻 `display6kLevel`，命中时按当前设置从 star 重算（§5 末，不再因该设置失效） |
 | `actualEstimatorAlgorithm` | `analysis.js:769` | 实际执行的算法（含 Azusa/Roxy 回退 Sunny 的记录），命中时原样恢复（§10.7） |
 | `parsedInfo` | `analysis.js:770-774` | 只存 metadata/lnRatio/columnCount 三个普通字段 |
+| `ppMetrics` | `analysis.js:868` | ReworkPP 谱面侧指标 `{star, variety, accScalar, totalNotes, spikiness, switches}`（JSON-safe 纯数值，无需 jsonSafe）；命中恢复 `state.ppMetrics = cached.ppMetrics || null`（:533）；live 值不进缓存 |
 | `computed` | `analysis.js:775` | `needComputed` 快照，供命中覆盖检查（§10.6） |
 
 ### 10.3 jsonSafe 剥壳（`analysis.js:750`）——最容易踩的坑
@@ -226,13 +228,13 @@ const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(v
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-版本前缀 + 三段：缓存语义版本（`star-v2`，星数统一后作废旧快照）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag`）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+版本前缀 + 三段：缓存语义版本（`star-v2`，星数统一后作废旧快照）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:218-228）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
 
-### 10.6 needComputed 推导与随快照保存（`analysis.js:775`、:287-304、:310-314）
+### 10.6 needComputed 推导与随快照保存（`analysis.js:775`、:322-340、:348-355）
 
-- 写入时：`computed: needComputed` 保存"本次分析需要哪些计算产物"（pattern/ett/graph/interlude 四项布尔，推导见 `analysis.js:287-304`）。
-- 命中时：逐项比对 `snapshot.computed` 与当前 `needComputed`（`analysis.js:310-314`），四项全等才命中。
-- **新计算产物要接入覆盖检查** → 三处同步改：`needComputed` 加项（`analysis.js:287-304`）＋命中比对加项（:310-314）＋写门块 `computed` 一起存（:775）。
+- 写入时：`computed: needComputed` 保存"本次分析需要哪些计算产物"（pattern/ett/graph/interlude/pp 五项布尔，推导见 `analysis.js:322-340`）。
+- 命中时：逐项比对 `snapshot.computed` 与当前 `needComputed`（`analysis.js:348-355`），五项全等才命中。
+- **新计算产物要接入覆盖检查** → 三处同步改：`needComputed` 加项（`analysis.js:322-340`）＋命中比对加项（:348-355）＋写门块 `computed` 一起存（:775）。
 
 ### 10.7 命中恢复：写入与恢复成对（`analysis.js:429-446`）
 
@@ -249,7 +251,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 - [ ] **写入非 JSON-safe 值**：函数、Date、`undefined` 顶层字段
 - [ ] **在 stale 请求中写入**：generation 守卫（`analysis.js:746`）只保护写门块内——块外另起 put 会绕过守卫
 - [ ] **新字段只写不恢复**：命中分支（`analysis.js:429-446`）没恢复该字段（§10.7）
-- [ ] **新计算产物没进 needComputed**：覆盖检查（:310-314）覆盖不到 → 需求变化仍命中旧快照（§10.6）
+- [ ] **新计算产物没进 needComputed**：覆盖检查（:348-355）覆盖不到 → 需求变化仍命中旧快照（§10.6）
 - [ ] **新计算影响设置没进失效列表**：键不含该设置 → 静默陈旧，见 §5（`settings.js:835-848` 条件、`settings.js:849` 调用）
 - [ ] **显示派生设置既没失效也没重派生**：效果固化进快照（写门块字段）但切换设置后命中分支渲染旧值——按 §5 末实现命中重派生（先 toggle-diff 实证零差异）
 

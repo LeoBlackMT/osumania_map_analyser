@@ -137,8 +137,8 @@ state.pendingChangeKind = changeKind;   // :286
 ### 4.4 mod 状态应用与 modSignature
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:257-261 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
-- 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `star-v2|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v2` 是星数统一语义的版本前缀；构成见 modData.js:218-222，`speedRate|odFlag|cvtFlag`，详见 result-cache.md §5 与 mod-handling.md）。
+- 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:172-173）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `star-v2|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v2` 是星数统一语义的版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -170,10 +170,10 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
-- `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:299；Companella/Mixed 需要 ett 与 interlude，:298、:302-303）。
-- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v2` + 三段）。
+- `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:334；Companella/Mixed 需要 ett 与 interlude，:333、:337-338；`contentBarShows("ReworkPP")` 需要 pp，:339）。
+- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v2` + 三段，modSignature 四段含 classic）。
 - `analysis.js:306 isMetaDegraded`：identity 以 `meta:` 开头。
-- `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 四项与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
+- `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
 
 ### 7.2 fetch .osu
 
@@ -195,7 +195,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 ### 7.4 全链路 pipeline（runAnalysisPipeline：worker 一次往返）
 
-算法判定 `analysis.js:344 currentEstimatorAlgorithm()`（settings.js:999，即 `state.estimatorAlgorithm`）。**估算 + 附属段全部收敛为一次 pipeline 调用**：`analysis.js` 构造 `pipelineInput = { rawText, estimatorAlgorithm, options }`（options 含 speedRate/odFlag/cvtFlag/withGraph/forceSunnyReferenceHo/forceSunnyWindow/enableAnalyzeLN/enableAlwaysShowLNDifficulty/display6kLevel/extendedEstimationRange + 附属段开关 withPattern/withEtterna/withInterlude + etternaVersion/companellaEtternaVersion，全部显式传参，pipeline 不读 state），交给 `runInWorker(pipelineInput)`（manager.js:41）；worker 不可用（构造失败返回 null）时主线程同步调 `runAnalysisPipeline`。
+算法判定 `analysis.js:344 currentEstimatorAlgorithm()`（settings.js:999，即 `state.estimatorAlgorithm`）。**估算 + 附属段全部收敛为一次 pipeline 调用**：`analysis.js` 构造 `pipelineInput = { rawText, estimatorAlgorithm, options }`（options 含 speedRate/odFlag/cvtFlag/withGraph/forceSunnyReferenceHo/forceSunnyWindow/enableAnalyzeLN/enableAlwaysShowLNDifficulty/display6kLevel/extendedEstimationRange + 附属段开关 withPattern/withEtterna/withInterlude + **withPpMetrics/classicMod**（ReworkPP 用，analysis.js:425-426：`withPpMetrics: needComputed.pp`、`classicMod: state.classicMod === true`）+ etternaVersion/companellaEtternaVersion，全部显式传参，pipeline 不读 state），交给 `runInWorker(pipelineInput)`（manager.js:41）；worker 不可用（构造失败返回 null）时主线程同步调 `runAnalysisPipeline`。
 
 `runAnalysisPipeline` 是共享纯函数（DOM-free/state-free/JSON-safe，Node 与浏览器一致），**异步**（ett WASM 与 interlude 均为异步），逐段顺序与旧 analysis.js 完全一致：
 
@@ -211,6 +211,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | 8 Pattern | `withPattern` 时 `analyzePatternFromText(rawText)`（保留 patternOsuParser 独立解析），输出**纯数据子集** `patternReport {Category, SVAmount, ModeTag, Clusters, ...}` + `patternTopFiveClusters`——cluster 的 `format()`/`Importance` getter 是结构化克隆不可序列化的方法，pipeline 剥离（analysis.js 消费侧只读数据字段） |
 | 9 Ett | `withEtterna` 时 `analyzeEtternaFromText(rawText, {musicRate, scoreGoal, cvtFlag, etternaVersion})`（calc.js 现有 loader；worker 内 import.meta.url 按模块文件解析、同源 fetch 实例化 WASM，Node 侧 fs preload 不变），输出 `ettResult {values, keycount, ...}` |
 | 10 Companella 二次 Ett | Companella/Mixed && columnCount===4 && `companellaEtternaVersion ≠ etternaVersion` 时在同一 pipeline 内完成第二次 Ett（一次往返），输出 `companellaEttResult` |
+| 11 ppMetrics | `options.withPpMetrics === true` 时输出 `ppMetrics {star, variety, accScalar, totalNotes, spikiness, switches}`：Sunny/Companella 从 `selectedRework.ppMetrics` 提取；Azusa/Roxy/Mixed 从归一化用的 sunnyResult 对象提取（保留引用，同一次 Sunny 结果）；**Daniel 在 pipeline 内跑专用 Sunny pass**（`runSunnyEstimatorFromText(rawText, {...options, withPpMetrics: true}, parser)`，同 options 保证一致性，worker 内执行）；失败 → `ppMetrics: null`（软失败，不进 errors[]） |
 
 - **附属段开关**：`withPattern/withEtterna/withInterlude` 取自 needComputed（fetch 前的保守值，与缓存覆盖检查同源，analysis.js:365-368）。默认 false——仅请求需要的段，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界：主线程消费段有回退分支，见下）。
 - **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。

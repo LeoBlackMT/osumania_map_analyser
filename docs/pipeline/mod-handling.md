@@ -39,26 +39,48 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 | `IN` | Inverse | 是（cvtFlag="IN"，仅 lazer） | LN 反转转换（modIN） |
 | `HO` | Hidden 类（lazer mania） | 是（cvtFlag="HO"，仅 lazer） | LN→RC 转换（modHO） |
 | `MR` | Mirror | 否 | 被识别但**无任何计算分支使用**，仅影响 `hasModInfo` |
+| `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：lazer 带 CL → classic=true |
+| `SV2` | ScoreV2（仅 stable） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；stable 开 SV2 → classic=false |
 
-- `APP_CONFIG.mods.knownCodes`（config.js:118）共 10 个代码；`APP_CONFIG.mods.bitFlags`（config.js:119-125）只覆盖 stable 位标志对应项：`EZ:2, HR:16, DT:64, HT:256, NC:512`（EZ/HR/DT/HT/NC 与 osu bitflag 一一对应；DA/DC/IN/HO/MR 无 bitflag，是 lazer 专属代码，走字符串路径）。
+- `APP_CONFIG.mods.knownCodes`（config.js:118）共 **12** 个代码；`APP_CONFIG.mods.bitFlags`（config.js:119-125）覆盖 stable 位标志对应项：`EZ:2, HR:16, DT:64, HT:256, NC:512, SV2:536870912`（EZ/HR/DT/HT/NC/SV2 与 osu bitflag 一一对应；DA/DC/IN/HO/MR/CL 无 bitflag，是 lazer 专属代码，走字符串路径。`CL` 在字符串/acronym 路径被收集，`SV2` 在 stable 走 bitflag 路径，lazer 下也可能以 acronym 出现）。
 - **派生导出**（`js/app/appContext.js:182-185`）：
-  - `SORTED_KNOWN_MOD_CODES`（appContext.js:184）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。
+  - `SORTED_KNOWN_MOD_CODES`（appContext.js:184）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。`SV2` 含数字，normalization 保留数字（modData.js:32 注释）。
   - `MOD_BIT_FLAG_ENTRIES`（appContext.js:185）= `Object.entries(bitFlags)`，供 `addCodesFromNumber` 遍历。
+
+### 2.1 classic 判定（Classic 感知星数）
+
+`getModData` 返回对象新增 `classic` 布尔与 `modCodes` 数组（modData.js:237-238）：
+
+```js
+const classic = client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2");
+```
+
+| client | mods | classic |
+| --- | --- | --- |
+| lazer | 带 CL | true |
+| lazer | 无 CL | false |
+| stable | 带 SV2 | false |
+| stable | 无 SV2 | true |
+| unknown/空 | 无 SV2 | true（按非 lazer 处理） |
+
+语义："stable 开启 sv2 = Lazer 什么都不开；stable 不开 sv2 = Lazer 开启 Classic"。classic 进 modSignature 第 4 段（§3），并透传至估算器 options（`classicMod`）切换 Sunny 星数密度（C_arr vs C_arrV2，见 features/rework-pp.md §3）。**只影响星数密度，不影响准确率（v2Acc）**。`modCodes` 是排序后的数组（JSON-safe），供 ReworkPP 的 NF/EZ mod 修正使用。
 
 ## 3. modSignature 构成与何时应用
 
-**modSignature 格式 = `speedRate|odFlag|cvtFlag`**，在 `getModData` 内构建（modData.js:218-222）：
+**modSignature 格式 = `speedRate|odFlag|cvtFlag|classic`（四段）**，在 `getModData` 内构建（modData.js:224-228）：
 
 ```js
 const modSignature = [
     Number(speedRate).toFixed(5),   // 速率保留 5 位小数，防浮点抖动
     odFlag == null ? "none" : String(odFlag),
     cvtFlag == null ? "none" : String(cvtFlag),
+    classic ? "1" : "0",            // Classic 感知星数标志（第 4 段，§2.1）
 ].join("|");
 ```
 
 - 只含**计算相关维度**（modData.js:216-217 注释明确）：lazer mod payload 中与计算无关的字段（如隐藏外观类设置）波动不会改变签名，避免无谓重算。
-- 空值统一序列化为 `"none"`，如 `1.00000|none|none` 表示无 mod。
+- 空值统一序列化为 `"none"`，如 `1.00000|none|none|0` 表示无 mod 且非 Classic。
+- `classic` 段（0/1）反映当前 Classic 语义——stable 开/关 SV2、lazer 开/关 CL 都会改变该段，从而改变缓存键（§7），使星数/难度/PP 全部重算为当前 Classic 语义。
 
 **应用时机**（socketHandlers.js:255-272）：api_v2 包可能是**部分包**（不一定带 mod 字段），因此不能每个包都覆盖：
 
@@ -70,7 +92,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 ```
 
 - 条件：**首次收到 mod 状态**（`state.modSignature` 为空），或**本包确实携带显式 mod 载荷**（hasModPayload 且有信息或显式无 mod）。
-- 应用时写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（socketHandlers.js:267-272；state 初始值见 `appContext.js:72-75`：`speedRate: 1.0`、`odFlag: null`、`cvtFlag: null`、`modSignature: ""`）。
+- 应用时写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（socketHandlers.js:267-272；state 初始值见 `appContext.js:72-75`：`speedRate: 1.0`、`odFlag: null`、`cvtFlag: null`、`modSignature: ""`），并同步应用 `state.modCodes`/`state.classicMod`（socketHandlers.js:172-173，在 beatmap 守卫早退之前）。
 - 签名变化才触发重算：`nextModSignature !== previousModSignature` 构成 `hasStateMismatch`（socketHandlers.js:263-265）→ `scheduleRecompute("beatmap/mod changed", true)`（socketHandlers.js:305）。
 
 ## 4. 速率处理（speedRate → musicRate）
@@ -146,7 +168,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 缓存键 = `star-v2|state.estimatorAlgorithm|state.lastBeatmapIdentity|state.modSignature`（`js/app/analysis.js:305`，`star-v2` 为星数统一语义的版本前缀）：
 
 - mod 变化 → `modSignature` 变化 → 缓存键变化 → 旧快照 miss → 重新计算。同一谱面开 DT 与不开 DT 是**两个缓存条目**，互不污染。
-- 键的第三段就是 §3 的三元组签名（速率/OD/cvt 任一变化即换键）。
+- 键的第三段就是 §3 的四元组签名（速率/OD/cvt/classic 任一变化即换键）。
 - 完整命中覆盖检查与写门见 [result-cache.md](result-cache.md)。
 
 ## 8. 注意事项
@@ -156,5 +178,5 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **lazer vs stable 差异**：cvtFlag 仅 lazer 有（modData.js:198）；lazer 有 speed_change/DA-OD 数字通道（modData.js:167-177），stable 只能走 bitflag（`addCodesFromNumber`）。混合场景（tourney/ipcClients）也会被收集（modData.js:14-19）。
 - **MR 是识别但无用的代码**：在 knownCodes 中（config.js:118）故能被提取，但全库无任何计算分支引用它，仅影响 `hasModInfo`（有 MR 时不算"无 mod"）。
 - **速率优先级**：lazer 自定义倍速 > NC/DT > HT/DC > 1.0（modData.js:182-188）。NC/DT 与 HT/DC 不可能同时出现，若同时命中先判加速后判减速。
-- **签名精度**：速率保留 5 位小数（modData.js:219），lazer 自定义速率如 1.05/0.9 等非整数值也能稳定区分；`1.00000|none|none` 为无 mod 基准签名。
+- **签名精度**：速率保留 5 位小数（modData.js:225），lazer 自定义速率如 1.05/0.9 等非整数值也能稳定区分；`1.00000|none|none|0` 为无 mod 且非 Classic 的基准签名。
 - **新增计算相关 mod 代码**：需同时加入 `knownCodes`（config.js:118）与（若需 stable bitflag）`bitFlags`（config.js:119-125）；`SORTED_KNOWN_MOD_CODES`/`MOD_BIT_FLAG_ENTRIES` 是派生导出，无需手动改。若新代码参与计算（速率/OD/cvt），必须在 `getModData` 的判定分支（modData.js:182-204）与签名构建处同步处理，否则签名不反映其影响（缓存会按旧语义命中）。
