@@ -163,6 +163,7 @@ html.ma-theme-osu #pattern-clusters.cluster-bars {
    且依赖上面 .ma-theme-osu 给块的 position:relative 才能正确定位，故双 class 限定。 */
 html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #pattern-clusters.cluster-bars::before,
 html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #ett-skill-bars.ett-skill-bars:not([hidden])::before,
+html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #pp-bars.pp-bars:not([hidden])::before,
 html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #body-graph-wrap:not([hidden])::before {
     content: "";
     position: absolute;
@@ -185,6 +186,7 @@ html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #body-graph-wrap:not([h
 
 html.ma-theme-osu.ma-fx-cover #pattern-clusters.cluster-bars > *,
 html.ma-theme-osu.ma-fx-cover #ett-skill-bars.ett-skill-bars > *,
+html.ma-theme-osu.ma-fx-cover #pp-bars.pp-bars > *,
 html.ma-theme-osu.ma-fx-cover #body-graph-wrap > * {
     position: relative;
     z-index: 1;
@@ -247,6 +249,27 @@ html.ma-theme-osu .ett-skill-fill {
         color-mix(in srgb, var(--ma-accent) 62%, white) 100%);
 }
 
+/* ---- pp 块：accent 描边 + 主题底色（同 etterna 块） ---------------------- */
+html.ma-theme-osu #pp-bars.pp-bars:not([hidden]) {
+    position: relative;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--ma-accent) 32%, transparent);
+    overflow: hidden;
+    padding: 10px 12px 18px;
+    background-color: color-mix(in srgb, var(--ma-accent) 14%, #06070b);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+/* 非彩虹的 pp 条退一个主题色兜底（彩虹模式下 JS 内联值仍优先）；
+   centered 行可能只挂 .pp-fill--center 一个类，故两条选择器都要覆盖。 */
+html.ma-theme-osu .pp-fill,
+html.ma-theme-osu .pp-fill--center {
+    --ett-fill-bg: linear-gradient(90deg,
+        color-mix(in srgb, var(--ma-accent) 52%, #0a0c12) 0%,
+        var(--ma-accent) 58%,
+        color-mix(in srgb, var(--ma-accent) 62%, white) 100%);
+}
+
 /* ---- graph 块：accent 描边 + 主题底色 ----------------------------------- */
 html.ma-theme-osu #body-graph-wrap:not([hidden]) {
     position: relative;
@@ -262,6 +285,7 @@ html.ma-theme-osu #body-graph-wrap:not([hidden]) {
    The gradient overlay on ::before already provides sufficient dimming. */
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #pattern-clusters.cluster-bars,
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #ett-skill-bars.ett-skill-bars,
+html.ma-theme-osu.ma-fx-cover .main-card.bars-full #pp-bars.pp-bars,
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #body-graph-wrap:not([hidden]) {
     background-color: transparent;
 }

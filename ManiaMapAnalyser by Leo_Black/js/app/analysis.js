@@ -1,4 +1,5 @@
 import { runAnalysisPipeline } from "../pipeline/runAnalysisPipeline.js";
+import { calculateReworkPp } from "../rework/reworkPerformance.js";
 import { applyCompanellaToMixedResult } from "../estimator/mixedEstimator.js";
 import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
 import { calculateInterludeStar } from "../interlude/index.js";
@@ -18,6 +19,7 @@ import {
     GRAPH_SUPPORTED_KEY_SET,
     mainCardEl,
     patternClustersEl,
+    ppBarsEl,
     reworkDiffEl,
     reworkMetaEl,
     reworkRightCapsuleEl,
@@ -32,6 +34,8 @@ import {
     renderContentSkeleton,
     renderEtternaSkillBars,
     renderPatternClusters,
+    renderReworkPpBars,
+    clearReworkPpBody,
     renderRightCapsule,
     playStarBlockEntrance,
     setEstimateDifficultyText,
@@ -40,8 +44,10 @@ import {
     showMsdValue,
     showNumericStarValue,
     show6KConstValue,
+    showReworkPpValue,
     renderFullModeSeparators,
 } from "./display.js";
+import { getLatestPpValue, resetLivePp } from "./livePp.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
@@ -107,12 +113,57 @@ function renderBodySectionError(section, message) {
         return;
     }
 
+    if (section === "ReworkPP") {
+        ppBarsEl.innerHTML = `
+            <li class="pp-item body-error">
+                <div class="body-error-title">Rework PP Unavailable</div>
+                <div class="body-error-text">${safeMessage}</div>
+            </li>
+        `;
+        return;
+    }
+
     ettSkillBarsEl.innerHTML = `
         <li class="ett-skill-item body-error">
             <div class="body-error-title">Etterna Analyze Failed</div>
             <div class="body-error-text">${safeMessage}</div>
         </li>
     `;
+}
+
+// max 模式 PP 主体：谱面侧 ppMetrics + mod 修正组装 5 行柱状图（Task 13）。
+// ppMetrics 缺失/无效 → 软失败空态（不进 errors[]，与附属段语义一致）。
+function buildReworkPpDisplay(ppMetrics, modCodes) {
+    if (!ppMetrics || !Number.isFinite(Number(ppMetrics.totalNotes)) || Number(ppMetrics.totalNotes) <= 0) {
+        renderBodySectionError("ReworkPP", "PP data unavailable");
+        return;
+    }
+    const ppRes = calculateReworkPp({
+        starRating: ppMetrics.star,
+        variety: ppMetrics.variety,
+        accScalar: ppMetrics.accScalar,
+        totalNotes: ppMetrics.totalNotes,
+        perfect: ppMetrics.totalNotes,
+        great: 0,
+        good: 0,
+        ok: 0,
+        meh: 0,
+        miss: 0,
+        noFail: modCodes.includes("NF"),
+        easy: modCodes.includes("EZ"),
+    });
+    if (!ppRes) {
+        renderBodySectionError("ReworkPP", "PP data unavailable");
+        return;
+    }
+    const rows = [
+        { key: "pp", label: "Max PP", value: ppRes.pp, min: 0, max: 1200, centered: false },
+        { key: "proportion", label: "Proportion", value: ppRes.proportion, min: 0, max: 1, centered: false },
+        { key: "acc", label: "Acc Multiplier", value: ppRes.accMultiplier, min: 0.87, max: 1.13, centered: true },
+        { key: "variety", label: "Variety Multiplier", value: ppRes.varietyMultiplier, min: 0.945, max: 1.055, centered: true },
+        { key: "length", label: "Length Multiplier", value: ppRes.lengthMultiplier, min: 0.9, max: 1.1, centered: true },
+    ].map((row) => ({ ...row, value: Math.max(0, row.value) }));
+    renderReworkPpBars({ mode: "max", rows });
 }
 
 function setLeftCapsuleUnitBadge(unitText) {
@@ -196,6 +247,9 @@ function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar
 
 export function resetReworkDisplay() {
     state.actualEstimatorAlgorithm = state.estimatorAlgorithm;
+    state.ppMetrics = null;
+    clearReworkPpBody();
+    resetLivePp();
     setNumericDifficultyValue(null);
     setForceHideNumericDifficulty(false);
     reworkStarEl.textContent = "-";
@@ -283,6 +337,7 @@ export async function fetchBeatmapFile(reason) {
             || state.diffText === "InterludeSR"
             || currentEstimatorAlgorithm() === "Companella"
             || currentEstimatorAlgorithm() === "Mixed",
+        pp: contentBarShows("ReworkPP") || state.srText === "ReworkPP",
     };
     // 缓存键加版本段：star 口径统一为 Sunny 原始 sr 后，旧快照（存的是 Azusa/Roxy 映射 star）必须失效。
     const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2";
@@ -295,7 +350,8 @@ export async function fetchBeatmapFile(reason) {
             && snapshot.computed.graph === needComputed.graph
             && snapshot.computed.pattern === needComputed.pattern
             && snapshot.computed.ett === needComputed.ett
-            && snapshot.computed.interlude === needComputed.interlude) {
+            && snapshot.computed.interlude === needComputed.interlude
+            && snapshot.computed.pp === needComputed.pp) {
             cached = snapshot;
         }
     }
@@ -367,6 +423,8 @@ export async function fetchBeatmapFile(reason) {
                     withPattern: needComputed.pattern,
                     withEtterna: needComputed.ett,
                     withInterlude: needComputed.interlude,
+                    withPpMetrics: needComputed.pp,
+                    classicMod: state.classicMod === true,
                     etternaVersion: state.etternaVersion,
                     companellaEtternaVersion: state.companellaEtternaVersion,
                 };
@@ -406,6 +464,7 @@ export async function fetchBeatmapFile(reason) {
         const showsPattern = contentBarShows("Pattern");
         const showsEtterna = contentBarShows("Etterna");
         const showsGraph = contentBarShows("Graph");
+        const showsReworkPp = contentBarShows("ReworkPP");
 
         const shouldDelayBodyRender = shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar);
         let bodyRenderDelayPromise = null;
@@ -472,6 +531,7 @@ export async function fetchBeatmapFile(reason) {
         if (cached) {
             rework = cached.rework;
             state.actualEstimatorAlgorithm = cached.actualEstimatorAlgorithm;
+            state.ppMetrics = cached.ppMetrics || null;
             resolvedEstDiff = cached.rework.estDiff;
             resolvedNumericDifficulty = cached.rework.numericDifficulty;
             resolvedNumericDifficultyHint = cached.rework.numericDifficultyHint;
@@ -490,6 +550,7 @@ export async function fetchBeatmapFile(reason) {
         } else if (pipelineResult) {
             rework = pipelineResult.rework;
             state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm;
+            state.ppMetrics = pipelineResult.ppMetrics || null;
             vibroEligible = pipelineResult.vibro.eligible;
             errors.push(...pipelineResult.errors);
             if (isStaleRequest()) return;
@@ -705,6 +766,13 @@ export async function fetchBeatmapFile(reason) {
             ettSkillBarsEl.innerHTML = "";
         }
 
+        // ReworkPP 主体：谱面侧 ppMetrics（miss 来自 pipelineResult、hit 来自快照）+
+        // 当前 mod 修正，max 模式渲染。ppMetrics 缺失时渲染错误空态。
+        if (showsReworkPp) {
+            if (!(await waitForBodyRenderReady())) return;
+            buildReworkPpDisplay(state.ppMetrics, state.modCodes || []);
+        }
+
         if (rework) {
             const shouldRunCompanella = Number(rework.columnCount) === 4
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
@@ -798,6 +866,7 @@ export async function fetchBeatmapFile(reason) {
                     interludeStar,
                     isVibroMap,
                     sixKConst,
+                    ppMetrics: pipelineResult.ppMetrics || null,
                     actualEstimatorAlgorithm: state.actualEstimatorAlgorithm,
                     parsedInfo: {
                         metadata: parsedInfo.metadata,
@@ -882,8 +951,13 @@ export async function fetchBeatmapFile(reason) {
 
         let leftCapsuleUnit = "";
 
-        // 6K 定数: force override left capsule when enabled and map is 6K
-        if (sixKConst !== null) {
+        // PP capsule fixed width: tabular-nums + measured width kills horizontal flicker.
+        // Toggling the class off (SR/MSD) restores auto width.
+        reworkStarEl.classList.toggle("pp-capsule", state.srText === "ReworkPP");
+
+        // 6K 定数: force override left capsule when enabled and map is 6K —
+        // but never override an explicit ReworkPP srText selection (PP wins).
+        if (sixKConst !== null && state.srText !== "ReworkPP") {
             show6KConstValue(sixKConst);
             leftCapsuleUnit = "LV";
         } else if (state.srText === "Pattern") {
@@ -905,6 +979,29 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "MSD";
             } else if (rework) {
                 showNumericStarValue(rework.star);
+                leftCapsuleUnit = "SR";
+            }
+        } else if (state.srText === "ReworkPP") {
+            let ppVal = getLatestPpValue();   // from livePp.js (max PP when idle, live PP in play)
+            // livePp 的 cheap guard 在 max 模式下（选图/菜单）可能因 counts 不变而短路，
+            // latestPpValue 滞留旧图值 — ppMetrics 存在时直接计算 max PP，保证换图刷新。
+            if ((ppVal == null || !Number.isFinite(ppVal)) && state.ppMetrics) {
+                const ppRes = calculateReworkPp({
+                    starRating: state.ppMetrics.star,
+                    variety: state.ppMetrics.variety,
+                    accScalar: state.ppMetrics.accScalar,
+                    totalNotes: state.ppMetrics.totalNotes,
+                    perfect: state.ppMetrics.totalNotes, great: 0, good: 0, ok: 0, meh: 0, miss: 0,
+                    noFail: state.modCodes.includes("NF"),
+                    easy: state.modCodes.includes("EZ"),
+                });
+                ppVal = ppRes ? ppRes.pp : null;
+            }
+            if (ppVal != null && Number.isFinite(ppVal)) {
+                showReworkPpValue(ppVal);
+                leftCapsuleUnit = "PP";
+            } else if (rework) {
+                showNumericStarValue(rework.star);   // ppMetrics 缺失 fallback
                 leftCapsuleUnit = "SR";
             }
         } else if (rework) {
@@ -956,6 +1053,9 @@ export async function fetchBeatmapFile(reason) {
             : "";
         ettSkillBarsEl.innerHTML = contentBarShows("Etterna")
             ? "<li class=\"ett-skill-item empty\">No data</li>"
+            : "";
+        ppBarsEl.innerHTML = contentBarShows("ReworkPP")
+            ? "<li class=\"pp-item empty\">No data</li>"
             : "";
         showOverlay({
             title: "Load failed",

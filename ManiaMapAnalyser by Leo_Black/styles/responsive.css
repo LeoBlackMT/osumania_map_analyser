@@ -49,6 +49,15 @@
         max-height: 500px;
     }
 
+    .main-card.bars-pp {
+        grid-template-rows: none;
+        grid-auto-rows: auto;
+        align-content: start;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+    }
+
     .star-value {
         font-size: 40px;
     }

@@ -72,17 +72,18 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 **identity 构成**（`socketHandlers.js:236-250`）：按可用性拼接 `id:${beatmapId}`（:237-239）、`hash:${beatmapHash}`（:240-242）、`path:${beatmapPath}`（:243-245），三者皆无时回退 `meta:${beatmapTitleKey}`（:247-250，见 §8），最终 `identityParts.join("|")`（:252）。空 identity 直接 return 不触发分析（:253）。
 
-**modSignature 构成**（`modData.js:218-222`）：
+**modSignature 构成**（`modData.js:218-228`）：
 
 ```js
 const modSignature = [
     Number(speedRate).toFixed(5),      // 倍速，5 位小数
     odFlag == null ? "none" : String(odFlag),
     cvtFlag == null ? "none" : String(cvtFlag),
+    classic ? "1" : "0",               // Classic 感知星数标志（第 4 段）
 ].join("|");
 ```
 
-即 `speedRate|odFlag|cvtFlag`，只含**计算相关维度**（`modData.js:216-217` 注释：避免 lazer mod payload 无关字段波动导致重算抖动）。返回对象同时含 `modSignature` 字段（`modData.js:229`），由 `modData.js:62 getModData(data, {...})` 计算。
+即 `speedRate|odFlag|cvtFlag|classic`，只含**计算相关维度**（`modData.js:216-217` 注释：避免 lazer mod payload 无关字段波动导致重算抖动）。第 4 段 `classic` 由 `modData.js:218-220` 判定（`client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2")`，详见 mod-handling.md §2）——classic 切换会改变星数密度，必须进键。返回对象同时含 `modSignature` 字段（`modData.js:236`）与 `modCodes`（:238）、`classic`（:237），由 `modData.js:62 getModData(data, {...})` 计算。
 
 ## 6. 命中判定：覆盖检查
 
@@ -93,13 +94,14 @@ snapshot.computed.graph === needComputed.graph
 && snapshot.computed.pattern === needComputed.pattern
 && snapshot.computed.ett === needComputed.ett
 && snapshot.computed.interlude === needComputed.interlude
+&& snapshot.computed.pp === needComputed.pp
 ```
 
-四项全匹配才命中，任一不匹配视为 miss 走完整重算。
+**五项**全匹配才命中，任一不匹配视为 miss 走完整重算。
 
-- `needComputed` 是**本次分析需要哪些计算产物**的布尔集（`analysis.js:287-304`）：pattern（键型）、ett（Etterna MSD）、graph（难度图）、interlude（Interlude 星数）。各项由当前显示需求与算法需求推导（如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，`analysis.js:299`；Companella/Mixed 需要 ett 与 interlude，`analysis.js:298`、:302-303）。
+- `needComputed` 是**本次分析需要哪些计算产物**的布尔集（`analysis.js:287-304`）：pattern（键型）、ett（Etterna MSD）、graph（难度图）、interlude（Interlude 星数）、pp（ReworkPP 谱面侧指标，`contentBarShows("ReworkPP")`，`analysis.js:339`）。各项由当前显示需求与算法需求推导（如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，`analysis.js:334`；Companella/Mixed 需要 ett 与 interlude，`analysis.js:333`、:337-338）。
 - `snapshot.computed` 在写入时保存：`analysis.js:775` `computed: needComputed`。
-- **显示类设置（contentBar/srText/diffText 切换等）由覆盖检查处理，而不是缓存失效**——改了显示需求但没改计算需求时仍可命中（如从"显示难度"切到"显示 MSD"若 needComputed 不变）；改了计算需求则检查自动判 miss 重算。
+- **显示类设置（contentBar/srText/diffText 切换等）由覆盖检查处理，而不是缓存失效**——改了显示需求但没改计算需求时仍可命中（如从"显示难度"切到"显示 MSD"若 needComputed 不变）；改了计算需求（如切到 ReworkPP 主体，`needComputed.pp` 由 false 变 true）则检查自动判 miss 重算。
 - `needComputed` 用 fetch 前的保守值（`analysis.js:284-286` 注释：尚未经过谱面级 `effectiveContentBar` override），仅用于覆盖检查；实际 shows*/need* 在执行块内 override 之后重新计算。
 
 ## 7. 写门
@@ -123,7 +125,7 @@ if (!cached && state.enableResultCache && state.lastBeatmapIdentity
 | `!isStaleRequest()` | 请求未过期（`analysis.js:251`：`requestSeq !== state.analysisRequestSeq` 即过期——换歌/新分析已覆盖本次请求） |
 | `genAtStart === resultCacheGeneration()` | **代数守卫**：`genAtStart` 捕获于分析开始（`analysis.js:252`），若期间 settings.js 调了 `clearResultCache()`（代数 +1）则拒绝写回——防止 clear 之后的旧分析结果污染新缓存 |
 
-写入内容（`analysis.js:751-776`）：`rework`（star/estDiff/numericDifficulty/numericDifficultyHint/graph/lnRatio/columnCount/lnStar/typePercentageData）、`patternReport`、`mergedClusters`、`ettResult`、`interludeStar`、`isVibroMap`、`sixKConst`、`actualEstimatorAlgorithm`（§10）、`parsedInfo`、`computed: needComputed`。
+写入内容（`analysis.js:751-776`）：`rework`（star/estDiff/numericDifficulty/numericDifficultyHint/graph/lnRatio/columnCount/lnStar/typePercentageData）、`patternReport`、`mergedClusters`、`ettResult`、`interludeStar`、`isVibroMap`、`sixKConst`、`actualEstimatorAlgorithm`（§10）、`parsedInfo`、`ppMetrics`（谱面侧 ReworkPP 指标 `{star, variety, accScalar, totalNotes, spikiness, switches}`，JSON-safe 纯数值对象，无需 jsonSafe）、`computed: needComputed`。
 
 **jsonSafe 包装**（`analysis.js:747-750`）：clustering.js 的 cluster 对象带 `format()`/`Importance` 方法，`structuredClone` 无法拷贝（违反 resultCache 的 JSON-safe 契约），故 `mergedClusters` 等经 `jsonSafe(value) = value == null ? value : JSON.parse(JSON.stringify(value))`（`analysis.js:750`）只存渲染所需普通字段。
 

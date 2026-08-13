@@ -58,6 +58,7 @@
 			"Pattern",
 			"Etterna",
 			"Graph",
+			"ReworkPP",
 			"Full"
 		],
 		"value": "Auto"
@@ -70,6 +71,7 @@
 		"options": [
 			"Auto",
 			"ReworkSR",
+			"ReworkPP",
 			"InterludeSR",
 			"MSD",
 			"Pattern"

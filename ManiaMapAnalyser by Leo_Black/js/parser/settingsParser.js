@@ -14,6 +14,7 @@ export function normalizeContentBarValue(value) {
     if (lowered === "graph") return "Graph";
     if (lowered === "full") return "Full";
     if (lowered === "none") return "None";
+    if (lowered === "reworkpp") return "ReworkPP";
     return null;
 }
 
@@ -28,6 +29,7 @@ export function normalizeSrTextValue(value) {
     if (lowered === "msd") return "MSD";
     if (lowered === "pattern") return "Pattern";
     if (lowered === "interludesr") return "InterludeSR";
+    if (lowered === "reworkpp") return "ReworkPP";
     return null;
 }
 

@@ -11,11 +11,13 @@
         - Pattern: 显示键型分析。
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
+        - ReworkPP: 显示最大/实时 Rework PP 及其相关参数。
         - Full: 显示完整内容，包括键型分析、难度图表和Etterna分数。不推荐日常使用，可能会比较拥挤。
         - 注：对于非4/6/7K谱面，主体内容将自动回退为Pattern显示。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
         - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
+        - ReworkPP: 显示当前谱面的最大 Rework PP/实时 Rework PP 值（4 位有效数字）。
         - MSD: 显示Etterna MSD。*仅适配4/6/7K谱面。
         - InterludeSR: 显示[Interlude](https://github.com/YAVSRG/YAVSRG)星数。
         - Pattern: 显示整体键型。
@@ -137,11 +139,13 @@
         - Pattern: Displays pattern analysis.
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
+        - ReworkPP: Displays the max/live Rework PP performance and related parameters.
         - Full: Displays full content including pattern analysis, difficulty graph, and Etterna scores. Not recommended for daily use — may feel crowded.
         - Note: For non-4/6/7K beatmaps, body content automatically falls back to Pattern.
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.
         - ReworkSR: Displays [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth) star rating.
+        - ReworkPP: Displays the Max Rework PP/Live Rework PP values (4 significant digits).
         - MSD: Displays Etterna MSD. *Only compatible with 4/6/7K beatmaps.
         - InterludeSR: Displays [Interlude](https://github.com/YAVSRG/YAVSRG) star rating.
         - Pattern: Displays the overall pattern.

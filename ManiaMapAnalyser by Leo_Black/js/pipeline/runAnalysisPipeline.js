@@ -83,6 +83,8 @@ function sanitizePatternResult(result) {
  *   浏览器 worker 不传——worker 内自行解析一次）
  * @returns {Promise<{ rework: object, actualEstimatorAlgorithm: string, sunnyStar: number|null,
  *   sunnyWindow: object|null, sixKConst: number|null,
+ *   ppMetrics: { star: number, variety: number, accScalar: number, totalNotes: number,
+ *     spikiness: number, switches: number }|null,  // 仅 options.withPpMetrics === true 时输出
  *   vibro: { star: number, eligible: boolean },
  *   parsedSummary: { metadata: object, lnRatio: number, columnCount: number },
  *   patternReport: object|null, patternTopFiveClusters: Array|null, patternError: string|null,
@@ -176,12 +178,47 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
 
     // 4. 归一化：Azusa/Roxy/Mixed 未回退时 star 统一为 Sunny 原始 sr（星数胶囊恒显 Sunny 口径；
     //    Daniel 独立算法排除；Companella/Sunny 本就是 Sunny sr）。
+    //    保留 sunnyResult 对象引用（含 ppMetrics 挂载），下方 ppMetrics 组装复用同一份结果。
     let rework = selectedRework;
     let sunnyStar = null;
+    let normalizationSunnyResult = null;
     if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm)) {
-        const sunnyResult = sharedSunnyResult || runSunnyEstimatorFromText(rawText, options, parser);
-        sunnyStar = Number(sunnyResult.star);
+        normalizationSunnyResult = sharedSunnyResult || runSunnyEstimatorFromText(rawText, options, parser);
+        sunnyStar = Number(normalizationSunnyResult.star);
         rework = { ...selectedRework, star: sunnyStar };
+    }
+
+    // 4b. ppMetrics（withPpMetrics，Task 9）：全部字段来自同一个 Sunny 结果对象，star 取该结果 star
+    //    （Sunny 原始 sr，与星数胶囊口径一致）。来源按算法：
+    //    - Azusa/Roxy/Mixed：归一化 sunnyResult（sharedSunnyResult 或上方独立计算）
+    //    - Daniel：withPpMetrics 时在 pipeline 内跑专用 Sunny pass（同 options + withPpMetrics:true）
+    //    - Sunny/Companella / Azusa/Roxy 回退后的 Sunny：selectedRework 即 Sunny 结果
+    //    失败/无 ppMetrics → null（软失败，不进 errors[]）；关闭时零额外计算、零输出字段。
+    let ppMetrics = null;
+    if (options.withPpMetrics === true) {
+        try {
+            let sunnySrc = null;
+            if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm)) {
+                sunnySrc = normalizationSunnyResult;
+            } else if (estimatorAlgorithm === "Daniel") {
+                sunnySrc = runSunnyEstimatorFromText(rawText, { ...options, withPpMetrics: true }, parser);
+            } else {
+                sunnySrc = selectedRework;
+            }
+            const m = sunnySrc?.ppMetrics;
+            if (sunnySrc && m && Number.isFinite(Number(sunnySrc.star))) {
+                ppMetrics = {
+                    star: Number(sunnySrc.star),
+                    variety: m.variety,
+                    accScalar: m.accScalar,
+                    totalNotes: m.totalNotes,
+                    spikiness: m.spikiness,
+                    switches: m.switches,
+                };
+            }
+        } catch (err) {
+            ppMetrics = null; // 软失败：与附属段语义一致，不并入 errors[]
+        }
     }
 
     // 5. SunnyWindow（forceSunnyWindow）：calculateSunny + calculateLN（带 parsed + enableAnalyzeLN）。
@@ -278,6 +315,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         sunnyWindow,
         sixKConst,
         vibro,
+        ...(options.withPpMetrics === true ? { ppMetrics } : {}),
         parsedSummary,
         patternReport,
         patternTopFiveClusters,

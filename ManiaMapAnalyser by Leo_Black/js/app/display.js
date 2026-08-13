@@ -6,6 +6,7 @@ import {
     contentBarShows,
     mainCardEl,
     patternClustersEl,
+    ppBarsEl,
     reworkBlockEl,
     reworkDiffEl,
     reworkRightCapsuleEl,
@@ -382,6 +383,7 @@ export function renderEtternaSkeleton() {
 export function renderContentSkeleton() {
     renderClusterSkeleton();
     renderEtternaSkeleton();
+    renderReworkPpSkeleton();
 }
 
 export function setEstimateDifficultyText(value) {
@@ -447,7 +449,13 @@ export function show6KConstValue(constValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
-function animateNumericCapsuleValue(element, targetValue) {
+// Pure animation interpolation (from → target over eased progress), exported
+// for smoke-test assertion; from defaults to 0 so legacy calls animate 0→target.
+export function numericAnimationValue(from, target, progress) {
+    return from + (target - from) * progress;
+}
+
+function animateNumericCapsuleValue(element, targetValue, format, fromValue, durationMs) {
     if (!element) return;
     const numericTarget = Number(targetValue);
     if (!Number.isFinite(numericTarget)) {
@@ -456,23 +464,103 @@ function animateNumericCapsuleValue(element, targetValue) {
         return;
     }
 
+    // Per-call duration override: PP capsule animates faster (250ms) than the
+    // default 400ms; star/MSD/6K calls keep the default.
+    const duration = Number.isFinite(Number(durationMs)) && durationMs > 0 ? durationMs : NUMERIC_ANIMATION_DURATION_MS;
     const clampedTarget = Math.max(0, numericTarget);
+    const from = Number.isFinite(Number(fromValue)) ? Math.max(0, Number(fromValue)) : 0;
     const token = Symbol("numeric-animation");
     numericAnimationTokens.set(element, token);
     const startTs = performance.now();
     const tick = (now) => {
         if (numericAnimationTokens.get(element) !== token) return;
-        const progress = Math.min(1, (now - startTs) / NUMERIC_ANIMATION_DURATION_MS);
+        const progress = Math.min(1, (now - startTs) / duration);
         const eased = 1 - ((1 - progress) ** 3);
-        const animatedValue = clampedTarget * eased;
+        const animatedValue = numericAnimationValue(from, clampedTarget, eased);
         const safeDisplayValue = animatedValue <= 0.0005 ? 0 : animatedValue;
-        element.textContent = safeDisplayValue.toFixed(2);
+        element.textContent = format ? format(safeDisplayValue) : safeDisplayValue.toFixed(2);
         if (progress < 1) {
             requestAnimationFrame(tick);
         }
     };
 
     requestAnimationFrame(tick);
+}
+
+// Always exactly 4 significant figures (250 → "250.0", 123.45 → "123.5").
+// toPrecision(4) only emits exponent form above ~10000, which PP never reaches —
+// defensive fallback anyway.
+export function formatPpValue(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "-";
+    const s = num.toPrecision(4);
+    if (s.includes("e")) return num.toFixed(0);
+    return s;
+}
+
+// Map PP (0~1200, per ROW_SPECS) onto the 0~10 star color scale.
+function ppToColorScaleValue(ppValue) {
+    return Math.min(Math.max(Number(ppValue) || 0, 0) / 1200, 1) * 10.0;
+}
+
+// Last PP value the ReworkPP capsule animated to — consecutive live hits slide
+// from it instead of restarting at 0. Stale across capsule mode switches
+// (SR fallback) is acceptable: next showReworkPpValue just slides from the old
+// number, which reads as a continuation, not a flash.
+let lastShownPp = null;
+
+// PP capsule fixed width: PP renders 4 significant digits (toPrecision(4)),
+// i.e. 4 digits + 1 decimal point (e.g. "735.6"/"250.0"/"999.9"). With
+// tabular-nums every digit is the same width, so measuring the widest common
+// candidate "999.9" and caching it as --pp-capsule-width makes the capsule
+// strictly match real content with zero slack. The rare low-PP form "0.0200"
+// (6 chars) overflows by one digit — acceptable, PP < 0.1 is extremely rare.
+let ppCapsuleWidth = null;
+
+function measurePpCapsuleWidth() {
+    if (ppCapsuleWidth != null) return ppCapsuleWidth;
+    if (!reworkStarEl || !document.body) return 140;
+    const probe = document.createElement("span");
+    const cs = getComputedStyle(reworkStarEl);
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "nowrap";
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontVariantNumeric = cs.fontVariantNumeric;
+    probe.style.lineHeight = cs.lineHeight;
+    probe.style.padding = cs.padding;
+    // cs.border is empty for shorthand (borderWidth/style/Color are the
+    // exposed longhands); .star-value has a uniform 1px border on all sides
+    // and the box is border-box, so include it or the probe measures 2px short.
+    probe.style.borderWidth = cs.borderTopWidth || "1px";
+    probe.style.borderStyle = "solid";
+    probe.style.borderColor = "transparent";
+    probe.textContent = "999.9";
+    document.body.appendChild(probe);
+    const width = Math.ceil(probe.getBoundingClientRect().width);
+    probe.remove();
+    ppCapsuleWidth = width;
+    return width;
+}
+
+export function showReworkPpValue(ppValue) {
+    reworkStarEl.classList.remove("category-mode");
+    reworkStarEl.style.setProperty("--pp-capsule-width", `${measurePpCapsuleWidth()}px`);
+    const from = lastShownPp != null ? lastShownPp : 0;
+    // PP capsule: 250ms (medium speed-up vs. default 400ms)
+    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from, 250);
+    lastShownPp = Number(ppValue) || 0;
+    const mappedStar = ppToColorScaleValue(ppValue);
+    const starBg = starColorFor(mappedStar);
+    const preferredText = starTextColorFor(mappedStar);
+    const starText = pickReadableTextColor(mappedStar, starBg, preferredText);
+    reworkStarEl.style.backgroundColor = starBg;
+    reworkStarEl.style.color = starText;
+    reworkStarEl.style.textShadow = "none";
+    reworkStarEl.classList.remove("high-contrast");
+    syncLeftUnitBadgeContrast(starText);
 }
 
 function sanitizeCategoryText(categoryText) {
@@ -754,6 +842,169 @@ export function renderEtternaSkillBars(values, columnCount) {
                 </li>
             `)
         .join("");
+}
+
+// ─── ReworkPP bars ────────────────────────────────────────────────────────────
+// DOM/CSS contract with Task 11 (styles/bars.css):
+//   .pp-bars            — <ol> container (id="pp-bars")
+//   .pp-item            — <li> row; centered rows also carry .pp-item--center
+//   .pp-label           — row label
+//   .pp-track/.pp-track-inner — track frame (same nesting as .ett-skill-*)
+//   .pp-fill            — fill bar; width driven by --pp-width (inline style)
+//   .pp-fill--center    — centered row variant; anchored at the track's 50%
+//                         point (where value 1.0 sits). Positioning via the
+//                         inline `--pp-side` var: "left" → left:50% +
+//                         transform-origin:left (grows rightward),
+//                         "right" → right:50% + transform-origin:right
+//                         (grows leftward). Width still via --pp-width.
+//   .pp-head            — value pill; positioned by --label-pos (as % of track)
+//   Rainbow (optional): --ett-fill-bg + --ett-fill-bg-size on .pp-fill
+//                       (same vars the .ett-skill-fill rainbow path uses)
+const PP_ROW_COUNT = 5;
+const PP_CENTER_LABEL_POS = 50; // % of track where value 1.0 anchors
+// 换歌入场动画总窗口：340ms item-float-in/fill-grow-fast + 4×60ms --item-delay stagger。
+// 窗口内 livePp 的 inPlaceOnly 渲染让路（见 renderReworkPpBars），避免 bars-live 掐断动画。
+const PP_ENTRANCE_WINDOW_MS = 580;
+let ppBarsRebuiltAt = 0;
+
+function buildReworkPpRowData(item, index, mode) {
+    const value = Number(item.value);
+    const min = Number(item.min);
+    const max = Number(item.max);
+    const range = max - min || 1;
+    const centered = Boolean(item.centered);
+    // Row 1 (pp) label depends on the live/max mode, not the caller's label.
+    const label = index === 0
+        ? (mode === "live" ? "Live PP" : "Max PP")
+        : item.label;
+
+    let widthPct;
+    let labelPos;
+    let side = "";
+    if (centered) {
+        // Multiplier rows anchor at value 1.0 (track center): value >= 1.0
+        // extends right from the center, < 1.0 extends left. The pill sits at
+        // the fill's far end (away from the center anchor).
+        widthPct = Math.min((Math.abs(value - 1.0) / range) * 100, 100);
+        side = value >= 1.0 ? "left" : "right";
+        labelPos = value >= 1.0
+            ? PP_CENTER_LABEL_POS + widthPct
+            : PP_CENTER_LABEL_POS - widthPct;
+    } else {
+        widthPct = Math.max(0, Math.min((value - min) / range, 1)) * 100;
+        labelPos = widthPct;
+    }
+    // Pill must not overflow the card edges (8~97 keeps the 3dp capsule inside).
+    labelPos = Math.max(8.0, Math.min(labelPos, 97.0));
+
+    const ratio = widthPct / 100;
+    const baseStyle = state.enableEtternaRainbowBars
+        ? `--pp-width:${widthPct.toFixed(2)}%;--ett-fill-bg:${ETT_FULL_TRACK_RAINBOW_GRADIENT};--ett-fill-bg-size:${(100 / Math.max(ratio, 0.001)).toFixed(3)}% 100%`
+        : `--pp-width:${widthPct.toFixed(2)}%`;
+    const fillStyle = centered
+        ? `--pp-side:${side};${baseStyle}`
+        : baseStyle;
+
+    return {
+        label,
+        // 前端不显示负数：Proportion 在 acc<=0.8 时值为 0（不为负），PP/乘子行恒非负，
+        // Math.max(0, ...) 只是无害保险，防止任何意外负值泄漏到胶囊文本。
+        // Proportion 按百分比显示（0.956 → "95.6%"），柱宽仍按 0~1 原始值计算（widthPct）。
+        value: item.key === "proportion"
+            ? `${(Math.max(0, value) * 100).toFixed(1)}%`
+            : Math.max(0, value).toFixed(3),
+        labelPos: labelPos.toFixed(2),
+        fillStyle,
+        centered,
+        side,
+    };
+}
+
+export function renderReworkPpBars(data, options = {}) {
+    if (!contentBarShows("ReworkPP")) {
+        ppBarsEl.innerHTML = "";
+        return;
+    }
+
+    const mode = data && data.mode === "live" ? "live" : "max";
+    const rows = data && Array.isArray(data.rows) ? data.rows : [];
+    const rowData = rows.map((item, index) => buildReworkPpRowData(item, index, mode));
+
+    if (rowData.length === 0) {
+        ppBarsEl.innerHTML = '<li class="pp-item empty">No data</li>';
+        return;
+    }
+
+    // 换难度 / 改设置且条目数量不变时，原地更新 label/值/样式，进度条平滑过渡；
+    // 换歌或行数变化时回到整组重建并重放逐条弹入动画（与 etterna 双路径一致）。
+    // inPlaceOnly（livePp 实时路径）：永远原地更新（420ms CSS 过渡平滑），忽略换歌
+    // 检查 — 换图入场动画由 analysis 路径负责；仅校验行数与结构是否就绪。
+    // 例外：换歌重建后的入场窗口内（580ms）让路，否则 bars-live 的 animation:none
+    // 会掐断正在播放的弹入动画；窗口过后恢复正常原地更新。
+    if (options.inPlaceOnly && performance.now() - ppBarsRebuiltAt < PP_ENTRANCE_WINDOW_MS) {
+        return;
+    }
+    const canInPlace = options.inPlaceOnly
+        ? (ppBarsEl.querySelectorAll(":scope > li").length === 5 && Boolean(ppBarsEl.querySelector(".pp-fill")))
+        : canUpdateBarsInPlace(ppBarsEl, rowData.length, ".pp-fill");
+    if (canInPlace) {
+        ppBarsEl.classList.add("bars-live");
+        const items = ppBarsEl.querySelectorAll(":scope > li");
+        rowData.forEach((item, index) => {
+            const row = items[index];
+            const labelEl = row.querySelector(".pp-label");
+            const fillEl = row.querySelector(".pp-fill");
+            const headEl = row.querySelector(".pp-head");
+            row.classList.toggle("pp-item--center", item.centered);
+            if (labelEl) labelEl.textContent = item.label;
+            if (fillEl) {
+                fillEl.classList.toggle("pp-fill--center", item.centered);
+                fillEl.setAttribute("style", item.fillStyle);
+            }
+            if (headEl) {
+                headEl.textContent = item.value;
+                headEl.style.setProperty("--label-pos", `${item.labelPos}%`);
+            }
+        });
+        return;
+    }
+
+    ppBarsEl.classList.remove("bars-live");
+    ppBarsRebuiltAt = performance.now(); // 重建=入场动画窗口起点，inPlaceOnly 在此窗口内让路
+    ppBarsEl.innerHTML = rowData
+        .map((item, index) => `
+                <li class="pp-item${item.centered ? " pp-item--center" : ""}" style="--item-delay:${index * 60}ms">
+                    <div class="pp-label">${item.label}</div>
+                    <div class="pp-track">
+                        <div class="pp-track-inner">
+                            <div class="pp-fill${item.centered ? " pp-fill--center" : ""}" style="${item.fillStyle}"></div>
+                        </div>
+                        <div class="pp-head" style="--label-pos:${item.labelPos}%">${item.value}</div>
+                    </div>
+                </li>
+            `)
+        .join("");
+}
+
+export function renderReworkPpSkeleton() {
+    if (!contentBarShows("ReworkPP")) {
+        ppBarsEl.innerHTML = "";
+        return;
+    }
+
+    ppBarsEl.innerHTML = Array.from({ length: PP_ROW_COUNT })
+        .map(() => `
+            <li class="pp-item skeleton">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-track"></div>
+            </li>
+        `)
+        .join("");
+}
+
+export function clearReworkPpBody() {
+    ppBarsEl.classList.remove("bars-live");
+    ppBarsEl.innerHTML = "";
 }
 
 export function formatDiffForDisplay(diffText) {

@@ -97,6 +97,10 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed = null) {
     let p = pObj.getParsedData();
     let lnRatio = p.lnRatio;
 
+    // PP metrics: raw HitObjects count (hold=1), captured BEFORE modIN/modHO
+    // conversion (cs ManiaDifficultyCalculator TotalNotes = HitObjects.Count).
+    const totalNotes = p.columns.length;
+
     if (cvtFlag) {
     if (String(cvtFlag).includes("IN")) {
             try {
@@ -226,6 +230,7 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed = null) {
     lnSeqByColumn,
     lnRatio,
     columnCount,
+    totalNotes,
     };
 }
 
@@ -720,6 +725,144 @@ function computeCAndKs(K, noteSeq, keyUsage, baseCorners) {
     return { CStep, CStepV2, KsStep };
 }
 
+// =======================================================================
+// PP metrics (ported from genirx dart sunny_algorithm.dart :1595-1778)
+// =======================================================================
+
+// Rao quadratic entropy with logarithmic distance (dart _raoQuadraticEntropyLog):
+// Q = Σᵢⱼ pᵢ·pⱼ·dist(i,j), dist = ln(1+|x−y|) applied `logIterations` times.
+function raoQuadraticEntropyLog(values, logIterations) {
+    if (values.length === 0) return 0;
+    const counts = new Map();
+    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+    const unique = [...counts.keys()];
+    const total = values.length;
+    const p = unique.map((k) => counts.get(k) / total);
+    const n = unique.length;
+    let q = 0;
+    for (let i = 0; i < n; i += 1) {
+    for (let j = 0; j < n; j += 1) {
+            let acc = Math.abs(unique[i] - unique[j]);
+            for (let k = 0; k < logIterations; k += 1) {
+        acc = Math.log(1 + acc);
+            }
+            q += p[i] * p[j] * acc;
+    }
+    }
+    return q;
+}
+
+// Variety (dart _variety :1629-1669): 0.5·headVariety + 0.11·tailVariety + 0.45·colVariety.
+// tail uses ALL notes sorted by tail (non-LN tail=-1 sorts first) — distinct from lnSeq tailSeq.
+function computeVariety(noteSeq, noteSeqByColumn, keyCount) {
+    const tailSorted = [...noteSeq].sort((a, b) => a[2] - b[2]);
+
+    const headGaps = [];
+    for (let i = 0; i < noteSeq.length - 1; i += 1) {
+    headGaps.push(noteSeq[i + 1][1] - noteSeq[i][1]);
+    }
+    const tailGaps = [];
+    for (let i = 0; i < tailSorted.length - 1; i += 1) {
+    tailGaps.push(tailSorted[i + 1][2] - tailSorted[i][2]);
+    }
+
+    const headVariety = raoQuadraticEntropyLog(headGaps, 1);
+    const tailVariety = raoQuadraticEntropyLog(tailGaps, 1);
+
+    const headGapsNew = [];
+    for (let k = 0; k < keyCount; k += 1) {
+    const heads = noteSeqByColumn[k] || [];
+    for (let i = 0; i < heads.length - 1; i += 1) {
+            headGapsNew.push(heads[i + 1][1] - heads[i][1]);
+    }
+    }
+    const colVariety = 2.5 * raoQuadraticEntropyLog(headGapsNew, 2);
+
+    return 0.5 * headVariety + 0.11 * tailVariety + 0.45 * colVariety;
+}
+
+// Switches (dart _switches :1671-1778): head/tail gap signatures with ±50 window
+// sliding average, Ks^0.25 and D weights. tail branch only when tails.last > tails.first.
+function computeSwitches(noteSeq, tailSeq, allCorners, ksArr, dAll) {
+    const heads = noteSeq.map((n) => n[1]);
+    const idxList = heads.map((h) => bisectLeft(allCorners, h));
+    const nHead = idxList.length > 1 ? idxList.length - 1 : 0;
+    const ksArrAtNote = [];
+    const weightsAtNote = [];
+    for (let i = 0; i < nHead; i += 1) {
+    ksArrAtNote.push(ksArr[idxList[i]]);
+    weightsAtNote.push(dAll[idxList[i]]);
+    }
+
+    const headGaps = [];
+    for (let i = 0; i < heads.length - 1; i += 1) {
+    headGaps.push(heads[i + 1] - heads[i]);
+    }
+    const numHeadGaps = headGaps.length;
+
+    const avgs = new Array(numHeadGaps);
+    for (let i = 0; i < numHeadGaps; i += 1) {
+    const start = Math.max(0, i - 50);
+    const end = Math.min(i + 50, numHeadGaps - 1);
+    let sum = 0;
+    for (let j = start; j <= end; j += 1) sum += headGaps[j];
+    avgs[i] = sum / (end - start + 1);
+    }
+
+    let signatureHead = 0;
+    for (let i = 0; i < numHeadGaps; i += 1) {
+    signatureHead += Math.sqrt((headGaps[i] / avgs[i] / numHeadGaps) * weightsAtNote[i])
+        * Math.pow(ksArrAtNote[i], 0.25);
+    }
+    let sumRefHead = 0;
+    for (let i = 0; i < numHeadGaps; i += 1) {
+    sumRefHead += (headGaps[i] / avgs[i]) * weightsAtNote[i];
+    }
+    const refSignatureHead = Math.sqrt(sumRefHead);
+
+    const tails = tailSeq.map((n) => n[2]);
+    const idxListTails = tails.map((t) => bisectLeft(allCorners, t));
+    const nTail = idxListTails.length > 1 ? idxListTails.length - 1 : 0;
+    const ksArrAtTail = [];
+    const weightsAtTail = [];
+    for (let i = 0; i < nTail; i += 1) {
+    ksArrAtTail.push(ksArr[idxListTails[i]]);
+    weightsAtTail.push(dAll[idxListTails[i]]);
+    }
+
+    const tailGaps = [];
+    for (let i = 0; i < tails.length - 1; i += 1) {
+    tailGaps.push(tails[i + 1] - tails[i]);
+    }
+
+    let signatureTail = 0;
+    let refSignatureTail = 0;
+    if (tails.length > 0 && tails[tails.length - 1] > tails[0] && tailGaps.length > 0) {
+    const numTailGaps = tailGaps.length;
+    const avgsTail = new Array(numTailGaps);
+    for (let i = 0; i < numTailGaps; i += 1) {
+            const start = Math.max(0, i - 50);
+            const end = Math.min(i + 50, numTailGaps - 1);
+            let sum = 0;
+            for (let j = start; j <= end; j += 1) sum += tailGaps[j];
+            avgsTail[i] = sum / (end - start + 1);
+    }
+    for (let i = 0; i < numTailGaps; i += 1) {
+            signatureTail += Math.sqrt((tailGaps[i] / avgsTail[i] / numTailGaps) * weightsAtTail[i])
+        * Math.pow(ksArrAtTail[i], 0.25);
+    }
+    let sumRefTail = 0;
+    for (let i = 0; i < numTailGaps; i += 1) {
+            sumRefTail += (tailGaps[i] / avgsTail[i]) * weightsAtTail[i];
+    }
+    refSignatureTail = Math.sqrt(sumRefTail);
+    }
+
+    const numerator = signatureHead * numHeadGaps + signatureTail * tailGaps.length;
+    const denominator = refSignatureHead * numHeadGaps + refSignatureTail * tailGaps.length;
+    return numerator / denominator / 2 + 0.5;
+}
+
 export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = null, options = {}, parsed = null) {
     const withGraph = options?.withGraph === true;
 
@@ -734,6 +877,7 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     tailSeq,
     lnRatio,
     columnCount,
+    totalNotes: rawTotalNotes,
     } = preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed);
 
     if (status === "Fail") return -1;
@@ -791,8 +935,9 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     gaps[i] = (allCorners[i + 1] - allCorners[i - 1]) / 2;
     }
 
-    // D2: effectiveWeights uses C_arrV2 (js has no ModClassic → ContainsCL=false, cs :841)
-    const effectiveWeights = CArrV2.map((c, i) => c * gaps[i]);
+    // D2: effectiveWeights uses C_arrV2 by default, C_arr under Classic —
+    // cs MACalculator.cs:837-842 `ContainsCL ? C_arr : C_arrV2`, genirx dart :1487.
+    const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, i) => c * gaps[i]);
     const sortedIndices = DAll.map((_, i) => i).sort((a, b) => DAll[a] - DAll[b]);
     const DSorted = sortedIndices.map((i) => DAll[i]);
     const wSorted = sortedIndices.map((i) => effectiveWeights[i]);
@@ -835,10 +980,28 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
     sr = rescaleHigh(sr);
     sr *= 0.975;
 
+    // PP metrics (dart :1550-1588) — gated on withPpMetrics; never affect star.
+    let ppMetrics = null;
+    if (options?.withPpMetrics === true) {
+    // Spikiness: weightedVariance = (Σ((D⁸ − weightedMean⁸)²·w)/Σw)^(1/8); spikiness = sqrt(var)/mean
+    let varianceSumTop = 0;
+    for (let i = 0; i < DSorted.length; i += 1) {
+            varianceSumTop += Math.pow(Math.pow(DSorted[i], 8) - Math.pow(weightedMean, 8), 2) * wSorted[i];
+    }
+    const weightedVariance = Math.pow(varianceSumTop / den, 1 / 8);
+    const spikiness = den > 0 && weightedMean > 0 ? Math.sqrt(weightedVariance) / weightedMean : 0;
+
+    const switches = computeSwitches(noteSeq, tailSeq, allCorners, KsArr, DAll);
+    const variety = computeVariety(noteSeq, noteSeqByColumn, K);
+    const accScalar = 0.5 * spikiness + 0.5 * switches;
+
+    ppMetrics = { star: sr, variety, accScalar, totalNotes: rawTotalNotes, spikiness, switches };
+    }
+
     if (withGraph) {
     const DPre = applyProximityEnvelope(allCorners, DAll, noteSeq);
     const DGraph = smoothDForGraph(allCorners, DPre, noteSeq);
-    return {
+    const result = {
             star: sr,
             lnRatio,
             columnCount,
@@ -847,6 +1010,12 @@ export function calculate(osuText, speedRate = 1.0, odFlag = null, cvtFlag = nul
         values: DGraph,
             },
     };
+    if (ppMetrics) result.ppMetrics = ppMetrics;
+    return result;
+    }
+
+    if (ppMetrics) {
+    return { star: sr, lnRatio, columnCount, ppMetrics };
     }
 
     return [sr, lnRatio, columnCount];

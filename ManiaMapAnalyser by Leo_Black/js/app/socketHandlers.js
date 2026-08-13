@@ -29,6 +29,8 @@ import { updateCardPlayVisibility } from "./hud.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { getCounterPathForCommand } from "./settings.js";
 import { applyCoverThemeForBeatmap } from "./coverTheme.js";
+import { updateLivePp } from "./livePp.js";
+import { buildSongKey, resolveChangeKind } from "./changeKind.js";
 
 
 function getModData(data) {
@@ -167,8 +169,16 @@ export function setupSocketListener() {
         if (modData.client) {
             state.client = modData.client;
         }
+        if (modData.hasModPayload) {
+            state.modCodes = modData.modCodes || [];
+            state.classicMod = Boolean(modData.classic);
+        }
 
         updateSongTimeState(data);
+
+        // 每消息实时 PP：内部自带 early-return 守卫（成本极低），必须在
+        // beatmap 守卫之前，保证 play/resultScreen 状态变化也走此路径。
+        updateLivePp(data);
 
         const beatmap = data?.beatmap;
         if (!beatmap) return;
@@ -204,7 +214,8 @@ export function setupSocketListener() {
 
         // 曲（mapset）单位的标识：不含 version/难度名，也不含 md5/id/path，
         // 这样同一 mapset 内切换难度时 songKey 保持不变，可据此区分
-        // "换歌" 与 "换难度"。
+        // "换歌" 与 "换难度"。来源单一优先 set > dir > meta——
+        // 避免 api_v2 各状态字段集合波动导致 key 变化（误判为换歌）。
         const beatmapSetId = normalizeNumberText(beatmap?.set || beatmap?.setId || beatmap?.beatmapSetId);
         const beatmapFolderPath = (() => {
             const folder = normalizePathText(data?.directPath?.beatmapBackground
@@ -221,13 +232,7 @@ export function setupSocketListener() {
             normalizeText(beatmap?.title),
             normalizeText(beatmap?.mapper),
         ].join("::").toLowerCase();
-        const songKeyParts = [];
-        if (beatmapSetId) songKeyParts.push(`set:${beatmapSetId}`);
-        if (beatmapFolderPath) songKeyParts.push(`dir:${beatmapFolderPath}`);
-        if (songKeyParts.length === 0 && songMetaKey.replace(/[:]/g, "").length > 0) {
-            songKeyParts.push(`meta:${songMetaKey}`);
-        }
-        const nextSongKey = songKeyParts.join("|");
+        const nextSongKey = buildSongKey({ beatmapSetId, beatmapFolderPath, songMetaKey });
 
         const previousBeatmapIdentity = state.lastBeatmapIdentity || "";
         const previousModSignature = state.modSignature || "";
@@ -271,22 +276,17 @@ export function setupSocketListener() {
             state.modSignature = nextModSignature;
         }
 
-        // 区分本次变化的类型，供渲染层选择对应的入场动画：
-        //   song       —— 换歌（mapset 变了，或首次加载）
-        //   difficulty —— 换难度（同一 mapset 内切换谱面）
-        //   mod        —— 仅 mod 改变，谱面与难度都没变
-        const identityChanged = nextBeatmapIdentity !== previousBeatmapIdentity;
-        let changeKind = "mod";
-        if (identityChanged) {
-            const songChanged = !previousSongKey
-                || !nextSongKey
-                || nextSongKey !== previousSongKey;
-            changeKind = songChanged ? "song" : "difficulty";
-        }
-        state.pendingChangeKind = changeKind;
+        // 区分本次变化的类型，供渲染层选择对应的入场动画（song/difficulty/mod）。
+        state.pendingChangeKind = resolveChangeKind({
+            previousBeatmapIdentity,
+            nextBeatmapIdentity,
+            previousSongKey,
+            nextSongKey,
+        });
 
         state.lastBeatmapIdentity = nextBeatmapIdentity;
-        state.lastSongKey = nextSongKey;
+        // 空 key（partial 包）不污染历史，避免后续完整包比较被污染。
+        if (nextSongKey) state.lastSongKey = nextSongKey;
         state.lastBeatmapIdentitySource = identityParts.length > 1
             ? "composite"
             : (identityParts[0]?.split(":")[0] || "");

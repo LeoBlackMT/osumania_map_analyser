@@ -50,6 +50,8 @@ export const estDiffCaptionEl = document.getElementById("est-diff-caption");
 export const patternClustersEl = document.getElementById("pattern-clusters");
 export const ettSkillBarsEl = document.getElementById("ett-skill-bars");
 export const pauseCountEl = document.getElementById("pause-count");
+export const ppBarsEl = document.getElementById("pp-bars");
+export const sepPpEl = document.getElementById("sep-pp");
 export const overlayEl = document.getElementById("card-overlay");
 export const overlaySpinnerEl = document.getElementById("overlay-spinner");
 export const overlayTitleEl = document.getElementById("overlay-title");
@@ -73,6 +75,9 @@ export const state = {
     odFlag: null,
     cvtFlag: null,
     modSignature: "",
+    ppMetrics: null,
+    modCodes: [],
+    classicMod: false,
     contentBar: APP_CONFIG.defaults.contentBar,
     effectiveContentBar: null,
     srText: APP_CONFIG.defaults.srText,

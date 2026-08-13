@@ -205,3 +205,60 @@
     white-space: normal;
     overflow-wrap: anywhere;
 }
+
+/* ReworkPP 模式：与 bars-etterna 同构——只显示 pp 块，其余主体块隐藏。
+   高度自适应内容（同 bars-full）：五小行内容撑开卡片，消除底部空白；
+   min-height 归零——bars-pp 没有 Full 的三块堆叠，无需 540px 下限。 */
+.main-card.bars-pp {
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 10px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+}
+
+.main-card.bars-pp .cluster-bars,
+.main-card.bars-pp .ett-skill-bars,
+.main-card.bars-pp .body-graph-wrap {
+    display: none;
+}
+
+/* pp 框不内部滚动，随卡片高度生长全部展开（同 bars-full 的 pp-bars 处理）；
+   底部留 margin 抬高，让框底边避开 mode-tag 胶囊（bottom:10px、高约 21px）。 */
+.main-card.bars-pp .pp-bars {
+    overflow-x: hidden;
+    overflow-y: visible;
+    max-height: none;
+    margin-bottom: 24px;
+}
+
+.main-card.bars-pp .star-value {
+    font-size: 48px;
+}
+
+.main-card.bars-pp .star-subtitle {
+    font-size: 24px;
+}
+
+.main-card.bars-pp .star-caption {
+    font-size: 11px;
+}
+
+.main-card.bars-pp .star-value.category-mode {
+    font-family: "Outfit", sans-serif;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
+    max-width: 250px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Full 模式：pp 块不内部滚动，随卡片高度生长全部展开 */
+.main-card.bars-full .pp-bars {
+    overflow-x: hidden;
+    overflow-y: visible;
+    max-height: none;
+}
