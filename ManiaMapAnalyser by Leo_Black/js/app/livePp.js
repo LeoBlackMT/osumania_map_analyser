@@ -16,6 +16,7 @@ import {
 } from "./modeLogic.js";
 import { renderReworkPpBars } from "./display.js";
 import { calculateReworkPp } from "../rework/reworkPerformance.js";
+import { resolveCounts } from "./livePpCounts.js";
 
 // Row constants shared verbatim with analysis.js buildReworkPpDisplay (Task 13):
 // pp(0,1200,false), proportion(0,1,false), acc(0.87,1.13,centered),
@@ -28,9 +29,7 @@ const ROW_SPECS = [
     { key: "length", label: "Length Multiplier", min: 0.9, max: 1.1, centered: true },
 ];
 
-const ZERO_COUNTS = Object.freeze({
-    perfect: 0, great: 0, good: 0, ok: 0, meh: 0, miss: 0,
-});
+// tosu play.hits → formula counts lives in livePpCounts.js (DOM-free, Node-tested).
 
 let lastCounts = null;
 let lastLive = null;
@@ -50,19 +49,6 @@ export function countsEqual(a, b) {
         && a.ok === b.ok
         && a.meh === b.meh
         && a.miss === b.miss;
-}
-
-// tosu play.hits → formula counts (geki→perfect/305, 300→great, katu→good/200,
-// 100→ok, 50→meh, 0→miss). Missing fields default to 0.
-function extractCounts(hits) {
-    return {
-        perfect: Number(hits.geki) || 0,
-        great: Number(hits["300"]) || 0,
-        good: Number(hits.katu) || 0,
-        ok: Number(hits["100"]) || 0,
-        meh: Number(hits["50"]) || 0,
-        miss: Number(hits["0"]) || 0,
-    };
 }
 
 // 5-row assembly — mirrors analysis.js buildReworkPpDisplay verbatim, including
@@ -124,11 +110,13 @@ export function updateLivePp(data) {
 
     const live = resolveLiveMode(state.clientStateName);
 
-    // Retain the last play's counts when this message has no hits payload
-    // (play-end / resultScreen); fall back to zeros before any play exists
-    // (play first-frame all-zero counts → v2Acc 0 → PP 0.000, no NaN).
+    // Resolve next counts from this message's hits. resultScreen / play-end
+    // packets may omit hits or carry empty/partial count objects (lazer
+    // variance) — resolveCounts keeps the last play's counts then, so the
+    // result screen shows the real PP/proportion instead of zeros. First frame
+    // (lastCounts === null) falls back to all-zero counts → PP 0.000, no NaN.
     const hits = data && data.play && data.play.hits;
-    const nextCounts = hits ? extractCounts(hits) : (lastCounts || ZERO_COUNTS);
+    const nextCounts = resolveCounts(hits, lastCounts);
 
     // Cheap guard: neither counts nor live flag changed → nothing to redraw
     // (pause keeps counts frozen, so this naturally suppresses re-renders).
