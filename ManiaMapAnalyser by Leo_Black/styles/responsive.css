@@ -49,6 +49,12 @@
         max-height: 500px;
     }
 
+    .main-card.bars-pp {
+        height: 540px;
+        min-height: 540px;
+        max-height: 540px;
+    }
+
     .star-value {
         font-size: 40px;
     }
