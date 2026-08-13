@@ -373,6 +373,12 @@
     pointer-events: none;
 }
 
+/* Proportion 行（pp 之后的第 2 行）胶囊上移 1px，避开 % 数字与轨道贴合。
+   transform 已被 translate(-50%,-50%) 占用，用 top 微调最兼容。 */
+#pp-bars .pp-item:nth-child(2) .pp-head {
+    top: calc(50% - 1px);
+}
+
 /* 换难度 / 改设置时（bars-live）：与 cluster/ett 同一机制——行不再逐条弹入，
    填充宽度横向平滑过渡到新值。换歌时不加 bars-live，照旧整组入场。 */
 .pp-bars.bars-live .pp-item {

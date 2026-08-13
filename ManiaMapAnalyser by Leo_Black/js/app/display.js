@@ -819,7 +819,10 @@ function buildReworkPpRowData(item, index, mode) {
         label,
         // 前端不显示负数：Proportion 在 acc<=0.8 时值为 0（不为负），PP/乘子行恒非负，
         // Math.max(0, ...) 只是无害保险，防止任何意外负值泄漏到胶囊文本。
-        value: Math.max(0, value).toFixed(3),
+        // Proportion 按百分比显示（0.956 → "95.6%"），柱宽仍按 0~1 原始值计算（widthPct）。
+        value: item.key === "proportion"
+            ? `${(Math.max(0, value) * 100).toFixed(1)}%`
+            : Math.max(0, value).toFixed(3),
         labelPos: labelPos.toFixed(2),
         fillStyle,
         centered,
