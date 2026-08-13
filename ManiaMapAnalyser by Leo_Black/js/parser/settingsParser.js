@@ -14,6 +14,7 @@ export function normalizeContentBarValue(value) {
     if (lowered === "graph") return "Graph";
     if (lowered === "full") return "Full";
     if (lowered === "none") return "None";
+    if (lowered === "reworkpp") return "ReworkPP";
     return null;
 }
 
