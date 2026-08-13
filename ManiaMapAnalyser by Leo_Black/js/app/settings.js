@@ -44,7 +44,9 @@ import {
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
     patternClustersEl,
+    ppBarsEl,
     reworkStarEl,
+    sepPpEl,
     socket,
     state,
     SETTINGS_COMMAND_TIMEOUT_MS,
@@ -97,11 +99,15 @@ function updateContentBarVisibility() {
     if (bodyGraphWrapEl) {
         bodyGraphWrapEl.hidden = !contentBarShows("Graph");
     }
+    if (ppBarsEl) {
+        ppBarsEl.hidden = !contentBarShows("ReworkPP");
+    }
 
     mainCardEl.classList.toggle("bars-full", isFull);
     mainCardEl.classList.toggle("bars-pattern", !isFull && activeContentBar === "Pattern");
     mainCardEl.classList.toggle("bars-etterna", !isFull && activeContentBar === "Etterna");
     mainCardEl.classList.toggle("bars-graph", !isFull && activeContentBar === "Graph");
+    mainCardEl.classList.toggle("bars-pp", !isFull && activeContentBar === "ReworkPP");
     mainCardEl.classList.toggle("bars-none", !isFull && activeContentBar === "None");
 
     if (!contentBarShows("Etterna")) {
@@ -112,6 +118,9 @@ function updateContentBarVisibility() {
     separatorEls.forEach(el => {
         el.hidden = !isFull;
     });
+    if (sepPpEl) {
+        sepPpEl.hidden = !isFull;
+    }
 }
 
 let cardHeightTransitionTimerId = 0;
@@ -403,6 +412,12 @@ export function setRuntimeContentBar(contentBar) {
         ettSkillBarsEl.innerHTML = "";
     } else if (!ettSkillBarsEl.innerHTML.trim()) {
         ettSkillBarsEl.innerHTML = "<li class=\"ett-skill-item empty\">No data</li>";
+    }
+
+    if (!contentBarShows("ReworkPP")) {
+        ppBarsEl.innerHTML = "";
+    } else if (!ppBarsEl.innerHTML.trim()) {
+        ppBarsEl.innerHTML = "<li class=\"pp-item empty\">No data</li>";
     }
 
     updateContentBarVisibility();
