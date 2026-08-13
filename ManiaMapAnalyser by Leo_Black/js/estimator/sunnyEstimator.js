@@ -7,11 +7,12 @@ export function runSunnyEstimatorFromText(osuText, options = {}, parsed = null) 
     const cvtFlag = options.cvtFlag ?? null;
     const withGraph = options.withGraph === true;
 
-    const rawResult = calculateSunny(osuText, speedRate, odFlag, cvtFlag, { withGraph }, parsed);
+    const rawResult = calculateSunny(osuText, speedRate, odFlag, cvtFlag, { withGraph, classicMod: options.classicMod === true, withPpMetrics: options.withPpMetrics === true }, parsed);
     const parsedResult = normalizeReworkResult(rawResult);
 
     return {
         ...parsedResult,
+        ...(rawResult && rawResult.ppMetrics ? { ppMetrics: rawResult.ppMetrics } : {}),
         estDiff: estDiff(parsedResult.star, parsedResult.lnRatio, parsedResult.columnCount, options.extendedEstimationRange === true, options.enableAlwaysShowLNDifficulty === true),
         numericDifficulty: null,
         numericDifficultyHint: null,
