@@ -29,7 +29,9 @@ function addCodesFromString(codes, value, sortedKnownModCodes) {
     if (typeof value !== "string" || value.trim().length === 0) {
         return;
     }
-    const normalized = value.toUpperCase().replace(/[^A-Z]/g, "");
+    // Keep digits: "SV2" (ScoreV2) must survive normalization, same as the
+    // lazer acronym path which preserves them verbatim.
+    const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     let index = 0;
     while (index < normalized.length) {
         let matched = false;
@@ -213,12 +215,17 @@ export function getModData(data, {
     const hasExplicitNoModSignal = hasExplicitNoMod
         && !hasRelevantModInfo;
 
+    const classic = client === "lazer"
+        ? modCodes.has("CL")
+        : !modCodes.has("SV2");
+
     // Only include calculation-relevant dimensions in signature.
     // This avoids recompute thrash when unrelated lazer mod payload fields fluctuate.
     const modSignature = [
         Number(speedRate).toFixed(5),
         odFlag == null ? "none" : String(odFlag),
         cvtFlag == null ? "none" : String(cvtFlag),
+        classic ? "1" : "0",
     ].join("|");
 
     return {
@@ -227,6 +234,8 @@ export function getModData(data, {
         odFlag,
         cvtFlag,
         modSignature,
+        classic,
+        modCodes: [...modCodes].sort(),
         hasModPayload,
         hasModInfo: hasRelevantModInfo,
         hasExplicitNoMod: hasExplicitNoModSignal,
