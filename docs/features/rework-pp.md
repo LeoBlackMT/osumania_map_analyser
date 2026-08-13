@@ -1,11 +1,11 @@
 # ReworkPP 难度表现面板技术文档
 
-> 目标读者：AI。本文描述 ReworkPP 功能（contentBar 选项值 `"ReworkPP"`）的实现细节、算法说明、缓存与实时机制、性能约束与注意事项。所有引用均为 `path:line + symbol` 格式，行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
+> 目标读者：AI。本文描述 ReworkPP 功能（contentBar 选项值 `"ReworkPP"` 与 srText 选项值 `"ReworkPP"`）的实现细节、算法说明、缓存与实时机制、性能约束与注意事项。所有引用均为 `path:line + symbol` 格式，行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[../pipeline/analysis-pipeline.md](../pipeline/analysis-pipeline.md)（管线：withPpMetrics 与 Daniel 专用 pass）、[../pipeline/result-cache.md](../pipeline/result-cache.md)（缓存：ppMetrics 快照与覆盖检查第 5 项）、[../pipeline/mod-handling.md](../pipeline/mod-handling.md)（CL/SV2 识别与 classic 判定）。
 
 ## 1. 功能说明
 
-ReworkPP 是 **Card Body Content（contentBar）** 的一个选项值（**无空格**，settings.json:62、config.js:6、settingsParser.js `normalizeContentBarValue` 的 `"reworkpp" → "ReworkPP"` 分支三处一致）。选中后卡片主体（`#pp-bars`，index.html）显示 **5 行柱状图**，每行由标签 + 轨道 + 值胶囊（pill）组成：
+ReworkPP 是 **Card Body Content（contentBar）** 的一个选项值（**无空格**，settings.json:61、config.js:6、settingsParser.js `normalizeContentBarValue` 的 `"reworkpp" → "ReworkPP"` 分支三处一致），同时也是 **Top-left Capsule Text（srText）** 的一个选项值（settings.json:77、settingsParser.js `normalizeSrTextValue` 的 `"reworkpp" → "ReworkPP"` 分支，见 §1.1）。选中后卡片主体（`#pp-bars`，index.html）显示 **5 行柱状图**，每行由标签 + 轨道 + 值胶囊（pill）组成：
 
 | 行 | key | 取值范围（min~max） | 中心锚定 |
 | --- | --- | --- | --- |
@@ -17,10 +17,21 @@ ReworkPP 是 **Card Body Content（contentBar）** 的一个选项值（**无空
 
 - **第一行标签随模式切换**：Max PP ↔ Live PP（单柱标签切换，非双值并列）。
 - **3 个 Multiplier 行中心锚定**：中心线 = 值 1.0，值 ≥ 1.0 向右延伸、< 1.0 向左延伸，fill 宽度 = `|value−1.0|/(max−min)·100`%。
-- **值胶囊 3 位小数**（`value.toFixed(3)`，含 PP 行）。
+- **值胶囊格式**：Proportion 显示百分比（`(value·100).toFixed(1)` + `%`，1 位小数），其余行（含 PP 行）3 位小数（`value.toFixed(3)`）；柱宽一律按原始值（Proportion 用 0~1）计算。
 - **彩虹条联动**：`enableEtternaRainbowBars` 开启时 PP 柱状图 fill 注入 `--ett-fill-bg:${ETT_FULL_TRACK_RAINBOW_GRADIENT}` + `--ett-fill-bg-size`（与 Etterna 技能条同一机制，display.js `renderReworkPpBars`）；否则仅设置 `--bar-width`，非彩虹 fallback accent 在 theme.css。
 - **原地更新**：复用 `canUpdateBarsInPlace(ppBarsEl, 5, ".pp-fill")` 判断 → `bars-live` 类（CSS 420ms 宽度过渡）原地更新 label/值/style，否则全量重建（stagger）。
 - **游玩/结算时实时更新**：api_v2 state name 为 play/gameplay/playing/resultscreen（normalized）时显示 **Live PP**（v2Acc 驱动，判定计数逐帧变化），其余状态（menu/selectplay 等）显示 **Max PP**（100% acc）。
+
+### 1.1 左上角胶囊（srText = ReworkPP）
+
+`state.srText === "ReworkPP"` 时左上角胶囊显示 **Max PP / Live PP** 值（analysis.js 渲染分支，`showReworkPpValue`，display.js）：
+
+- **数值来源**：`getLatestPpValue()`（livePp.js 模块级 `latestPpValue`，由 renderMax/renderLive 写入，resetLivePp 清空）——与主体共用同一 PP 计算链（§4 同源），空闲/选图显示 Max PP（100% acc），游玩/结算显示 Live PP。
+- **4 位有效数字**：`formatPpValue`（display.js）用 `toPrecision(4)`，去尾随 0 与悬空小数点；PP 值域 0~1200 永不触发指数形式，防御性兜底 `toFixed(0)`。
+- **PP 角标**：`leftCapsuleUnit = "PP"`；胶囊颜色按 PP 映射到 0~10 星数色阶（`ppToColorScaleValue`：PP/1200·10，clamp [0,1]），复用星数胶囊配色逻辑。
+- **needComputed.pp 门控含 srText**：`needComputed.pp = contentBarShows("ReworkPP") || state.srText === "ReworkPP"`（analysis.js:340）——srText 选中 ReworkPP 同样触发 ppMetrics 计算（§5），不依赖 contentBar。
+- **ppMetrics 缺失回退**：`latestPpValue` 为 null/非有限（ppMetrics 组装失败）→ 回退显示 `rework.star` 星数、角标 "SR"（不报错）。
+- **胶囊实时同步**：`updateLivePp` 在 `state.srText === "ReworkPP" && latestPpValue != null` 时每消息调 `showReworkPpValue`（livePp.js:139-141），与主体柱状图同步刷新。
 
 ## 2. 算法说明
 
@@ -112,14 +123,14 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 ## 5. 缓存与实时机制
 
 - **ppMetrics 进快照**：写门 put 对象含 `ppMetrics: pipelineResult.ppMetrics || null`（analysis.js:868，JSON-safe 纯数值对象，无需 jsonSafe）；命中恢复 `state.ppMetrics = cached.ppMetrics || null`（analysis.js:533）。
-- **computed 第 5 项**：`needComputed.pp = contentBarShows("ReworkPP")`（analysis.js:339），覆盖检查比对 `snapshot.computed.pp === needComputed.pp`（analysis.js:353，5 项全等）——contentBar 切到 ReworkPP/Full 会触发按需重算，而非全缓存失效。
+- **computed 第 5 项**：`needComputed.pp = contentBarShows("ReworkPP") || state.srText === "ReworkPP"`（analysis.js:340），覆盖检查比对 `snapshot.computed.pp === needComputed.pp`（analysis.js:353，5 项全等）——contentBar 切到 ReworkPP/Full 或 srText 切到 ReworkPP 会触发按需重算，而非全缓存失效。
 - **live 值不缓存**：只缓存谱面侧 ppMetrics；Live PP 是实时渲染值，每次由当前计数重算。
 - **pipeline options**：`withPpMetrics: needComputed.pp`、`classicMod: state.classicMod === true`（analysis.js:425-426）。
-- **每消息更新 + 计数守卫**：socketHandlers.js 在 `updateSongTimeState(data)` 之后、beatmap 守卫之前调 `updateLivePp(data)`（:180），livePp 内部自带守卫，成本极低；不建立节流/RAF（每消息 + CSS 过渡即满足平滑需求）。
+- **每消息更新 + 计数守卫**：socketHandlers.js 在 `updateSongTimeState(data)` 之后、beatmap 守卫之前调 `updateLivePp(data)`（:180），入口守卫 `(contentBarShows("ReworkPP") || state.srText === "ReworkPP") && state.ppMetrics`，livePp 内部自带守卫，成本极低；不建立节流/RAF（每消息 + CSS 过渡即满足平滑需求）。
 
 ## 6. 性能
 
-- **withPpMetrics 门控**：指标计算（O(n²) 级）仅当 `needComputed.pp`（contentBar 显示 ReworkPP）时开启，**不上主线程**——指标在 worker 内的 pipeline 中计算。
+- **withPpMetrics 门控**：指标计算（O(n²) 级）仅当 `needComputed.pp`（contentBar 或 srText 显示 ReworkPP）时开启，**不上主线程**——指标在 worker 内的 pipeline 中计算。
 - **Daniel 专用 Sunny pass**：Daniel 估算器自身不产出 Sunny 指标；withPpMetrics 时 pipeline 在 worker 内额外跑一次 `runSunnyEstimatorFromText(rawText, {...options, withPpMetrics: true}, parser)`（runAnalysisPipeline.js:204，同 options 保证一致性：speedRate/odFlag/cvtFlag/classicMod/extendedEstimationRange），取 ppMetrics + star。同步回退路径（worker 不可用）同函数自动覆盖。
 - **软失败**：ppMetrics 组装失败（无 Sunny 结果/抛错）→ `ppMetrics: null`，不进 errors[]（与附属段语义一致），渲染错误空态。
 - withPpMetrics=false 时输出契约与改动前完全一致（无 ppMetrics 字段、零额外计算）。

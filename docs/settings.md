@@ -20,6 +20,7 @@
         - MSD: 显示Etterna MSD。*仅适配4/6/7K谱面。
         - InterludeSR: 显示[Interlude](https://github.com/YAVSRG/YAVSRG)星数。
         - Pattern: 显示整体键型。
+        - ReworkPP: 显示 Rework PP 的 Max PP/Live PP 值（4 位有效数字），角标显示 PP。
     - **Top-right Content**: 选择在卡片右上角显示的内容。
         - None: 不显示任何内容。
         - Graph: 显示难度变化图。
@@ -147,6 +148,7 @@
         - MSD: Displays Etterna MSD. *Only compatible with 4/6/7K beatmaps.
         - InterludeSR: Displays [Interlude](https://github.com/YAVSRG/YAVSRG) star rating.
         - Pattern: Displays the overall pattern.
+        - ReworkPP: Displays the Rework PP Max PP/Live PP values (4 significant digits) with a "PP" badge.
     - **Top-right Content**: Select what to display in the top-right of the card.
         - None: Displays nothing.
         - Graph: Displays the difficulty variation graph.
