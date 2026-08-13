@@ -167,6 +167,10 @@ export function setupSocketListener() {
         if (modData.client) {
             state.client = modData.client;
         }
+        if (modData.hasModPayload) {
+            state.modCodes = modData.modCodes || [];
+            state.classicMod = Boolean(modData.classic);
+        }
 
         updateSongTimeState(data);
 
