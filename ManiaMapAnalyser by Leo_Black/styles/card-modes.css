@@ -206,11 +206,17 @@
     overflow-wrap: anywhere;
 }
 
-/* ReworkPP 模式：与 bars-etterna 同构——只显示 pp 块，其余主体块隐藏 */
+/* ReworkPP 模式：与 bars-etterna 同构——只显示 pp 块，其余主体块隐藏。
+   高度自适应内容（同 bars-full）：五小行内容撑开卡片，消除底部空白；
+   min-height 归零——bars-pp 没有 Full 的三块堆叠，无需 540px 下限。 */
 .main-card.bars-pp {
-    height: 540px;
-    min-height: 540px;
-    max-height: 540px;
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 10px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
 }
 
 .main-card.bars-pp .cluster-bars,
@@ -219,10 +225,12 @@
     display: none;
 }
 
-/* pp 框在第三行用 1fr 撑满，会顶到卡片底部内边缘，与底部绝对定位的
-   mode-tag 胶囊（bottom:10px、高约 21px）重叠。底部留 margin 把框抬高，
-   让框底边避开胶囊（同 bars-etterna 的处理）。 */
+/* pp 框不内部滚动，随卡片高度生长全部展开（同 bars-full 的 pp-bars 处理）；
+   底部留 margin 抬高，让框底边避开 mode-tag 胶囊（bottom:10px、高约 21px）。 */
 .main-card.bars-pp .pp-bars {
+    overflow-x: hidden;
+    overflow-y: visible;
+    max-height: none;
     margin-bottom: 24px;
 }
 
