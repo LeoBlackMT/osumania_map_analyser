@@ -4,9 +4,13 @@
 // so it runs on EVERY api_v2 message; the early-return guards keep per-message
 // cost negligible (no throttling/RAF — CSS transitions smooth the bars).
 //
-// Judgement counts live module-level (never in state): `lastCounts` is retained
-// only while the result screen shows (retainOnEmpty), so play-exit keeps the
-// final counts on screen; a fresh play's all-zero counts replace it normally.
+// Judgement counts live module-level (never in state): the source is
+// state-aware — play states read live `play.hits`, resultScreen reads the
+// authoritative `resultsScreen.hits` (tosu's `play.hits` zeroes out on the
+// results screen because the Player object is replaced by SoloResultsScreen).
+// `lastCounts` is retained only while the result screen shows (retainOnEmpty),
+// so a missing/empty resultsScreen.hits keeps the final counts on screen; a
+// fresh play's all-zero counts replace it normally.
 // `lastLive` tracks the last live/max flag and `lastMetricsRef` the last
 // ppMetrics reference so the cheap guard can skip renders while neither the
 // counts, the state mode, nor the map changed (pauses freeze naturally because
@@ -31,7 +35,8 @@ const ROW_SPECS = [
     { key: "length", label: "Length Multiplier", min: 0.9, max: 1.1, centered: true },
 ];
 
-// tosu play.hits → formula counts lives in livePpCounts.js (DOM-free, Node-tested).
+// tosu hits → formula counts lives in livePpCounts.js (DOM-free, Node-tested);
+// both play.hits and resultsScreen.hits share the same key structure.
 
 let lastCounts = null;
 let lastLive = null;
@@ -138,13 +143,19 @@ export function updateLivePp(data) {
 
     const live = resolveLiveMode(state.clientStateName);
 
-    // Resolve next counts from this message's hits. Only resultScreen keeps the
-    // last play's counts on empty/partial hits (retainOnEmpty) — a fresh play's
-    // all-zero counts are legitimate and replace them. First frame
-    // (lastCounts === null) falls back to all-zero counts → PP 0.000, no NaN.
-    const hits = data && data.play && data.play.hits;
-    const retainOnEmpty = live && isResultScreenStateName(state.clientStateName);
-    const nextCounts = resolveCounts(hits, lastCounts, { retainOnEmpty });
+    // Resolve next counts from this message's hits, source is state-aware:
+    // play states read live play.hits (a fresh play's all-zero counts are
+    // legitimate), resultScreen reads the authoritative resultsScreen.hits —
+    // tosu zeroes play.hits on the results screen (Player object replaced by
+    // SoloResultsScreen), so play.hits there would wipe the final counts.
+    // Only resultScreen keeps the last play's counts on empty/missing
+    // resultsScreen.hits (retainOnEmpty). First frame (lastCounts === null)
+    // falls back to all-zero counts → PP 0.000, no NaN.
+    const isResult = isResultScreenStateName(state.clientStateName);
+    const hits = isResult
+        ? (data && data.resultsScreen && data.resultsScreen.hits)
+        : (data && data.play && data.play.hits);
+    const nextCounts = resolveCounts(hits, lastCounts, { retainOnEmpty: isResult });
 
     // Cheap guard: counts, live flag and ppMetrics reference all unchanged →
     // nothing to redraw (pause keeps counts frozen, so this naturally suppresses

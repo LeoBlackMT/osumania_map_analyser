@@ -44,7 +44,7 @@ v2Acc = (perfect·305 + great·300 + good·200 + ok·100 + meh·50) / ((perfect+
 ```
 
 - totalHits（含 miss）为 0 → 返回 0（**无 NaN**）；结果 clamp 到 [0,1]。
-- tosu 判定计数映射：`play.hits.geki → perfect(305)`、`'300' → great`、`katu → good(200)`、`'100' → ok`、`'50' → meh`、`'0' → miss`。
+- tosu 判定计数映射：`hits.geki → perfect(305)`、`'300' → great`、`katu → good(200)`、`'100' → ok`、`'50' → meh`、`'0' → miss`。`play.hits` 与 `resultsScreen.hits` 键结构一致（见 §4 双数据源）。
 - **v2Acc 不受 Classic 影响**：Classic 只切换星数密度（§3），准确率公式恒为 305 权重。
 
 ### 2.2 PP 公式链
@@ -114,9 +114,9 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 - **模式判定** `resolveLiveMode`（:40）：`isPlayStateName(state.clientStateName) || isResultScreenStateName(state.clientStateName)` → **live**；其他（menu/selectplay 等）→ **max**。注意 resultscreen 归一化为 "resultscreen"（勿硬编码 "resultScreen"）。
 - **Max PP**：`calculateReworkPp({...ppMetrics, perfect: totalNotes, 其余 0, noFail: modCodes.includes("NF"), easy: modCodes.includes("EZ")})`——100% acc 上限值，数据组装在 analysis.js `buildReworkPpDisplay`（:135）。
-- **Live PP**：实时判定计数 `{perfect: hits.geki, great: hits['300'], good: hits.katu, ok: hits['100'], meh: hits['50'], miss: hits['0']}`（缺字段按 0），传入 `calculateReworkPp`。
+- **Live PP 双数据源**：实时判定计数 `{perfect: hits.geki, great: hits['300'], good: hits.katu, ok: hits['100'], meh: hits['50'], miss: hits['0']}`（缺字段按 0），传入 `calculateReworkPp`。计数来源**状态感知**：play 状态读 `play.hits`（实时，新 play 开局全 0 合法）；resultScreen 状态读 `resultsScreen.hits`（权威结算计数）——tosu 在结算画面用 SoloResultsScreen 取代 Player，`play.hits` 恒 0，故结算计数只能来自 `resultsScreen.hits`。
 - **cheap guard**：计数与 live/max 标志均未变化 → 跳过渲染（`countsEqual` :45）；暂停期间计数不变 → 自然冻结。
-- **resultScreen 保留计数**：`lastCounts` 模块级保留上一把判定计数（不写 state），play 结束后/结算屏上用保留值兜底。
+- **resultScreen 保留计数**：`lastCounts` 模块级保留上一把判定计数（不写 state），resultScreen 下 `resultsScreen.hits` 缺失/为空时用保留值兜底（retainOnEmpty）；play 结束后进结算屏、结算数据就绪前用保留值渲染。
 - **play 首帧 0 判定**：totalHits == 0 → v2Acc = 0 → proportion = 0 → **PP = 0.000，无 NaN**（公式守卫）。
 - **负值保护**：proportion 在 acc ≤ 0.8 时恒 0；渲染层对数值做 `Math.max(0, ·)` 防护。
 
@@ -138,7 +138,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 ## 7. 注意事项
 
 - **play 首帧 0 判定 → PP 0**：totalHits == 0 时 v2Acc=0、proportion=0，显示 PP=0.000（公式守卫，无 NaN、无负数）。
-- **resultScreen 保留计数**：结算屏无新判定计数时用 `lastCounts` 保留值渲染 Live PP。
+- **resultScreen 计数来源**：结算计数来自 `resultsScreen.hits`（tosu 结算画面 `play.hits` 恒 0），`resultsScreen.hits` 缺失/为空时用 `lastCounts` 保留值渲染 Live PP。
 - **负值保护**：proportion acc≤0.8 恒 0；渲染 Math.max(0, ·)。
 - **星数胶囊 Classic 感知变化**：classic 标志经 modSignature 第 4 段进缓存键（mod-handling.md），classic 状态切换（stable 开/关 SV2、lazer 开/关 CL）→ 签名变化 → 缓存 miss → 重算，星数胶囊/难度/PP 全部反映当前 Classic 语义。
 - **改动约束**：公式数值逐字移植，不做任何"改进/修正"；Classic 只改 effectiveWeights 一行；`reworkPerformance.js` 是共享 DOM-free 模块（无 import、无 window/document），Node benchmark runner 可直接加载。

@@ -4,8 +4,9 @@ export const ZERO_COUNTS = Object.freeze({
     perfect: 0, great: 0, good: 0, ok: 0, meh: 0, miss: 0,
 });
 
-// tosu play.hits → formula counts (geki→perfect/305, 300→great, katu→good/200,
-// 100→ok, 50→meh, 0→miss). Missing/NaN fields default to 0.
+// tosu hits → formula counts (geki→perfect/305, 300→great, katu→good/200,
+// 100→ok, 50→meh, 0→miss). Both play.hits and resultsScreen.hits use the same
+// key structure. Missing/NaN fields default to 0.
 export function extractCounts(hits) {
     return {
         perfect: Number(hits.geki) || 0,
@@ -21,9 +22,9 @@ export function totalCount(counts) {
     return counts.perfect + counts.great + counts.good + counts.ok + counts.meh + counts.miss;
 }
 
-// Resolve the counts to render for one api_v2 message. Retention is
-// resultScreen-only: its packets sometimes omit hits or carry empty counts
-// (lazer behavior differs), so keep the last play's counts then
+// Resolve the counts to render for one api_v2 message. resultScreen counts
+// come from resultsScreen.hits (authoritative on the results screen — play.hits
+// zeroes out there); when that is missing/empty keep the last play's counts
 // (retainOnEmpty = true). Elsewhere an all-zero extraction is a legitimate
 // fresh play / new map — return the zeros. First frame (lastCounts === null)
 // falls back to ZERO_COUNTS — PP 0.000, no NaN.
