@@ -449,7 +449,13 @@ export function show6KConstValue(constValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
-function animateNumericCapsuleValue(element, targetValue, format) {
+// Pure animation interpolation (from → target over eased progress), exported
+// for smoke-test assertion; from defaults to 0 so legacy calls animate 0→target.
+export function numericAnimationValue(from, target, progress) {
+    return from + (target - from) * progress;
+}
+
+function animateNumericCapsuleValue(element, targetValue, format, fromValue) {
     if (!element) return;
     const numericTarget = Number(targetValue);
     if (!Number.isFinite(numericTarget)) {
@@ -459,6 +465,7 @@ function animateNumericCapsuleValue(element, targetValue, format) {
     }
 
     const clampedTarget = Math.max(0, numericTarget);
+    const from = Number.isFinite(Number(fromValue)) ? Math.max(0, Number(fromValue)) : 0;
     const token = Symbol("numeric-animation");
     numericAnimationTokens.set(element, token);
     const startTs = performance.now();
@@ -466,7 +473,7 @@ function animateNumericCapsuleValue(element, targetValue, format) {
         if (numericAnimationTokens.get(element) !== token) return;
         const progress = Math.min(1, (now - startTs) / NUMERIC_ANIMATION_DURATION_MS);
         const eased = 1 - ((1 - progress) ** 3);
-        const animatedValue = clampedTarget * eased;
+        const animatedValue = numericAnimationValue(from, clampedTarget, eased);
         const safeDisplayValue = animatedValue <= 0.0005 ? 0 : animatedValue;
         element.textContent = format ? format(safeDisplayValue) : safeDisplayValue.toFixed(2);
         if (progress < 1) {
@@ -496,9 +503,17 @@ function ppToColorScaleValue(ppValue) {
     return Math.min(Math.max(Number(ppValue) || 0, 0) / 1200, 1) * 10.0;
 }
 
+// Last PP value the ReworkPP capsule animated to — consecutive live hits slide
+// from it instead of restarting at 0. Stale across capsule mode switches
+// (SR fallback) is acceptable: next showReworkPpValue just slides from the old
+// number, which reads as a continuation, not a flash.
+let lastShownPp = null;
+
 export function showReworkPpValue(ppValue) {
     reworkStarEl.classList.remove("category-mode");
-    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue);
+    const from = lastShownPp != null ? lastShownPp : 0;
+    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from);
+    lastShownPp = Number(ppValue) || 0;
     const mappedStar = ppToColorScaleValue(ppValue);
     const starBg = starColorFor(mappedStar);
     const preferredText = starTextColorFor(mappedStar);

@@ -72,15 +72,25 @@ function rowValue(ppRes, key) {
     }
 }
 
-function buildRows(ppRes) {
-    return ROW_SPECS.map((spec) => ({
-        key: spec.key,
-        label: spec.label,
-        value: Math.max(0, rowValue(ppRes, spec.key)),
-        min: spec.min,
-        max: spec.max,
-        centered: spec.centered,
-    }));
+// pp 行的 max 在 live 模式由当前图的 Max PP 决定（满格 = Max PP），否则回退
+// 1200。liveMaxPp 无效（null / 非有限 / <=0）时回退 spec.max。导出供冒烟断言。
+export function buildRows(ppRes, liveMaxPp) {
+    return ROW_SPECS.map((spec) => {
+        const max = spec.key === "pp"
+            && liveMaxPp != null
+            && Number.isFinite(liveMaxPp)
+            && liveMaxPp > 0
+            ? liveMaxPp
+            : spec.max;
+        return {
+            key: spec.key,
+            label: spec.label,
+            value: Math.max(0, rowValue(ppRes, spec.key)),
+            min: spec.min,
+            max,
+            centered: spec.centered,
+        };
+    });
 }
 
 function runPp(counts) {
@@ -106,10 +116,18 @@ function renderMax() {
 }
 
 function renderLive(counts) {
+    // Bar scale for the pp row is the current map's Max PP: full bar = max PP,
+    // so Live PP visibly approaches full as the play nears perfect. Fall back
+    // to the fixed 1200 spec max when the max run yields nothing.
+    const maxRes = runPp({
+        perfect: state.ppMetrics.totalNotes,
+        great: 0, good: 0, ok: 0, meh: 0, miss: 0,
+    });
     const ppRes = runPp(counts);
     if (!ppRes) return;
     latestPpValue = ppRes.pp;
-    renderReworkPpBars({ mode: "live", rows: buildRows(ppRes) }, { inPlaceOnly: true });
+    const liveMax = maxRes && Number.isFinite(maxRes.pp) ? maxRes.pp : ROW_SPECS[0].max;
+    renderReworkPpBars({ mode: "live", rows: buildRows(ppRes, liveMax) }, { inPlaceOnly: true });
 }
 
 export function updateLivePp(data) {
