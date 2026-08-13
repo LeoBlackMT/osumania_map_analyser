@@ -44,9 +44,10 @@ import {
     showMsdValue,
     showNumericStarValue,
     show6KConstValue,
+    showReworkPpValue,
     renderFullModeSeparators,
 } from "./display.js";
-import { resetLivePp } from "./livePp.js";
+import { getLatestPpValue, resetLivePp } from "./livePp.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
@@ -336,7 +337,7 @@ export async function fetchBeatmapFile(reason) {
             || state.diffText === "InterludeSR"
             || currentEstimatorAlgorithm() === "Companella"
             || currentEstimatorAlgorithm() === "Mixed",
-        pp: contentBarShows("ReworkPP"),
+        pp: contentBarShows("ReworkPP") || state.srText === "ReworkPP",
     };
     // 缓存键加版本段：star 口径统一为 Sunny 原始 sr 后，旧快照（存的是 Azusa/Roxy 映射 star）必须失效。
     const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2";
@@ -973,6 +974,15 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "MSD";
             } else if (rework) {
                 showNumericStarValue(rework.star);
+                leftCapsuleUnit = "SR";
+            }
+        } else if (state.srText === "ReworkPP") {
+            const ppVal = getLatestPpValue();   // from livePp.js (max PP when idle, live PP in play)
+            if (ppVal != null && Number.isFinite(ppVal)) {
+                showReworkPpValue(ppVal);
+                leftCapsuleUnit = "PP";
+            } else if (rework) {
+                showNumericStarValue(rework.star);   // ppMetrics 缺失 fallback
                 leftCapsuleUnit = "SR";
             }
         } else if (rework) {

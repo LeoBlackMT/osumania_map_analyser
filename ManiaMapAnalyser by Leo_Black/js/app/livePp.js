@@ -14,7 +14,7 @@ import {
     isPlayStateName,
     isResultScreenStateName,
 } from "./modeLogic.js";
-import { renderReworkPpBars } from "./display.js";
+import { renderReworkPpBars, showReworkPpValue } from "./display.js";
 import { calculateReworkPp } from "../rework/reworkPerformance.js";
 import { resolveCounts } from "./livePpCounts.js";
 
@@ -33,6 +33,9 @@ const ROW_SPECS = [
 
 let lastCounts = null;
 let lastLive = null;
+// Last computed PP (max PP in idle, live PP in play) for the srText="ReworkPP"
+// left capsule. Written by renderMax/renderLive, cleared by resetLivePp.
+let latestPpValue = null;
 
 // Pure state-machine mapping (exported for Node smoke tests — modeLogic.js is
 // DOM-free): play/gameplay/playing/resultscreen → live, everything else → max.
@@ -93,18 +96,20 @@ function renderMax() {
         great: 0, good: 0, ok: 0, meh: 0, miss: 0,
     });
     if (!ppRes) return; // invalid input → skip this round (soft, no error UI)
+    latestPpValue = ppRes.pp;
     renderReworkPpBars({ mode: "max", rows: buildRows(ppRes) });
 }
 
 function renderLive(counts) {
     const ppRes = runPp(counts);
     if (!ppRes) return;
+    latestPpValue = ppRes.pp;
     renderReworkPpBars({ mode: "live", rows: buildRows(ppRes) });
 }
 
 export function updateLivePp(data) {
     // Early-exit guards first: per-message cost stays minimal.
-    if (!contentBarShows("ReworkPP") || !state.ppMetrics) {
+    if ((!contentBarShows("ReworkPP") && state.srText !== "ReworkPP") || !state.ppMetrics) {
         return;
     }
 
@@ -131,11 +136,21 @@ export function updateLivePp(data) {
     } else {
         renderMax();
     }
+
+    // srText="ReworkPP": keep the left capsule in sync with the live/max PP.
+    if (state.srText === "ReworkPP" && latestPpValue != null) {
+        showReworkPpValue(latestPpValue);
+    }
+}
+
+export function getLatestPpValue() {
+    return latestPpValue;
 }
 
 export function resetLivePp() {
     lastCounts = null;
     lastLive = null;
+    latestPpValue = null;
     if (state.ppMetrics) {
         renderMax();
     }

@@ -449,7 +449,7 @@ export function show6KConstValue(constValue) {
     syncLeftUnitBadgeContrast(starText);
 }
 
-function animateNumericCapsuleValue(element, targetValue) {
+function animateNumericCapsuleValue(element, targetValue, format) {
     if (!element) return;
     const numericTarget = Number(targetValue);
     if (!Number.isFinite(numericTarget)) {
@@ -468,13 +468,46 @@ function animateNumericCapsuleValue(element, targetValue) {
         const eased = 1 - ((1 - progress) ** 3);
         const animatedValue = clampedTarget * eased;
         const safeDisplayValue = animatedValue <= 0.0005 ? 0 : animatedValue;
-        element.textContent = safeDisplayValue.toFixed(2);
+        element.textContent = format ? format(safeDisplayValue) : safeDisplayValue.toFixed(2);
         if (progress < 1) {
             requestAnimationFrame(tick);
         }
     };
 
     requestAnimationFrame(tick);
+}
+
+// 4 significant figures for PP values, without trailing zeros / dangling dot.
+// toPrecision(4) only emits exponent form above ~10000, which PP never reaches —
+// defensive fallback anyway.
+export function formatPpValue(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "-";
+    let s = num.toPrecision(4);
+    if (s.includes("e")) return num.toFixed(0);
+    if (s.includes(".")) {
+        s = s.replace(/\.?0+$/, "");
+    }
+    return s;
+}
+
+// Map PP (0~1200, per ROW_SPECS) onto the 0~10 star color scale.
+function ppToColorScaleValue(ppValue) {
+    return Math.min(Math.max(Number(ppValue) || 0, 0) / 1200, 1) * 10.0;
+}
+
+export function showReworkPpValue(ppValue) {
+    reworkStarEl.classList.remove("category-mode");
+    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue);
+    const mappedStar = ppToColorScaleValue(ppValue);
+    const starBg = starColorFor(mappedStar);
+    const preferredText = starTextColorFor(mappedStar);
+    const starText = pickReadableTextColor(mappedStar, starBg, preferredText);
+    reworkStarEl.style.backgroundColor = starBg;
+    reworkStarEl.style.color = starText;
+    reworkStarEl.style.textShadow = "none";
+    reworkStarEl.classList.remove("high-contrast");
+    syncLeftUnitBadgeContrast(starText);
 }
 
 function sanitizeCategoryText(categoryText) {

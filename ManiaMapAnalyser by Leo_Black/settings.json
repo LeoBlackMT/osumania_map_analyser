@@ -58,8 +58,8 @@
 			"Pattern",
 			"Etterna",
 			"Graph",
-			"Full",
-			"ReworkPP"
+			"ReworkPP",
+			"Full"
 		],
 		"value": "Auto"
 	},
@@ -73,7 +73,8 @@
 			"ReworkSR",
 			"InterludeSR",
 			"MSD",
-			"Pattern"
+			"Pattern",
+			"ReworkPP"
 		],
 		"value": "ReworkSR"
 	},

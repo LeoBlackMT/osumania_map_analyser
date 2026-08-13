@@ -29,6 +29,7 @@ export function normalizeSrTextValue(value) {
     if (lowered === "msd") return "MSD";
     if (lowered === "pattern") return "Pattern";
     if (lowered === "interludesr") return "InterludeSR";
+    if (lowered === "reworkpp") return "ReworkPP";
     return null;
 }
 

@@ -3,8 +3,8 @@ export const APP_CONFIG = {
     socketHost: "localhost:24050",
 
     options: {
-        contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "Full", "ReworkPP"],
-        srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR"],
+        contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "ReworkPP", "Full"],
+        srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR", "ReworkPP"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
         estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Daniel", "Companella", "SunnyWindow"],
         etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0"],
