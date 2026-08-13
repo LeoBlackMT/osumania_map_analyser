@@ -509,9 +509,12 @@ function ppToColorScaleValue(ppValue) {
 // number, which reads as a continuation, not a flash.
 let lastShownPp = null;
 
-// PP capsule fixed width: tabular-nums digits are all equal width, so a
-// measured "8888.8" probe (widest candidate) cached as --pp-capsule-width
-// eliminates horizontal flicker as the digit count changes (999.9 → 1000).
+// PP capsule fixed width: PP renders 4 significant digits (toPrecision(4)),
+// i.e. 4 digits + 1 decimal point (e.g. "735.6"/"250.0"/"999.9"). With
+// tabular-nums every digit is the same width, so measuring the widest common
+// candidate "999.9" and caching it as --pp-capsule-width makes the capsule
+// strictly match real content with zero slack. The rare low-PP form "0.0200"
+// (6 chars) overflows by one digit — acceptable, PP < 0.1 is extremely rare.
 let ppCapsuleWidth = null;
 
 function measurePpCapsuleWidth() {
@@ -528,8 +531,13 @@ function measurePpCapsuleWidth() {
     probe.style.fontVariantNumeric = cs.fontVariantNumeric;
     probe.style.lineHeight = cs.lineHeight;
     probe.style.padding = cs.padding;
-    probe.style.border = cs.border;
-    probe.textContent = "8888.8";
+    // cs.border is empty for shorthand (borderWidth/style/Color are the
+    // exposed longhands); .star-value has a uniform 1px border on all sides
+    // and the box is border-box, so include it or the probe measures 2px short.
+    probe.style.borderWidth = cs.borderTopWidth || "1px";
+    probe.style.borderStyle = "solid";
+    probe.style.borderColor = "transparent";
+    probe.textContent = "999.9";
     document.body.appendChild(probe);
     const width = Math.ceil(probe.getBoundingClientRect().width);
     probe.remove();

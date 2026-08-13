@@ -16,6 +16,7 @@
 }
 
 .star-value.pp-capsule {
+    box-sizing: border-box;
     width: var(--pp-capsule-width, 140px);
     text-align: center;
 }
