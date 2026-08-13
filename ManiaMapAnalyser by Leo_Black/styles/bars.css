@@ -294,7 +294,7 @@
 }
 
 .pp-fill {
-    width: var(--bar-width, 0%);
+    width: var(--pp-width, 0%);
     height: 100%;
     border-radius: 0 999px 999px 0;
     background: var(--ett-fill-bg, linear-gradient(90deg, #52caff 0%, #5ef0df 55%, #f6ef6b 100%));
