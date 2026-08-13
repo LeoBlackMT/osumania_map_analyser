@@ -828,6 +828,10 @@ export function renderEtternaSkillBars(values, columnCount) {
 //                       (same vars the .ett-skill-fill rainbow path uses)
 const PP_ROW_COUNT = 5;
 const PP_CENTER_LABEL_POS = 50; // % of track where value 1.0 anchors
+// 换歌入场动画总窗口：340ms item-float-in/fill-grow-fast + 4×60ms --item-delay stagger。
+// 窗口内 livePp 的 inPlaceOnly 渲染让路（见 renderReworkPpBars），避免 bars-live 掐断动画。
+const PP_ENTRANCE_WINDOW_MS = 580;
+let ppBarsRebuiltAt = 0;
 
 function buildReworkPpRowData(item, index, mode) {
     const value = Number(item.value);
@@ -901,6 +905,11 @@ export function renderReworkPpBars(data, options = {}) {
     // 换歌或行数变化时回到整组重建并重放逐条弹入动画（与 etterna 双路径一致）。
     // inPlaceOnly（livePp 实时路径）：永远原地更新（420ms CSS 过渡平滑），忽略换歌
     // 检查 — 换图入场动画由 analysis 路径负责；仅校验行数与结构是否就绪。
+    // 例外：换歌重建后的入场窗口内（580ms）让路，否则 bars-live 的 animation:none
+    // 会掐断正在播放的弹入动画；窗口过后恢复正常原地更新。
+    if (options.inPlaceOnly && performance.now() - ppBarsRebuiltAt < PP_ENTRANCE_WINDOW_MS) {
+        return;
+    }
     const canInPlace = options.inPlaceOnly
         ? (ppBarsEl.querySelectorAll(":scope > li").length === 5 && Boolean(ppBarsEl.querySelector(".pp-fill")))
         : canUpdateBarsInPlace(ppBarsEl, rowData.length, ".pp-fill");
@@ -927,6 +936,7 @@ export function renderReworkPpBars(data, options = {}) {
     }
 
     ppBarsEl.classList.remove("bars-live");
+    ppBarsRebuiltAt = performance.now(); // 重建=入场动画窗口起点，inPlaceOnly 在此窗口内让路
     ppBarsEl.innerHTML = rowData
         .map((item, index) => `
                 <li class="pp-item${item.centered ? " pp-item--center" : ""}" style="--item-delay:${index * 60}ms">
