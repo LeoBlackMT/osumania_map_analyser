@@ -487,17 +487,14 @@ function animateNumericCapsuleValue(element, targetValue, format, fromValue, dur
     requestAnimationFrame(tick);
 }
 
-// 4 significant figures for PP values, without trailing zeros / dangling dot.
+// Always exactly 4 significant figures (250 → "250.0", 123.45 → "123.5").
 // toPrecision(4) only emits exponent form above ~10000, which PP never reaches —
 // defensive fallback anyway.
 export function formatPpValue(value) {
     const num = Number(value);
     if (!Number.isFinite(num)) return "-";
-    let s = num.toPrecision(4);
+    const s = num.toPrecision(4);
     if (s.includes("e")) return num.toFixed(0);
-    if (s.includes(".")) {
-        s = s.replace(/\.?0+$/, "");
-    }
     return s;
 }
 
@@ -512,8 +509,37 @@ function ppToColorScaleValue(ppValue) {
 // number, which reads as a continuation, not a flash.
 let lastShownPp = null;
 
+// PP capsule fixed width: tabular-nums digits are all equal width, so a
+// measured "8888.8" probe (widest candidate) cached as --pp-capsule-width
+// eliminates horizontal flicker as the digit count changes (999.9 → 1000).
+let ppCapsuleWidth = null;
+
+function measurePpCapsuleWidth() {
+    if (ppCapsuleWidth != null) return ppCapsuleWidth;
+    if (!reworkStarEl || !document.body) return 140;
+    const probe = document.createElement("span");
+    const cs = getComputedStyle(reworkStarEl);
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "nowrap";
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontVariantNumeric = cs.fontVariantNumeric;
+    probe.style.lineHeight = cs.lineHeight;
+    probe.style.padding = cs.padding;
+    probe.style.border = cs.border;
+    probe.textContent = "8888.8";
+    document.body.appendChild(probe);
+    const width = Math.ceil(probe.getBoundingClientRect().width);
+    probe.remove();
+    ppCapsuleWidth = width;
+    return width;
+}
+
 export function showReworkPpValue(ppValue) {
     reworkStarEl.classList.remove("category-mode");
+    reworkStarEl.style.setProperty("--pp-capsule-width", `${measurePpCapsuleWidth()}px`);
     const from = lastShownPp != null ? lastShownPp : 0;
     // PP capsule: 250ms (medium speed-up vs. default 400ms)
     animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from, 250);

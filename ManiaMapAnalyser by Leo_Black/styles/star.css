@@ -15,6 +15,11 @@
     animation: star-pop 560ms cubic-bezier(0.25, 0.95, 0.35, 1);
 }
 
+.star-value.pp-capsule {
+    width: var(--pp-capsule-width, 140px);
+    text-align: center;
+}
+
 .main-card:not(.bars-none) .star-value:not(.category-mode) {
     font-size: 52px;
     padding: 5px 12px;

@@ -951,6 +951,10 @@ export async function fetchBeatmapFile(reason) {
 
         let leftCapsuleUnit = "";
 
+        // PP capsule fixed width: tabular-nums + measured width kills horizontal flicker.
+        // Toggling the class off (SR/MSD) restores auto width.
+        reworkStarEl.classList.toggle("pp-capsule", state.srText === "ReworkPP");
+
         // 6K 定数: force override left capsule when enabled and map is 6K —
         // but never override an explicit ReworkPP srText selection (PP wins).
         if (sixKConst !== null && state.srText !== "ReworkPP") {
