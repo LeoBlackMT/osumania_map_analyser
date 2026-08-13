@@ -951,8 +951,9 @@ export async function fetchBeatmapFile(reason) {
 
         let leftCapsuleUnit = "";
 
-        // 6K 定数: force override left capsule when enabled and map is 6K
-        if (sixKConst !== null) {
+        // 6K 定数: force override left capsule when enabled and map is 6K —
+        // but never override an explicit ReworkPP srText selection (PP wins).
+        if (sixKConst !== null && state.srText !== "ReworkPP") {
             show6KConstValue(sixKConst);
             leftCapsuleUnit = "LV";
         } else if (state.srText === "Pattern") {

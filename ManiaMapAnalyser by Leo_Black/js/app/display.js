@@ -455,7 +455,7 @@ export function numericAnimationValue(from, target, progress) {
     return from + (target - from) * progress;
 }
 
-function animateNumericCapsuleValue(element, targetValue, format, fromValue) {
+function animateNumericCapsuleValue(element, targetValue, format, fromValue, durationMs) {
     if (!element) return;
     const numericTarget = Number(targetValue);
     if (!Number.isFinite(numericTarget)) {
@@ -464,6 +464,9 @@ function animateNumericCapsuleValue(element, targetValue, format, fromValue) {
         return;
     }
 
+    // Per-call duration override: PP capsule animates faster (250ms) than the
+    // default 400ms; star/MSD/6K calls keep the default.
+    const duration = Number.isFinite(Number(durationMs)) && durationMs > 0 ? durationMs : NUMERIC_ANIMATION_DURATION_MS;
     const clampedTarget = Math.max(0, numericTarget);
     const from = Number.isFinite(Number(fromValue)) ? Math.max(0, Number(fromValue)) : 0;
     const token = Symbol("numeric-animation");
@@ -471,7 +474,7 @@ function animateNumericCapsuleValue(element, targetValue, format, fromValue) {
     const startTs = performance.now();
     const tick = (now) => {
         if (numericAnimationTokens.get(element) !== token) return;
-        const progress = Math.min(1, (now - startTs) / NUMERIC_ANIMATION_DURATION_MS);
+        const progress = Math.min(1, (now - startTs) / duration);
         const eased = 1 - ((1 - progress) ** 3);
         const animatedValue = numericAnimationValue(from, clampedTarget, eased);
         const safeDisplayValue = animatedValue <= 0.0005 ? 0 : animatedValue;
@@ -512,7 +515,8 @@ let lastShownPp = null;
 export function showReworkPpValue(ppValue) {
     reworkStarEl.classList.remove("category-mode");
     const from = lastShownPp != null ? lastShownPp : 0;
-    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from);
+    // PP capsule: 250ms (medium speed-up vs. default 400ms)
+    animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from, 250);
     lastShownPp = Number(ppValue) || 0;
     const mappedStar = ppToColorScaleValue(ppValue);
     const starBg = starColorFor(mappedStar);
