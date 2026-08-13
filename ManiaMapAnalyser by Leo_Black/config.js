@@ -122,7 +122,7 @@ export const APP_CONFIG = {
             DT: 64,
             HT: 256,
             NC: 512,
-            SV2: 1024,
+            SV2: 536870912,
         },
     },
 };
