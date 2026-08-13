@@ -863,7 +863,7 @@ function buildReworkPpRowData(item, index, mode) {
     };
 }
 
-export function renderReworkPpBars(data) {
+export function renderReworkPpBars(data, options = {}) {
     if (!contentBarShows("ReworkPP")) {
         ppBarsEl.innerHTML = "";
         return;
@@ -880,7 +880,12 @@ export function renderReworkPpBars(data) {
 
     // 换难度 / 改设置且条目数量不变时，原地更新 label/值/样式，进度条平滑过渡；
     // 换歌或行数变化时回到整组重建并重放逐条弹入动画（与 etterna 双路径一致）。
-    if (canUpdateBarsInPlace(ppBarsEl, rowData.length, ".pp-fill")) {
+    // inPlaceOnly（livePp 实时路径）：永远原地更新（420ms CSS 过渡平滑），忽略换歌
+    // 检查 — 换图入场动画由 analysis 路径负责；仅校验行数与结构是否就绪。
+    const canInPlace = options.inPlaceOnly
+        ? (ppBarsEl.querySelectorAll(":scope > li").length === 5 && Boolean(ppBarsEl.querySelector(".pp-fill")))
+        : canUpdateBarsInPlace(ppBarsEl, rowData.length, ".pp-fill");
+    if (canInPlace) {
         ppBarsEl.classList.add("bars-live");
         const items = ppBarsEl.querySelectorAll(":scope > li");
         rowData.forEach((item, index) => {

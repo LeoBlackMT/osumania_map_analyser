@@ -21,14 +21,14 @@ export function totalCount(counts) {
     return counts.perfect + counts.great + counts.good + counts.ok + counts.meh + counts.miss;
 }
 
-// Resolve the counts to render for one api_v2 message. resultScreen / play-end
-// packets sometimes omit hits or carry empty counts (lazer behavior differs) —
-// judgment counts only grow during a play, so an all-zero extraction while a
-// previous play's counts exist means data loss, not a real zero-judgement
-// score: keep the last counts so the result screen renders correctly. First
-// frame (lastCounts === null) keeps the zeros — PP 0.000 is correct there.
-export function resolveCounts(hits, lastCounts) {
+// Resolve the counts to render for one api_v2 message. Retention is
+// resultScreen-only: its packets sometimes omit hits or carry empty counts
+// (lazer behavior differs), so keep the last play's counts then
+// (retainOnEmpty = true). Elsewhere an all-zero extraction is a legitimate
+// fresh play / new map — return the zeros. First frame (lastCounts === null)
+// falls back to ZERO_COUNTS — PP 0.000, no NaN.
+export function resolveCounts(hits, lastCounts, { retainOnEmpty } = {}) {
     let nextCounts = hits ? extractCounts(hits) : (lastCounts || ZERO_COUNTS);
-    if (totalCount(nextCounts) === 0 && lastCounts) nextCounts = lastCounts;
+    if (totalCount(nextCounts) === 0 && retainOnEmpty && lastCounts) nextCounts = lastCounts;
     return nextCounts;
 }

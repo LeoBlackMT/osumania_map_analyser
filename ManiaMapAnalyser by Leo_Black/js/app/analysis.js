@@ -977,7 +977,21 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "SR";
             }
         } else if (state.srText === "ReworkPP") {
-            const ppVal = getLatestPpValue();   // from livePp.js (max PP when idle, live PP in play)
+            let ppVal = getLatestPpValue();   // from livePp.js (max PP when idle, live PP in play)
+            // livePp 的 cheap guard 在 max 模式下（选图/菜单）可能因 counts 不变而短路，
+            // latestPpValue 滞留旧图值 — ppMetrics 存在时直接计算 max PP，保证换图刷新。
+            if ((ppVal == null || !Number.isFinite(ppVal)) && state.ppMetrics) {
+                const ppRes = calculateReworkPp({
+                    starRating: state.ppMetrics.star,
+                    variety: state.ppMetrics.variety,
+                    accScalar: state.ppMetrics.accScalar,
+                    totalNotes: state.ppMetrics.totalNotes,
+                    perfect: state.ppMetrics.totalNotes, great: 0, good: 0, ok: 0, meh: 0, miss: 0,
+                    noFail: state.modCodes.includes("NF"),
+                    easy: state.modCodes.includes("EZ"),
+                });
+                ppVal = ppRes ? ppRes.pp : null;
+            }
             if (ppVal != null && Number.isFinite(ppVal)) {
                 showReworkPpValue(ppVal);
                 leftCapsuleUnit = "PP";
