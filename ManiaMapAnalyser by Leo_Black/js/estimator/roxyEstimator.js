@@ -90,6 +90,16 @@ const ROXY_THETA_HIGH_LABEL = "> CloverWisp Theta high";
 const ROXY_NUMERIC_OUTPUT_MAX = 30;
 const ROXY_OD_NEUTRAL = 9;
 const ROXY_CANONICAL_FIRST_OBJECT_MS = 1000;
+// Azusa 融合：finalNumeric 与 pred_Azusa 按 0.4/0.6 加权（偏向 Roxy，因 Azusa 方差更大）。
+// 两个近似无偏估计器的平均可降低方差（benchmark 验证 10~17 Exact 约 +3.5pp）。
+const ROXY_AZUSA_FUSION_WEIGHT = 0.4;
+// Roxy 高难聚焦：与 Daniel 一致，低难（final numeric < Alpha）不输出有效 numeric，
+// 返回 "< Alpha Low"（numeric null），由 Mixed 路由到 Azusa。边界取 11（Alpha）。
+// 上界同理：final numeric >= 17 返回 "> Emik Zeta high"（numeric null），标记 Invalid。
+const ROXY_SCOPE_MIN = 11;
+const ROXY_SCOPE_MIN_LABEL = "< Alpha Low";
+const ROXY_SCOPE_MAX = 17;
+const ROXY_SCOPE_MAX_LABEL = "> Emik Zeta high";
 
 function buildErrorResult(code, message, extras = {}) {
     return {
@@ -104,6 +114,28 @@ function buildErrorResult(code, message, extras = {}) {
         debug: {
             code,
             message,
+        },
+    };
+}
+
+// 高难聚焦的 scope 边界返回：estDiff 为段位标签（非 "Invalid:" 前缀），
+// numericDifficulty 为 null，由 Mixed 识别并路由到 Azusa（低难）/ 其他处理（高难）。
+function buildScopeResult(label, code, structuralNumeric, rawNumeric, extras) {
+    return {
+        star: Number((3.4 + 0.38 * structuralNumeric).toFixed(4)),
+        lnRatio: Number.isFinite(extras.lnRatio) ? extras.lnRatio : 0,
+        columnCount: Number.isFinite(extras.columnCount) ? extras.columnCount : 0,
+        estDiff: label,
+        numericDifficulty: null,
+        numericDifficultyHint: code,
+        graph: null,
+        rawNumericDifficulty: Number.isFinite(rawNumeric) ? Number(rawNumeric.toFixed(4)) : null,
+        debug: {
+            code,
+            message: `Roxy RC scope ${label} (structural ${Number(structuralNumeric).toFixed(2)})`,
+            structuralNumeric: fmt4(structuralNumeric),
+            notes: extras.notes ?? null,
+            rows: extras.rows ?? null,
         },
     };
 }
@@ -1060,6 +1092,17 @@ function computeAzusaHighGapLift(referencePredictions, baseNumeric) {
     return 0.05 * gate(azusa - base, 0.35, 0.95);
 }
 
+// Azusa 平均融合：把 Roxy 的最终数值与 Azusa 的独立预测按固定权重平均。
+// 原理是两个近似无偏估计器的平均降低方差（并非对 Azusa 的"更信任"）。
+// Roxy 已高难聚焦（scope 11~17），低难不再进入此处，故无需难度 gate。
+function computeAzusaFusion(referencePredictions, finalNumeric) {
+    const azusa = Number(referencePredictions?.Azusa);
+    const base = Number(finalNumeric);
+    if (!Number.isFinite(azusa) || !Number.isFinite(base)) return finalNumeric;
+    const fused = base + (azusa - base) * ROXY_AZUSA_FUSION_WEIGHT;
+    return Number(fused.toFixed(2));
+}
+
 function resultNumeric(result) {
     const rawNumeric = result?.numericDifficulty;
     if (rawNumeric !== null && rawNumeric !== undefined && rawNumeric !== "") {
@@ -1472,6 +1515,7 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
         const curve = computeRoxyCurve(rows, taps, activity);
         const numericDetails = computeRoxyNumeric(curve);
         const structuralNumeric = Number(numericDetails.numeric.toFixed(2));
+
         const metaOptions = {
             ...effectiveOptions,
             odFlag: ROXY_OD_NEUTRAL,
@@ -1519,7 +1563,30 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
             ? computeAzusaHighGapLift(metaDetails.referencePredictions, unguardedNumeric)
             : 0;
         unguardedNumeric = clamp(unguardedNumeric + azusaHighGapLift, -2, ROXY_NUMERIC_OUTPUT_MAX);
-        const finalNumeric = Number(unguardedNumeric.toFixed(2));
+        const finalNumeric = computeAzusaFusion(
+            metaDetails.referencePredictions,
+            Number(unguardedNumeric.toFixed(2)),
+        );
+
+        // 高难聚焦：低难（< Alpha）与超高难（>= Zeta high）不输出有效 numeric，
+        // 返回段位标签 + numeric null，由 Mixed 路由到 Azusa（低难）。
+        if (finalNumeric < ROXY_SCOPE_MIN) {
+            return buildScopeResult(ROXY_SCOPE_MIN_LABEL, "BelowScope", finalNumeric, numericDetails.rawNumeric, {
+                lnRatio,
+                columnCount,
+                notes: taps.length,
+                rows: rows.length,
+            });
+        }
+        if (finalNumeric >= ROXY_SCOPE_MAX) {
+            return buildScopeResult(ROXY_SCOPE_MAX_LABEL, "AboveScope", finalNumeric, numericDetails.rawNumeric, {
+                lnRatio,
+                columnCount,
+                notes: taps.length,
+                rows: rows.length,
+            });
+        }
+
         const estDiff = numericToRoxyRcLabel(finalNumeric);
 
         return {

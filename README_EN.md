@@ -51,8 +51,8 @@ Note: It is recommended to start with the default settings and then adjust accor
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
 
 ## Roxy Algorithm Explanation
-Roxy is a 4K RC meta-structural estimator. Its core consists of two layers: the first layer performs structural analysis on the beatmap across 7 aspects, producing structured numerical difficulty; the second layer blends reference predictions from Azusa/Sunny/Daniel using a GBDT (Gradient Boosted Decision Tree) meta-model to output the final difficulty.
-Please note that as a tree-based model, the GBDT meta-model can exhibit boundary discontinuities: a miniscule change in input features (e.g., a 0.01× speed rate difference) may cross a decision tree split threshold and produce a disproportionately large jump in the output difficulty. Users should be aware of this inherent characteristic of tree-based estimators.
+Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction).
+Maps below Alpha (< 11) return "< Alpha Low" (no numeric difficulty) and maps at or above Emik Zeta high (>= 17) return "> Emik Zeta high"; Mixed automatically routes low-difficulty maps to Azusa, so Roxy's low-band estimate is not the final result.
 
 ## Azusa Algorithm Explanation
 This algorithm builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
