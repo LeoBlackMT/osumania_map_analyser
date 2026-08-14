@@ -3,5 +3,8 @@
 telemetry.db
 telemetry.db-*
 
+# Build artifacts (compiled binaries).
+bin/
+
 # Private docs (teaching notes for the maintainer only).
 docs/

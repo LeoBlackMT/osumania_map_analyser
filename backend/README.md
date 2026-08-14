@@ -1,144 +1,146 @@
 # osumania-telemetry
 
-A small, self-contained Go server that collects **anonymous usage statistics** from the [osumania_map_analyser](https://github.com/LeoBlackMT/osumania_map_analyser) tosu plugin and exposes a **public aggregate dashboard**.
+一个自包含的小型 Go 服务：收集 [osumania_map_analyser](https://github.com/LeoBlackMT/osumania_map_analyser) tosu 插件的**匿名使用统计**，并提供**公开聚合看板**。
 
-No user accounts, no login, no personally identifiable information. The plugin sends an anonymous install id (a random UUID stored in `localStorage`) plus aggregate analysis metadata; the server stores and displays only aggregates.
+没有用户系统、没有登录、没有任何个人可识别信息。插件只上报匿名安装 ID（`localStorage` 中的随机 UUID）与聚合分析元数据；服务端只存储与展示聚合结果。
 
-## Table of contents
+> English version: [README_EN.md](README_EN.md)。
 
-- [What it does](#what-it-does)
-- [Privacy](#privacy)
-- [Architecture](#architecture)
-- [Directory layout](#directory-layout)
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [HTTP API](#http-api)
-- [Rate limiting](#rate-limiting)
-- [Data retention](#data-retention)
-- [Deployment (Linux)](#deployment-linux)
-- [Development](#development)
+## 目录
 
-## What it does
+- [功能](#功能)
+- [隐私](#隐私)
+- [架构](#架构)
+- [目录结构](#目录结构)
+- [快速开始](#快速开始)
+- [配置](#配置)
+- [HTTP 接口](#http-接口)
+- [限流](#限流)
+- [数据保留](#数据保留)
+- [部署（Linux）](#部署linux)
+- [开发](#开发)
 
-- Ingests events at `POST /api/v1/event` (`boot`, `heartbeat`, `analyze`).
-- Stores them in a single SQLite file (`installs` + `events`).
-- Computes aggregate statistics and serves them at `GET /api/v1/stats`.
-- Renders a public dashboard at `/` (no chart library — inline SVG/CSS only).
-- Automatically deletes events older than `MMA_TELEMETRY_RETENTION_DAYS`.
-- Optionally snapshots the database to Huawei Cloud OBS (daily ×30 + monthly ×12).
+## 功能
 
-## Privacy
+- 在 `POST /api/v1/event` 接收事件（`boot`、`heartbeat`、`analyze`）。
+- 存入单个 SQLite 文件（`installs` + `events` 两张表）。
+- 在 `GET /api/v1/stats` 提供聚合统计。
+- 在 `/` 渲染公开看板（无图表库，纯内联 CSS/SVG）。
+- 自动删除早于 `MMA_TELEMETRY_RETENTION_DAYS` 的事件。
+- 可选：把数据库快照备份到华为云 OBS（每日 ×30 + 每月 ×12）。
 
-**Collected** (per `analyze` event): anonymous install id, event kind, server-side UTC timestamp, plugin version, selected/actual estimator algorithm, key count (4/6/7K), mods and speed rate, mode tag (HB/RC/LN/Mix/SV), estimated star rating, LN ratio, key-type breakdown, and analysis duration.
+## 隐私
 
-**Never collected or stored**: usernames, player ids, scores/acc, beatmap md5/title, IP addresses (not even a hash), user agent, OS, or timezone. The ingest handler applies a server-side whitelist and drops anything else.
+**采集**（每个 `analyze` 事件）：匿名安装 ID、事件类型、服务器 UTC 时间戳、插件版本、所选/实际运行算法、键数（4/6/7K）、mod 与变速、模式标签（HB/RC/LN/Mix/SV）、估算星数、LN 比例、键型占比、分析耗时。
 
-The dashboard and `/api/v1/stats` expose **aggregates only** — never an individual install id, event, or IP.
+**永不采集/存储**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP 地址（连哈希都不存）、UA、操作系统、时区。采集端在服务端做字段白名单过滤，其余一律丢弃。
 
-## Architecture
+看板与 `/api/v1/stats` 只暴露**聚合结果**——绝不暴露单个安装 ID、单条事件或 IP。
+
+## 架构
 
 ```
-plugin (browser) ──POST /api/v1/event──▶ rate limit ──▶ whitelist ──▶ SQLite
-                                                                    │
-public dashboard ◀── /api/v1/stats (60s cache) ◀── aggregate queries ◀─┘
+插件(浏览器) ──POST /api/v1/event──▶ 内存限流 ──▶ 字段白名单 ──▶ SQLite
+                                                                   │
+公开看板 ◀── /api/v1/stats(60s缓存) ◀── 聚合查询 ◀─────────────────┘
 ```
 
-## Directory layout
+## 目录结构
 
 ```
 backend/
-  cmd/server/main.go            entrypoint + wiring + retention loop
-  internal/config/              .env loading + validation
-  internal/ratelimit/           in-memory fixed-window limiter
-  internal/store/               SQLite schema + queries
-  internal/telemetry/           POST /api/v1/event handler
-  internal/analytics/           aggregation + distributions
-  internal/web/                 / dashboard + /api/v1/stats (+ embedded HTML)
-  internal/backup/              optional Huawei OBS snapshots
+  cmd/server/main.go            入口 + 装配 + 保留期清理协程
+  internal/config/              .env 加载与校验
+  internal/ratelimit/           内存固定窗口限流器
+  internal/store/               SQLite schema 与查询
+  internal/telemetry/           POST /api/v1/event 处理器
+  internal/analytics/           聚合与分布统计
+  internal/web/                 / 看板 + /api/v1/stats（含内嵌 HTML）
+  internal/backup/              可选华为云 OBS 快照
 ```
 
-## Quick start
+## 快速开始
 
-Requires Go 1.22+.
+需要 Go 1.22+。
 
 ```bash
 cd backend
-cp .env.example .env      # edit as needed (works with defaults too)
+cp .env.example .env      # 按需修改（用默认值也能跑）
 go build -o telemetry-server ./cmd/server
 ./telemetry-server
 ```
 
-Then open <http://localhost:8080/> for the dashboard, or post a test event:
+然后打开 <http://localhost:8080/> 查看看板，或用 curl 发一条测试事件：
 
 ```bash
 curl -d '{"id":"00000000-0000-4000-8000-000000000000","kind":"boot","version":"1.7.4"}' \
      http://localhost:8080/api/v1/event -i
-# expect: HTTP/1.1 204 No Content
+# 期望: HTTP/1.1 204 No Content
 ```
 
-## Configuration
+## 配置
 
-Configuration is read from a `.env` file (and can be overridden by real environment variables). See [`.env.example`](.env.example). Key variables:
+配置从 `.env` 文件读取（真实环境变量可覆盖）。参见 [`.env.example`](.env.example)。主要变量：
 
-| Variable | Default | Meaning |
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MMA_TELEMETRY_ADDR` | `:8080` | Listen address (bind `127.0.0.1:8080` behind a proxy) |
-| `MMA_TELEMETRY_DB` | `telemetry.db` | SQLite path |
-| `MMA_TELEMETRY_RETENTION_DAYS` | `365` | Event retention |
-| `MMA_TELEMETRY_ONLINE_WINDOW_MIN` | `10` | "Online" = last_seen within N minutes |
-| `MMA_TELEMETRY_RATE_LIMIT_PER_MIN` | `120` | Ingest requests/min/IP (0 disables) |
-| `MMA_TELEMETRY_STATS_CACHE_SECONDS` | `60` | `/api/v1/stats` aggregate cache |
-| `MMA_BACKUP_OBS_*` | empty | Huawei OBS backup credentials (empty = disabled) |
+| `MMA_TELEMETRY_ADDR` | `:8080` | 监听地址（反代后面绑定 `127.0.0.1:8080`） |
+| `MMA_TELEMETRY_DB` | `telemetry.db` | SQLite 路径 |
+| `MMA_TELEMETRY_RETENTION_DAYS` | `365` | 事件保留天数 |
+| `MMA_TELEMETRY_ONLINE_WINDOW_MIN` | `10` | 「在线」= last_seen 在 N 分钟内 |
+| `MMA_TELEMETRY_RATE_LIMIT_PER_MIN` | `120` | 采集请求限速（次/分/IP，0 关闭） |
+| `MMA_TELEMETRY_STATS_CACHE_SECONDS` | `60` | `/api/v1/stats` 聚合缓存秒数 |
+| `MMA_BACKUP_OBS_*` | 空 | 华为云 OBS 备份凭据（空 = 禁用） |
 
-## HTTP API
+## HTTP 接口
 
 ### `POST /api/v1/event`
 
-Body (max 16 KB):
+请求体（最大 16 KB）：
 
 ```json
 {
   "id": "<uuid>",
   "kind": "boot | heartbeat | analyze",
   "version": "1.7.4",
-  "data": { "algorithm": "Mixed", "keycount": 4, "...": "whitelisted fields only" }
+  "data": { "algorithm": "Mixed", "keycount": 4, "...": "仅白名单字段" }
 }
 ```
 
-Returns `204 No Content`. `400` for a bad body, `405` for wrong method, `429` when rate limited. The `data` object is filtered server-side to these keys only: `algorithm`, `actualAlgorithm`, `keycount`, `mods`, `speedRate`, `mode`, `star`, `lnRatio`, `typeBreakdown`, `durationMs`.
+返回 `204 No Content`。请求体错误返回 `400`，方法错误返回 `405`，被限流返回 `429`。`data` 对象在服务端只保留以下键：`algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`。
 
-CORS is enabled for `POST`/`OPTIONS` (the plugin runs on `http://localhost:24050`).
+对 `POST`/`OPTIONS` 开放 CORS（插件运行在 `http://localhost:24050`）。
 
 ### `GET /api/v1/stats`
 
-Returns the aggregate JSON used by the dashboard. Public, cached.
+返回看板使用的聚合 JSON。公开，带缓存。
 
 ### `GET /`
 
-The public dashboard (HTML).
+公开看板（HTML）。
 
-## Rate limiting
+## 限流
 
-A fixed-window limiter keyed by client IP, kept **in memory only** (never persisted or logged). It trusts `X-Forwarded-For` because the intended deployment binds the server to loopback behind a reverse proxy — **do not expose the port directly**, or rate limiting can be spoofed.
+固定窗口限流器，按客户端 IP 计键，**只存内存**（绝不持久化或写日志）。它信任 `X-Forwarded-For`，因为预期部署方式是服务绑定回环地址、前面放反代——**不要把端口直接暴露公网**，否则限流可被伪造绕过。
 
-## Data retention
+## 数据保留
 
-A background loop deletes `events` older than `MMA_TELEMETRY_RETENTION_DAYS` (default 365). The `installs` table is tiny and kept. Aggregates are computed on demand and cached for 60 s.
+后台循环删除早于 `MMA_TELEMETRY_RETENTION_DAYS`（默认 365）的 `events`。`installs` 表很小，保留。聚合按需计算并缓存 60 秒。
 
-## Deployment (Linux)
+## 部署（Linux）
 
-Cross-compile from any machine (no Docker, no cgo):
+在任何机器上交叉编译（无需 Docker、无 cgo）：
 
 ```bash
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o telemetry-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/telemetry-server ./cmd/server
 ```
 
-On the server:
+在服务器上：
 
-1. Upload the binary, create a dedicated user, and place `.env` (mode `600`).
-2. Install a systemd unit (see below) and `systemctl enable --now osumania-telemetry`.
-3. Put a reverse proxy in front (Caddy for automatic HTTPS):
+1. 上传二进制、创建专用用户、放置 `.env`（权限 `600`）。
+2. 安装 systemd unit（见下）并 `systemctl enable --now osumania-telemetry`。
+3. 前面放反代（Caddy 自动 HTTPS）：
 
 ```caddyfile
 mma-stats.leoblack.top {
@@ -146,9 +148,9 @@ mma-stats.leoblack.top {
 }
 ```
 
-4. Open only 80/443 in the firewall. Bind the service to `127.0.0.1:8080`.
+4. 防火墙只放行 80/443，服务绑定 `127.0.0.1:8080`。
 
-Example systemd unit:
+systemd unit 示例：
 
 ```ini
 [Unit]
@@ -167,12 +169,12 @@ ProtectSystem=strict
 WantedBy=multi-user.target
 ```
 
-### Optional OBS backup
+### 可选：OBS 备份
 
-Create a **private** Huawei Cloud OBS bucket, create an **IAM sub-user** with only write/delete/list permission on that bucket, then fill `MMA_BACKUP_OBS_AK/SK/ENDPOINT/BUCKET` in `.env`. The server snapshots the DB daily (kept 30) and archives monthly (kept 12). Backup failures only log — they never affect serving.
+创建**私有**华为云 OBS 桶，创建**IAM 子用户**并只授该桶的写/删/列权限，然后把 `MMA_BACKUP_OBS_AK/SK/ENDPOINT/BUCKET` 填入 `.env`。服务每日快照数据库（保留 30 份）、每月归档（保留 12 份）。备份失败只记日志，绝不影响服务。
 
-## Development
+## 开发
 
-- Go 1.22+, pure standard library except two dependencies: `modernc.org/sqlite` (pure-Go SQLite, no cgo) and `huaweicloud-sdk-go-obs` (Huawei OBS SDK, pure Go).
-- All SQL uses parameterized queries; the dashboard renders all dynamic values via `textContent` (XSS-safe).
-- `go build ./...` and `go vet ./...` should pass before committing.
+- Go 1.22+，除两个依赖外纯标准库：`modernc.org/sqlite`（纯 Go SQLite，无 cgo）与 `huaweicloud-sdk-go-obs`（华为云 OBS SDK，纯 Go）。
+- 所有 SQL 使用参数化查询；看板所有动态值通过 `textContent` 渲染（防 XSS）。
+- 提交前 `go build ./...` 与 `go vet ./...` 应通过。
