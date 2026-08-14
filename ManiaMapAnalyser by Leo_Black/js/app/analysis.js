@@ -76,6 +76,7 @@ import {
 import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro } from "./vibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
+import { trackTelemetryAnalyze } from "./telemetry.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -286,6 +287,7 @@ export async function fetchBeatmapFile(reason) {
     state.analysisRequestSeq = requestSeq;
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
     const genAtStart = resultCacheGeneration();
+    const analysisStartedAt = performance.now();
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
     // 取出 socket 层判定的本次变化类型并清空，避免之后纯改设置的 recompute
@@ -1043,6 +1045,21 @@ export async function fetchBeatmapFile(reason) {
         } else {
             setStatus(metadataLine, "ok");
             hideOverlay();
+        }
+
+        if (rework && metadataErrors.length === 0 && !isStaleRequest()) {
+            trackTelemetryAnalyze({
+                algorithm: state.estimatorAlgorithm,
+                actualAlgorithm: state.actualEstimatorAlgorithm,
+                keycount: Number(rework.columnCount),
+                mods: state.modCodes || [],
+                speedRate: Number(state.speedRate) || 1,
+                mode: shouldShowSvTag ? "SV" : state.currentModeTag,
+                star: Number(rework.star),
+                lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
+                typeBreakdown: typePercentageData ?? null,
+                durationMs: Math.max(0, Math.round(performance.now() - analysisStartedAt)),
+            });
         }
     } catch (error) {
         if (isStaleRequest()) return;

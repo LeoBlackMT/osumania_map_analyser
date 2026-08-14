@@ -112,6 +112,7 @@ export const APP_CONFIG = {
         enableLNDifficulty: false,
         enableAnalyzeLN: false,
         enableAlwaysShowLNDifficulty: false,
+        enableTelemetry: true,
     },
 
     mods: {

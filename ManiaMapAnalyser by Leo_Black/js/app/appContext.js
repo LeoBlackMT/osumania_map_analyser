@@ -118,6 +118,7 @@ export const state = {
     enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
     enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
     enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
+    enableTelemetry: APP_CONFIG.defaults.enableTelemetry,
     numericDifficulty: null,
     numericDifficultyHint: null,
     lnStar: 0,
@@ -226,6 +227,7 @@ export const {
     parseEnableLNDifficultyValue,
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
+    parseEnableTelemetryValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {

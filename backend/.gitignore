@@ -1,0 +1,7 @@
+# Secrets and runtime data (never commit).
+.env
+telemetry.db
+telemetry.db-*
+
+# Private docs (teaching notes for the maintainer only).
+docs/

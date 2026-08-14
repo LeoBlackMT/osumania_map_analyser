@@ -1,9 +1,11 @@
-﻿import { initialize } from "./js/app/main.js";
+import { initialize } from "./js/app/main.js";
 
 const _VERSION = "1.7.4";
+const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top";
 
 if (typeof window !== "undefined") {
 	window.__MMA_VERSION = _VERSION;
+	window.__MMA_TELEMETRY_ENDPOINT = TELEMETRY_ENDPOINT;
 }
 
 async function boot() {

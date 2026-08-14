@@ -43,6 +43,7 @@ import {
     parseEnableLNDifficultyValue,
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
+    parseEnableTelemetryValue,
     patternClustersEl,
     ppBarsEl,
     reworkStarEl,
@@ -76,6 +77,7 @@ import { initTriangleField } from "./triangles.js";
 import { scheduleRecompute } from "./scheduler.js";
 import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
 import { clearResultCache } from "./resultCache.js";
+import { setTelemetryConfig } from "./telemetry.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -696,6 +698,14 @@ export function applyEnableResultCacheSetting(value) {
     return changed;
 }
 
+export function applyEnableTelemetrySetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableTelemetry);
+    const changed = state.enableTelemetry !== next;
+    state.enableTelemetry = next;
+    setTelemetryConfig();
+    return changed;
+}
+
 export function applyReverseCardExtendDirectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.reverseCardExtendDirection);
     const changed = state.reverseCardExtendDirection !== next;
@@ -779,6 +789,7 @@ export function setupSettingsCommandListener() {
         const enableLNDifficultyChanged = applyIf("enableLNDifficulty", applyEnableLNDifficultySetting, parseEnableLNDifficultyValue(payload));
         const enableAnalyzeLNChanged = applyIf("enableAnalyzeLN", applyEnableAnalyzeLNSetting, parseEnableAnalyzeLNValue(payload));
         const enableAlwaysShowLNDifficultyChanged = applyIf("enableAlwaysShowLNDifficulty", applyEnableAlwaysShowLNDifficultySetting, parseEnableAlwaysShowLNDifficultyValue(payload));
+        const enableTelemetryChanged = applyIf("enableTelemetry", applyEnableTelemetrySetting, parseEnableTelemetryValue(payload));
         const display6kLevelChanged = applyIf("display6kLevel", applyDisplay6kLevelSetting, parseDisplay6kLevelValue(payload));
         const extendedEstimationRangeChanged = applyIf("extendedEstimationRange", applyExtendedEstimationRangeSetting, parseExtendedEstimationRangeValue(payload));
         const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
@@ -827,7 +838,8 @@ export function setupSettingsCommandListener() {
             || enableAnalyzeLNChanged
             || enableAlwaysShowLNDifficultyChanged
             || display6kLevelChanged
-            || extendedEstimationRangeChanged;
+            || extendedEstimationRangeChanged
+            || enableTelemetryChanged;
 
         const recomputeNeeded = contentBarChanged
             || srTextChanged
@@ -960,6 +972,7 @@ export async function loadSettings() {
         applyEnableLNDifficultySetting(parseEnableLNDifficultyValue(source));
         applyEnableAnalyzeLNSetting(parseEnableAnalyzeLNValue(source));
         applyEnableAlwaysShowLNDifficultySetting(parseEnableAlwaysShowLNDifficultyValue(source));
+        applyEnableTelemetrySetting(parseEnableTelemetryValue(source));
         applyDisplay6kLevelSetting(parseDisplay6kLevelValue(source));
         applyExtendedEstimationRangeSetting(parseExtendedEstimationRangeValue(source));
     }
@@ -1003,6 +1016,7 @@ export async function loadSettings() {
             enableLNDifficulty: APP_CONFIG.defaults.enableLNDifficulty,
             enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
             enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
+            enableTelemetry: APP_CONFIG.defaults.enableTelemetry,
             display6kLevel: APP_CONFIG.defaults.display6kLevel,
             extendedEstimationRange: APP_CONFIG.defaults.extendedEstimationRange,
         });

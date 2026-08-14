@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osumania! Map Analyser — Usage Statistics</title>
+<style>
+  :root { --bg:#0f1220; --panel:#1a1f33; --fg:#eef1fb; --muted:#9aa3c0; --accent:#4bb3fd; --bar:#2a3150; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:28px 24px 8px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:14px; margin:0 0 12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .sub { color:var(--muted); font-size:13px; margin:0; }
+  main { max-width:1100px; margin:0 auto; padding:20px 24px 48px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--panel); border-radius:12px; padding:16px; }
+  .card .v { font-size:28px; font-weight:700; }
+  .card .k { font-size:12px; color:var(--muted); margin-top:4px; }
+  .panel { background:var(--panel); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+  .grid .panel { margin-bottom:0; }
+  .bars { display:flex; flex-direction:column; gap:6px; }
+  .bar-row { display:flex; align-items:center; gap:10px; font-size:13px; }
+  .bar-label { flex:0 0 120px; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { flex:1; background:var(--bar); border-radius:6px; height:16px; overflow:hidden; }
+  .bar-fill { background:var(--accent); height:100%; border-radius:6px; min-width:2px; }
+  .bar-count { flex:0 0 56px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .empty { color:var(--muted); font-size:13px; padding:8px 0; }
+  .kv { display:flex; justify-content:space-between; font-size:14px; padding:6px 0; border-bottom:1px solid var(--bar); }
+  .kv span:last-child { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .error { color:#ff6b81; }
+</style>
+</head>
+<body>
+<header>
+  <h1>osumania! Map Analyser — Usage Statistics</h1>
+  <p class="sub">Anonymous aggregate statistics. No usernames, no beatmap identity, and no IP addresses are collected or stored.</p>
+</header>
+<main>
+  <section id="overview" class="cards"></section>
+
+  <section class="panel">
+    <h2>Online by hour (UTC · last 30 days)</h2>
+    <div id="onlineByHour" class="bars"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Active installs per day (last 30 days)</h2>
+    <div id="trend" class="bars"></div>
+  </section>
+
+  <section class="grid">
+    <div class="panel"><h2>Selected algorithm</h2><div id="algorithms" class="bars"></div></div>
+    <div class="panel"><h2>Actual algorithm</h2><div id="actualAlgorithms" class="bars"></div></div>
+    <div class="panel"><h2>Key count</h2><div id="keycounts" class="bars"></div></div>
+    <div class="panel"><h2>Mods</h2><div id="mods" class="bars"></div></div>
+    <div class="panel"><h2>Mode</h2><div id="modes" class="bars"></div></div>
+    <div class="panel"><h2>Version</h2><div id="versions" class="bars"></div></div>
+    <div class="panel"><h2>Star rating</h2><div id="starHistogram" class="bars"></div></div>
+    <div class="panel"><h2>LN ratio</h2><div id="lnRatioHistogram" class="bars"></div></div>
+    <div class="panel"><h2>Analysis duration</h2><div id="duration"></div></div>
+  </section>
+</main>
+<script>
+"use strict";
+
+// Build helpers. Every dynamic value goes through textContent, never innerHTML,
+// so client-supplied strings (version, mods, mode, ...) cannot inject markup.
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+
+function renderBars(id, items) {
+  const c = document.getElementById(id);
+  c.textContent = "";
+  if (!items.length) {
+    c.appendChild(el("div", "empty", "No data yet"));
+    return;
+  }
+  let max = 1;
+  for (const it of items) if (it.count > max) max = it.count;
+  for (const it of items) {
+    const row = el("div", "bar-row");
+    const label = el("span", "bar-label", it.key);
+    const track = el("div", "bar-track");
+    const fill = el("div", "bar-fill");
+    fill.style.width = Math.round((it.count / max) * 100) + "%";
+    track.appendChild(fill);
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(el("span", "bar-count", it.count));
+    c.appendChild(row);
+  }
+}
+
+function card(k, v) {
+  const d = el("div", "card");
+  d.appendChild(el("div", "v", v));
+  d.appendChild(el("div", "k", k));
+  return d;
+}
+
+fetch("/api/v1/stats")
+  .then((r) => {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  })
+  .then((s) => {
+    const ov = document.getElementById("overview");
+    ov.appendChild(card("Total installs", s.totalInstalls));
+    ov.appendChild(card("Online now", s.onlineNow));
+    ov.appendChild(card("Active today", s.todayActive));
+    ov.appendChild(card("Active 7d", s.weekActive));
+    ov.appendChild(card("Active 30d", s.monthActive));
+    ov.appendChild(card("New today", s.newToday));
+    ov.appendChild(card("New 7d", s.newWeek));
+
+    const hours = (s.onlineByHour || []).map((count, h) => ({
+      key: String(h).padStart(2, "0") + ":00",
+      count: count || 0,
+    }));
+    renderBars("onlineByHour", hours);
+
+    const trend = (s.activeTrend || []).map((d) => ({
+      key: d.date ? d.date.slice(5) : "",
+      count: d.active || 0,
+    }));
+    renderBars("trend", trend);
+
+    renderBars("algorithms", s.algorithms || []);
+    renderBars("actualAlgorithms", s.actualAlgorithms || []);
+    renderBars("keycounts", s.keycounts || []);
+    renderBars("mods", s.mods || []);
+    renderBars("modes", s.modes || []);
+    renderBars("versions", s.versions || []);
+    renderBars("starHistogram", s.starHistogram || []);
+    renderBars("lnRatioHistogram", s.lnRatioHistogram || []);
+
+    const dur = document.getElementById("duration");
+    const d = s.durationStats || {};
+    dur.appendChild(el("div", "kv", "Average"));
+    dur.lastChild.appendChild(el("span", "", (d.avgMs || 0) + " ms"));
+    dur.appendChild(el("div", "kv", "p50"));
+    dur.lastChild.appendChild(el("span", "", (d.p50Ms || 0) + " ms"));
+    dur.appendChild(el("div", "kv", "p90"));
+    dur.lastChild.appendChild(el("span", "", (d.p90Ms || 0) + " ms"));
+  })
+  .catch((err) => {
+    const ov = document.getElementById("overview");
+    ov.appendChild(el("div", "error", "Failed to load statistics: " + err.message));
+  });
+</script>
+</body>
+</html>

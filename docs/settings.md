@@ -118,6 +118,9 @@
         - 同时用于拼接谱面文件请求地址：`http://{host:port}/files/beatmap/file`。
         - 调整该项可用于在局域网内的其他设备上使用该插件，例如在手机或平板上显示分析结果。
         - 默认值为`localhost:24050`
+    - **Anonymous Usage Statistics**: 是否向项目遥测服务器匿名上报使用统计。
+        - 仅上报聚合属性（算法/键数/mod/模式/难度/耗时等），**不包含**用户名、玩家id、分数、谱面标识或 IP 地址。
+        - 默认开启；关闭后不再上报。
 - **调试内容**:
     - **Use Amount For Category**：是否启用基于谱面Cluster Amount的键型分类逻辑。
         - 启用后将根据谱面物件数量进行键型分类，**可能**会更准确地识别某些谱面。
@@ -246,6 +249,9 @@
         - The same host:port is also used to construct the beatmap file request URL: `http://{host:port}/files/beatmap/file`.
         - Adjusting this setting allows you to use the plugin on other devices on the same local network, such as displaying analysis results on a mobile phone or tablet.
         - The default value is `localhost:24050`.
+    - **Anonymous Usage Statistics**: Whether to send anonymous usage statistics to the project's telemetry server.
+        - Only aggregate attributes are sent (algorithm, key count, mods, mode, difficulty, duration, etc.) — **no** username, player id, scores, beatmap identity, or IP address.
+        - Enabled by default; disable to opt out.
 - **Debug Settings**:
     - **Use Amount For Category**: Whether to enable pattern classification logic based on the beatmap's Cluster Amount.
         - When enabled, pattern classification will be based on the number of objects in the beatmap, which **may** more accurately identify certain beatmaps.
