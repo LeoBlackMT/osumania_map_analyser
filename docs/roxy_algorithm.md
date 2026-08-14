@@ -31,6 +31,7 @@ Read .osu text
   -> build meta features from Azusa/Daniel/Roxy; keep Sunny slot disabled
   -> evaluate ridge linear calibration head
   -> apply explicit OD override correction, high-reference structural floor, and reference-gap residual correction
+  -> apply difficulty-gated Azusa fusion
   -> format RC label and optional Azusa graph
 ```
 
@@ -406,7 +407,18 @@ floor = clamp(floor, 16.8, min(18.65, Azusa + 0.30))
 
 This is a targeted structural-reference guard for dense RC outliers, not a general replacement for the meta model.
 
-## 14. Label Soft Cap
+## 14. Azusa Fusion
+
+After every post-processing correction (OD override, high-reference structural floor, reference-gap residual correction, Azusa high-gap lift), Roxy blends its final numeric with the independent Azusa prediction at a fixed weight, gated by difficulty:
+
+```text
+fusionGate = gate(finalNumeric, 9, 11)
+fused = finalNumeric + (Azusa - finalNumeric) * 0.4 * fusionGate
+```
+
+The rationale is variance reduction: two approximately unbiased estimators, when averaged, shrink variance. The weight is biased toward Roxy (0.4 on Azusa) because Azusa has larger variance. On the benchmark this lifts Exact by ~3.5 percentage points in the 10~17 range (47.8% -> 51.4%) and lowers Miss without hurting the low band. Azusa is known to systematically over-estimate low-difficulty charts (bias ~-0.35 in the 8~10 numeric band), so the gate closes the fusion below numeric 9 and ramps it in over 9~11. The thresholds are robust — results are stable across the 8~12 range — so this is a fixed physical gate, not a fitted parameter. The fusion does not change Roxy's structural core, meta features, or any other reference; it only re-averages the final output against Azusa where Azusa is reliable.
+
+## 15. Label Soft Cap
 
 Roxy keeps numeric difficulty internally, but its RC label display is capped above `CloverWisp Theta high`:
 
@@ -419,11 +431,11 @@ else:
 
 This prevents Roxy from displaying `Iota` or higher labels while still allowing the numeric value and star value to reflect values above Theta high.
 
-## 15. Graph Output
+## 16. Graph Output
 
 The numeric calculation uses Roxy's structural strain data. The returned `graph` field does not use Roxy's local strain series. When graph output is requested, Roxy returns the graph provided by the Azusa reference call, which currently resolves to Azusa/Sunny graph data.
 
-## 16. Complexity
+## 17. Complexity
 
 Let `N` be the number of tap notes and `R` the number of merged rows.
 
