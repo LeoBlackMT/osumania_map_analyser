@@ -105,6 +105,13 @@ function canUseRcResult(result) {
         return false;
     }
 
+    // Roxy 高难聚焦的 scope 边界（"< Alpha Low" / "> Emik Zeta high"）返回
+    // numericDifficulty null，视为不可用，路由到 Azusa（低难）。
+    const numeric = result.numericDifficulty;
+    if (numeric === null || numeric === undefined || numeric === "") {
+        return false;
+    }
+
     return true;
 }
 

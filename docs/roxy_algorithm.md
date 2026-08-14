@@ -4,7 +4,7 @@ Roxy is a synchronous 4-key regular-chain difficulty estimator for osu!mania. It
 
 ## 1. Scope
 
-Roxy is intended for 4K RC charts. It rejects maps that are outside its scope:
+Roxy is intended for 4K RC charts within the **high-difficulty band (numeric 11~17, Alpha to Emik Zeta high)**. It rejects maps that are outside its scope:
 
 - empty or unparsable input
 - non-mania beatmaps
@@ -12,9 +12,11 @@ Roxy is intended for 4K RC charts. It rejects maps that are outside its scope:
 - LN ratio above `0.18`
 - fewer than `80` tap notes
 - non-finite or non-positive speed rate
+- final numeric below `11` (returns `< Alpha Low`, numeric null)
+- final numeric at or above `17` (returns `> Emik Zeta high`, numeric null)
 - internal estimator errors
 
-Invalid results use the same estimator result shape as valid results, but return no numeric difficulty.
+Scope-boundary results use the same estimator result shape as valid results, but return no numeric difficulty: `estDiff` is the boundary label (`< Alpha Low` / `> Emik Zeta high`) and `numericDifficulty` is `null`. Mixed treats these as unusable (via the numeric-null check in `canUseRcResult`) and routes the low band to Azusa. This mirrors Daniel, which also only emits a native numeric within its own band.
 
 ## 2. Pipeline
 
@@ -409,14 +411,13 @@ This is a targeted structural-reference guard for dense RC outliers, not a gener
 
 ## 14. Azusa Fusion
 
-After every post-processing correction (OD override, high-reference structural floor, reference-gap residual correction, Azusa high-gap lift), Roxy blends its final numeric with the independent Azusa prediction at a fixed weight, gated by difficulty:
+After every post-processing correction (OD override, high-reference structural floor, reference-gap residual correction, Azusa high-gap lift), Roxy blends its final numeric with the independent Azusa prediction at a fixed weight:
 
 ```text
-fusionGate = gate(finalNumeric, 9, 11)
-fused = finalNumeric + (Azusa - finalNumeric) * 0.4 * fusionGate
+fused = finalNumeric + (Azusa - finalNumeric) * 0.4
 ```
 
-The rationale is variance reduction: two approximately unbiased estimators, when averaged, shrink variance. The weight is biased toward Roxy (0.4 on Azusa) because Azusa has larger variance. On the benchmark this lifts Exact by ~3.5 percentage points in the 10~17 range (47.8% -> 51.4%) and lowers Miss without hurting the low band. Azusa is known to systematically over-estimate low-difficulty charts (bias ~-0.35 in the 8~10 numeric band), so the gate closes the fusion below numeric 9 and ramps it in over 9~11. The thresholds are robust — results are stable across the 8~12 range — so this is a fixed physical gate, not a fitted parameter. The fusion does not change Roxy's structural core, meta features, or any other reference; it only re-averages the final output against Azusa where Azusa is reliable.
+The rationale is variance reduction: two approximately unbiased estimators, when averaged, shrink variance. The weight is biased toward Roxy (0.4 on Azusa) because Azusa has larger variance. On the benchmark this lifts Exact to ~54% in the 11~17 band (with the high-difficulty scope, §1). No difficulty gate is needed anymore: the low band (where Azusa over-estimates) is already routed to Azusa by Mixed before Roxy runs, so the fusion only ever applies inside the 11~17 scope. The fusion does not change Roxy's structural core, meta features, or any other reference; it only re-averages the final output against Azusa.
 
 ## 15. Label Soft Cap
 
