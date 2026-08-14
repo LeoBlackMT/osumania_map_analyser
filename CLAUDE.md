@@ -1,6 +1,7 @@
 # CLAUDE.md
 > 本文是写给 LLM 的项目说明和编写要求，LLM 在编写代码时请务必遵守本文档的要求。
 > This document is written for LLMs, and LLMs must follow the requirements of this document when writing code.
+> 注意：AGENTS.md和CLAUDE.md如果出现冲突，请以CLAUDE.md为准。除非用户明确要求。如果遇到不确定的情况，请向用户提问。
 
 ## 项目介绍
 - 本项目仓库地址 https://github.com/LeoBlackMT/osumania_map_analyser。
