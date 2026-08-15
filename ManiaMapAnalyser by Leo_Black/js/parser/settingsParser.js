@@ -18,6 +18,40 @@ export function normalizeContentBarValue(value) {
     return null;
 }
 
+// 将 commands 类型的 contentBar 值（有序数组）或旧版字符串值规范化为
+// 有序的合法 section 数组。保序：数组顺序即前端显示顺序。
+// - 数组：逐项取 item.section，校验 ∈ 候选集，保序收集，非法项丢弃。
+// - 旧字符串：迁移映射（"Full"→4 元素全选、"None"→[]、单值→单元素数组）。
+export function normalizeContentBarList(value, candidates) {
+    const sectionSet = createSet(candidates);
+
+    if (Array.isArray(value)) {
+        const result = [];
+        for (const item of value) {
+            const section = item && typeof item === "object" ? item.section : null;
+            const normalized = normalizeContentBarValue(section);
+            if (normalized && sectionSet.has(normalized.toLowerCase()) && !result.includes(normalized)) {
+                result.push(normalized);
+            }
+        }
+        return result;
+    }
+
+    if (typeof value === "string") {
+        const normalized = normalizeContentBarValue(value);
+        if (!normalized) return [];
+        if (normalized === "Full") {
+            return ["Pattern", "Etterna", "Graph", "ReworkPP"].filter(
+                (section) => sectionSet.has(section.toLowerCase())
+            );
+        }
+        if (normalized === "None" || normalized === "Auto") return [];
+        return sectionSet.has(normalized.toLowerCase()) ? [normalized] : [];
+    }
+
+    return [];
+}
+
 export function normalizeSrTextValue(value) {
     if (typeof value !== "string") {
         return null;
@@ -233,7 +267,6 @@ export function extractSettingValue(settingsPayload, settingKey) {
 }
 
 export function createSettingsParsers(appConfig) {
-    const contentBarSet = createSet(appConfig?.options?.contentBar);
     const srTextSet = createSet(appConfig?.options?.srText);
     const diffTextSet = createSet(appConfig?.options?.diffText);
     const estimatorAlgorithmSet = createSet(appConfig?.options?.estimatorAlgorithm);
@@ -269,13 +302,22 @@ export function createSettingsParsers(appConfig) {
 
     function parseContentBarValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "contentBar");
-        const normalized = normalizeContentBarValue(value);
-        if (normalized && contentBarSet.has(normalized.toLowerCase())) {
-            return normalized;
+        if (value !== undefined && value !== null) {
+            // commands 数组（保序）或旧字符串（迁移）→ 有序合法 section 数组
+            return normalizeContentBarList(value, appConfig.options.contentBar);
         }
 
+        // legacy enablePatternAnalysis fallback（旧版设置格式，无 contentBar 键时）
         const enabled = parseEnablePatternValue(settingsPayload);
-        return enabled ? "Pattern" : "None";
+        return enabled ? ["Pattern"] : [];
+    }
+
+    function parseAutoContentBarValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "autoContentBar");
+        if (value === undefined || value === null) {
+            return appConfig.defaults.autoContentBar;
+        }
+        return normalizeBooleanSetting(value, appConfig.defaults.autoContentBar);
     }
 
     function parseSrTextValue(settingsPayload) {
@@ -572,6 +614,7 @@ export function createSettingsParsers(appConfig) {
     return {
         parseEnablePatternValue,
         parseContentBarValue,
+        parseAutoContentBarValue,
         parseSrTextValue,
         parseDebugUseAmountValue,
         parseDiffTextValue,

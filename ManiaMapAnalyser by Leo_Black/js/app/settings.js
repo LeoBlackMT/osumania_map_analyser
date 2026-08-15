@@ -47,7 +47,6 @@ import {
     patternClustersEl,
     ppBarsEl,
     reworkStarEl,
-    sepPpEl,
     socket,
     state,
     SETTINGS_COMMAND_TIMEOUT_MS,
@@ -55,7 +54,7 @@ import {
 } from "./appContext.js";
 import {
     normalizeBooleanSetting,
-    normalizeContentBarValue,
+    normalizeContentBarList,
     normalizeDiffTextValue,
     normalizeSrTextValue,
 } from "../parser/settingsParser.js";
@@ -80,21 +79,50 @@ import { clearResultCache } from "./resultCache.js";
 import { setTelemetryConfig } from "./telemetry.js";
 
 function isAutoDisplayEnabled() {
-    return state.userSrText === "Auto" || state.userContentBar === "Auto";
+    return state.userSrText === "Auto" || state.autoContentBar === true;
 }
 
 function resolveRuntimeDisplayProfile(modeTag = state.currentModeTag || "Mix") {
     const auto = resolveAutoDisplayProfile(modeTag);
     return {
-        contentBar: state.userContentBar === "Auto" ? auto.contentBar : state.userContentBar,
+        contentBar: state.autoContentBar === true ? [auto.contentBar] : state.userContentBar,
         srText: state.userSrText === "Auto" ? auto.srText : state.userSrText,
         diffText: state.userDiffText,
     };
 }
 
+// 每个主体区块的 grid item：separator + block 成对，顺序由数组下标决定。
+const CONTENT_BAR_SECTIONS = [
+    { section: "Pattern", sepEl: null, blockEl: null },
+    { section: "Etterna", sepEl: null, blockEl: null },
+    { section: "Graph", sepEl: null, blockEl: null },
+    { section: "ReworkPP", sepEl: null, blockEl: null },
+];
+
+function resolveContentBarSectionElements() {
+    const sepMap = {
+        Pattern: document.getElementById("sep-pattern"),
+        Etterna: document.getElementById("sep-etterna"),
+        Graph: document.getElementById("sep-graph"),
+        ReworkPP: document.getElementById("sep-pp"),
+    };
+    const blockMap = {
+        Pattern: patternClustersEl,
+        Etterna: ettSkillBarsEl,
+        Graph: bodyGraphWrapEl,
+        ReworkPP: ppBarsEl,
+    };
+    for (const entry of CONTENT_BAR_SECTIONS) {
+        entry.sepEl = sepMap[entry.section];
+        entry.blockEl = blockMap[entry.section];
+    }
+}
+
 function updateContentBarVisibility() {
     const activeContentBar = getActiveContentBar();
-    const isFull = activeContentBar === "Full";
+    const activeList = Array.isArray(activeContentBar) ? activeContentBar : [];
+    const count = activeList.length;
+    const isMulti = count >= 2;
 
     patternClustersEl.hidden = !contentBarShows("Pattern");
     ettSkillBarsEl.hidden = !contentBarShows("Etterna");
@@ -105,23 +133,29 @@ function updateContentBarVisibility() {
         ppBarsEl.hidden = !contentBarShows("ReworkPP");
     }
 
-    mainCardEl.classList.toggle("bars-full", isFull);
-    mainCardEl.classList.toggle("bars-pattern", !isFull && activeContentBar === "Pattern");
-    mainCardEl.classList.toggle("bars-etterna", !isFull && activeContentBar === "Etterna");
-    mainCardEl.classList.toggle("bars-graph", !isFull && activeContentBar === "Graph");
-    mainCardEl.classList.toggle("bars-pp", !isFull && activeContentBar === "ReworkPP");
-    mainCardEl.classList.toggle("bars-none", !isFull && activeContentBar === "None");
+    mainCardEl.classList.toggle("bars-multi", isMulti);
+    mainCardEl.classList.toggle("bars-pattern", !isMulti && count === 1 && activeList[0] === "Pattern");
+    mainCardEl.classList.toggle("bars-etterna", !isMulti && count === 1 && activeList[0] === "Etterna");
+    mainCardEl.classList.toggle("bars-graph", !isMulti && count === 1 && activeList[0] === "Graph");
+    mainCardEl.classList.toggle("bars-pp", !isMulti && count === 1 && activeList[0] === "ReworkPP");
+    mainCardEl.classList.toggle("bars-none", count === 0);
 
     if (!contentBarShows("Etterna")) {
         mainCardEl.classList.remove("bars-etterna-compact");
     }
 
-    const separatorEls = document.querySelectorAll(".full-separator");
-    separatorEls.forEach(el => {
-        el.hidden = !isFull;
-    });
-    if (sepPpEl) {
-        sepPpEl.hidden = !isFull;
+    // separator 仅多选时显示；按列表顺序给每个区块 (separator+block) 设 CSS order。
+    resolveContentBarSectionElements();
+    for (const entry of CONTENT_BAR_SECTIONS) {
+        const index = activeList.indexOf(entry.section);
+        const shown = index !== -1;
+        if (entry.sepEl) {
+            entry.sepEl.hidden = !(isMulti && shown);
+            entry.sepEl.style.order = String(index * 2 + 1);
+        }
+        if (entry.blockEl) {
+            entry.blockEl.style.order = String(index * 2 + 2);
+        }
     }
 }
 
@@ -399,9 +433,9 @@ export function applyEnableAlwaysShowLNDifficultySetting(value) {
 
 export function setRuntimeContentBar(contentBar) {
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
-    const normalized = normalizeContentBarValue(contentBar);
-    const nextBar = (!normalized || normalized === "Auto") ? "Pattern" : normalized;
-    const changed = state.contentBar !== nextBar;
+    // 入参为有序 section 数组（或旧字符串迁移）；空/非法 → 空列表（None）
+    const nextBar = normalizeContentBarList(contentBar, APP_CONFIG.options.contentBar);
+    const changed = !arraysEqual(state.contentBar, nextBar);
     state.contentBar = nextBar;
 
     if (!contentBarShows("Pattern")) {
@@ -434,9 +468,11 @@ export function setRuntimeContentBar(contentBar) {
 
 export function setEffectiveContentBarForMap(contentBarOrNull) {
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
-    const normalized = normalizeContentBarValue(contentBarOrNull);
-    const next = (!normalized || normalized === "Auto") ? null : normalized;
-    const changed = state.effectiveContentBar !== next;
+    // 谱面级覆盖：有序 section 数组；null 表示无覆盖
+    const next = contentBarOrNull == null
+        ? null
+        : normalizeContentBarList(contentBarOrNull, APP_CONFIG.options.contentBar);
+    const changed = !arraysEqual(state.effectiveContentBar, next);
     state.effectiveContentBar = next;
 
     if (!contentBarShows("Pattern")) {
@@ -455,6 +491,18 @@ export function setEffectiveContentBarForMap(contentBarOrNull) {
     }
 
     return changed;
+}
+
+// 数组内容比较（含 null 与空数组），避免引用比较误判。
+function arraysEqual(a, b) {
+    if (a === b) return true;
+    if (a == null || b == null) return false;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
 }
 
 export function setRuntimeSrText(srText) {
@@ -489,12 +537,26 @@ export function refreshAutoDisplayProfile(modeTag = state.currentModeTag || "Mix
 }
 
 export function applyContentBarSetting(contentBar) {
-    // 输入已由 parseContentBarValue 归一化并校验（contentBarSet 成员）——不再二次 normalize。
-    const nextBar = contentBar || "Pattern";
-    const changed = state.userContentBar !== nextBar;
+    // 输入已由 parseContentBarValue 归一化并校验——有序 section 数组（可空）。
+    const nextBar = Array.isArray(contentBar) ? contentBar : [];
+    const changed = !arraysEqual(state.userContentBar, nextBar);
     state.userContentBar = nextBar;
 
-    if (state.userContentBar === "Auto") {
+    if (state.autoContentBar === true) {
+        refreshAutoDisplayProfile();
+    } else {
+        setRuntimeContentBar(state.userContentBar);
+    }
+
+    return changed;
+}
+
+export function applyAutoContentBarSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.autoContentBar);
+    const changed = state.autoContentBar !== next;
+    state.autoContentBar = next;
+
+    if (state.autoContentBar === true) {
         refreshAutoDisplayProfile();
     } else {
         setRuntimeContentBar(state.userContentBar);
@@ -762,6 +824,7 @@ export function setupSettingsCommandListener() {
         state.settingsReceivedFromCommand = true;
         const wsEndpointChanged = applyIf("wsEndpoint", applyWsEndpointSetting, parseWsEndpointValue(payload));
         const contentBarChanged = applyIf("contentBar", applyContentBarSetting, parseContentBarValue(payload));
+        const autoContentBarChanged = applyIf("autoContentBar", applyAutoContentBarSetting, parseAutoContentBarValue(payload));
         const srTextChanged = applyIf("srText", applySrTextSetting, parseSrTextValue(payload));
         const debugChanged = applyIf("debugUseAmount", applyDebugUseAmountSetting, parseDebugUseAmountValue(payload));
         const diffTextChanged = applyIf("diffText", applyDiffTextSetting, parseDiffTextValue(payload));
@@ -800,11 +863,12 @@ export function setupSettingsCommandListener() {
         const legacyAutoMode = parseAutoModeValue(payload);
         if (legacyAutoMode && !isAutoDisplayEnabled()) {
             state.userSrText = "Auto";
-            state.userContentBar = "Auto";
+            state.autoContentBar = true;
             refreshAutoDisplayProfile();
         }
 
         const changed = contentBarChanged
+            || autoContentBarChanged
             || wsEndpointChanged
             || srTextChanged
             || debugChanged
@@ -842,6 +906,7 @@ export function setupSettingsCommandListener() {
             || enableTelemetryChanged;
 
         const recomputeNeeded = contentBarChanged
+            || autoContentBarChanged
             || srTextChanged
             || debugChanged
             || diffTextChanged
@@ -941,6 +1006,7 @@ export async function loadSettings() {
     function applySettingsFrom(source) {
         applyWsEndpointSetting(parseWsEndpointValue(source));
         applyContentBarSetting(parseContentBarValue(source));
+        applyAutoContentBarSetting(parseAutoContentBarValue(source));
         applySrTextSetting(parseSrTextValue(source));
         applyDebugUseAmountSetting(parseDebugUseAmountValue(source));
         applyDiffTextSetting(parseDiffTextValue(source));
@@ -984,6 +1050,7 @@ export async function loadSettings() {
         // File unavailable — apply config defaults as fallback
         applySettingsFrom({
             wsEndpoint: APP_CONFIG.defaults.wsEndpoint || APP_CONFIG.socketHost,
+            autoContentBar: APP_CONFIG.defaults.autoContentBar,
             contentBar: APP_CONFIG.defaults.contentBar,
             srText: APP_CONFIG.defaults.srText,
             debugUseAmount: APP_CONFIG.defaults.debugUseAmount,

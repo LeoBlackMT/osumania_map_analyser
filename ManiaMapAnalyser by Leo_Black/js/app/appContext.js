@@ -80,6 +80,7 @@ export const state = {
     classicMod: false,
     contentBar: APP_CONFIG.defaults.contentBar,
     effectiveContentBar: null,
+    autoContentBar: APP_CONFIG.defaults.autoContentBar,
     srText: APP_CONFIG.defaults.srText,
     userContentBar: APP_CONFIG.defaults.contentBar,
     userSrText: APP_CONFIG.defaults.srText,
@@ -236,7 +237,7 @@ export function getActiveContentBar() {
 
 export function contentBarShows(section) {
     const active = getActiveContentBar();
-    return active === section || active === "Full";
+    return Array.isArray(active) ? active.includes(section) : active === section;
 }
 
 export const GRAPH_VIEW_DEFS = [
@@ -293,5 +294,5 @@ export function isAutoSrTextEnabled() {
 }
 
 export function isAutoContentBarEnabled() {
-    return state.userContentBar === "Auto";
+    return state.autoContentBar === true;
 }

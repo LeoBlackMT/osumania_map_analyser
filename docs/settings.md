@@ -5,15 +5,16 @@
 ## 中文
 
 - **模块设定**：
-    - **Card Body Content**：选择在卡片主体显示的内容。
-        - None: 不显示任何内容。即短卡片模式。
-        - Auto: 根据谱面LN占比自动选择显示Pattern或Etterna。
+    - **Auto Card Body Content**: 是否根据谱面模式自动选择卡片主体内容。
+        - 启用（默认）：按谱面 LN 占比自动选择显示 Pattern 或 Etterna。
+        - 关闭：完全使用下方 Card Body Content 列表；列表为空即不显示主体（短卡片模式）。
+    - **Card Body Content**：选择在卡片主体显示的内容（每行一个，按行顺序从上到下显示）。
         - Pattern: 显示键型分析。
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
         - ReworkPP: 显示最大/实时 Rework PP 及其相关参数。
-        - Full: 显示完整内容，包括键型分析、难度图表和Etterna分数。不推荐日常使用，可能会比较拥挤。
-        - 注：对于非4/6/7K谱面，主体内容将自动回退为Pattern显示。
+        - 可添加多行同时显示多个内容；删除所有行即不显示主体。
+        - 注：对于非4/6/7K谱面，Graph 将自动从列表中移除。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
         - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
@@ -136,15 +137,16 @@
 ## English
 
 - **Module Settings**:
-    - **Card Body Content**: Select what to display in the main body of the card.
-        - None: Displays nothing. Short card mode.
-        - Auto: Automatically selects Pattern or Etterna based on the LN ratio of the beatmap.
+    - **Auto Card Body Content**: Whether to automatically pick the card body based on the map mode.
+        - On (default): Automatically selects Pattern or Etterna based on the LN ratio of the beatmap.
+        - Off: Uses the Card Body Content list below; an empty list shows no body (short card mode).
+    - **Card Body Content**: Select what to display in the main body of the card (one section per row, shown top to bottom in row order).
         - Pattern: Displays pattern analysis.
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
         - ReworkPP: Displays the max/live Rework PP performance and related parameters.
-        - Full: Displays full content including pattern analysis, difficulty graph, and Etterna scores. Not recommended for daily use — may feel crowded.
-        - Note: For non-4/6/7K beatmaps, body content automatically falls back to Pattern.
+        - Add multiple rows to show several sections at once; remove all rows to show nothing.
+        - Note: On non-4/6/7K beatmaps, Graph is automatically removed from the list.
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.
         - ReworkSR: Displays [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth) star rating.

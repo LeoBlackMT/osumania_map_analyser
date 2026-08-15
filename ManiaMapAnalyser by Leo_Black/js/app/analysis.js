@@ -234,7 +234,12 @@ function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar
         return false;
     }
 
-    if (activeContentBar !== "Pattern" && activeContentBar !== "Etterna" && activeContentBar !== "Full") {
+    if (Array.isArray(activeContentBar)) {
+        // 多选列表：仅在含 Pattern 或 Etterna 时启用骨架屏
+        if (!activeContentBar.includes("Pattern") && !activeContentBar.includes("Etterna")) {
+            return false;
+        }
+    } else if (activeContentBar !== "Pattern" && activeContentBar !== "Etterna" && activeContentBar !== "Full") {
         return false;
     }
 
@@ -361,16 +366,19 @@ export async function fetchBeatmapFile(reason) {
     try {
         let parsedInfo = null;
         let rawText = null;
-        // 谱面级内容栏 override：keycount 不受 Graph 支持时把主体降级为 Pattern（None/Full 除外）。
+        // 谱面级内容栏 override：keycount 不受 Graph 支持时从显示列表移除 Graph（保序）。
         const applyContentBarOverride = (columnCount) => {
             const parsedKeycount = Number(columnCount) || 0;
-            // In Full mode the graph block shows its own "Unsupported Keys" notice,
-            // so don't collapse the whole body to Pattern on unsupported keycounts.
-            const shouldFallbackBodyToPattern = parsedKeycount > 0
+            const activeList = Array.isArray(state.contentBar) ? state.contentBar : [];
+            const shouldDropGraph = parsedKeycount > 0
                 && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
-                && state.contentBar !== "None"
-                && state.contentBar !== "Full";
-            setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
+                && activeList.includes("Graph");
+            if (!shouldDropGraph) {
+                setEffectiveContentBarForMap(null);
+                return;
+            }
+            const nextList = activeList.filter((section) => section !== "Graph");
+            setEffectiveContentBarForMap(nextList);
         };
         if (cached) {
             parsedInfo = cached.parsedInfo;
@@ -893,7 +901,8 @@ export async function fetchBeatmapFile(reason) {
         }
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
-        let resolvedModeTag = (activeContentBar === "None")
+        const activeListForTag = Array.isArray(activeContentBar) ? activeContentBar : [];
+        let resolvedModeTag = (activeListForTag.length === 0)
             ? fallbackModeTag
             : (patternResult?.report?.ModeTag || fallbackModeTag);
         let shouldShowSvTag = false;
@@ -944,7 +953,7 @@ export async function fetchBeatmapFile(reason) {
             ) && !needPatternAnalysis;
 
             if (profileChanged && ((missingEtterna || missingPattern)
-                || state.contentBar !== beforeContent
+                || JSON.stringify(state.contentBar) !== JSON.stringify(beforeContent)
                 || state.srText !== beforeSrText)) {
                 scheduleRecompute("auto profile switched", false);
                 return;

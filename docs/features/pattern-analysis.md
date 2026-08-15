@@ -207,14 +207,14 @@
 模式标签判定存在**两层**，需注意区分：
 
 1. **`js/patterns/` 内部（共享层）**：`summary.js:28` `resolveModeTag` 基于 `lnPercent`/`hbRowRatio` 产出 `report.ModeTag`（RC/LN/HB/Mix，阈值 `config.js:95-97`），并据此过滤 LN 模式（`summary.js:41-43`）与选择倍率表（第 6 节）。
-2. **`js/app/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（`modeLogic.js:1`，仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:792` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar === "None") ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:793-795`）——即只要显示 Pattern 内容，优先用 `js/patterns/` 内部更完整的判定。
+2. **`js/app/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（`modeLogic.js:1`，仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:792` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar.length === 0) ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:903-906`，activeContentBar 为多选有序数组）——即只要主体显示非空，优先用 `js/patterns/` 内部更完整的判定。
 3. 标签渲染：`setModeTag`（`js/app/hud.js:143`）/ `setModeTagAdvanced`（`hud.js:171`，基于 typePercentageData）；`resolveAutoDisplayProfile`（`modeLogic.js:31`）据此决定自动档位（RC → Etterna/MSD，其余 → Pattern/ReworkSR）。
 
 详细模式标签功能见 [mode-tagging.md](mode-tagging.md)。
 
 ## 9. 注意事项
 
-1. **非 4/6/7K 谱面主体回退 Pattern 显示**：`js/app/appContext.js:180` `GRAPH_SUPPORTED_KEY_SET = Set([4, 6, 7])`。当键数不在其中、且 `state.contentBar` 非 "None"/"Full" 时，`analysis.js:353-357` 通过 `setEffectiveContentBarForMap("Pattern")`（`js/app/settings.js:422`，per-map 覆盖，存于 `state.effectiveContentBar`）把主体内容强制回退为 Pattern 显示（Full 模式下由图表块自行显示 "Unsupported Keys" 提示，`analysis.js:351-352` 注释）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
+1. **非 4/6/7K 谱面移除 Graph**：`js/app/appContext.js:186` `GRAPH_SUPPORTED_KEY_SET = Set([4, 6, 7])`。当键数不在其中、且 contentBar 显示列表含 Graph 时，`analysis.js:370-378 applyContentBarOverride` 通过 `setEffectiveContentBarForMap(移除Graph后的数组)`（`js/app/settings.js:470`，per-map 覆盖，存于 `state.effectiveContentBar`）把 Graph 从主体**移除**（保序保留其余；2026-08-15 起，此前为整体回退 Pattern）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
 2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:798-806`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
 3. **vibro 检测的影响**：vibro 检测在 `js/app/vibro.js`——`detectVibro`（`vibro.js:16`，基于 Etterna 数值与 jack 速度比，`analysis.js:655-657`）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:824`）隐藏 Numeric Difficulty 显示。`config.js:107-108` 的 `LONGJACK_VIBRO_*` 阈值供 vibro 判定使用。
 4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。

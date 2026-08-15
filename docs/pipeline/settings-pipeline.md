@@ -49,14 +49,14 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
 
 | 层 | 字段 | 语义 |
 | --- | --- | --- |
-| 用户意图层 | `state.userContentBar` / `state.userSrText` / `state.userDiffText`（appContext.js:79-81） | 用户实际选择，`contentBar`/`srText` 可为 `"Auto"` |
-| 解析值层 | `state.contentBar` / `state.srText` / `state.diffText`（appContext.js:76-78、:87） | 运行时实际使用的具体值，永不为 `"Auto"` |
-| 谱面级覆盖 | `state.effectiveContentBar`（appContext.js:77） | 按谱面覆盖 contentBar，由 `settings.js:422 setEffectiveContentBarForMap(contentBarOrNull)` 写入（null 表示无覆盖） |
+| 用户意图层 | `state.userContentBar`（有序数组 `string[]`）/ `state.userSrText` / `state.userDiffText`（appContext.js:79-81） | 用户实际选择，`srText` 可为 `"Auto"`；`contentBar` 为 commands 列表（空数组=None） |
+| 解析值层 | `state.contentBar`（有序数组）/ `state.srText` / `state.diffText`（appContext.js:76-78、:87） | 运行时实际使用的具体值，永不为 `"Auto"` |
+| 谱面级覆盖 | `state.effectiveContentBar`（有序数组或 null，appContext.js:77） | 按谱面覆盖 contentBar，由 `settings.js:470 setEffectiveContentBarForMap(contentBarOrNull)` 写入（null 表示无覆盖） |
 
-**规则：写 `user*` 字段、读解析值字段。** 例如 `applyContentBarSetting`（settings.js:478-490）：写 `state.userContentBar`，若为 `"Auto"` 则 `refreshAutoDisplayProfile()` 解析出具体值，否则 `setRuntimeContentBar(state.userContentBar)` 写入解析值层。
+**规则：写 `user*` 字段、读解析值字段。** 例如 `applyContentBarSetting`（settings.js:540）：写 `state.userContentBar`（有序数组）；`autoContentBar` 为 true 时 `refreshAutoDisplayProfile()` 解析出单元素数组，否则 `setRuntimeContentBar(state.userContentBar)` 写入解析值层。
 
-- **Auto 解析**：`settings.js:84 isAutoDisplayEnabled()`（`userSrText === "Auto" || userContentBar === "Auto"`）→ `settings.js:88 resolveRuntimeDisplayProfile(modeTag)` 调 `resolveAutoDisplayProfile`（modeLogic.js）得出 `{contentBar, srText}` 映射，再经 `setRuntimeDisplayProfile`（settings.js:466-471）→ `setRuntimeContentBar`（settings.js:393）/`setRuntimeSrText`（settings.js:447）/`setRuntimeDiffText`（settings.js:458）写入解析值层。`diffText` 无 Auto 选项，直接透传。
-- **读取约定**：展示代码一律读解析值层；`state.contentBar` 之上还有谱面级覆盖，正确读法是 `appContext.js:228 getActiveContentBar()`（`state.effectiveContentBar || state.contentBar`）与 `appContext.js:232 contentBarShows(section)`（active === section 或 Full）。
+- **Auto 解析**：`settings.js:82 isAutoDisplayEnabled()`（`userSrText === "Auto" || state.autoContentBar === true`）→ `settings.js:86 resolveRuntimeDisplayProfile(modeTag)` 调 `resolveAutoDisplayProfile`（modeLogic.js）得出 `{contentBar, srText}` 映射（contentBar 包成单元素数组 `[auto.contentBar]`），再经 `setRuntimeDisplayProfile`（settings.js:528）→ `setRuntimeContentBar`（settings.js:435）/`setRuntimeSrText`/`setRuntimeDiffText` 写入解析值层。`diffText` 无 Auto 选项，直接透传。
+- **读取约定**：展示代码一律读解析值层；`state.contentBar` 之上还有谱面级覆盖，正确读法是 `appContext.js:234 getActiveContentBar()`（`state.effectiveContentBar || state.contentBar`，均为数组）与 `appContext.js:238 contentBarShows(section)`（`getActiveContentBar().includes(section)`，多选列表包含判定）。
 
 **估计算法层**：`state.estimatorAlgorithm`（appContext.js:88）是用户选择，`state.actualEstimatorAlgorithm`（appContext.js:89）记录实际执行的算法（如 Azusa 因 LN 比例过高回退 Sunny）。分析完成后读取后者；缓存命中时从快照恢复，不得重算（详见 [result-cache.md](result-cache.md)）。
 
@@ -75,14 +75,14 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
 
 ## 6. 遗留逻辑（注意事项）
 
-- **autoMode 强制 Auto**：settings.js:769-774——`parseAutoModeValue(payload)` 为真且 `isAutoDisplayEnabled()` 为假（即用户当前不是 Auto）时，**直接写** `state.userSrText = "Auto"`、`state.userContentBar = "Auto"` 并 `refreshAutoDisplayProfile()`。这是对所有设置的独立检查之后运行的全局覆盖，新设置项迁移自旧 `autoMode` 配置时需留意。
+- **autoMode 强制 Auto**：settings.js:864-869——`parseAutoModeValue(payload)` 为真且 `isAutoDisplayEnabled()` 为假（即用户当前不是 Auto）时，**直接写** `state.userSrText = "Auto"`、`state.autoContentBar = true` 并 `refreshAutoDisplayProfile()`。这是对所有设置的独立检查之后运行的全局覆盖，新设置项迁移自旧 `autoMode` 配置时需留意。
 - **4 个遗留 parser（无对应 uniqueID）**：
   - `parseAutoModeValue` settingsParser.js:307（键 `autoMode`，回退 `defaults.autoMode`=false）
   - `parseUseDanielAlgorithmValue` settingsParser.js:312（键 `useDanielAlgorithm`——实际上它转调 `parseEstimatorAlgorithmValue` 判断结果是否为 "Daniel"，不再读独立键）
   - `parseDisableVibroDetectionValue` settingsParser.js:382（= `!parseVibroDetectionValue()`）
   - `parseEnablePatternValue` settingsParser.js:246（键 `enablePatternAnalysis`，供 `parseContentBarValue` 回退使用）
 - **普通 parser 内部的遗留键回退**（迁移路径，非独立 parser）：
-  - `parseContentBarValue` settingsParser.js:275-276：无 `contentBar` 键时读 `enablePatternAnalysis`，为真 → `"Pattern"`，否则 → `"None"`（`parseEnablePatternValue` 的回退）。
+  - `parseContentBarValue` settingsParser.js:304：`contentBar` 键存在时经 `normalizeContentBarList` 解析为**有序 section 数组**（commands 数组保序收集，旧字符串迁移：Full→四元素、None/Auto→[]、单值→单元素）；无 `contentBar` 键时读 `enablePatternAnalysis`，为真 → `["Pattern"]`，否则 → `[]`。`autoContentBar` 由独立 `parseAutoContentBarValue`（settingsParser.js:319）解析（默认 `defaults.autoContentBar`=true）。
   - `parseDiffTextValue` settingsParser.js:300-304：遗留键 `enableEstDiff` → 真 `"Difficulty"` / 假 `"None"`。
   - `parseEstimatorAlgorithmValue` settingsParser.js:324-327：遗留键 `useDanielAlgorithm` → 真 `"Daniel"` / 假 `"Sunny"`。
   - `parseVibroDetectionValue` settingsParser.js:392-395：遗留键 `disableVibroDetection` → 取反。

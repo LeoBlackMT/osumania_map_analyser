@@ -58,6 +58,15 @@
         max-height: none;
     }
 
+    .main-card.bars-multi {
+        grid-template-rows: none;
+        grid-auto-rows: auto;
+        align-content: start;
+        height: auto;
+        min-height: 540px;
+        max-height: none;
+    }
+
     .star-value {
         font-size: 40px;
     }

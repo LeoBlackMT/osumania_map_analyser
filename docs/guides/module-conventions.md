@@ -74,10 +74,10 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 `state` 定义于 `js/app/appContext.js:64`，关键字段在 `appContext.js:76-89`：
 
-- **写** `user*` 字段（用户真实偏好，可为 `"Auto"`）：`userContentBar`/`userSrText`/`userDiffText`（`appContext.js:79-81`）
-- **读** 解析后字段：`contentBar`/`srText`/`diffText`（`appContext.js:76-78, 87`）；`effectiveContentBar`（`appContext.js:77`）为谱面级覆盖
+- **写** `user*` 字段（用户真实偏好，`srText` 可为 `"Auto"`）：`userContentBar`（有序数组，2026-08-15 起）/`userSrText`/`userDiffText`（`appContext.js:79-81`）
+- **读** 解析后字段：`contentBar`（有序数组）/`srText`/`diffText`（`appContext.js:76-78, 87`）；`effectiveContentBar`（有序数组或 null，`appContext.js:77`）为谱面级覆盖；`autoContentBar`（bool，`appContext.js:83`）为独立 Auto 开关
 - **估计算法双层**：`estimatorAlgorithm`（用户选择，`appContext.js:88`）vs `actualEstimatorAlgorithm`（实际执行，`appContext.js:89`，如 Azusa 因 LN 过高降级为 Sunny）——分析后读后者，缓存命中时从快照恢复，勿重算
-- 写入 `state.contentBar = "Auto"` 是 bug
+- 写入 `state.contentBar = "Auto"` 是 bug（contentBar 为数组；Auto 由 `state.autoContentBar` 控制）
 - 设置全流程见 [../pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)
 
 ### 8. 新计算影响设置必须进失效列表

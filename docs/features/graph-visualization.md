@@ -16,7 +16,7 @@
 | body（主体图） | `body-graph` 系列元素 | `state.contentBar`（或 `effectiveContentBar`）包含 Graph | 卡片主体 |
 
 - `state.diffText`（右上角内容）与 `state.contentBar`（主体内容）的设置语义见 [settings.md](../settings.md) 的 "Graph: 显示难度变化图"（`settings.md:13`）与右上角 Graph 选项说明（`settings.md:24`）。
-- **非 4/6/7K 谱面图表不可用**：`ManiaMapAnalyser by Leo_Black/js/app/appContext.js:180 GRAPH_SUPPORTED_KEY_SET`（`new Set([4, 6, 7])`）。分析管线在 `analysis.js:328` / `analysis.js:354` 用其判断是否需要把主体回退为 Pattern；渲染入口 `analysis.js:567` 对不支持键数直接调用 `showDiffGraphError("Unsupported Keys")`。
+- **非 4/6/7K 谱面图表不可用**：`ManiaMapAnalyser by Leo_Black/js/app/appContext.js:186 GRAPH_SUPPORTED_KEY_SET`（`new Set([4, 6, 7])`）。分析管线在 `analysis.js:370 applyContentBarOverride` 用其把 Graph 从 contentBar 显示列表**移除**（保序保留其余，2026-08-15 起；此前为整体回退 Pattern）；渲染入口 `analysis.js:571` 对不支持键数直接调用 `showDiffGraphError("Unsupported Keys")`。
 
 ## 2. DOM 引用与视图定义（GRAPH_VIEW_DEFS）
 
@@ -32,11 +32,11 @@
 `appContext.js:237 GRAPH_VIEW_DEFS` 是视图定义的统一描述数组，每个视图含 `key`、各 DOM ref 字段与 `isEnabled()` 判定：
 
 - header 视图：`isEnabled: () => state.diffText === "Graph"`（`appContext.js:250`）。
-- body 视图：`isEnabled: () => contentBarShows("Graph")`（`appContext.js:264`，内部经 `appContext.js:232 contentBarShows` → `appContext.js:228 getActiveContentBar` 读取 `effectiveContentBar || contentBar`）。
+- body 视图：`isEnabled: () => contentBarShows("Graph")`（`appContext.js:268`，内部经 `appContext.js:238 contentBarShows` → `appContext.js:234 getActiveContentBar` 读取 `effectiveContentBar || contentBar`，多选有序数组 `includes` 判定）。
 
 遍历工具：
 
-- `appContext.js:268 hasAnyGraphModeEnabled()`：`diffText === "Graph" || contentBarShows("Graph")`，用于判断图表功能整体是否激活。
+- `appContext.js:273 hasAnyGraphModeEnabled()`：`diffText === "Graph" || contentBarShows("Graph")`，用于判断图表功能整体是否激活。
 - `appContext.js:272 forEachGraphView(callback)`：无条件遍历两个视图（清空、重置等必须覆盖隐藏视图的场合）。
 - `appContext.js:278 forEachEnabledGraphView(callback)`：只遍历 `isEnabled()` 为真的视图（渲染、游标更新等仅对可见视图生效的场合）。
 

@@ -161,10 +161,10 @@ html.ma-theme-osu #pattern-clusters.cluster-bars {
 
 /* 谱面背景图 + 压暗罩层：罩层在上、封面在下。封面是 .ma-fx-cover 专属特性，
    且依赖上面 .ma-theme-osu 给块的 position:relative 才能正确定位，故双 class 限定。 */
-html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #pattern-clusters.cluster-bars::before,
-html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #ett-skill-bars.ett-skill-bars:not([hidden])::before,
-html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #pp-bars.pp-bars:not([hidden])::before,
-html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full) #body-graph-wrap:not([hidden])::before {
+html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full):not(.bars-multi) #pattern-clusters.cluster-bars::before,
+html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full):not(.bars-multi) #ett-skill-bars.ett-skill-bars:not([hidden])::before,
+html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full):not(.bars-multi) #pp-bars.pp-bars:not([hidden])::before,
+html.ma-theme-osu.ma-fx-cover .main-card:not(.bars-full):not(.bars-multi) #body-graph-wrap:not([hidden])::before {
     content: "";
     position: absolute;
     /* 高斯模糊会向元素外采样透明像素，导致边缘透出块底色，所以按模糊半径把伪元素
@@ -192,10 +192,11 @@ html.ma-theme-osu.ma-fx-cover #body-graph-wrap > * {
     z-index: 1;
 }
 
-/* Full mode: single shared background across all three content blocks.
+/* Full/Multi mode: single shared background across all content blocks.
    The ::before always exists (content:"") so opacity transitions work smoothly.
    Visibility is controlled by opacity — ma-fx-cover toggles it between 0 and 1. */
-html.ma-theme-osu .main-card.bars-full::before {
+html.ma-theme-osu .main-card.bars-full::before,
+html.ma-theme-osu .main-card.bars-multi::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -214,7 +215,8 @@ html.ma-theme-osu .main-card.bars-full::before {
     opacity: 0;
     transition: opacity 250ms ease;
 }
-html.ma-theme-osu.ma-fx-cover .main-card.bars-full::before {
+html.ma-theme-osu.ma-fx-cover .main-card.bars-full::before,
+html.ma-theme-osu.ma-fx-cover .main-card.bars-multi::before {
     opacity: 1;
 }
 
@@ -280,13 +282,17 @@ html.ma-theme-osu #body-graph-wrap:not([hidden]) {
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
-/* Full mode: make section backgrounds transparent so the shared ::before
+/* Full/Multi mode: make section backgrounds transparent so the shared ::before
    cover background (gradient + cover image) on .card.main-card shows through.
    The gradient overlay on ::before already provides sufficient dimming. */
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #pattern-clusters.cluster-bars,
+html.ma-theme-osu.ma-fx-cover .main-card.bars-multi #pattern-clusters.cluster-bars,
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #ett-skill-bars.ett-skill-bars,
+html.ma-theme-osu.ma-fx-cover .main-card.bars-multi #ett-skill-bars.ett-skill-bars,
 html.ma-theme-osu.ma-fx-cover .main-card.bars-full #pp-bars.pp-bars,
-html.ma-theme-osu.ma-fx-cover .main-card.bars-full #body-graph-wrap:not([hidden]) {
+html.ma-theme-osu.ma-fx-cover .main-card.bars-multi #pp-bars.pp-bars,
+html.ma-theme-osu.ma-fx-cover .main-card.bars-full #body-graph-wrap:not([hidden]),
+html.ma-theme-osu.ma-fx-cover .main-card.bars-multi #body-graph-wrap:not([hidden]) {
     background-color: transparent;
 }
 

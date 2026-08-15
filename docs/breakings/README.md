@@ -17,6 +17,7 @@
 | 文档 | 日期 | 分支/主题 | 说明 |
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | 分析管线性能优化：worker 单次往返协议、runAnalysisPipeline 纯函数、共享模块纯度（worker 根因修复）、缓存失效收窄与命中重派生、vibro 修复披露、perf 验收口径修订（12 项） |
+| [2026-08-15-contentbar-multi.md](2026-08-15-contentbar-multi.md) | 2026-08-15 | feat/contentbar-commands | contentBar 多选改造：commands 类型、行序=显示顺序、autoContentBar 独立开关、空列表=None、bars-multi 布局、非 4/6/7K Graph 移除（五要素双语） |
 
 [返回 docs 索引](../README.md)
 
@@ -41,5 +42,6 @@
 | Document | Date | Branch/Topic | Description |
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | Analysis pipeline optimization: worker single-round-trip protocol, runAnalysisPipeline pure function, shared-module purity (worker root-cause fix), cache invalidation narrowing + hit re-derivation, vibro fix disclosure, perf acceptance-criteria revision (12 items) |
+| [2026-08-15-contentbar-multi.md](2026-08-15-contentbar-multi.md) | 2026-08-15 | feat/contentbar-commands | contentBar multi-select: commands type, row order = display order, standalone autoContentBar toggle, empty list = None, bars-multi layout, non-4/6/7K Graph removal (five elements, bilingual) |
 
 [Back to docs index](../README.md)

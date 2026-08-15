@@ -60,7 +60,7 @@ let resolvedModeTag = (activeContentBar === "None")
 ```
 
 - `analysis.js:792` — 回退标签来自 `modeTagFromLnRatio`，输入优先取 rework 结果的 `lnRatio`，取不到再用解析器 `parsedInfo.lnRatio`。
-- `analysis.js:793-795` — 当 contentBar 为 `"None"` 时只用回退标签（此时不展示键型分析区，避免依赖 pattern 报告）；否则优先取 `patternResult.report.ModeTag`（`summary.js:74 ModeTag: modeTag`），缺失时回退。
+- `analysis.js:903-906` — 当 contentBar 显示列表为空（`activeContentBar.length === 0`，即 None）时只用回退标签（此时不展示键型分析区，避免依赖 pattern 报告）；否则优先取 `patternResult.report.ModeTag`（`summary.js:74 ModeTag: modeTag`），缺失时回退。
 
 ### 2.3 Mixed 估算器内的标签使用
 
@@ -85,11 +85,11 @@ let resolvedModeTag = (activeContentBar === "None")
 - `modeLogic.js:32-37` — `modeTag === "RC"` → `{ contentBar: "Etterna", srText: "MSD" }`（RC 谱面自动展示 Etterna 技能条 + MSD）
 - `modeLogic.js:39-42` — 其他（LN/HB/Mix）→ `{ contentBar: "Pattern", srText: "ReworkSR" }`
 
-调用链（仅当用户将 `contentBar` 或 `srText` 设为 `"Auto"` 时生效）：
+调用链（仅当 `autoContentBar` 开启或 `srText` 设为 `"Auto"` 时生效）：
 
-- `ManiaMapAnalyser by Leo_Black/js/app/settings.js:84 isAutoDisplayEnabled()` — 任一 user 字段为 "Auto" 即开启。
-- `settings.js:88 resolveRuntimeDisplayProfile(modeTag)` — 将 Auto 字段替换为 `resolveAutoDisplayProfile` 的输出，非 Auto 字段保持用户选择。
-- `settings.js:473 refreshAutoDisplayProfile(modeTag = state.currentModeTag || "Mix")` — 运行时刷新入口；在 `analysis.js:829` 每次分析完成后调用（`refreshAutoDisplayProfile(resolvedModeTag)`），以及在 `settings.js:484`/`:498` 用户设置变更时调用。
+- `ManiaMapAnalyser by Leo_Black/js/app/settings.js:82 isAutoDisplayEnabled()` — `userSrText === "Auto" || state.autoContentBar === true` 即开启。
+- `settings.js:86 resolveRuntimeDisplayProfile(modeTag)` — 将 Auto 字段替换为 `resolveAutoDisplayProfile` 的输出（contentBar 包成单元素数组 `[auto.contentBar]`），非 Auto 字段保持用户选择。
+- `settings.js:535 refreshAutoDisplayProfile(modeTag = state.currentModeTag || "Mix")` — 运行时刷新入口；在 `analysis.js:829` 每次分析完成后调用（`refreshAutoDisplayProfile(resolvedModeTag)`），以及在 `settings.js:546`/`:560` 用户设置变更时调用。
 - 注意：`refreshAutoDisplayProfile` 的默认参数取 `state.currentModeTag`（`ManiaMapAnalyser by Leo_Black/js/app/appContext.js:124 currentModeTag: "Mix"`），而分析路径显式传入 `resolvedModeTag` 以保证与实际判定一致。
 
 ## 4. Vibro 检测
@@ -284,7 +284,7 @@ setSvTagVisible(shouldShowSvTag);
 ## 9. 注意事项
 
 1. **SV 标签依赖胶囊开关**：`showModeTagCapsule` 关闭时，`updateModeTagVisibility`（`hud.js:225-228`）与 `setSvTagVisible`（`hud.js:244-247`）都会立即隐藏 SV 徽章（见 `docs/settings.md:78` 与 `:204` 的说明）。不要期望单独控制 SV 徽章。
-2. **`modeTagFromLnRatio` 无 HB**：HB 标签仅来自键型分析（`summary.js:28 resolveModeTag`）。若 pattern 分析被禁用（contentBar 为 None），HB 永远不会出现，此时只有 RC/LN/Mix 回退。
+2. **`modeTagFromLnRatio` 无 HB**：HB 标签仅来自键型分析（`summary.js:28 resolveModeTag`）。若 pattern 分析被禁用（contentBar 显示列表为空，None），HB 永远不会出现，此时只有 RC/LN/Mix 回退。
 3. **SV 检测不替换模式标签**：SV 命中只置 `patternReport.Category = "SV"`（`analysis.js:803`）并显示独立徽章；`resolvedModeTag` 保持 HB/RC/LN/Mix。`MODE_TAG_OPTIONS` 中的 `"SV"` 仅为枚举完整性，当前渲染路径不使用。
 4. **`enableAnalyzeLN` 前置依赖**：`forceSunnyWindow` 关闭时 `typePercentageData` 恒为 `null`（`analysis.js:521-524`），标签胶囊退回单标签模式。改动 `analysis.js:521` 分支时需同步考虑该依赖。
 5. **currentModeTag 是 graph 的输入**：`hud.js:186-189` 注释明确"currentModeTag用于graph的显示"（`graph.js:217` 的 LN 难度门控）。修改标签判定时不要破坏 `state.currentModeTag` 的语义。

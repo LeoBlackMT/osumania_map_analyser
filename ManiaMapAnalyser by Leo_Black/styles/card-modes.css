@@ -11,9 +11,11 @@
     overflow: hidden;
 }
 
-/* Full mode: show Pattern + Etterna + Graph stacked together.
-   Height grows to fit all three blocks; nothing is compressed or scrolled. */
-.main-card.bars-full {
+/* Multi mode (2+ sections): show selected blocks stacked together.
+   Height grows to fit all blocks; nothing is compressed or scrolled.
+   bars-full kept as alias for migration compatibility. */
+.main-card.bars-full,
+.main-card.bars-multi {
     grid-template-rows: none;
     grid-auto-rows: auto;
     align-content: start;
@@ -25,23 +27,27 @@
 }
 
 .main-card.bars-full .cluster-bars,
-.main-card.bars-full .ett-skill-bars {
+.main-card.bars-multi .cluster-bars,
+.main-card.bars-full .ett-skill-bars,
+.main-card.bars-multi .ett-skill-bars {
     overflow-x: hidden;
     overflow-y: visible;
     max-height: none;
 }
 
-.main-card.bars-full .body-graph-wrap {
+.main-card.bars-full .body-graph-wrap,
+.main-card.bars-multi .body-graph-wrap {
     width: 100%;
     margin: 0 auto 28px;
 }
 
-/* Full mode section separators — hr-like with centered text */
+/* Multi mode section separators — hr-like with centered text */
 .full-separator {
     display: none;
 }
 
-.main-card.bars-full .full-separator {
+.main-card.bars-full .full-separator,
+.main-card.bars-multi .full-separator {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -56,7 +62,9 @@
 }
 
 .main-card.bars-full .full-separator::before,
-.main-card.bars-full .full-separator::after {
+.main-card.bars-multi .full-separator::before,
+.main-card.bars-full .full-separator::after,
+.main-card.bars-multi .full-separator::after {
     content: "";
     flex: 1;
     height: 1px;
@@ -256,8 +264,9 @@
     overflow-wrap: anywhere;
 }
 
-/* Full 模式：pp 块不内部滚动，随卡片高度生长全部展开 */
-.main-card.bars-full .pp-bars {
+/* Full/Multi 模式：pp 块不内部滚动，随卡片高度生长全部展开 */
+.main-card.bars-full .pp-bars,
+.main-card.bars-multi .pp-bars {
     overflow-x: hidden;
     overflow-y: visible;
     max-height: none;

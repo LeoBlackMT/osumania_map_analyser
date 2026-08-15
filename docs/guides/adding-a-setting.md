@@ -156,7 +156,7 @@ parseEnableExampleValue,
 parseExampleModeValue,
 ```
 
-**显示相关设置注意双层 state**（settings-pipeline.md §4）：`state.userContentBar` / `state.userSrText` / `state.userDiffText`（appContext.js:79-81）是用户意图层（可为 `"Auto"`），`state.contentBar` / `state.srText` / `state.diffText`（appContext.js:76-78）是解析值层。规则：**写 `user*` 字段、读解析值字段**（展示代码读解析值层；`contentBar` 之上还有谱面级覆盖，正确读法是 `getActiveContentBar()` appContext.js:228 / `contentBarShows(section)` appContext.js:232）。若新设置是这类显示选项，需要同时建 `user*` 与解析值两层并仿 `applyContentBarSetting` settings.js:478 写 apply 函数。
+**显示相关设置注意双层 state**（settings-pipeline.md §4）：`state.userContentBar`（有序数组，2026-08-15 起）/ `state.userSrText` / `state.userDiffText`（appContext.js:79-81）是用户意图层（`srText` 可为 `"Auto"`），`state.contentBar`（有序数组）/ `state.srText` / `state.diffText`（appContext.js:76-78）是解析值层。规则：**写 `user*` 字段、读解析值字段**（展示代码读解析值层；`contentBar` 之上还有谱面级覆盖，正确读法是 `getActiveContentBar()` appContext.js:234 / `contentBarShows(section)` appContext.js:238）。若新设置是这类显示选项，需要同时建 `user*` 与解析值两层并仿 `applyContentBarSetting` settings.js:540 写 apply 函数（`contentBar` 的 Auto 由独立 `autoContentBar` 布尔开关控制，见 `applyAutoContentBarSetting` settings.js:555）。
 
 > ⚠️ 陷阱：
 > - state 字段名小驼峰，uniqueID PascalCase——命名时对照 `state.vibroDetection`（appContext.js:111）↔ `"VibroDetection"`。

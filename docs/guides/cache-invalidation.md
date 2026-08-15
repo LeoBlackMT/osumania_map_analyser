@@ -93,7 +93,8 @@ snapshot.computed.graph === needComputed.graph
 && snapshot.computed.pp === needComputed.pp
 ```
 
-- contentBar/srText/diffText 是**特殊显示类**：它们被织入 needComputed（`analysis.js:322-339`，如 `state.diffText === "Graph"` → graph、`state.srText === "MSD"` → ett、`contentBarShows("ReworkPP")` → pp）。改显示需求但没改计算需求 → 命中（如 diffText 在 "Difficulty" 类选项间切换）；改计算需求（如切到 "Graph" 或 ReworkPP 主体）→ 检查自动判 miss 重算。因此它们不在失效列表。
+- contentBar/srText/diffText 是**特殊显示类**：它们被织入 needComputed（`analysis.js:322-343`，如 `state.diffText === "Graph"` → graph、`state.srText === "MSD"` → ett、`contentBarShows("ReworkPP")` → pp）。改显示需求但没改计算需求 → 命中（如 diffText 在 "Difficulty" 类选项间切换）；改计算需求（如切到 "Graph" 或 ReworkPP 主体）→ 检查自动判 miss 重算。因此它们不在失效列表。
+  - `contentBar` 自 2026-08-15 起为**多选有序数组**（tosu `commands` 类型），`contentBarShows(section)` = `getActiveContentBar().includes(section)`——布尔输出语义不变，覆盖检查机制不变；新增 `autoContentBar` 开关同样只改变 needComputed 布尔（经 `contentBarShows`），属显示类，`autoContentBarChanged` 进 `recomputeNeeded`（settings.js:909）但**不进** `clearResultCache()` 列表。
 - 纯显示设置（cardOpacity、主题、字体……）根本不进 needComputed，也不进快照 → 命中后渲染时从 state 取新值，天然正确。
 - 注意 `needComputed` 用 fetch 前的保守值（`analysis.js:284-286` 注释：未经谱面级 `effectiveContentBar` override），仅用于覆盖检查；实际 shows*/need* 在执行块内 override 后重算（`analysis.js:362-365`）。
 

@@ -193,8 +193,10 @@
     color: #ff9f9f;
 }
 
-/* Full mode: slight upward shift to avoid graph overlap */
+/* Full/Multi mode: slight upward shift to avoid graph overlap */
 .main-card.bars-full .mode-tag-group,
-.main-card.bars-full .pause-count {
+.main-card.bars-multi .mode-tag-group,
+.main-card.bars-full .pause-count,
+.main-card.bars-multi .pause-count {
     bottom: 12px;
 }

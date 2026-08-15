@@ -5,7 +5,7 @@
 
 ## 1. 功能说明
 
-ReworkPP 是 **Card Body Content（contentBar）** 的一个选项值（**无空格**，settings.json:61、config.js:6、settingsParser.js `normalizeContentBarValue` 的 `"reworkpp" → "ReworkPP"` 分支三处一致），同时也是 **Top-left Capsule Text（srText）** 的一个选项值（settings.json:77、settingsParser.js `normalizeSrTextValue` 的 `"reworkpp" → "ReworkPP"` 分支，见 §1.1）。选中后卡片主体（`#pp-bars`，index.html）显示 **5 行柱状图**，每行由标签 + 轨道 + 值胶囊（pill）组成：
+ReworkPP 是 **Card Body Content（contentBar）** 的一个候选 section（**无空格**，settings.json `commands` 的 `values`、config.js:6 候选列表、settingsParser.js `normalizeContentBarList` 的 `"reworkpp" → "ReworkPP"` 分支三处一致），同时也是 **Top-left Capsule Text（srText）** 的一个选项值（settings.json:77、settingsParser.js `normalizeSrTextValue` 的 `"reworkpp" → "ReworkPP"` 分支，见 §1.1）。选中后卡片主体（`#pp-bars`，index.html）显示 **5 行柱状图**，每行由标签 + 轨道 + 值胶囊（pill）组成：
 
 | 行 | key | 取值范围（min~max） | 中心锚定 |
 | --- | --- | --- | --- |
@@ -123,7 +123,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 ## 5. 缓存与实时机制
 
 - **ppMetrics 进快照**：写门 put 对象含 `ppMetrics: pipelineResult.ppMetrics || null`（analysis.js:868，JSON-safe 纯数值对象，无需 jsonSafe）；命中恢复 `state.ppMetrics = cached.ppMetrics || null`（analysis.js:533）。
-- **computed 第 5 项**：`needComputed.pp = contentBarShows("ReworkPP") || state.srText === "ReworkPP"`（analysis.js:340），覆盖检查比对 `snapshot.computed.pp === needComputed.pp`（analysis.js:353，5 项全等）——contentBar 切到 ReworkPP/Full 或 srText 切到 ReworkPP 会触发按需重算，而非全缓存失效。
+- **computed 第 5 项**：`needComputed.pp = contentBarShows("ReworkPP") || state.srText === "ReworkPP"`（analysis.js:342），覆盖检查比对 `snapshot.computed.pp === needComputed.pp`（analysis.js:355，5 项全等）——contentBar 多选列表中加入/移除 ReworkPP（`contentBarShows` 布尔变）或 srText 切到 ReworkPP 会触发按需重算，而非全缓存失效。
 - **live 值不缓存**：只缓存谱面侧 ppMetrics；Live PP 是实时渲染值，每次由当前计数重算。
 - **pipeline options**：`withPpMetrics: needComputed.pp`、`classicMod: state.classicMod === true`（analysis.js:425-426）。
 - **每消息更新 + 计数守卫**：socketHandlers.js 在 `updateSongTimeState(data)` 之后、beatmap 守卫之前调 `updateLivePp(data)`（:180），入口守卫 `(contentBarShows("ReworkPP") || state.srText === "ReworkPP") && state.ppMetrics`，livePp 内部自带守卫，成本极低；不建立节流/RAF（每消息 + CSS 过渡即满足平滑需求）。

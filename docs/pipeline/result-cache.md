@@ -99,7 +99,7 @@ snapshot.computed.graph === needComputed.graph
 
 **五项**全匹配才命中，任一不匹配视为 miss 走完整重算。
 
-- `needComputed` 是**本次分析需要哪些计算产物**的布尔集（`analysis.js:287-304`）：pattern（键型）、ett（Etterna MSD）、graph（难度图）、interlude（Interlude 星数）、pp（ReworkPP 谱面侧指标，`contentBarShows("ReworkPP")`，`analysis.js:339`）。各项由当前显示需求与算法需求推导（如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，`analysis.js:334`；Companella/Mixed 需要 ett 与 interlude，`analysis.js:333`、:337-338）。
+- `needComputed` 是**本次分析需要哪些计算产物**的布尔集（`analysis.js:325-343`）：pattern（键型）、ett（Etterna MSD）、graph（难度图）、interlude（Interlude 星数）、pp（ReworkPP 谱面侧指标，`contentBarShows("ReworkPP")`，`analysis.js:342`）。各项由当前显示需求与算法需求推导（如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，`analysis.js:337`；Companella/Mixed 需要 ett 与 interlude，`analysis.js:336`、:340-341）。`contentBar` 为多选有序数组后 `contentBarShows` 输出布尔语义不变。
 - `snapshot.computed` 在写入时保存：`analysis.js:775` `computed: needComputed`。
 - **显示类设置（contentBar/srText/diffText 切换等）由覆盖检查处理，而不是缓存失效**——改了显示需求但没改计算需求时仍可命中（如从"显示难度"切到"显示 MSD"若 needComputed 不变）；改了计算需求（如切到 ReworkPP 主体，`needComputed.pp` 由 false 变 true）则检查自动判 miss 重算。
 - `needComputed` 用 fetch 前的保守值（`analysis.js:284-286` 注释：尚未经过谱面级 `effectiveContentBar` override），仅用于覆盖检查；实际 shows*/need* 在执行块内 override 之后重新计算。

@@ -48,20 +48,39 @@
 		"value": ""
 	},
 	{
+		"uniqueID": "autoContentBar",
+		"type": "checkbox",
+		"title": "Auto Card Body Content",
+		"description": "Automatically pick the card body based on the map mode. Disable to choose your own sections below.",
+		"options": [],
+		"value": true
+	},
+	{
 		"uniqueID": "contentBar",
-		"type": "options",
+		"type": "commands",
 		"title": "Card Body Content",
-		"description": "Select what to show in the card body. Full shows Pattern, Etterna and Graph together.",
+		"description": "One section per row, shown in row order. Add rows to show multiple sections; remove all rows to show nothing.",
 		"options": [
-			"None",
-			"Auto",
-			"Pattern",
-			"Etterna",
-			"Graph",
-			"ReworkPP",
-			"Full"
+			{
+				"type": "options",
+				"name": "section",
+				"title": "Content Section",
+				"description": "",
+				"values": [
+					"Pattern",
+					"Etterna",
+					"Graph",
+					"ReworkPP"
+				],
+				"value": "Pattern"
+			}
 		],
-		"value": "Auto"
+		"value": [
+			{
+				"section": "Pattern"
+			}
+		],
+		"uniqueCheck": "section"
 	},
 	{
 		"uniqueID": "srText",

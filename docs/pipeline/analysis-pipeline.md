@@ -170,7 +170,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
-- `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:334；Companella/Mixed 需要 ett 与 interlude，:333、:337-338；`contentBarShows("ReworkPP")` 需要 pp，:339）。
+- `analysis.js:325-343 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:337；Companella/Mixed 需要 ett 与 interlude，:336、:340-341；`contentBarShows("ReworkPP")` 需要 pp，:342）。`contentBar` 为多选有序数组（2026-08-15）后 `contentBarShows` 输出布尔语义不变。
 - `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v2` + 三段，modSignature 四段含 classic）。
 - `analysis.js:306 isMetaDegraded`：identity 以 `meta:` 开头。
 - `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
