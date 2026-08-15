@@ -14,6 +14,7 @@
 - 当开发新功能时，请编写其对应的技术文档。该文档应当包含功能说明、使用方法、注意事项、算法说明等内容。
 - 当修改现有功能时，请修改对应的技术文档，确保其内容与实际功能一致。
 - 当对管线做出破坏性更改时，请修改对应的管线文档和指南文档。
+- 当认为可以记录经验和教训时，请编写对应的知识与教训文档，记录在开发、调优与基准验证过程中积累的经验、失败记录与方法论。该文档主要给人类和AI阅读，因此需要双语。文档请按内容命名并放在 docs/learnings 目录下。
 - 当做出重大破坏性更改时，请编写文档说明，标注修改内容和修改原因，以便后续进行代码审查和测试。该文档主要给人类和AI阅读，因此需要双语。文档请按时间戳和修改内容命名并放在 docs/breakings 目录下。
 - 新增/删除文档需要在docs/README.md中添加/删除对应的索引条目。
 
@@ -45,6 +46,8 @@
 | [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | 新增估算器/管线阶段到 worker 的完整流程指南（入口纯化 -> 注册 -> 消费接线 -> golden 扩展） |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | 结果缓存失效机制说明与新增计算相关设置时的注意事项 |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
+| [learnings/README.md](learnings/README.md) | AI | 知识与教训文档类别索引（难度估计算法调优经验、失败记录、方法论） |
+| [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | 人类/AI | 难度估计算法调优知识与教训（量化/序数校准/路由规则经验、历史探针结论、方法论） |
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 
 # English
@@ -60,6 +63,7 @@
 - When developing a new feature, write its corresponding technical document. The document should include feature description, usage, notes, algorithm description, and so on.
 - When modifying an existing feature, update the corresponding technical document to keep it consistent with the actual feature.
 - When making breaking changes to the pipeline, update the corresponding pipeline documents and guide documents.
+- When you think it is appropriate to record experience and lessons learned, write a corresponding knowledge & lessons-learned document, recording the experience, failed attempts, and methodology accumulated during development, tuning, and benchmarking. The document is mainly for humans and AI to read, so it needs to be bilingual. Name the document according to its content and place it in the docs/learnings directory.
 - When making major breaking changes, write a document explaining the changes, marking what was changed and why, to facilitate future code review and testing. The document should be named with a timestamp and the change description, and placed in the docs/breakings directory.
 - When adding or removing documents, add or remove the corresponding index entries in docs/README.md.
 
@@ -91,4 +95,6 @@ Use the links to jump to the corresponding document. For documents with the same
 | [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | Complete guide for adding an estimator/pipeline stage to the worker (entry purification -> registration -> consumer wiring -> golden extension) |
 | [guides/cache-invalidation.md](guides/cache-invalidation.md) | AI | Result cache invalidation notes and cautions when adding computation-affecting settings |
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
+| [learnings/README.md](learnings/README.md) | AI | Index of knowledge & lessons-learned documents (difficulty estimation tuning experience, failed attempts, methodology) |
+| [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | Human/AI | Difficulty estimation tuning knowledge & lessons (quantization/ordinal-calibration/routing-rule experiences, historical probe conclusions, methodology) |
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
