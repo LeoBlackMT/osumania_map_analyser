@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	dayMs     = int64(24 * 60 * 60 * 1000)
-	trendDays = 30
+	dayMs = int64(24 * 60 * 60 * 1000)
 )
 
 type KV struct {
@@ -51,7 +50,7 @@ type Stats struct {
 	NewToday         int64         `json:"newToday"`
 	NewWeek          int64         `json:"newWeek"`
 	TotalEvents      int64         `json:"totalEvents"`
-	Analyze30d       int64         `json:"analyze30d"`
+	AnalyzeCount     int64         `json:"analyzeCount"`
 	AvgStar          float64       `json:"avgStar"`
 	AvgLnRatio       float64       `json:"avgLnRatio"`
 	PeakOnline       int64         `json:"peakOnline"`
@@ -83,13 +82,17 @@ type analyzeData struct {
 	DurationMs      float64         `json:"durationMs"`
 }
 
-// Compute builds the full aggregate snapshot over a 30-day analysis window.
-func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
+// Compute builds the full aggregate snapshot over the requested window.
+// days <= 0 means "all time" (no lower bound); otherwise the last `days` days.
+func Compute(st *store.Store, onlineWindowMin, days int) (*Stats, error) {
 	now := time.Now().UTC()
 	nowMs := now.UnixMilli()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).UnixMilli()
 	windowMs := int64(onlineWindowMin) * 60 * 1000
-	since30d := nowMs - 30*dayMs
+	var since int64
+	if days > 0 {
+		since = nowMs - int64(days)*dayMs
+	}
 
 	s := &Stats{}
 	var err error
@@ -106,7 +109,7 @@ func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
 	if s.WeekActive, err = st.CountActiveSince(nowMs - 7*dayMs); err != nil {
 		return nil, err
 	}
-	if s.MonthActive, err = st.CountActiveSince(since30d); err != nil {
+	if s.MonthActive, err = st.CountActiveSince(since); err != nil {
 		return nil, err
 	}
 	if s.NewToday, err = st.CountInstallsNew(dayStart); err != nil {
@@ -118,10 +121,10 @@ func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
 	if s.TotalEvents, err = st.CountEvents(); err != nil {
 		return nil, err
 	}
-	if s.Analyze30d, err = st.CountAnalyzeSince(since30d); err != nil {
+	if s.AnalyzeCount, err = st.CountAnalyzeSince(since); err != nil {
 		return nil, err
 	}
-	if s.OnlineByHour, err = st.OnlineByHour(since30d); err != nil {
+	if s.OnlineByHour, err = st.OnlineByHour(since); err != nil {
 		return nil, err
 	}
 	for h, c := range s.OnlineByHour {
@@ -130,7 +133,7 @@ func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
 			s.PeakOnlineHour = h
 		}
 	}
-	if s.ActiveTrend, err = buildTrend(st); err != nil {
+	if s.ActiveTrend, err = buildTrend(st, days); err != nil {
 		return nil, err
 	}
 	var activeSum int64
@@ -140,16 +143,23 @@ func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
 	if len(s.ActiveTrend) > 0 {
 		s.AvgDailyActive = activeSum / int64(len(s.ActiveTrend))
 	}
-	if err = buildDistributions(st, since30d, s); err != nil {
+	if err = buildDistributions(st, since, s); err != nil {
 		return nil, err
 	}
 
 	return s, nil
 }
 
-func buildTrend(st *store.Store) ([]TrendDay, error) {
+func buildTrend(st *store.Store, days int) ([]TrendDay, error) {
+	n := days
+	if n <= 0 {
+		n = 90 // "all time" still shows a bounded recent window
+	}
+	if n > 366 {
+		n = 366
+	}
 	now := time.Now().UTC()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -(trendDays - 1))
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -(n - 1))
 	since := start.UnixMilli()
 
 	active, err := st.ActivePerDay(since)
@@ -161,8 +171,8 @@ func buildTrend(st *store.Store) ([]TrendDay, error) {
 		return nil, err
 	}
 
-	out := make([]TrendDay, 0, trendDays)
-	for i := 0; i < trendDays; i++ {
+	out := make([]TrendDay, 0, n)
+	for i := 0; i < n; i++ {
 		d := start.AddDate(0, 0, i)
 		dayEpoch := d.UnixMilli() / dayMs
 		out = append(out, TrendDay{
@@ -200,18 +210,27 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 		if d.Keycount > 0 {
 			keys[fmt.Sprintf("%dK", d.Keycount)]++
 		}
-		mods[modCombo(d.Mods)]++
+		if len(d.Mods) == 0 {
+			mods["NM"]++
+		} else {
+			for _, m := range d.Mods {
+				if m = strings.TrimSpace(m); m != "" {
+					mods[m]++
+				}
+			}
+		}
 		if d.Mode != "" {
 			modes[d.Mode]++
 		}
 		if d.Star > 0 {
-			// continuous: keep 2-decimal resolution
-			stars[math.Round(d.Star*100)/100]++
+			// aggregate into 0.5-star bins for the bar chart
+			stars[math.Round(d.Star*2)/2]++
 			starSum += d.Star
 			starN++
 		}
 		if d.LnRatio >= 0 && d.LnRatio <= 1 {
-			lns[math.Round(d.LnRatio*100)/100]++
+			// aggregate into 5% bins; labels are percentages
+			lns[math.Round(d.LnRatio*20)/20]++
 			lnSum += d.LnRatio
 			lnN++
 		}
@@ -236,8 +255,8 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	}
 	s.Versions = sortedKV(versionCounts)
 
-	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.2f", k) })
-	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.2f", k) })
+	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.1f", k) })
+	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.0f%%", k*100) })
 	if starN > 0 {
 		s.AvgStar = math.Round(starSum/float64(starN)*100) / 100
 	}
@@ -247,21 +266,6 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	s.DurationStats = durationStats(durations)
 
 	return nil
-}
-
-// modCombo normalizes a mod array into a sorted combination key; no mods = NM.
-func modCombo(mods []string) string {
-	clean := make([]string, 0, len(mods))
-	for _, m := range mods {
-		if m = strings.TrimSpace(m); m != "" {
-			clean = append(clean, m)
-		}
-	}
-	if len(clean) == 0 {
-		return "NM"
-	}
-	sort.Strings(clean)
-	return strings.Join(clean, "+")
 }
 
 func sortedKV(m map[string]int64) []KV {

@@ -63,6 +63,10 @@ func main() {
 }
 
 func retentionLoop(st *store.Store, retentionDays int) {
+	if retentionDays <= 0 {
+		log.Printf("retention: disabled (keep events forever)")
+		return
+	}
 	run := func() {
 		cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
 		if n, err := st.DeleteEventsBefore(cutoff); err != nil {
