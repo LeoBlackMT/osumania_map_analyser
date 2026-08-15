@@ -7,137 +7,167 @@
 <style>
   :root {
     --bg: #0d1117;
-    --panel: #161b27;
-    --panel-2: #1c2333;
-    --border: #232b3d;
+    --panel: #151b28;
+    --panel-2: #1b2334;
+    --border: #222c40;
     --fg: #e6edf7;
     --muted: #8b95ad;
     --accent: #4bb3fd;
     --accent-2: #8b5cf6;
     --ok: #3ddc97;
+    --warn: #fbbf24;
     --danger: #f87171;
     --track: #232b3d;
-    --radius: 14px;
+    --radius: 12px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
     background:
-      radial-gradient(1200px 600px at 80% -10%, rgba(139, 92, 246, .14), transparent 60%),
-      radial-gradient(1000px 500px at -10% 0%, rgba(75, 179, 253, .12), transparent 55%),
+      radial-gradient(1100px 500px at 85% -10%, rgba(139, 92, 246, .13), transparent 60%),
+      radial-gradient(900px 450px at -10% 0%, rgba(75, 179, 253, .11), transparent 55%),
       var(--bg);
     color: var(--fg);
     min-height: 100vh;
   }
-  header { max-width: 1120px; margin: 0 auto; padding: 36px 24px 8px; }
-  header h1 { font-size: 24px; margin: 0; letter-spacing: .01em; }
+  header { max-width: 1180px; margin: 0 auto; padding: 28px 20px 6px; }
+  header h1 { font-size: 21px; margin: 0; letter-spacing: .01em; }
   header h1 .dot { color: var(--accent); }
-  .sub { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; }
-  .meta { color: var(--muted); font-size: 12px; margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; }
-  .meta .live { color: var(--ok); }
-  main { max-width: 1120px; margin: 0 auto; padding: 22px 24px 56px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 5px 0 0; }
+  .meta { color: var(--muted); font-size: 11.5px; margin-top: 6px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .live { color: var(--ok); display: inline-flex; align-items: center; gap: 5px; }
+  .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  main { max-width: 1180px; margin: 0 auto; padding: 16px 20px 44px; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .card {
     background: linear-gradient(160deg, var(--panel-2), var(--panel));
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 16px 14px;
+    padding: 12px 13px 11px;
     position: relative;
     overflow: hidden;
+    transition: transform .15s ease, border-color .15s ease;
+    cursor: default;
   }
-  .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--card-accent, var(--accent)); opacity: .8; }
-  .card .v { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-  .card .k { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .card:hover { transform: translateY(-2px); border-color: var(--card-accent, var(--accent)); }
+  .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2.5px; background: var(--card-accent, var(--accent)); opacity: .85; }
+  .card .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 7px; }
+  .card .k { font-size: 11.5px; color: var(--muted); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .delta { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .delta.up { color: var(--ok); }
+  .delta.down { color: var(--danger); }
+  .delta.flat { color: var(--muted); }
 
-  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 16px; }
-  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px 18px 14px;
+    padding: 14px 14px 12px;
+    display: flex;
+    flex-direction: column;
   }
-  .panel h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; }
-  .panel h2 small { text-transform: none; letter-spacing: 0; color: #6b7691; font-weight: 400; }
+  .panel h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .panel h2 small { text-transform: none; letter-spacing: 0; color: #64708c; font-weight: 400; font-size: 11px; }
+  .panel .body { flex: 1; min-height: 0; }
 
-  .bars { display: flex; flex-direction: column; gap: 7px; }
-  .bar-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .bar-label { flex: 0 0 110px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bar-track { flex: 1; background: var(--track); border-radius: 6px; height: 14px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); min-width: 2px; }
-  .bar-count { flex: 0 0 76px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .bars { display: flex; flex-direction: column; gap: 6px; max-height: 232px; overflow-y: auto; padding-right: 2px; }
+  .bars::-webkit-scrollbar { width: 6px; }
+  .bars::-webkit-scrollbar-thumb { background: #2b3650; border-radius: 3px; }
+  .bar-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+  .bar-label { flex: 0 0 96px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; background: var(--track); border-radius: 5px; height: 13px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); min-width: 2px; transition: filter .15s ease; }
+  .bar-row:hover .bar-fill { filter: brightness(1.25); }
+  .bar-count { flex: 0 0 72px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11.5px; white-space: nowrap; }
 
-  svg text { fill: var(--muted); font-size: 10px; }
+  .more-btn {
+    align-self: flex-start; margin-top: 4px;
+    background: var(--panel-2); color: var(--accent);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 4px 10px; font-size: 11.5px; cursor: pointer;
+  }
+  .more-btn:hover { border-color: var(--accent); }
+
+  svg text { fill: var(--muted); font-size: 9.5px; }
   .chart-wrap { overflow-x: auto; }
+  .chart-wrap svg { display: block; }
 
-  .donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-  .legend { display: flex; flex-direction: column; gap: 6px; font-size: 13px; flex: 1; min-width: 120px; }
-  .legend-row { display: flex; align-items: center; gap: 8px; }
-  .legend-row .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-  .legend-row .lk { flex: 1; }
-  .legend-row .lv { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .donut-wrap { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .legend { display: flex; flex-direction: column; gap: 5px; font-size: 12px; flex: 1; min-width: 108px; }
+  .legend-row { display: flex; align-items: center; gap: 7px; }
+  .legend-row .sw { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .legend-row .lk { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend-row .lv { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11.5px; white-space: nowrap; }
 
-  .chips { display: flex; gap: 10px; flex-wrap: wrap; }
-  .chip { flex: 1; min-width: 90px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
-  .chip .cv { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .chip .ck { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { flex: 1; min-width: 104px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .chip .cv { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip .ck { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
 
-  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
-  .error { color: var(--danger); font-size: 13px; padding: 10px 0; }
-  footer { max-width: 1120px; margin: 0 auto; padding: 0 24px 40px; color: #6b7691; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 12.5px; padding: 8px 0; }
+  .error { color: var(--danger); font-size: 12.5px; padding: 8px 0; }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 20px 36px; color: #5f6b88; font-size: 11.5px; }
 </style>
 </head>
 <body>
 <header>
   <h1>ManiaMapAnalyser <span class="dot">·</span> Usage Statistics</h1>
-  <p class="sub">Anonymous aggregate statistics. No usernames, no beatmap identity, and no IP addresses are collected or stored.</p>
-  <p class="meta"><span class="live">● live</span><span id="updated">loading…</span></p>
+  <p class="sub">Anonymous aggregate statistics — no usernames, no beatmap identity, no IP addresses.</p>
+  <p class="meta"><span class="live">live</span><span id="updated">loading…</span></p>
 </header>
 <main>
   <section id="overview" class="cards"></section>
 
   <div class="grid2">
     <section class="panel">
-      <h2>Online by hour <small>· UTC · last 30 days</small></h2>
-      <div class="chart-wrap"><div id="onlineByHour"></div></div>
+      <h2>Online by hour <small>UTC · 30d</small></h2>
+      <div class="body chart-wrap"><div id="onlineByHour"></div></div>
     </section>
     <section class="panel">
-      <h2>Active installs per day <small>· last 30 days</small></h2>
-      <div class="chart-wrap"><div id="trend"></div></div>
+      <h2>Active per day <small>30d</small></h2>
+      <div class="body chart-wrap"><div id="trend"></div></div>
     </section>
   </div>
 
   <div class="grid2">
-    <section class="panel"><h2>Selected algorithm</h2><div id="algorithms" class="bars"></div></section>
-    <section class="panel"><h2>Actual algorithm</h2><div id="actualAlgorithms" class="bars"></div></section>
+    <section class="panel">
+      <h2>Star rating <small>continuous · 0.01 bins</small></h2>
+      <div class="body chart-wrap"><div id="starHistogram"></div></div>
+    </section>
+    <section class="panel">
+      <h2>LN ratio <small>continuous · 0.01 bins</small></h2>
+      <div class="body chart-wrap"><div id="lnRatioHistogram"></div></div>
+    </section>
   </div>
 
-  <div class="grid3">
-    <section class="panel"><h2>Key count</h2><div id="keycounts"></div></section>
-    <section class="panel"><h2>Mode</h2><div id="modes"></div></section>
-    <section class="panel"><h2>Analysis duration</h2><div id="duration"></div></section>
+  <div class="grid4">
+    <section class="panel"><h2>Key count</h2><div class="body" id="keycounts"></div></section>
+    <section class="panel"><h2>Beatmap type <small>HB/RC/LN/Mix/SV</small></h2><div class="body" id="modes"></div></section>
+    <section class="panel"><h2>Mods <small>NM = no mod</small></h2><div class="body" id="mods"></div></section>
+    <section class="panel"><h2>Version</h2><div class="body" id="versions"></div></section>
   </div>
 
   <div class="grid2">
-    <section class="panel"><h2>Mods</h2><div id="mods" class="bars"></div></section>
-    <section class="panel"><h2>Version</h2><div id="versions" class="bars"></div></section>
+    <section class="panel"><h2>Selected algorithm</h2><div class="body" id="algorithms" class="bars"></div></section>
+    <section class="panel"><h2>Actual algorithm</h2><div class="body" id="actualAlgorithms" class="bars"></div></section>
   </div>
 
-  <div class="grid2">
-    <section class="panel"><h2>Star rating</h2><div id="starHistogram" class="bars"></div></section>
-    <section class="panel"><h2>LN ratio</h2><div id="lnRatioHistogram" class="bars"></div></section>
-  </div>
+  <section class="panel" style="margin-bottom:12px">
+    <h2>Analysis metrics</h2>
+    <div class="body"><div id="metrics" class="chips"></div></div>
+  </section>
 </main>
-<footer>Aggregate statistics · refreshed every 60 s · rendered with vanilla JS + SVG, no trackers.</footer>
+<footer>Aggregate statistics · refreshed every 60 s · vanilla JS + SVG, no trackers.</footer>
 
 <script>
 "use strict";
 
-// XSS policy: every client-controlled string (keys, versions, dates) is written
-// via textContent only. Numeric attributes are computed numbers — safe.
-const PALETTE = ["#4bb3fd", "#8b5cf6", "#3ddc97", "#fbbf24", "#f87171", "#f472b6", "#2dd4bf", "#a3b18a", "#60a5fa", "#c084fc"];
+// XSS policy: every client-controlled string is written via textContent only.
+const PALETTE = ["#4bb3fd", "#8b5cf6", "#3ddc97", "#fbbf24", "#f87171", "#f472b6", "#2dd4bf", "#60a5fa", "#c084fc", "#94a3b8"];
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -145,44 +175,92 @@ function el(tag, cls, text) {
   if (text != null) e.textContent = String(text);
   return e;
 }
-
 function svgEl(tag, attrs) {
   const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const k in attrs) e.setAttribute(k, String(attrs[k]));
   return e;
 }
-
+function title(el_, text) {
+  const t = svgEl("title", {});
+  t.textContent = String(text);
+  el_.appendChild(t);
+}
 function emptyBox(host, msg) {
   host.textContent = "";
   host.appendChild(el("div", "empty", msg || "No data yet"));
 }
-
-function card(k, v, accent) {
+function fmtCompact(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
+}
+function deltaSpan(delta) {
+  const s = el("span", "delta");
+  if (delta == null || !isFinite(delta)) { s.className = "delta flat"; s.textContent = "—"; return s; }
+  if (delta > 0) { s.className = "delta up"; s.textContent = "▲ " + fmtCompact(delta); }
+  else if (delta < 0) { s.className = "delta down"; s.textContent = "▼ " + fmtCompact(-delta); }
+  else { s.className = "delta flat"; s.textContent = "–"; }
+  return s;
+}
+function card(k, v, opts) {
   const d = el("div", "card");
-  if (accent) d.style.setProperty("--card-accent", accent);
-  d.appendChild(el("div", "v", v));
+  const accent = (opts && opts.accent) || "#4bb3fd";
+  d.style.setProperty("--card-accent", accent);
+  const vWrap = el("div", "v");
+  vWrap.appendChild(el("span", "", fmtCompact(v)));
+  if (opts && opts.delta != null) vWrap.appendChild(deltaSpan(opts.delta));
+  d.appendChild(vWrap);
   d.appendChild(el("div", "k", k));
   return d;
 }
 
-function renderBars(id, items) {
+function renderCards(s) {
+  const trend = s.activeTrend || [];
+  const t = trend[trend.length - 1], y = trend[trend.length - 2];
+  const todayDelta = (t && y) ? t.active - y.active : null;
+  const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+  const last7 = trend.slice(-7), prev7 = trend.slice(-14, -7);
+  const weekDelta = (last7.length && prev7.length) ? sum(last7.map((d) => d.active)) - sum(prev7.map((d) => d.active)) : null;
+
+  const ov = document.getElementById("overview");
+  ov.textContent = "";
+  ov.appendChild(card("Total installs", s.totalInstalls, { accent: "#4bb3fd" }));
+  ov.appendChild(card("Online now", s.onlineNow, { accent: "#3ddc97" }));
+  ov.appendChild(card("Active today", s.todayActive, { accent: "#fbbf24", delta: todayDelta }));
+  ov.appendChild(card("Active 7d", s.weekActive, { accent: "#8b5cf6", delta: weekDelta }));
+  ov.appendChild(card("Active 30d", s.monthActive, { accent: "#f472b6" }));
+  ov.appendChild(card("New today", s.newToday, { accent: "#2dd4bf" }));
+  ov.appendChild(card("New 7d", s.newWeek, { accent: "#60a5fa" }));
+  ov.appendChild(card("Total events", s.totalEvents, { accent: "#c084fc" }));
+}
+
+function renderBars(id, items, cap) {
   const c = document.getElementById(id);
   c.textContent = "";
   if (!items.length) { emptyBox(c); return; }
+  const limit = (cap && items.length > cap) ? cap : items.length;
   let max = 1;
   for (const it of items) if (it.count > max) max = it.count;
-  for (const it of items) {
+  for (let i = 0; i < limit; i++) {
+    const it = items[i];
     const row = el("div", "bar-row");
     const label = el("span", "bar-label", it.key);
+    label.title = String(it.key);
     const track = el("div", "bar-track");
     const fill = el("div", "bar-fill");
     fill.style.width = Math.round((it.count / max) * 100) + "%";
+    fill.title = it.key + " — " + it.count + " (" + Math.round((it.count / max) * 100) + "%)";
     track.appendChild(fill);
-    const pct = Math.round((it.count / max) * 100);
     row.appendChild(label);
     row.appendChild(track);
-    row.appendChild(el("span", "bar-count", it.count + " · " + pct + "%"));
+    row.appendChild(el("span", "bar-count", fmtCompact(it.count) + " · " + Math.round((it.count / max) * 100) + "%"));
     c.appendChild(row);
+  }
+  if (items.length > limit) {
+    const btn = el("button", "more-btn", "Show all " + items.length);
+    btn.addEventListener("click", () => renderBars(id, items, 0));
+    c.appendChild(btn);
   }
 }
 
@@ -190,29 +268,25 @@ function renderHourBars(id, counts) {
   const c = document.getElementById(id);
   c.textContent = "";
   if (!counts || !counts.length) { emptyBox(c); return; }
-  const W = 560, H = 150, PAD = 6;
+  const W = 560, H = 132, PAD = 4;
   const max = Math.max.apply(null, counts.concat([1]));
   const bw = (W - PAD * 2) / counts.length;
-  const svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", "max-width": "560px" });
-  const grad = svgEl("defs", {});
+  const svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: "100%" });
   const lg = svgEl("linearGradient", { id: "barGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
   lg.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#4bb3fd" }));
   lg.appendChild(svgEl("stop", { offset: "100%", "stop-color": "#8b5cf6" }));
-  grad.appendChild(lg);
-  svg.appendChild(grad);
+  svg.appendChild(lg);
   for (let i = 0; i < counts.length; i++) {
     const v = counts[i] || 0;
     const h = Math.max(1, (v / max) * (H - PAD * 2 - 14));
     const x = PAD + i * bw + bw * 0.18;
     const w = bw * 0.64;
     const rect = svgEl("rect", { x: x.toFixed(1), y: (H - PAD - h).toFixed(1), width: w.toFixed(1), height: h.toFixed(1), rx: 2, fill: "url(#barGrad)" });
-    const t = svgEl("title", {});
-    t.textContent = String(i).padStart(2, "0") + ":00 — " + v + " installs";
-    rect.appendChild(t);
+    title(rect, String(i).padStart(2, "0") + ":00 UTC — " + v + " installs");
     svg.appendChild(rect);
     if (i % 4 === 0) {
-      const tx = svgEl("text", { x: (x + w / 2).toFixed(1), y: H - 2, "text-anchor": "middle" });
-      tx.textContent = String(i).padStart(2, "0") + "h";
+      const tx = svgEl("text", { x: (x + w / 2).toFixed(1), y: H - 1, "text-anchor": "middle" });
+      tx.textContent = String(i).padStart(2, "0");
       svg.appendChild(tx);
     }
   }
@@ -223,76 +297,120 @@ function renderTrend(id, trend) {
   const c = document.getElementById(id);
   c.textContent = "";
   if (!trend || !trend.length) { emptyBox(c); return; }
-  const W = 560, H = 150, PAD = 10;
+  const W = 560, H = 132, PAD = 8;
   const max = Math.max.apply(null, trend.map((d) => Math.max(d.active, d.new)).concat([1]));
   const n = trend.length;
   const x = (i) => PAD + (i * (W - PAD * 2)) / Math.max(n - 1, 1);
-  const y = (v) => H - PAD - (v / max) * (H - PAD * 2 - 14);
+  const y = (v) => H - PAD - (v / max) * (H - PAD * 2 - 12);
 
-  const svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", "max-width": "560px" });
-  const grad = svgEl("defs", {});
+  const svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: "100%" });
   const lg = svgEl("linearGradient", { id: "areaGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
-  lg.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#4bb3fd", "stop-opacity": "0.35" }));
+  lg.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#4bb3fd", "stop-opacity": "0.3" }));
   lg.appendChild(svgEl("stop", { offset: "100%", "stop-color": "#4bb3fd", "stop-opacity": "0" }));
-  grad.appendChild(lg);
-  svg.appendChild(grad);
+  svg.appendChild(lg);
 
   for (let g = 0; g < 3; g++) {
-    const gy = PAD + (g * (H - PAD * 2 - 14)) / 2;
+    const gy = PAD + (g * (H - PAD * 2 - 12)) / 2;
     svg.appendChild(svgEl("line", { x1: PAD, y1: gy.toFixed(1), x2: W - PAD, y2: gy.toFixed(1), stroke: "#232b3d", "stroke-width": 1 }));
   }
 
-  const activePts = trend.map((d, i) => x(i).toFixed(1) + "," + y(d.active).toFixed(1)).join(" ");
+  const actPts = trend.map((d, i) => x(i).toFixed(1) + "," + y(d.active).toFixed(1)).join(" ");
   const newPts = trend.map((d, i) => x(i).toFixed(1) + "," + y(d.new).toFixed(1)).join(" ");
-  const area = "M" + x(0).toFixed(1) + "," + y(trend[0].active).toFixed(1) + " L" + activePts.replace(/ /g, " L") + " L" + x(n - 1).toFixed(1) + "," + (H - PAD).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - PAD).toFixed(1) + " Z";
+  const area = "M" + x(0).toFixed(1) + "," + y(trend[0].active).toFixed(1) + " L" + actPts.replace(/ /g, " L") +
+    " L" + x(n - 1).toFixed(1) + "," + (H - PAD).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - PAD).toFixed(1) + " Z";
   svg.appendChild(svgEl("path", { d: area, fill: "url(#areaGrad)" }));
-  svg.appendChild(svgEl("polyline", { points: activePts, fill: "none", stroke: "#4bb3fd", "stroke-width": 2, "stroke-linejoin": "round" }));
-  svg.appendChild(svgEl("polyline", { points: newPts, fill: "none", stroke: "#3ddc97", "stroke-width": 1.5, "stroke-linejoin": "round", "stroke-dasharray": "3 3" }));
-
+  svg.appendChild(svgEl("polyline", { points: actPts, fill: "none", stroke: "#4bb3fd", "stroke-width": 2, "stroke-linejoin": "round" }));
+  svg.appendChild(svgEl("polyline", { points: newPts, fill: "none", stroke: "#3ddc97", "stroke-width": 1.3, "stroke-linejoin": "round", "stroke-dasharray": "3 3" }));
+  trend.forEach((d, i) => {
+    const dot = svgEl("circle", { cx: x(i).toFixed(1), cy: y(d.active).toFixed(1), r: 2, fill: "#4bb3fd" });
+    title(dot, d.date + " · active " + d.active + " · new " + d.new);
+    svg.appendChild(dot);
+  });
   const step = Math.ceil(n / 6);
   for (let i = 0; i < n; i += step) {
-    const tx = svgEl("text", { x: x(i).toFixed(1), y: H - 2, "text-anchor": "middle" });
+    const tx = svgEl("text", { x: x(i).toFixed(1), y: H - 1, "text-anchor": "middle" });
     tx.textContent = trend[i].date ? trend[i].date.slice(5) : "";
     svg.appendChild(tx);
   }
   c.appendChild(svg);
 }
 
-function renderDonut(id, items) {
+function renderValueLine(id, buckets) {
+  const c = document.getElementById(id);
+  c.textContent = "";
+  if (!buckets || !buckets.length) { emptyBox(c); return; }
+  const W = 560, H = 132, PAD = 8;
+  const v0 = buckets[0].value, v1 = buckets[buckets.length - 1].value;
+  const maxC = Math.max.apply(null, buckets.map((b) => b.count).concat([1]));
+  const x = (v) => PAD + ((v - v0) / ((v1 - v0) || 1)) * (W - PAD * 2);
+  const y = (cnt) => H - PAD - (cnt / maxC) * (H - PAD * 2 - 12);
+
+  const svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, width: "100%" });
+  const lg = svgEl("linearGradient", { id: "valGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
+  lg.appendChild(svgEl("stop", { offset: "0%", "stop-color": "#8b5cf6", "stop-opacity": "0.28" }));
+  lg.appendChild(svgEl("stop", { offset: "100%", "stop-color": "#8b5cf6", "stop-opacity": "0" }));
+  svg.appendChild(lg);
+  for (let g = 0; g < 3; g++) {
+    const gy = PAD + (g * (H - PAD * 2 - 12)) / 2;
+    svg.appendChild(svgEl("line", { x1: PAD, y1: gy.toFixed(1), x2: W - PAD, y2: gy.toFixed(1), stroke: "#232b3d", "stroke-width": 1 }));
+  }
+
+  const pts = buckets.map((b) => x(b.value).toFixed(1) + "," + y(b.count).toFixed(1)).join(" ");
+  const area = "M" + x(v0).toFixed(1) + "," + y(0).toFixed(1) + " L" + pts.replace(/ /g, " L") + " L" + x(v1).toFixed(1) + "," + y(0).toFixed(1) + " Z";
+  svg.appendChild(svgEl("path", { d: area, fill: "url(#valGrad)" }));
+  svg.appendChild(svgEl("polyline", { points: pts, fill: "none", stroke: "#8b5cf6", "stroke-width": 2, "stroke-linejoin": "round" }));
+  buckets.forEach((b) => {
+    const dot = svgEl("circle", { cx: x(b.value).toFixed(1), cy: y(b.count).toFixed(1), r: 2.5, fill: "#8b5cf6" });
+    title(dot, b.key + " → " + b.count);
+    svg.appendChild(dot);
+  });
+  const mid = v0 + (v1 - v0) / 2;
+  [v0, mid, v1].forEach((v) => {
+    const tx = svgEl("text", { x: x(v).toFixed(1), y: H - 1, "text-anchor": "middle" });
+    tx.textContent = v.toFixed(2);
+    svg.appendChild(tx);
+  });
+  c.appendChild(svg);
+}
+
+function renderDonut(id, items, maxSlices) {
   const c = document.getElementById(id);
   c.textContent = "";
   if (!items.length) { emptyBox(c); return; }
-  const total = items.reduce((s, it) => s + it.count, 0) || 1;
-  const svg = svgEl("svg", { viewBox: "0 0 42 42", width: "120", height: "120" });
+  const MAX = maxSlices || 6;
+  let slices = items;
+  if (items.length > MAX) {
+    const top = items.slice(0, MAX - 1);
+    const other = items.slice(MAX - 1).reduce((s, it) => s + it.count, 0);
+    slices = top.concat([{ key: "Other", count: other }]);
+  }
+  const total = slices.reduce((s, it) => s + it.count, 0) || 1;
+  const svg = svgEl("svg", { viewBox: "0 0 42 42", width: "108", height: "108", "aria-hidden": "true" });
   let angle = 0;
-  items.forEach((it, i) => {
+  slices.forEach((it, i) => {
     const frac = it.count / total;
     const circle = svgEl("circle", {
-      cx: 21, cy: 21, r: 15.915,
-      fill: "none",
-      "stroke-width": 5,
+      cx: 21, cy: 21, r: 15.915, fill: "none", "stroke-width": 4.6,
       stroke: PALETTE[i % PALETTE.length],
       "stroke-dasharray": (frac * 100).toFixed(2) + " " + (100 - frac * 100).toFixed(2),
       "stroke-dashoffset": (-angle * 100).toFixed(2),
     });
-    const t = svgEl("title", {});
-    t.textContent = it.key + " — " + it.count;
-    circle.appendChild(t);
+    title(circle, it.key + " — " + it.count + " (" + Math.round((it.count / total) * 100) + "%)");
     svg.appendChild(circle);
     angle += frac;
   });
-  const center = svgEl("text", { x: 21, y: 23.5, "text-anchor": "middle", "font-size": "6.5", fill: "#e6edf7", "font-weight": "700" });
-  center.textContent = total;
+  const center = svgEl("text", { x: 21, y: 23, "text-anchor": "middle", "font-size": "6", fill: "#e6edf7", "font-weight": "700" });
+  center.textContent = fmtCompact(total);
   svg.appendChild(center);
 
   const legend = el("div", "legend");
-  items.forEach((it, i) => {
+  slices.forEach((it, i) => {
     const row = el("div", "legend-row");
     const sw = el("span", "sw");
     sw.style.background = PALETTE[i % PALETTE.length];
     row.appendChild(sw);
     row.appendChild(el("span", "lk", it.key));
-    row.appendChild(el("span", "lv", it.count + " · " + Math.round((it.count / total) * 100) + "%"));
+    row.appendChild(el("span", "lv", fmtCompact(it.count) + " · " + Math.round((it.count / total) * 100) + "%"));
     legend.appendChild(row);
   });
   const wrap = el("div", "donut-wrap");
@@ -301,18 +419,25 @@ function renderDonut(id, items) {
   c.appendChild(wrap);
 }
 
-function renderDuration(id, d) {
-  const c = document.getElementById(id);
+function renderMetrics(s) {
+  const c = document.getElementById("metrics");
   c.textContent = "";
-  if (!d || !d.avgMs) { emptyBox(c, "No data yet"); return; }
-  const chips = el("div", "chips");
-  for (const [k, v] of [["Average", d.avgMs], ["p50", d.p50Ms], ["p90", d.p90Ms]]) {
+  const items = [
+    ["Avg star", s.avgStar ? s.avgStar.toFixed(2) : "—"],
+    ["Avg LN ratio", s.avgLnRatio ? s.avgLnRatio.toFixed(2) : "—"],
+    ["Analyzes · 30d", fmtCompact(s.analyze30d)],
+    ["Peak online", s.peakOnline ? fmtCompact(s.peakOnline) + " @" + String(s.peakOnlineHour).padStart(2, "0") + ":00 UTC" : "—"],
+    ["Avg daily active", fmtCompact(s.avgDailyActive)],
+    ["Duration avg", (s.durationStats && s.durationStats.avgMs ? s.durationStats.avgMs : 0) + " ms"],
+    ["Duration p50", (s.durationStats ? s.durationStats.p50Ms : 0) + " ms"],
+    ["Duration p90", (s.durationStats ? s.durationStats.p90Ms : 0) + " ms"],
+  ];
+  for (const [k, v] of items) {
     const chip = el("div", "chip");
-    chip.appendChild(el("div", "cv", (v || 0) + " ms"));
+    chip.appendChild(el("div", "cv", v));
     chip.appendChild(el("div", "ck", k));
-    chips.appendChild(chip);
+    c.appendChild(chip);
   }
-  c.appendChild(chips);
 }
 
 fetch("/api/v1/stats")
@@ -322,27 +447,18 @@ fetch("/api/v1/stats")
   })
   .then((s) => {
     document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
-
-    const ov = document.getElementById("overview");
-    ov.appendChild(card("Total installs", s.totalInstalls, "#4bb3fd"));
-    ov.appendChild(card("Online now", s.onlineNow, "#3ddc97"));
-    ov.appendChild(card("Active today", s.todayActive, "#fbbf24"));
-    ov.appendChild(card("Active 7d", s.weekActive, "#8b5cf6"));
-    ov.appendChild(card("Active 30d", s.monthActive, "#f472b6"));
-    ov.appendChild(card("New today", s.newToday, "#2dd4bf"));
-    ov.appendChild(card("New 7d", s.newWeek, "#60a5fa"));
-
+    renderCards(s);
     renderHourBars("onlineByHour", s.onlineByHour || []);
     renderTrend("trend", s.activeTrend || []);
-    renderBars("algorithms", s.algorithms || []);
-    renderBars("actualAlgorithms", s.actualAlgorithms || []);
-    renderDonut("keycounts", s.keycounts || []);
+    renderValueLine("starHistogram", s.starHistogram || []);
+    renderValueLine("lnRatioHistogram", s.lnRatioHistogram || []);
+    renderBars("keycounts", s.keycounts || []);
     renderDonut("modes", s.modes || []);
-    renderDuration("duration", s.durationStats || {});
-    renderBars("mods", s.mods || []);
-    renderBars("versions", s.versions || []);
-    renderBars("starHistogram", s.starHistogram || []);
-    renderBars("lnRatioHistogram", s.lnRatioHistogram || []);
+    renderDonut("mods", s.mods || []);
+    renderDonut("versions", s.versions || []);
+    renderBars("algorithms", s.algorithms || [], 8);
+    renderBars("actualAlgorithms", s.actualAlgorithms || [], 8);
+    renderMetrics(s);
   })
   .catch((err) => {
     const ov = document.getElementById("overview");

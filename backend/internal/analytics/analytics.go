@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"osumania-telemetry/internal/store"
@@ -30,8 +31,9 @@ type TrendDay struct {
 }
 
 type Bucket struct {
-	Label string `json:"label"`
-	Count int64  `json:"count"`
+	Key   string  `json:"key"`
+	Value float64 `json:"value"`
+	Count int64   `json:"count"`
 }
 
 type DurationStats struct {
@@ -48,6 +50,13 @@ type Stats struct {
 	MonthActive      int64         `json:"monthActive"`
 	NewToday         int64         `json:"newToday"`
 	NewWeek          int64         `json:"newWeek"`
+	TotalEvents      int64         `json:"totalEvents"`
+	Analyze30d       int64         `json:"analyze30d"`
+	AvgStar          float64       `json:"avgStar"`
+	AvgLnRatio       float64       `json:"avgLnRatio"`
+	PeakOnline       int64         `json:"peakOnline"`
+	PeakOnlineHour   int           `json:"peakOnlineHour"`
+	AvgDailyActive   int64         `json:"avgDailyActive"`
 	OnlineByHour     [24]int64     `json:"onlineByHour"`
 	ActiveTrend      []TrendDay    `json:"activeTrend"`
 	Algorithms       []KV          `json:"algorithms"`
@@ -106,11 +115,30 @@ func Compute(st *store.Store, onlineWindowMin int) (*Stats, error) {
 	if s.NewWeek, err = st.CountInstallsNew(nowMs - 7*dayMs); err != nil {
 		return nil, err
 	}
+	if s.TotalEvents, err = st.CountEvents(); err != nil {
+		return nil, err
+	}
+	if s.Analyze30d, err = st.CountAnalyzeSince(since30d); err != nil {
+		return nil, err
+	}
 	if s.OnlineByHour, err = st.OnlineByHour(since30d); err != nil {
 		return nil, err
 	}
+	for h, c := range s.OnlineByHour {
+		if c > s.PeakOnline {
+			s.PeakOnline = c
+			s.PeakOnlineHour = h
+		}
+	}
 	if s.ActiveTrend, err = buildTrend(st); err != nil {
 		return nil, err
+	}
+	var activeSum int64
+	for _, d := range s.ActiveTrend {
+		activeSum += d.Active
+	}
+	if len(s.ActiveTrend) > 0 {
+		s.AvgDailyActive = activeSum / int64(len(s.ActiveTrend))
 	}
 	if err = buildDistributions(st, since30d, s); err != nil {
 		return nil, err
@@ -152,8 +180,10 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	keys := map[string]int64{}
 	mods := map[string]int64{}
 	modes := map[string]int64{}
-	stars := map[int]int64{}
-	lns := map[int]int64{}
+	stars := map[float64]int64{}
+	lns := map[float64]int64{}
+	var starSum, lnSum float64
+	var starN, lnN int64
 	var durations []int64
 
 	err := st.ScanAnalyzeData(since, func(dataJSON string) error {
@@ -170,19 +200,20 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 		if d.Keycount > 0 {
 			keys[fmt.Sprintf("%dK", d.Keycount)]++
 		}
-		for _, m := range d.Mods {
-			if m != "" {
-				mods[m]++
-			}
-		}
+		mods[modCombo(d.Mods)]++
 		if d.Mode != "" {
 			modes[d.Mode]++
 		}
 		if d.Star > 0 {
-			stars[int(math.Round(d.Star))]++
+			// continuous: keep 2-decimal resolution
+			stars[math.Round(d.Star*100)/100]++
+			starSum += d.Star
+			starN++
 		}
 		if d.LnRatio >= 0 && d.LnRatio <= 1 {
-			lns[int(math.Round(d.LnRatio*100))]++
+			lns[math.Round(d.LnRatio*100)/100]++
+			lnSum += d.LnRatio
+			lnN++
 		}
 		if d.DurationMs >= 0 {
 			durations = append(durations, int64(d.DurationMs))
@@ -205,11 +236,32 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	}
 	s.Versions = sortedKV(versionCounts)
 
-	s.StarHistogram = histogram(stars, func(k int) string { return fmt.Sprintf("%d★", k) })
-	s.LnRatioHistogram = histogram(lns, func(k int) string { return fmt.Sprintf("%d%%", k) })
+	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.2f", k) })
+	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.2f", k) })
+	if starN > 0 {
+		s.AvgStar = math.Round(starSum/float64(starN)*100) / 100
+	}
+	if lnN > 0 {
+		s.AvgLnRatio = math.Round(lnSum/float64(lnN)*100) / 100
+	}
 	s.DurationStats = durationStats(durations)
 
 	return nil
+}
+
+// modCombo normalizes a mod array into a sorted combination key; no mods = NM.
+func modCombo(mods []string) string {
+	clean := make([]string, 0, len(mods))
+	for _, m := range mods {
+		if m = strings.TrimSpace(m); m != "" {
+			clean = append(clean, m)
+		}
+	}
+	if len(clean) == 0 {
+		return "NM"
+	}
+	sort.Strings(clean)
+	return strings.Join(clean, "+")
 }
 
 func sortedKV(m map[string]int64) []KV {
@@ -226,15 +278,15 @@ func sortedKV(m map[string]int64) []KV {
 	return out
 }
 
-func histogram(m map[int]int64, label func(int) string) []Bucket {
-	keys := make([]int, 0, len(m))
+func histogram(m map[float64]int64, key func(float64) string) []Bucket {
+	keys := make([]float64, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Ints(keys)
+	sort.Float64s(keys)
 	out := make([]Bucket, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, Bucket{Label: label(k), Count: m[k]})
+		out = append(out, Bucket{Key: key(k), Value: k, Count: m[k]})
 	}
 	return out
 }

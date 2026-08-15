@@ -93,6 +93,18 @@ func (s *Store) CountActiveSince(since int64) (int64, error) {
 	return n, err
 }
 
+func (s *Store) CountEvents() (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) CountAnalyzeSince(since int64) (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind='analyze' AND ts >= ?`, since).Scan(&n)
+	return n, err
+}
+
 // OnlineByHour returns, for each hour-of-day (0-23, UTC), how many distinct
 // installs had an event in that hour across the whole `since` window.
 func (s *Store) OnlineByHour(since int64) ([24]int64, error) {
