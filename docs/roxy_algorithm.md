@@ -419,7 +419,20 @@ fused = finalNumeric + (Azusa - finalNumeric) * 0.4
 
 The rationale is variance reduction: two approximately unbiased estimators, when averaged, shrink variance. The weight is biased toward Roxy (0.4 on Azusa) because Azusa has larger variance. On the benchmark this lifts Exact to ~54% in the 11~17 band (with the high-difficulty scope, §1). No difficulty gate is needed anymore: the low band (where Azusa over-estimates) is already routed to Azusa by Mixed before Roxy runs, so the fusion only ever applies inside the 11~17 scope. The fusion does not change Roxy's structural core, meta features, or any other reference; it only re-averages the final output against Azusa.
 
-## 15. Label Soft Cap
+## 15. Ordinal Meta Calibration
+
+The ridge meta head is fitted on the 0.5-grid quantized `expected` labels instead of raw continuous values. Training against the quantized target teaches the model to place predictions on the 0.5 tier grid, which matches how the benchmark grades difficulty (the numeric difficulty of dan tiers moves in 0.5 steps).
+
+Fit details:
+- fit subset: scope 11~17 **plus the >=17 band** (6 maps). Including the upper band prevents the model from under-shooting the 17 boundary — with 11~17-only fitting, Mixed's >=17 Exact dropped from 52.6% to 42.1%; with the upper band included it recovers to 52.6%.
+- normalization: full-distribution MEAN/SCALE (all rows), so out-of-scope inference does not distort
+- lambda: 2.0, ordinal target grid 0.5
+
+The output `numericDifficulty` stays **continuous** (no quantization): it equals the fully post-processed `finalNumeric` rounded to 2 decimals, and therefore always maps to exactly the same `estDiff` the plugin displays. (A 0.5-grid output quantization was tried and reverted: it inflated benchmark Exact by ~1.9pp but made the benchmark's inferred tier label disagree with the plugin's `estDiff`, sometimes by a full tier.)
+
+On the benchmark this lifts Roxy 11~17 Exact from ~55% to ~59% (MAE 0.229 -> 0.219) and Mixed 4K RC 11~17 Exact from ~54% to ~58% (MAE 0.240 -> 0.233), with no Azusa regression and no variant-label loss.
+
+## 16. Label Soft Cap
 
 Roxy keeps numeric difficulty internally, but its RC label display is capped above `CloverWisp Theta high`:
 
@@ -432,11 +445,11 @@ else:
 
 This prevents Roxy from displaying `Iota` or higher labels while still allowing the numeric value and star value to reflect values above Theta high.
 
-## 16. Graph Output
+## 17. Graph Output
 
 The numeric calculation uses Roxy's structural strain data. The returned `graph` field does not use Roxy's local strain series. When graph output is requested, Roxy returns the graph provided by the Azusa reference call, which currently resolves to Azusa/Sunny graph data.
 
-## 17. Complexity
+## 18. Complexity
 
 Let `N` be the number of tap notes and `R` the number of merged rows.
 

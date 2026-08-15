@@ -55,7 +55,7 @@
 见 [docs/settings.md](docs/settings.md) 了解详细设置说明。
 
 ## Roxy 算法说明
-Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。
+Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
 低于 Alpha（< 11）的谱面 Roxy 返回 "< Alpha Low"（不输出数值难度），达到或超过 Emik Zeta high（>= 17）返回 "> Emik Zeta high"；Mixed 算法会自动将低难谱面路由至 Azusa 估算，因此 Roxy 的低难估算不作为最终结果。
 
 ## Azusa 算法说明

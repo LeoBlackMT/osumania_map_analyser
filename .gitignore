@@ -3,6 +3,9 @@
 .playwright-mcp/
 /temp
 /backup
+backend/docs/
+backend/bin/
+backend/.env
 AGENTS.md
 .omo/
 .dsh/

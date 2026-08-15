@@ -56,7 +56,7 @@ Note: It is recommended to start with the default settings and then adjust accor
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
 
 ## Roxy Algorithm Explanation
-Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction).
+Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
 Maps below Alpha (< 11) return "< Alpha Low" (no numeric difficulty) and maps at or above Emik Zeta high (>= 17) return "> Emik Zeta high"; Mixed automatically routes low-difficulty maps to Azusa, so Roxy's low-band estimate is not the final result.
 
 ## Azusa Algorithm Explanation
