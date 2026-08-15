@@ -193,6 +193,7 @@ export const MOD_BIT_FLAG_ENTRIES = Object.entries(MOD_BIT_FLAGS);
 
 export const {
     parseContentBarValue,
+    parseAutoContentBarValue,
     parseSrTextValue,
     parseDebugUseAmountValue,
     parseDiffTextValue,

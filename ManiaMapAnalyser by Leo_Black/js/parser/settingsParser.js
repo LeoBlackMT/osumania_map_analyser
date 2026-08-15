@@ -20,7 +20,8 @@ export function normalizeContentBarValue(value) {
 
 // 将 commands 类型的 contentBar 值（有序数组）或旧版字符串值规范化为
 // 有序的合法 section 数组。保序：数组顺序即前端显示顺序。
-// - 数组：逐项取 item.section，校验 ∈ 候选集，保序收集，非法项丢弃。
+// - 数组：元素可为字符串（"Pattern"）或对象（{section:"Pattern"}），
+//   两种形式都支持（tosu commands 存对象数组，插件内部 state 存字符串数组）。
 // - 旧字符串：迁移映射（"Full"→4 元素全选、"None"→[]、单值→单元素数组）。
 export function normalizeContentBarList(value, candidates) {
     const sectionSet = createSet(candidates);
@@ -28,7 +29,7 @@ export function normalizeContentBarList(value, candidates) {
     if (Array.isArray(value)) {
         const result = [];
         for (const item of value) {
-            const section = item && typeof item === "object" ? item.section : null;
+            const section = item && typeof item === "object" ? item.section : item;
             const normalized = normalizeContentBarValue(section);
             if (normalized && sectionSet.has(normalized.toLowerCase()) && !result.includes(normalized)) {
                 result.push(normalized);

@@ -8,6 +8,7 @@ import {
     hasAnyGraphModeEnabled,
     mainCardEl,
     parseAutoModeValue,
+    parseAutoContentBarValue,
     parseCardOpacityValue,
     parseCardRadiusValue,
     parseCardBgBlurValue,
@@ -55,6 +56,7 @@ import {
 import {
     normalizeBooleanSetting,
     normalizeContentBarList,
+    normalizeContentBarValue,
     normalizeDiffTextValue,
     normalizeSrTextValue,
 } from "../parser/settingsParser.js";
@@ -796,6 +798,53 @@ function extractSettingsPayloadFromCommandPacket(packet) {
     return null;
 }
 
+// 检测 contentBar 旧字符串值并主动写回 commands 数组格式。
+// tosu dashboard 渲染 commands 类型时假设 value 是数组；旧版 values.json 里
+// contentBar 是字符串（"Auto"/"Pattern"/"ReworkPP"/"Full"/"None"），会在
+// .find()/.forEach() 处抛 TypeError 导致设置页卡死。插件启动收到 getSettings
+// 后如果发现旧格式，立即通过 tosu 的 HTTP API 把 values.json 重写为数组，
+// dashboard 下次打开即正常（无需修改 tosu，所有用户升级后自动修复）。
+function migrateLegacyContentBarValue(payload) {
+    const rawContentBar = Array.isArray(payload)
+        ? payload.find((entry) => entry?.uniqueID === "contentBar")?.value
+        : (payload && typeof payload === "object" ? payload.contentBar : undefined);
+    if (rawContentBar === undefined || rawContentBar === null || Array.isArray(rawContentBar)) {
+        return;
+    }
+
+    const normalized = normalizeContentBarValue(rawContentBar);
+    if (!normalized) {
+        return;
+    }
+
+    let newValue;
+    if (normalized === "Full") {
+        newValue = ["Pattern", "Etterna", "Graph", "ReworkPP"].map((section) => ({ section }));
+    } else if (normalized === "None" || normalized === "Auto") {
+        // None → 空列表；Auto → 由 autoContentBar 控制（写回时同时置 true）
+        newValue = [];
+    } else {
+        newValue = [{ section: normalized }];
+    }
+
+    const writeBack = [{ uniqueID: "contentBar", value: newValue }];
+    if (normalized === "Auto") {
+        writeBack.push({ uniqueID: "autoContentBar", value: true });
+    }
+
+    const folderName = (typeof window.COUNTER_PATH === "string" ? window.COUNTER_PATH : "").trim();
+    if (!folderName) {
+        return;
+    }
+
+    fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
+        method: "POST",
+        body: JSON.stringify(writeBack),
+    }).catch(() => {
+        // 迁移失败静默处理：设置页仍可能卡死，但插件自身不受影响。
+    });
+}
+
 export function setupSettingsCommandListener() {
     if (state.settingsCommandSubscribed) {
         return;
@@ -808,6 +857,13 @@ export function setupSettingsCommandListener() {
         if (!payload) {
             return;
         }
+
+        // 迁移：contentBar 自 2026-08-15 起为 commands 类型（数组），但旧版
+        // values.json 里可能是单字符串（如 "Auto"/"ReworkPP"）。tosu dashboard
+        // 渲染 commands 类型时对字符串调用 .find()/.forEach() 会抛 TypeError
+        // 导致设置页卡死——这里检测到旧字符串就主动发 saveSettings 写回数组，
+        // 让所有用户升级后自动修复（无需改 tosu）。
+        migrateLegacyContentBarValue(payload);
 
         // Only apply a setting if it's actually present in the payload.
         // Otherwise the parser's config.js default would overwrite the
