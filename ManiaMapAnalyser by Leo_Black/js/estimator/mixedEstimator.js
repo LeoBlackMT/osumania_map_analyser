@@ -122,6 +122,18 @@ function resultNumericValue(result) {
     return Number.isFinite(value) ? value : null;
 }
 
+// Roxy 的 debug.finalNumeric 是全部后处理（OD 校正、结构下限、参考间隙、
+// Azusa 融合）之后的连续值，比 numericDifficulty（保留 2 位小数）更精确，
+// 换路判定基于它可避免舍入导致的 delta 抖动。
+function roxyUnquantizedNumeric(result) {
+    const raw = result?.debug?.finalNumeric;
+    if (raw !== null && raw !== undefined && raw !== "") {
+        const value = Number(raw);
+        if (Number.isFinite(value)) return value;
+    }
+    return resultNumericValue(result);
+}
+
 function debugStatValue(result, name) {
     const raw = result?.debug?.stats?.[name];
     if (raw === null || raw === undefined) return null;
@@ -141,7 +153,7 @@ function shouldEvaluateAzusaRcPreference(roxyResult) {
         return false;
     }
 
-    const roxyNumeric = resultNumericValue(roxyResult);
+    const roxyNumeric = roxyUnquantizedNumeric(roxyResult);
     const azusaReference = debugReferenceValue(roxyResult, "Azusa");
     const handBias = debugStatValue(roxyResult, "handBias");
     const anchorRate = debugStatValue(roxyResult, "anchorRate");
@@ -157,7 +169,10 @@ function shouldEvaluateAzusaRcPreference(roxyResult) {
         && anchorRate >= AZUSA_RC_PREFERENCE.anchorHeavyScreenMinRate
         && delta <= AZUSA_RC_PREFERENCE.azusaLowerScreenMaxDelta;
 
-    return balancedHandCandidate || anchorHeavyCandidate;
+    // 跨界规则：Roxy 输出已到 11+ 而 Azusa 参考低于 11（见 shouldPreferAzusaRcResult）。
+    const crossingCandidate = roxyNumeric >= 11 && azusaReference < 11;
+
+    return balancedHandCandidate || anchorHeavyCandidate || crossingCandidate;
 }
 
 export function shouldPreferAzusaRcResult(roxyResult, azusaResult) {
@@ -165,7 +180,7 @@ export function shouldPreferAzusaRcResult(roxyResult, azusaResult) {
         return false;
     }
 
-    const roxyNumeric = resultNumericValue(roxyResult);
+    const roxyNumeric = roxyUnquantizedNumeric(roxyResult);
     const azusaNumeric = resultNumericValue(azusaResult);
     const handBias = debugStatValue(roxyResult, "handBias");
     const anchorRate = debugStatValue(roxyResult, "anchorRate");
@@ -181,7 +196,13 @@ export function shouldPreferAzusaRcResult(roxyResult, azusaResult) {
         && anchorRate >= AZUSA_RC_PREFERENCE.anchorHeavyMinRate
         && delta <= AZUSA_RC_PREFERENCE.azusaLowerMaxDelta;
 
-    return balancedHandAzusaLift || anchorHeavyRoxyDamp;
+    // 跨界规则：Roxy 输出已到 11+（Alpha 上界）而 Azusa 仍低于 11——这些图
+    // 的 expected 段位接近 Alpha 边界，Azusa 的收敛输出（<11）通常更贴近真实
+    // 段位（Roxy 的结构模型对"结构难但段位低"的图系统性高估）。仅当两个条件
+    // 同时满足时触发，11~17 段正常图（Azusa 参考也在 11+）不受影响。
+    const crossingLift = roxyNumeric >= 11 && azusaNumeric < 11;
+
+    return balancedHandAzusaLift || anchorHeavyRoxyDamp || crossingLift;
 }
 
 export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) {
