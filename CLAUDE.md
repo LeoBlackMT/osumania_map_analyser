@@ -1,6 +1,7 @@
 # CLAUDE.md
 > 本文是写给 LLM 的项目说明和编写要求，LLM 在编写代码时请务必遵守本文档的要求。
 > This document is written for LLMs, and LLMs must follow the requirements of this document when writing code.
+> 注意：AGENTS.md和CLAUDE.md如果出现冲突，请以CLAUDE.md为准。除非用户明确要求。如果遇到不确定的情况，请向用户提问。
 
 ## 项目介绍
 - 本项目仓库地址 https://github.com/LeoBlackMT/osumania_map_analyser。
@@ -40,6 +41,7 @@
 - 请按照用户的实际情况进行git操作，默认允许 commit，但是不允许 push。请在进行 push 之前征求用户意见。严禁直接 push 到 main 分支，除非用户明确要求。请在进行 push 之前确保代码已经过测试，并且不会破坏已有功能。请使用Pull Request的方式进行贡献，以便后续进行代码审查和测试。
 - 文档编写的要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因，以便后续进行代码审查和测试。
 - 由于插件实际运行在纯浏览器环境下，因此，在功能编写时，请确保代码的兼容性和性能。避免使用不兼容的API和过于复杂的算法，以确保插件在各种环境下都能正常运行。此外，不应当使用除tosu之外的第三方工具获取数据或进行计算，或要求用户启用一个如node的环境，以确保插件的独立性和可移植性。
+- 【豁免】匿名使用统计（遥测）是唯一允许的 tosu 之外数据去向：`js/app/telemetry.js` 向自建后端（`backend/`，Go + SQLite）匿名上报聚合属性（算法/键数/mod/模式/难度/耗时等）。约束：默认开启可关（`enableTelemetry` 设置，Network 分组）、endpoint 硬编码于 `index.js`、静默失败不影响插件、绝不采集用户名/玩家id/分数/谱面标识/IP。后端代码随仓库提交（`backend/`，其中 `backend/docs/`、`.env`、`telemetry.db` 为 gitignore 私有）。
 - 在README和settings.json中，由于目标为普通用户，请使用直白的语言描述功能，不要使用过于专业，或内部使用的术语。
 - settings.json中，请全程使用英文。设置描述应当简洁直白，以确保用户能够理解设置项的作用。checkbox类应当放在options类之前；Link部分应当放在最前面。
 - 合理安排代码的结构和模块划分，确保代码的可维护性。避免过于复杂的嵌套和冗余的代码逻辑。减少代码的重复性，增加复用程度。减少代码的耦合性，确保模块之间的独立性。遵循单一职责原则，确保每个模块只负责一个功能。

@@ -46,6 +46,11 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 5. The plugin's performance may be affected by the complexity of the beatmap and the features selected; in some cases, lag or delays may occur. Please adjust the settings according to your actual situation for a better experience.
 6. If you encounter any issues, feel free to submit an issue.
 
+## Privacy / Anonymous Usage Statistics
+This plugin sends anonymous usage statistics by default (active users, online distribution, usage behavior). The data contains **no** username, player id, scores, beatmap identity (title/md5), or IP address — it is used only for aggregate statistics. The public dashboard is at https://mma-stats.leoblack.top/
+
+To opt out, turn off "Anonymous Usage Statistics" under Settings → Network.
+
 ## Settings
 Note: It is recommended to start with the default settings and then adjust according to personal preference.
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.

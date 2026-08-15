@@ -31,6 +31,7 @@ import { getCounterPathForCommand } from "./settings.js";
 import { applyCoverThemeForBeatmap } from "./coverTheme.js";
 import { updateLivePp } from "./livePp.js";
 import { buildSongKey, resolveChangeKind } from "./changeKind.js";
+import { noteTelemetryActivity } from "./telemetry.js";
 
 
 function getModData(data) {
@@ -146,6 +147,7 @@ function updateSongTimeState(data) {
 
 export function setupSocketListener() {
     socket.api_v2((data) => {
+        noteTelemetryActivity();
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;

@@ -396,6 +396,14 @@
 		"value": "localhost:24050"
 	},
 	{
+		"uniqueID": "enableTelemetry",
+		"type": "checkbox",
+		"title": "Anonymous Usage Statistics",
+		"description": "Send anonymous usage statistics (no username, no beatmap info, no IP) to the project's telemetry server. You can turn this off anytime.",
+		"options": [],
+		"value": true
+	},
+	{
 		"uniqueID": "hDebug",
 		"type": "header",
 		"title": "Debug Options",

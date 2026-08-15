@@ -564,6 +564,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.enableAlwaysShowLNDifficulty);
     }
 
+    function parseEnableTelemetryValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableTelemetry");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableTelemetry);
+    }
+
     return {
         parseEnablePatternValue,
         parseContentBarValue,
@@ -602,5 +607,6 @@ export function createSettingsParsers(appConfig) {
         parseEnableLNDifficultyValue,
         parseEnableAnalyzeLNValue,
         parseEnableAlwaysShowLNDifficultyValue,
+        parseEnableTelemetryValue,
     };
 }
