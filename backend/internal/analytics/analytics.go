@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -195,7 +196,10 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	lns := map[float64]int64{}
 	var starSum, lnSum float64
 	var starN, lnN int64
-	var durations []int64
+	// Duration aggregate: exact sum/count plus a bounded reservoir for the
+	// percentiles, so memory/time stay O(1) as the event table grows.
+	var durSum, durN int64
+	var durSamples []int64
 
 	err := st.ScanAnalyzeData(since, func(dataJSON string) error {
 		var d analyzeData
@@ -236,7 +240,14 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 			lnN++
 		}
 		if d.DurationMs >= 0 {
-			durations = append(durations, int64(d.DurationMs))
+			v := int64(d.DurationMs)
+			durSum += v
+			durN++
+			if len(durSamples) < durationSampleCap {
+				durSamples = append(durSamples, v)
+			} else if j := rand.Int63n(durN); j < durationSampleCap {
+				durSamples[j] = v
+			}
 		}
 		return nil
 	})
@@ -264,7 +275,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	if lnN > 0 {
 		s.AvgLnRatio = math.Round(lnSum/float64(lnN)*100) / 100
 	}
-	s.DurationStats = durationStats(durations)
+	s.DurationStats = durationStats(durSum, durN, durSamples)
 
 	return nil
 }
@@ -296,19 +307,25 @@ func histogram(m map[float64]int64, key func(float64) string) []Bucket {
 	return out
 }
 
-func durationStats(durations []int64) DurationStats {
-	if len(durations) == 0 {
+// durationSampleCap bounds the reservoir used for percentile estimation; the
+// average stays exact (sum/count over every event), only P50/P90 become
+// estimates — with 5000 random samples they converge within ~1-2% error even
+// at a million events.
+const durationSampleCap = 5000
+
+func durationStats(sum, n int64, samples []int64) DurationStats {
+	if n == 0 {
 		return DurationStats{}
 	}
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-	var sum int64
-	for _, d := range durations {
-		sum += d
+	avg := sum / n
+	if len(samples) == 0 {
+		return DurationStats{AvgMs: avg}
 	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
 	return DurationStats{
-		AvgMs: sum / int64(len(durations)),
-		P50Ms: percentile(durations, 50),
-		P90Ms: percentile(durations, 90),
+		AvgMs: avg,
+		P50Ms: percentile(samples, 50),
+		P90Ms: percentile(samples, 90),
 	}
 }
 

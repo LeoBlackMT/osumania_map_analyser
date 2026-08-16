@@ -9,7 +9,7 @@
 | 事件 | 时机 | 载荷 |
 |---|---|---|
 | `boot` | 插件启动、且遥测开启且 endpoint 非空 | 仅 id/kind/version |
-| `heartbeat` | 每 **5 分钟**一次，且最近 30s 内收到 api_v2（游戏已连接） | 仅 id/kind/version |
+| `heartbeat` | 每 **10 分钟**一次，且最近 30s 内收到 api_v2（游戏已连接） | 仅 id/kind/version |
 | `analyze` | 每次成功分析后 | id/kind/version + `data` 字段 |
 
 ## 2. 隐私边界（硬约束）
@@ -28,7 +28,7 @@
 - `initTelemetry()` — 读配置，条件满足则发 `boot`。
 - `setTelemetryConfig()` — settings.js 运行时调用；开关由关→开且 endpoint 非空时补发 `boot`。
 - `noteTelemetryActivity()` — socketHandlers 每个 api_v2 包调用，更新 `lastActivityAt`。
-- `startTelemetryHeartbeat()` — `setInterval(5min)`；仅当 `enabled && endpoint && (now-lastActivityAt < 30s)` 发 `heartbeat`。
+- `startTelemetryHeartbeat()` — `setInterval(10min)`；仅当 `enabled && endpoint && (now-lastActivityAt < 30s)` 发 `heartbeat`。
 - `trackTelemetryAnalyze(data)` — 发 `analyze`（fire-and-forget）。
 
 发送用 `fetch(..., {keepalive:true})` + 5s `AbortController` 超时，`.catch` 静默——**遥测绝不阻塞/破坏插件功能**。
