@@ -11,9 +11,9 @@
         - For osu Player / For Etterna Player / For Interlude Player: 面向不同玩家的推荐配置。
         - Pattern Focus / Full Overview / Vibro Player / Jack Player: 面向不同游玩场景的配置。
         - The Limit Does Not Exist / Daniel-like / Wild Dan (WIP): 面向高难与特殊玩法的配置。
-        - Custom 1 / Custom 2 / Custom 3: 自定义预设槽位，可在浏览器插件页面管理。
+        - Custom 1 / Custom 2 / Custom 3: 自定义预设槽位，可在预设管理器页面管理。
         - Last Saved Preset: 自动跟随手动修改，修改会自动保存到其中。
-    - **自定义预设管理**: 在浏览器中打开插件页面并在网址末尾添加 `?edit=1`，即可创建、重命名或删除自定义预设。
+    - **自定义预设管理**: 在浏览器中打开插件页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
 - **模块设定**：
     - **Card Body Content**：选择在卡片主体显示的内容。
         - None: 不显示任何内容。即短卡片模式。
@@ -154,7 +154,7 @@
         - The Limit Does Not Exist / Daniel-like / Wild Dan (WIP): configurations for high-difficulty and niche play styles.
         - Custom 1 / Custom 2 / Custom 3: custom preset slots, manageable on the plugin page in a browser.
         - Last Saved Preset: automatically follows your manual changes; changes are saved into it automatically.
-    - **Custom preset management**: Open the plugin page in a browser and append `?edit=1` to the URL to create, rename or delete custom presets.
+    - **Custom preset management**: Open the plugin page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
 - **Module Settings**:
     - **Card Body Content**: Select what to display in the main body of the card.
         - None: Displays nothing. Short card mode.

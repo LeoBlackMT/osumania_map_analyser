@@ -459,6 +459,14 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
+	},
+	{
+		"uniqueID": "presetStorage",
+		"type": "text",
+		"title": "Preset Storage (Internal)",
+		"description": "Internal storage for custom presets (JSON). Do not edit unless you know what you are doing.",
+		"options": [],
+		"value": ""
 	},{
     	"uniqueID": "enableAlwaysShowLNDifficulty",
     	"type": "checkbox",

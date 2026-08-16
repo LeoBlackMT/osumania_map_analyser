@@ -1,0 +1,13 @@
+{
+  "name": "Vibro Player",
+  "description": "Etterna skillset bars with MSD, graph at top-right.",
+  "settings": {
+    "contentBar": "Etterna",
+    "srText": "MSD",
+    "diffText": "Graph",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "forceSunnyWindow": false,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

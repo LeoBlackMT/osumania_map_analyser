@@ -1,0 +1,14 @@
+{
+  "name": "Wild Dan (WIP)",
+  "description": "Difficulty graph, ReworkSR, Sunny estimation with extended range.",
+  "settings": {
+    "contentBar": "Graph",
+    "estimatorAlgorithm": "Sunny",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true,
+    "extendedEstimationRange": true
+  }
+}

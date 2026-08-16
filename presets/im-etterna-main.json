@@ -1,0 +1,12 @@
+{
+  "name": "For Etterna Player",
+  "description": "Etterna skillset bars in the card body with MSD on both capsules.",
+  "settings": {
+    "contentBar": "Etterna",
+    "srText": "MSD",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "forceSunnyWindow": false,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}
