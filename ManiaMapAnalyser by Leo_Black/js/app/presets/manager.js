@@ -18,6 +18,8 @@ import {
     createCustomPreset,
     updatePresetMetadata,
     deleteCustomPreset,
+    captureCurrentSettings,
+    initPresets,
 } from "./core.js";
 import {
     exportPresetToFile,
@@ -37,8 +39,6 @@ import {
 
 // System settings never shown in the editor form.
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
-// Settings shown but unchecked by default (connection parameter).
-const DEFAULT_UNCHECKED_KEYS = new Set(["wsEndpoint"]);
 const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 // ---------------------------------------------------------------------------
@@ -72,14 +72,6 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
-}
-
-function slugify(name) {
-    return String(name || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +179,11 @@ function buildLayout() {
         <button id="act-new" class="presets-btn" type="button">New</button>
         <button id="act-save" class="presets-btn presets-btn-primary" type="button">Save as Preset</button>
         <button id="act-apply" class="presets-btn presets-btn-primary" type="button">Apply Checked</button>
+        <button id="act-load-current" class="presets-btn" type="button">Load Current</button>
+        <span class="presets-actionbar-sep"></span>
+        <button id="act-select-all" class="presets-btn" type="button">Select All</button>
+        <button id="act-invert" class="presets-btn" type="button">Invert</button>
+        <button id="act-clear" class="presets-btn" type="button">Clear Selection</button>
         <span class="presets-actionbar-sep"></span>
         <button id="act-export-current" class="presets-btn" type="button">Export Current</button>
         <button id="act-export-all" class="presets-btn" type="button">Export All</button>
@@ -286,18 +283,45 @@ function wireActions(actionBar) {
         showToast("Checked settings applied and synced to tosu.", "success");
     });
 
+    actionBar.querySelector("#act-load-current").addEventListener("click", async () => {
+        const current = await captureCurrentSettings();
+        for (const [key, value] of Object.entries(current)) {
+            if (key in formValues) {
+                formValues[key] = value;
+            }
+        }
+        syncFormControls();
+        showToast("Form values loaded from the current overlay settings.", "success");
+    });
+
+    actionBar.querySelector("#act-select-all").addEventListener("click", () => {
+        selectAllCheckboxes(true);
+        showToast("All settings selected.", "info", 1800);
+    });
+
+    actionBar.querySelector("#act-invert").addEventListener("click", () => {
+        invertCheckboxes();
+        showToast("Selection inverted.", "info", 1800);
+    });
+
+    actionBar.querySelector("#act-clear").addEventListener("click", () => {
+        selectAllCheckboxes(false);
+        showToast("Selection cleared.", "info", 1800);
+    });
+
     actionBar.querySelector("#act-export-current").addEventListener("click", () => {
+        const name = metaNameInput.value.trim();
+        if (!PRESET_NAME_RE.test(name)) {
+            showToast("Enter a valid preset name first (letters, digits, _ or -; import needs it).", "error");
+            return;
+        }
         const snapshot = collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
             showToast("Nothing checked to export.", "error");
             return;
         }
-        exportCurrentToFile(
-            metaNameInput.value.trim(),
-            metaDescInput.value.trim(),
-            Number(metaVersionInput.value),
-            snapshot,
-        );
+        const version = Number(metaVersionInput.value);
+        exportCurrentToFile(name, metaDescInput.value.trim(), version, snapshot);
         showToast("Current editor state exported.", "success");
     });
 
@@ -336,7 +360,7 @@ function resetEditor() {
     metaVersionInput.value = "1";
     metaIdReadout.value = "";
     fillFormFromDefaults();
-    selectAllCheckboxes(true);
+    selectAllCheckboxes(false);
     highlightActiveRow(null);
 }
 
@@ -345,7 +369,7 @@ async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = fal
     metaNameInput.value = preset.name || "";
     metaDescInput.value = preset.description || "";
     metaVersionInput.value = String(preset.version || 1);
-    metaIdReadout.value = isBuiltin || isDefault ? "" : slugify(preset.name);
+    metaIdReadout.value = isBuiltin || isDefault ? "" : (preset.id || "");
 
     for (const key of Object.keys(formIncluded)) {
         formIncluded[key] = false;
@@ -421,18 +445,16 @@ function renderForm() {
     wrap.appendChild(formEl);
 
     let currentGroup = null;
+    let pendingHeader = null;
     for (const entry of entries) {
         if (EXCLUDED_KEYS.has(entry.uniqueID)) {
             continue;
         }
         if (entry.type === "header") {
-            currentGroup = document.createElement("div");
-            currentGroup.className = "presets-group";
-            const title = document.createElement("h2");
-            title.className = "presets-group-title";
-            title.textContent = entry.title;
-            currentGroup.appendChild(title);
-            formEl.appendChild(currentGroup);
+            // Groups are created lazily: a header with no following setting
+            // (e.g. Links, whose entries are all buttons) renders nothing.
+            currentGroup = null;
+            pendingHeader = entry;
             continue;
         }
         if (entry.type === "button") {
@@ -441,6 +463,13 @@ function renderForm() {
         if (!currentGroup) {
             currentGroup = document.createElement("div");
             currentGroup.className = "presets-group";
+            if (pendingHeader) {
+                const title = document.createElement("h2");
+                title.className = "presets-group-title";
+                title.textContent = pendingHeader.title;
+                currentGroup.appendChild(title);
+                pendingHeader = null;
+            }
             formEl.appendChild(currentGroup);
         }
         currentGroup.appendChild(buildSettingRow(entry));
@@ -450,7 +479,8 @@ function renderForm() {
 function buildSettingRow(entry) {
     const key = entry.uniqueID;
     formValues[key] = entry.value;
-    formIncluded[key] = !DEFAULT_UNCHECKED_KEYS.has(key);
+    // Default: nothing included — the user checks what they want to manage.
+    formIncluded[key] = false;
 
     const row = document.createElement("label");
     row.className = "presets-setting";
@@ -608,6 +638,21 @@ function selectAllCheckboxes(checked) {
         if (include) {
             include.checked = checked;
             formIncluded[row.dataset.presetKey] = checked;
+        }
+    }
+}
+
+function invertCheckboxes() {
+    if (!formEl) {
+        return;
+    }
+    const rows = formEl.querySelectorAll(".presets-setting");
+    for (const row of rows) {
+        const include = row.querySelector(".presets-setting-include");
+        if (include) {
+            const next = !include.checked;
+            include.checked = next;
+            formIncluded[row.dataset.presetKey] = next;
         }
     }
 }
@@ -791,9 +836,38 @@ function finishRename(row) {
     showToast("Preset renamed.", "success");
 }
 
+/** Loads any preset (Default / built-in / custom) into the editor. */
+async function loadPresetByName(name) {
+    if (name === "Default") {
+        const defaults = await buildDefaultSnapshot();
+        await loadPresetIntoEditor({
+            name: "Default",
+            description: "Factory default configuration.",
+            version: 1,
+            settings: defaults,
+        }, { isDefault: true });
+        return;
+    }
+    const builtin = getBuiltinPresets().find((preset) => preset.name === name);
+    if (builtin) {
+        const settings = getBuiltinSettings(builtin.id);
+        await loadPresetIntoEditor({ ...builtin, settings: settings || {} }, { isBuiltin: true });
+        return;
+    }
+    const custom = getCustomPresets().find((preset) => preset.name === name);
+    if (custom) {
+        await loadPresetIntoEditor(custom);
+    }
+}
+
 async function handleListClick(event) {
+    // Clicking anywhere on a row (not a button or input) loads it into the editor.
     const actionBtn = event.target.closest("[data-action]");
     if (!actionBtn) {
+        const row = event.target.closest(".presets-item");
+        if (row && row.dataset.presetName && !event.target.closest("input")) {
+            await loadPresetByName(row.dataset.presetName);
+        }
         return;
     }
     const row = actionBtn.closest(".presets-item");
@@ -804,26 +878,12 @@ async function handleListClick(event) {
 
     switch (actionBtn.dataset.action) {
         case "edit": {
-            if (name === "Default") {
-                const defaults = await buildDefaultSnapshot();
-                await loadPresetIntoEditor({ name: "Default", description: "Factory default configuration.", version: 1, settings: defaults }, { isDefault: true });
-                return;
-            }
-            const builtin = getBuiltinPresets().find((preset) => preset.name === name);
-            if (builtin) {
-                const settings = getBuiltinSettings(builtin.id);
-                await loadPresetIntoEditor({ ...builtin, settings: settings || {} }, { isBuiltin: true });
-                return;
-            }
-            const custom = getCustomPresets().find((preset) => preset.name === name);
-            if (custom) {
-                await loadPresetIntoEditor(custom);
-            }
-            break;
+            await loadPresetByName(name);
+            return;
         }
         case "apply": {
             if (name === AUTO_SAVE_PRESET_NAME) {
-                showToast("Last Saved Preset keeps following your manual changes.", "info");
+                showToast("LastSavedPreset keeps following your manual changes.", "info");
                 return;
             }
             const ok = await confirmDialog(`Apply preset "${name}" now?`, { title: "Apply preset" });
@@ -882,6 +942,10 @@ async function handleListClick(event) {
 // ---------------------------------------------------------------------------
 
 async function init() {
+    // Register the settings-stream listener and load the preset library.
+    // (index.html does this via index.js; the manager page must do it itself.)
+    initPresets();
+
     schema = await loadSettingsSchema();
     entries = schema.entries;
 

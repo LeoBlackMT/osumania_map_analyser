@@ -1,6 +1,6 @@
 {
   "id": "jack-player",
-  "name": "Jack Player",
+  "name": "JackPlayer",
   "description": "Difficulty graph, MSD on the left, estimated difficulty at top-right.",
   "version": 1,
   "settings": {

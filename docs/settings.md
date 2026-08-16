@@ -7,12 +7,12 @@
 - **预设（Presets）**：
     - **Preset**: 选择预设以一键应用下方所有设置。
         - Default: 恢复默认配置。
-        - mini: 极简模式（仅显示星数，不显示卡片主体内容等）。
-        - For osu Player / For Etterna Player / For Interlude Player: 面向不同玩家的推荐配置。
-        - Pattern Focus / Full Overview / Vibro Player / Jack Player: 面向不同游玩场景的配置。
-        - The Limit Does Not Exist / Daniel-like / Wild Dan (WIP): 面向高难与特殊玩法的配置。
-        - Custom 1 / Custom 2 / Custom 3: 自定义预设槽位，可在预设管理器页面管理。
-        - Last Saved Preset: 自动跟随手动修改，修改会自动保存到其中。
+        - Mini: 极简模式（不显示卡片主体内容）。
+        - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: 面向不同玩家的推荐配置。
+        - PatternFocus / FullOverview / VibroPlayer / JackPlayer: 面向不同游玩场景的配置。
+        - TheLimitDoesNotExist / DanielLike / WildDanWIP: 面向高难与特殊玩法的配置。
+        - Custom1 / Custom2 / Custom3: 自定义预设槽位，可在预设管理器页面管理。
+        - LastSavedPreset: 自动跟随手动修改，修改会自动保存到其中。
     - **自定义预设管理**: 在浏览器中打开插件页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
 - **模块设定**：
     - **Card Body Content**：选择在卡片主体显示的内容。
@@ -150,12 +150,12 @@
 - **Presets**:
     - **Preset**: Select a preset to apply all settings below at once.
         - Default: Reset to the factory default configuration.
-        - mini: Minimal mode (star rating only; no card body content, etc.).
-        - For osu Player / For Etterna Player / For Interlude Player: recommended configurations for different player types.
-        - Pattern Focus / Full Overview / Vibro Player / Jack Player: configurations for different play styles.
-        - The Limit Does Not Exist / Daniel-like / Wild Dan (WIP): configurations for high-difficulty and niche play styles.
-        - Custom 1 / Custom 2 / Custom 3: custom preset slots, manageable on the plugin page in a browser.
-        - Last Saved Preset: automatically follows your manual changes; changes are saved into it automatically.
+        - Mini: Minimal mode (no card body content).
+        - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: recommended configurations for different player types.
+        - PatternFocus / FullOverview / VibroPlayer / JackPlayer: configurations for different play styles.
+        - TheLimitDoesNotExist / DanielLike / WildDanWIP: configurations for high-difficulty and niche play styles.
+        - Custom1 / Custom2 / Custom3: custom preset slots, manageable on the plugin page in a browser.
+        - LastSavedPreset: automatically follows your manual changes; changes are saved into it automatically.
     - **Custom preset management**: Open the plugin page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
 - **Module Settings**:
     - **Card Body Content**: Select what to display in the main body of the card.
@@ -240,7 +240,7 @@
         - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
         - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
         - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
-    - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
+    - **Pause Detection Threshold**: Set the Minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.
     - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation

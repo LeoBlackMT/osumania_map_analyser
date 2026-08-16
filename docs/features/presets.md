@@ -11,24 +11,24 @@
 - **Default 预设**：不落盘（SYSTEM 分类首行），应用时由 `settings.json` 的 `value` 字段动态生成全量出厂快照（与 config.js defaults 对齐）。
 - **预设结构**：`{id, name, description, version, settings}`——`id` 由 name 自动生成（slug，可省略）；`name` 限英文字母/数字/`_`/`-`（≤40 字符，系统槽 "Custom N" 豁免）；`version` 为纯数字（越大越新）。
 - **自定义预设**：用户在 presets.html 管理器中创建，支持**部分快照**（编辑时取消勾选的字段不纳入，应用时保留原状态）。
-- **Last Saved Preset 自动跟随**（Auto 模式）：未锚定自定义预设时，用户在 tosu 设置页的手动修改自动存入该容器；它是跟随标记，**不是**可应用的快照。
-- **锚定行为**：选中自定义预设后手动修改 → 自动覆盖该预设；选中内置预设后手动修改 → 修改进入 Last Saved Preset。
-- **固定锚定槽**：Custom 1 / Custom 2 / Custom 3 首次加载自动创建（物化当前配置），不可重命名/删除。
+- **LastSavedPreset 自动跟随**（Auto 模式）：未锚定自定义预设时，用户在 tosu 设置页的手动修改自动存入该容器；它是跟随标记，**不是**可应用的快照。
+- **锚定行为**：选中自定义预设后手动修改 → 自动覆盖该预设；选中内置预设后手动修改 → 修改进入 LastSavedPreset。
+- **固定锚定槽**：Custom1 / Custom2 / Custom3 首次加载自动创建（物化当前配置），不可重命名/删除。
 - **导出/导入**：单个预设、当前编辑态或全库导出为 json 文件（`mma-preset` / `mma-preset-collection` 格式 v2，含 metadata；导入兼容 v1 旧格式）。
 
 ## 使用方法
 
 ### tosu 设置页（dashboard）
 
-- `preset` 设置项（options，位于 Links 分组之后）选项固定为：Default + 11 个内置预设 + Custom 1-3 + Last Saved Preset。
-- 选择任一预设立即应用并写回 tosu；选择 Last Saved Preset 进入跟随模式。
+- `preset` 设置项（options，位于 Links 分组之后）选项固定为：Default + 11 个内置预设 + Custom1-3 + LastSavedPreset。
+- 选择任一预设立即应用并写回 tosu；选择 LastSavedPreset 进入跟随模式。
 - **自定义预设（任意命名）不进 tosu 下拉**，统一在 presets.html 管理。
 
 ### 预设管理器（浏览器，`presets.html`）
 
 - 打开 `http://<host>:<port>/<插件目录名>/presets.html`（默认 `http://localhost:24050/<插件目录名>/presets.html`）。
 - **顶部操作栏**（独立、sticky）：New（清空编辑器，需确认）、Save as Preset（保存/覆盖，需确认）、Apply Checked（应用勾选字段，需确认）、Export Current（导出当前编辑态）、Export All、Import。
-- **左侧列表**（分类）：SYSTEM 分类 = Default（首行，动态出厂快照）+ 11 个内置预设 + Last Saved Preset（只读行）；My Presets = 自定义预设（Custom 1-3 固定槽仅 Edit/Apply/Export）。每行按钮：Edit（加载到编辑区并高亮）、Apply（一键应用，需确认）、自定义行另有 Rename/Delete/Export。
+- **左侧列表**（分类）：SYSTEM 分类 = Default（首行，动态出厂快照）+ 11 个内置预设 + LastSavedPreset（只读行）；My Presets = 自定义预设（Custom1-3 固定槽仅 Edit/Apply/Export）。每行按钮：Edit（加载到编辑区并高亮）、Apply（一键应用，需确认）、自定义行另有 Rename/Delete/Export。
 - **右侧编辑区**：Preset Info 面板（Name/Description/Version 可编辑，ID 自动生成只读）+ 自动生成的设置表单（来自 settings.json，header 分组；`preset`/`presetStorage` 系统设置排除不显示，`wsEndpoint` 默认不勾选）。
 - **反馈**：所有操作结果通过右上角 toast 通知（自动消失）；破坏性操作（应用/删除/覆盖/导入/清空）均弹窗二次确认。
 
@@ -60,7 +60,7 @@ tosu WebSocket 设置广播
   → 首包：记录基线 lastValues + 从 presetStorage 载入自定义预设库 + 恢复激活预设
   → 后续包快照 diff（排除 wsEndpoint / presetStorage）：
       ├─ preset 值变化（picker 移动）且非写回 echo → 应用该预设
-      ├─ 其他键变化（手动修改）且非写回 echo → 自动保存（锚定自定义预设则覆盖它，否则写 Last Saved Preset）
+      ├─ 其他键变化（手动修改）且非写回 echo → 自动保存（锚定自定义预设则覆盖它，否则写 LastSavedPreset）
       └─ presetStorage 变化 → 同步库（跨页面）
   → applySnapshot：逐键调 applier，按 SETTING_RECOMPUTE_KEYS / SETTING_CACHE_KEYS
     决定 scheduleRecompute / clearResultCache（部分快照：缺键跳过 = 保留当前值）
@@ -71,7 +71,7 @@ tosu WebSocket 设置广播
 
 - 自定义预设库序列化后存入 tosu 设置项 `presetStorage`（text，位于 Debug Options 分组，values.json 中）。
 - 随实例设置转移（换设备拷贝 tosu settings 目录即可）、随 getSettings 广播到达**所有页面**（包括游戏内 overlay，解决 127.0.0.1/localhost origin 隔离问题）、插件更新/清浏览器缓存不丢。
-- localStorage（`mma.presets.custom.v1`）仅作缓存；首次加载检测到旧库自动迁移（含旧 "Auto" 容器改名 "Last Saved Preset"）。
+- localStorage（`mma.presets.custom.v1`）仅作缓存；首次加载检测到旧库自动迁移（含旧 "Auto" 容器改名 "LastSavedPreset"）。
 - `presetStorage` 的写回不参与 preset 写回去重（库变更总是写）。
 
 ### echo 防护与跨页面协调

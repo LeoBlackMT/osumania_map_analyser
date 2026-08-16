@@ -42,11 +42,11 @@
 
 - **Default**：恢复出厂设置。应用后所有设置回到插件默认值。
 - 11 个内置预设，例如：
-  - **mini**：极简模式，只显示星数。
-  - **For osu Player / For Etterna Player / For Interlude Player**：面向不同玩家的推荐配置。
-  - **Pattern Focus / Full Overview / Vibro Player / Jack Player**：面向不同游玩场景。
-  - **The Limit Does Not Exist / Daniel-like / Wild Dan (WIP)**：面向高难与特殊玩法。
-- **Last Saved Preset**（只读行）：它不是可应用的预设，而是"自动跟随"标记——选择它之后，你在 tosu 设置页手动修改的设置会自动保存到这里，永远保留你最后一次的手动配置。
+  - **Mini**：极简模式，只显示星数。
+  - **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer**：面向不同玩家的推荐配置。
+  - **PatternFocus / FullOverview / VibroPlayer / JackPlayer**：面向不同游玩场景。
+  - **TheLimitDoesNotExist / DanielLike / WildDanWIP**：面向高难与特殊玩法。
+- **LastSavedPreset**（只读行）：它不是可应用的预设，而是"自动跟随"标记——选择它之后，你在 tosu 设置页手动修改的设置会自动保存到这里，永远保留你最后一次的手动配置。
 
 每个预设行都有按钮：
 
@@ -62,7 +62,7 @@
 
 ### My Presets（我的预设）
 
-你创建的预设都在这里。首次使用时会自动创建 **Custom 1 / Custom 2 / Custom 3** 三个固定槽位（它们不可以重命名或删除，但可以应用和覆盖保存内容）。之后你可以创建任意多个自定义预设。
+你创建的预设都在这里。首次使用时会自动创建 **Custom1 / Custom2 / Custom3** 三个固定槽位（它们不可以重命名或删除，但可以应用和覆盖保存内容）。之后你可以创建任意多个自定义预设。
 
 ## 5. 右侧编辑区详解
 
@@ -118,9 +118,9 @@ A: 自定义预设存在 tosu 的设置文件里（`presetStorage` 设置项）�
 A: 请确认 tosu 正在运行、且浏览器访问的端口与 tosu 一致。应用成功后页面右上角会弹出绿色提示。
 
 **Q: 为什么我的预设名保存失败？**
-A: 名字只能包含英文字母、数字、`_` 和 `-`（最长 40 字符），且不能与系统预设重名，不能叫 `Custom` 或 `Last Saved Preset`。
+A: 名字只能包含英文字母、数字、`_` 和 `-`（最长 40 字符），且不能与系统预设重名，不能叫 `Custom` 或 `LastSavedPreset`。
 
-**Q: Custom 1/2/3 能删除吗？**
+**Q: Custom1/2/3 能删除吗？**
 A: 这三个是固定槽位，不能删除/重命名，但可以随时把新配置保存进去覆盖内容。
 
 **Q: 导出的文件能直接改吗？**
@@ -166,8 +166,8 @@ The manager has three parts:
 Built into the plugin and **cannot be deleted**.
 
 - **Default**: factory reset — applies the plugin's default values to everything.
-- 11 built-in presets, e.g. **mini** (star rating only), **For osu Player / For Etterna Player / For Interlude Player** (recommended configs per player type), **Pattern Focus / Full Overview / Vibro Player / Jack Player** (per play style), **The Limit Does Not Exist / Daniel-like / Wild Dan (WIP)** (high-difficulty / niche).
-- **Last Saved Preset** (read-only row): not an applicable preset but a "follow mode" marker — while selected, your manual changes in the tosu settings page are saved into it automatically, keeping your latest manual configuration.
+- 11 built-in presets, e.g. **Mini** (star rating only), **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer** (recommended configs per player type), **PatternFocus / FullOverview / VibroPlayer / JackPlayer** (per play style), **TheLimitDoesNotExist / DanielLike / WildDanWIP** (high-difficulty / niche).
+- **LastSavedPreset** (read-only row): not an applicable preset but a "follow mode" marker — while selected, your manual changes in the tosu settings page are saved into it automatically, keeping your latest manual configuration.
 
 Buttons on each row:
 
@@ -183,7 +183,7 @@ The **SYSTEM** badge marks system presets; a `v1`-style label next to the name i
 
 ### My Presets
 
-Your own presets. On first use the plugin auto-creates three fixed slots **Custom 1 / Custom 2 / Custom 3** (they cannot be renamed or deleted, but their content can be overwritten). After that you can create unlimited custom presets.
+Your own presets. On first use the plugin auto-creates three fixed slots **Custom1 / Custom2 / Custom3** (they cannot be renamed or deleted, but their content can be overwritten). After that you can create unlimited custom presets.
 
 ## 5. The editor in detail
 
@@ -237,9 +237,9 @@ A: Custom presets live in tosu's settings file (the `presetStorage` setting), in
 A: Make sure tosu is running and the port matches. A green toast appears in the top-right corner after a successful apply.
 
 **Q: Why can't I save my preset name?**
-A: Names may contain only English letters, digits, `_` and `-` (max 40 chars), must not clash with system presets, and must not be `Custom` or `Last Saved Preset`.
+A: Names may contain only English letters, digits, `_` and `-` (max 40 chars), must not clash with system presets, and must not be `Custom` or `LastSavedPreset`.
 
-**Q: Can I delete Custom 1/2/3?**
+**Q: Can I delete Custom1/2/3?**
 A: They are fixed slots — not deletable/renamable, but you can overwrite their content anytime.
 
 **Q: Can I edit an exported file?**

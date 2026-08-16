@@ -13,9 +13,9 @@ export const CUSTOM_PRESETS_KEY = "mma.presets.custom.v1";
 export const ACTIVE_PRESET_KEY = "mma.presets.active.v1";
 const LAST_WRITTEN_KEY = "mma.presets.lastWritten.v1";
 const LEGACY_AUTO_NAME = "Auto";
-export const AUTO_SAVE_PRESET_NAME = "Last Saved Preset";
+export const AUTO_SAVE_PRESET_NAME = "LastSavedPreset";
 export const PRESET_STORAGE_SETTING = "presetStorage";
-export const DEFAULT_SLOT_NAMES = ["Custom 1", "Custom 2", "Custom 3"];
+export const DEFAULT_SLOT_NAMES = ["Custom1", "Custom2", "Custom3"];
 
 // ---------------------------------------------------------------------------
 // localStorage helpers
@@ -99,7 +99,7 @@ export function cacheLibrary(presets) {
  * Loads the library with migration:
  * 1. presetStorage payload (authoritative) if present;
  * 2. otherwise the localStorage cache;
- * 3. legacy "Auto" container is renamed to "Last Saved Preset".
+ * 3. legacy "Auto" container is renamed to "LastSavedPreset".
  */
 export function loadLibrary(payload) {
     let presets = libraryFromPayload(payload);

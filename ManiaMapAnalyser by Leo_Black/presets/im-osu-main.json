@@ -1,6 +1,6 @@
 {
   "id": "im-osu-main",
-  "name": "For osu Player",
+  "name": "ForOsuPlayer",
   "description": "Difficulty graph in the card body, pattern in the top-left capsule, estimated difficulty at top-right.",
   "version": 1,
   "settings": {

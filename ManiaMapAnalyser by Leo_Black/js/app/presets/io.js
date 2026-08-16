@@ -9,10 +9,13 @@
 import {
     getCustomPresets,
     createCustomPreset,
+    slugify,
 } from "./core.js";
+import { AUTO_SAVE_PRESET_NAME } from "./storage.js";
 
 const FORMAT_SINGLE = "mma-preset";
 const FORMAT_COLLECTION = "mma-preset-collection";
+const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 function safeFileName(name) {
     return String(name || "preset")
@@ -68,7 +71,7 @@ export function exportLibraryToFile() {
         format: FORMAT_COLLECTION,
         version: 2,
         presets: getCustomPresets()
-            .filter((preset) => preset.name !== "Last Saved Preset")
+            .filter((preset) => preset.name !== AUTO_SAVE_PRESET_NAME)
             .map((preset) => ({
                 name: preset.name,
                 description: preset.description || "",
@@ -86,9 +89,15 @@ function importSingle(name, description, version, settings) {
     if (!cleanName || !settings || typeof settings !== "object") {
         throw new Error("Invalid preset: missing name or settings.");
     }
-    const created = createCustomPreset(cleanName, settings, { description, version });
+    // v1 files may carry names with spaces/symbols — slugify them on import so
+    // the preset stays usable instead of being rejected.
+    const finalName = PRESET_NAME_RE.test(cleanName) ? cleanName : slugify(cleanName);
+    if (!finalName) {
+        throw new Error(`Preset "${cleanName}" has an unusable name.`);
+    }
+    const created = createCustomPreset(finalName, settings, { description, version });
     if (!created) {
-        throw new Error(`Preset "${cleanName}" could not be created (reserved, invalid name, or duplicate system name).`);
+        throw new Error(`Preset "${finalName}" could not be created (reserved or duplicate system name).`);
     }
     return created.name;
 }

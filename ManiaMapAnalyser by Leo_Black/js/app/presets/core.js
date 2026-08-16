@@ -141,6 +141,11 @@ export async function applySnapshot(snapshot) {
     let cacheNeeded = false;
 
     for (const [key, value] of Object.entries(snapshot)) {
+        // wsEndpoint is a connection parameter — applying a preset must never
+        // drop or change the socket connection.
+        if (key === "wsEndpoint") {
+            continue;
+        }
         const applier = appliers.get(key);
         if (!applier) {
             continue;
@@ -243,7 +248,7 @@ export async function applyPresetByName(name) {
 // ---------------------------------------------------------------------------
 
 // User preset names: English letters, digits, underscore, hyphen, 1-40 chars.
-// Fixed anchor slots ("Custom 1" etc.) are system-created and exempt.
+// Fixed anchor slots ("Custom1" etc.) are system-created and exempt.
 const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 /** Converts a preset name into a stable slug id (lowercase, - separators). */
@@ -283,7 +288,7 @@ export function createCustomPreset(name, snapshot, meta = {}) {
         existing.updatedAt = Date.now();
     } else {
         const preset = {
-            id: slugify(cleanName),
+            id: uniquePresetId(cleanName),
             name: cleanName,
             description: String(meta.description ?? ""),
             version,
@@ -296,6 +301,20 @@ export function createCustomPreset(name, snapshot, meta = {}) {
     persistLibrary();
     notifyChanged();
     return existing || customPresets[customPresets.length - 1];
+}
+
+/** Generates a slug id that is unique within the custom library. */
+function uniquePresetId(name, excludeId = null) {
+    const taken = (id) => id !== excludeId && customPresets.some((preset) => preset.id === id);
+    const base = slugify(name);
+    if (!taken(base)) {
+        return base;
+    }
+    let suffix = 2;
+    while (taken(`${base}-${suffix}`)) {
+        suffix += 1;
+    }
+    return `${base}-${suffix}`;
 }
 
 /** Normalizes a version value to a positive integer (default 1). */
@@ -326,7 +345,7 @@ export function updatePresetMetadata(id, meta = {}) {
             return false;
         }
         preset.name = cleanName;
-        preset.id = slugify(cleanName);
+        preset.id = uniquePresetId(cleanName, id);
     }
     if (meta.description !== undefined) {
         preset.description = String(meta.description ?? "");
@@ -364,12 +383,16 @@ export function deleteCustomPreset(id) {
     return true;
 }
 
-/** Ensures the default "Custom 1..N" anchor slots exist. */
+/** Ensures the default "Custom1..N" anchor slots exist. */
 export async function ensureDefaultCustomSlots() {
     const snapshot = await captureCurrentSettings();
     for (const name of DEFAULT_SLOT_NAMES) {
         const existing = customPresets.some((preset) => preset.name === name);
-        if (!existing && createCustomPreset(name, snapshot) === null) {
+        if (!existing && createCustomPreset(
+            name,
+            snapshot,
+            { description: "Fixed slot — Apply captures the current configuration." },
+        ) === null) {
             break;
         }
     }
@@ -381,7 +404,7 @@ export async function ensureDefaultCustomSlots() {
 
 /**
  * Auto-save the current configuration after a dashboard settings change:
- * anchored custom preset -> overwrite it; otherwise -> Last Saved Preset.
+ * anchored custom preset -> overwrite it; otherwise -> LastSavedPreset.
  */
 export async function autoSaveCurrentPreset() {
     // The broadcast payload (lastValues) is the ONLY source: every page of
@@ -406,7 +429,7 @@ export async function autoSaveCurrentPreset() {
     await saveToLastSavedPreset();
 }
 
-/** Overwrites ONLY the "Last Saved Preset" container and moves the picker there. */
+/** Overwrites ONLY the "LastSavedPreset" container and moves the picker there. */
 export async function saveToLastSavedPreset() {
     const snapshot = { ...lastValues };
     updateAutoContainer(snapshot);
@@ -421,7 +444,7 @@ export async function saveToLastSavedPreset() {
     lastValues = { ...lastValues, ...snapshot, preset: AUTO_SAVE_PRESET_NAME };
 }
 
-/** Creates or updates the fixed "Last Saved Preset" container in memory. */
+/** Creates or updates the fixed "LastSavedPreset" container in memory. */
 function updateAutoContainer(snapshot) {
     const auto = customPresets.find((preset) => preset.name === AUTO_SAVE_PRESET_NAME);
     if (auto) {
@@ -487,10 +510,12 @@ function writeBackToTosu(presetName, snapshot) {
     if (!folderName) {
         return;
     }
-    const values = Object.keys(snapshot).map((key) => ({
-        uniqueID: key,
-        value: snapshot[key],
-    }));
+    const values = Object.keys(snapshot)
+        .filter((key) => key !== "wsEndpoint")
+        .map((key) => ({
+            uniqueID: key,
+            value: snapshot[key],
+        }));
     values.push({ uniqueID: "preset", value: presetName });
 
     fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
@@ -552,7 +577,7 @@ function snapshotOf(payload) {
         }
         return out;
     }
-    return { ...(payload || {}) };
+    return { ...payload };
 }
 
 function hasKeyChanged(prev, next, key) {
@@ -573,6 +598,8 @@ async function handleSettingsPacket(packet) {
         lastValues = snapshotOf(payload);
         customPresets = loadLibrary(payload);
         cacheLibrary(customPresets);
+        // Always notify: the UI may have rendered before this first batch.
+        notifyChanged();
 
         if (presetValue && presetValue !== currentPreset) {
             if (presetValue === "Default" || !(await applyPresetByName(presetValue))) {
