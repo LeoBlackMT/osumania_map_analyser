@@ -33,13 +33,12 @@ import {
     AUTO_SAVE_PRESET_NAME,
     DEFAULT_SLOT_NAMES,
 } from "./storage.js";
+import { createForm } from "./form.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-// System settings never shown in the editor form.
-const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 // ---------------------------------------------------------------------------
@@ -61,6 +60,9 @@ let metaVersionInput = null;
 let metaIdReadout = null;
 let toastRoot = null;
 let modalRoot = null;
+
+// Form API (created in init() once schema is loaded).
+let form = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -285,7 +287,7 @@ function wireActions(actionBar) {
     actionBar.querySelector("#act-save").addEventListener("click", guarded(() => saveCurrentPreset()));
 
     actionBar.querySelector("#act-apply").addEventListener("click", guarded(async () => {
-        const snapshot = collectCheckedSnapshot();
+        const snapshot = form.collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
             showToast("Nothing is checked to apply.", "error");
             return;
@@ -308,22 +310,22 @@ function wireActions(actionBar) {
                 formValues[key] = value;
             }
         }
-        syncFormControls();
+        form.syncFormControls();
         showToast("Form values loaded from the current overlay settings.", "success");
     }));
 
     actionBar.querySelector("#act-select-all").addEventListener("click", () => {
-        selectAllCheckboxes(true);
+        form.selectAllCheckboxes(true);
         showToast("All settings selected.", "info", 1800);
     });
 
     actionBar.querySelector("#act-invert").addEventListener("click", () => {
-        invertCheckboxes();
+        form.invertCheckboxes();
         showToast("Selection inverted.", "info", 1800);
     });
 
     actionBar.querySelector("#act-clear").addEventListener("click", () => {
-        selectAllCheckboxes(false);
+        form.selectAllCheckboxes(false);
         showToast("Selection cleared.", "info", 1800);
     });
 
@@ -333,7 +335,7 @@ function wireActions(actionBar) {
             showToast("Enter a valid preset name first (letters, digits, _ or -; import needs it).", "error");
             return;
         }
-        const snapshot = collectCheckedSnapshot();
+        const snapshot = form.collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
             showToast("Nothing checked to export.", "error");
             return;
@@ -377,8 +379,8 @@ function resetEditor() {
     metaDescInput.value = "";
     metaVersionInput.value = "1";
     metaIdReadout.value = "";
-    fillFormFromDefaults();
-    selectAllCheckboxes(false);
+    form.fillFormFromDefaults();
+    form.selectAllCheckboxes(false);
     highlightActiveRow(null);
 }
 
@@ -398,7 +400,7 @@ async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = fal
             formIncluded[key] = true;
         }
     }
-    syncFormControls();
+    form.syncFormControls();
     syncIncludeCheckboxes();
     highlightActiveRow(preset.name);
     showToast(`"${preset.name}" loaded into the editor. Uncheck fields to exclude them.`, "info", 2500);
@@ -430,7 +432,7 @@ async function saveCurrentPreset() {
     }
     const description = metaDescInput.value.trim();
     const version = Number(metaVersionInput.value);
-    const snapshot = collectCheckedSnapshot();
+    const snapshot = form.collectCheckedSnapshot();
     if (Object.keys(snapshot).length === 0) {
         showToast("Nothing is checked — the preset would be empty.", "error");
         return;
@@ -464,240 +466,6 @@ async function saveCurrentPreset() {
     editingId = created.id;
     metaIdReadout.value = created.id;
     showToast(`Preset "${name}" saved.`, "success");
-}
-
-// ---------------------------------------------------------------------------
-// Form (self-extending, generated from settings.json)
-// ---------------------------------------------------------------------------
-
-function renderForm() {
-    const wrap = document.getElementById("presets-app").querySelector(".presets-form-scroll");
-    wrap.textContent = "";
-    formEl = document.createElement("div");
-    formEl.className = "presets-form";
-    wrap.appendChild(formEl);
-
-    let currentGroup = null;
-    let pendingHeader = null;
-    for (const entry of entries) {
-        if (EXCLUDED_KEYS.has(entry.uniqueID)) {
-            continue;
-        }
-        if (entry.type === "header") {
-            // Groups are created lazily: a header with no following setting
-            // (e.g. Links, whose entries are all buttons) renders nothing.
-            currentGroup = null;
-            pendingHeader = entry;
-            continue;
-        }
-        if (entry.type === "button") {
-            continue;
-        }
-        if (!currentGroup) {
-            currentGroup = document.createElement("div");
-            currentGroup.className = "presets-group";
-            if (pendingHeader) {
-                const title = document.createElement("h2");
-                title.className = "presets-group-title";
-                title.textContent = pendingHeader.title;
-                currentGroup.appendChild(title);
-                pendingHeader = null;
-            }
-            formEl.appendChild(currentGroup);
-        }
-        currentGroup.appendChild(buildSettingRow(entry));
-    }
-}
-
-function buildSettingRow(entry) {
-    const key = entry.uniqueID;
-    formValues[key] = entry.value;
-    // Default: nothing included — the user checks what they want to manage.
-    formIncluded[key] = false;
-
-    const row = document.createElement("label");
-    row.className = "presets-setting";
-    row.dataset.presetKey = key;
-
-    const include = document.createElement("input");
-    include.type = "checkbox";
-    include.className = "presets-setting-include";
-    include.checked = formIncluded[key];
-    include.addEventListener("change", () => {
-        formIncluded[key] = include.checked;
-    });
-
-    const info = document.createElement("span");
-    info.className = "presets-setting-info";
-    info.innerHTML = `<span class="presets-setting-title">${escapeHtml(entry.title)}</span>`
-        + (entry.description ? `<span class="presets-setting-desc">${escapeHtml(entry.description)}</span>` : "");
-
-    const control = buildControl(entry, key);
-
-    row.appendChild(include);
-    row.appendChild(info);
-    row.appendChild(control);
-    return row;
-}
-
-function buildControl(entry, key) {
-    const control = document.createElement("span");
-    control.className = "presets-setting-control";
-    const current = formValues[key];
-
-    switch (entry.type) {
-        case "checkbox": {
-            const input = document.createElement("input");
-            input.type = "checkbox";
-            input.dataset.presetKey = key;
-            input.checked = current === true;
-            input.addEventListener("change", () => {
-                formValues[key] = input.checked;
-            });
-            control.appendChild(input);
-            break;
-        }
-        case "options": {
-            const select = document.createElement("select");
-            select.dataset.presetKey = key;
-            for (const option of entry.options || []) {
-                const optionEl = document.createElement("option");
-                optionEl.value = option;
-                optionEl.textContent = option;
-                if (option === current) {
-                    optionEl.selected = true;
-                }
-                select.appendChild(optionEl);
-            }
-            select.addEventListener("change", () => {
-                formValues[key] = select.value;
-            });
-            control.appendChild(select);
-            break;
-        }
-        case "color": {
-            const input = document.createElement("input");
-            input.type = "color";
-            input.dataset.presetKey = key;
-            input.value = String(current || "#000000");
-            input.addEventListener("input", () => {
-                formValues[key] = input.value;
-            });
-            control.appendChild(input);
-            break;
-        }
-        case "number": {
-            const input = document.createElement("input");
-            input.type = "number";
-            input.dataset.presetKey = key;
-            input.value = String(current ?? "");
-            input.addEventListener("input", () => {
-                formValues[key] = Number.isFinite(Number(input.value)) ? Number(input.value) : input.value;
-            });
-            control.appendChild(input);
-            break;
-        }
-        case "commands": {
-            const readout = document.createElement("span");
-            readout.className = "presets-setting-readonly";
-            readout.textContent = `[commands] ${JSON.stringify(current ?? [])}`;
-            control.appendChild(readout);
-            break;
-        }
-        default: {
-            const input = document.createElement("input");
-            input.type = "text";
-            input.dataset.presetKey = key;
-            input.value = String(current ?? "");
-            input.addEventListener("input", () => {
-                formValues[key] = input.value;
-            });
-            control.appendChild(input);
-        }
-    }
-    return control;
-}
-
-function syncFormControls() {
-    if (!formEl) {
-        return;
-    }
-    const rows = formEl.querySelectorAll(".presets-setting");
-    for (const row of rows) {
-        const key = row.dataset.presetKey;
-        if (!key || !(key in formValues)) {
-            continue;
-        }
-        const control = row.querySelector(".presets-setting-control");
-        const input = control && control.firstElementChild;
-        if (!input || document.activeElement === input) {
-            continue;
-        }
-        const value = formValues[key];
-        if (input.tagName === "SELECT") {
-            input.value = value ?? "";
-        } else if (input.type === "checkbox") {
-            input.checked = value === true;
-        } else if (input.type === "color") {
-            input.value = String(value || "#000000");
-        } else if (input.type === "number") {
-            input.value = String(value ?? "");
-        } else if (input.type === "text") {
-            input.value = String(value ?? "");
-        }
-    }
-}
-
-function fillFormFromDefaults() {
-    for (const entry of entries) {
-        if (EXCLUDED_KEYS.has(entry.uniqueID) || entry.type === "header" || entry.type === "button") {
-            continue;
-        }
-        if (!(entry.uniqueID in formValues)) {
-            continue;
-        }
-        formValues[entry.uniqueID] = entry.value;
-    }
-    syncFormControls();
-}
-
-function selectAllCheckboxes(checked) {
-    if (!formEl) {
-        return;
-    }
-    const rows = formEl.querySelectorAll(".presets-setting");
-    for (const row of rows) {
-        const include = row.querySelector(".presets-setting-include");
-        if (include) {
-            include.checked = checked;
-            formIncluded[row.dataset.presetKey] = checked;
-        }
-    }
-}
-
-function invertCheckboxes() {
-    if (!formEl) {
-        return;
-    }
-    const rows = formEl.querySelectorAll(".presets-setting");
-    for (const row of rows) {
-        const include = row.querySelector(".presets-setting-include");
-        if (include) {
-            const next = !include.checked;
-            include.checked = next;
-            formIncluded[row.dataset.presetKey] = next;
-        }
-    }
-}
-
-function collectCheckedSnapshot() {
-    const snapshot = {};
-    for (const [key, included] of Object.entries(formIncluded)) {
-        if (included && key in formValues) {
-            snapshot[key] = formValues[key];
-        }
-    }
-    return snapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -989,8 +757,18 @@ async function init() {
 
     injectStylesheet();
     buildLayout();
+
+    form = createForm({
+        entries,
+        formValues,
+        formIncluded,
+        getFormEl: () => formEl,
+        setFormEl: (el) => { formEl = el; },
+        escapeHtml,
+    });
+
     renderList();
-    renderForm();
+    form.renderForm();
 
     listEl.addEventListener("click", guarded(handleListClick));
     onPresetsChanged(() => renderList());
@@ -1008,7 +786,7 @@ async function init() {
                 formValues[key] = payload[key];
             }
         }
-        syncFormControls();
+        form.form.syncFormControls();
     });
 }
 

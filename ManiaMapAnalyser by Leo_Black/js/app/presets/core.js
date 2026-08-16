@@ -5,16 +5,9 @@
  */
 
 import { socket, state } from "../appContext.js";
-import {
-    SETTING_RECOMPUTE_KEYS,
-    SETTING_CACHE_KEYS,
-    getCounterPathForCommand,
-} from "../settings.js";
-import { clearResultCache } from "../resultCache.js";
-import { scheduleRecompute } from "../scheduler.js";
+import { getCounterPathForCommand } from "../settings.js";
 import {
     loadSettingsSchema,
-    getterFor,
     buildDefaultSnapshot,
 } from "./schema.js";
 import {
@@ -22,7 +15,6 @@ import {
     DEFAULT_SLOT_NAMES,
     PRESET_STORAGE_SETTING,
     SYSTEM_SNAPSHOT_KEYS,
-    parseStore,
     storeFromPayload,
     rawStoreFingerprint,
     serializeStore,
@@ -31,6 +23,24 @@ import {
     recentlyWritten,
     markWritten,
 } from "./storage.js";
+import {
+    captureCurrentSettings,
+    applySnapshot,
+    snapshotOf,
+    stripSystemKeys,
+    hasKeyChanged,
+} from "./snapshot.js";
+import {
+    getBuiltinPresets,
+    getBuiltinSettings,
+    findBuiltinPresetByName,
+    loadBuiltinPresets,
+} from "./builtin.js";
+
+// Re-export split-out APIs so existing importers (manager.js etc.) keep working
+// unchanged after the module split.
+export { getBuiltinPresets, getBuiltinSettings } from "./builtin.js";
+export { captureCurrentSettings, applySnapshot } from "./snapshot.js";
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -41,8 +51,6 @@ let lastWritten = []; // broadcast-shared write-back dedup queue
 let currentPreset = "Default";
 let lastValues = null;
 let initialized = false;
-let builtinPresets = []; // [{ id, name, description, file }]
-let builtinCache = new Map(); // id -> settings object
 
 // Keys never counted as a "manual settings change": wsEndpoint is a connection
 // parameter, presetStorage is the presets library itself.
@@ -68,15 +76,6 @@ export function getCustomPresets() {
     return customPresets;
 }
 
-export function getBuiltinPresets() {
-    return builtinPresets;
-}
-
-/** Returns the settings of a built-in preset by id (null when unavailable). */
-export function getBuiltinSettings(id) {
-    return builtinCache.get(id) || null;
-}
-
 export function getCurrentPreset() {
     return currentPreset;
 }
@@ -90,112 +89,6 @@ export function isLibraryLoaded() {
 export function onPresetsChanged(callback) {
     listeners.add(callback);
     return () => listeners.delete(callback);
-}
-
-// ---------------------------------------------------------------------------
-// Built-in presets (presets/*.json)
-// ---------------------------------------------------------------------------
-
-let builtinPromise = null;
-
-/**
- * Loads built-in presets (index.json + per-preset files). Concurrent callers
- * share one promise so nobody observes a half-loaded list.
- */
-function loadBuiltinPresets() {
-    if (!builtinPromise) {
-        builtinPromise = doLoadBuiltinPresets().catch((error) => {
-            builtinPromise = null;
-            throw error;
-        });
-    }
-    return builtinPromise;
-}
-
-async function doLoadBuiltinPresets() {
-    try {
-        const response = await fetch("./presets/index.json", { cache: "no-store" });
-        const index = await response.json();
-        builtinPresets = Array.isArray(index.presets) ? index.presets : [];
-        await Promise.all(builtinPresets.map(async (preset) => {
-            try {
-                const fileResponse = await fetch(`./presets/${preset.file}`, { cache: "no-store" });
-                const data = await fileResponse.json();
-                builtinCache.set(preset.id, (data && data.settings) || {});
-                // Merge metadata from the preset file (version etc.) into the list entry.
-                preset.version = (data && typeof data.version === "number") ? data.version : 1;
-            } catch {
-                // Keep the entry out of builtinCache; it is simply not applicable.
-            }
-        }));
-    } catch {
-        builtinPresets = [];
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Snapshots
-// ---------------------------------------------------------------------------
-
-/** Captures the currently applied user settings as a full snapshot. */
-export async function captureCurrentSettings() {
-    const { keys } = await loadSettingsSchema();
-    const snapshot = {};
-    for (const key of keys) {
-        snapshot[key] = getterFor(key)();
-    }
-    return snapshot;
-}
-
-/**
- * Applies a (possibly partial) snapshot: only keys present in the snapshot
- * are applied; everything else keeps its current value.
- *
- * Each key is applied defensively: apply functions may touch overlay DOM
- * elements that do not exist on the manager page (presets.html) — a failure
- * must never abort the rest of the snapshot. State changes made before the
- * failure still count (the write-back + broadcast re-render on the overlay).
- */
-export async function applySnapshot(snapshot) {
-    const { appliers } = await loadSettingsSchema();
-    let recomputeNeeded = false;
-    let cacheNeeded = false;
-
-    for (const [key, value] of Object.entries(snapshot)) {
-        // wsEndpoint is a connection parameter — applying a preset must never
-        // drop or change the socket connection.
-        if (key === "wsEndpoint") {
-            continue;
-        }
-        const applier = appliers.get(key);
-        if (!applier) {
-            continue;
-        }
-        let changed = false;
-        try {
-            changed = applier(value) === true;
-        } catch (error) {
-            console.error(`[presets] apply "${key}" failed (DOM may be missing on this page):`, error);
-            // The state may already have been updated — treat as changed so
-            // recompute/cache invalidation still fire when needed.
-            changed = true;
-        }
-        if (changed) {
-            if (SETTING_RECOMPUTE_KEYS.has(key)) {
-                recomputeNeeded = true;
-            }
-            if (SETTING_CACHE_KEYS.has(key)) {
-                cacheNeeded = true;
-            }
-        }
-    }
-
-    if (cacheNeeded) {
-        clearResultCache();
-    }
-    if (recomputeNeeded) {
-        scheduleRecompute("preset applied", true);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -224,10 +117,6 @@ export async function applyCustomSnapshot(snapshot, presetName = null) {
 // Preset lookup / application
 // ---------------------------------------------------------------------------
 
-function findBuiltinPresetByName(name) {
-    return builtinPresets.find((preset) => preset.name === name) || null;
-}
-
 /**
  * Applies a preset by name and syncs the result back to tosu.
  * "Default" resets to the factory snapshot (generated from settings.json values).
@@ -244,7 +133,7 @@ export async function applyPresetByName(name) {
         const builtin = findBuiltinPresetByName(name);
         if (builtin) {
             // Built-in entries only carry metadata; settings live in builtinCache.
-            snapshot = builtinCache.get(builtin.id) || {};
+            snapshot = getBuiltinSettings(builtin.id) || {};
         } else {
             let preset = customPresets.find((p) => p.name === name);
             if (!preset && DEFAULT_SLOT_NAMES.includes(name)) {
@@ -736,43 +625,6 @@ function rawStoreFromPayload(payload) {
             : null;
     }
     return null;
-}
-
-function snapshotOf(payload) {
-    if (Array.isArray(payload)) {
-        const out = {};
-        for (const entry of payload) {
-            if (entry && typeof entry.uniqueID === "string"
-                && !SYSTEM_SNAPSHOT_KEYS.has(entry.uniqueID)) {
-                out[entry.uniqueID] = entry.value;
-            }
-        }
-        return out;
-    }
-    const out = { ...payload };
-    for (const key of SYSTEM_SNAPSHOT_KEYS) {
-        delete out[key];
-    }
-    return out;
-}
-
-/**
- * Returns a copy of `values` with the system keys (presetStorage/preset)
- * stripped. Used wherever a settings snapshot is built for storage — those
- * keys must never end up inside a preset, or the store recursively embeds
- * itself and values.json explodes (observed: 264MB).
- */
-function stripSystemKeys(values) {
-    const out = { ...values };
-    for (const key of SYSTEM_SNAPSHOT_KEYS) {
-        delete out[key];
-    }
-    return out;
-}
-
-function hasKeyChanged(prev, next, key) {
-    return Object.prototype.hasOwnProperty.call(next, key)
-        && next[key] !== prev[key];
 }
 
 async function handleSettingsPacket(packet) {
