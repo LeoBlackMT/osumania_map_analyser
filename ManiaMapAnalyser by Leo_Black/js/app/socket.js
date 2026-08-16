@@ -1,4 +1,4 @@
-﻿class WebSocketManager {
+class WebSocketManager {
     constructor(host) {
     this.host = host;
     this.sockets = {};
@@ -69,9 +69,16 @@
     const that = this;
 
     if (!this.sockets["/websocket/commands"]) {
+            // Bounded wait for the connection to open. This was an unbounded
+            // 100ms retry loop: while the socket was down it spammed tosu with
+            // getSettings requests, adding to the broadcast storm that slowed
+            // the server to tens of seconds per request. Give up after ~2s —
+            // callers have fallbacks (e.g. the presets HTTP pull).
+            if (amountOfRetries <= 20) {
             setTimeout(() => {
         that.sendCommand(name, command, amountOfRetries + 1);
             }, 100);
+            }
             return;
     }
 
