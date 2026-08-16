@@ -411,18 +411,28 @@ export function deleteCustomPreset(id) {
     return true;
 }
 
-/** Ensures the default "Custom1..N" anchor slots exist. */
+/** Ensures the default "Custom1..N" anchor slots exist (single write-back). */
 export async function ensureDefaultCustomSlots() {
     const snapshot = await captureCurrentSettings();
+    let createdAny = false;
     for (const name of DEFAULT_SLOT_NAMES) {
-        const existing = customPresets.some((preset) => preset.name === name);
-        if (!existing && createCustomPreset(
-            name,
-            snapshot,
-            { description: "Fixed slot — Apply captures the current configuration." },
-        ) === null) {
-            break;
+        if (customPresets.some((preset) => preset.name === name)) {
+            continue;
         }
+        customPresets.push({
+            id: uniquePresetId(name),
+            name,
+            description: "Fixed slot — Apply captures the current configuration.",
+            version: 1,
+            settings: { ...snapshot },
+            createdAt: Date.now(),
+        });
+        createdAny = true;
+    }
+    if (createdAny) {
+        // Batch creation: one persist instead of one POST per slot.
+        persistLibrary();
+        notifyChanged();
     }
 }
 
@@ -567,7 +577,7 @@ function isBrowserOrigin() {
  * Pulls the preset store straight from tosu's values file
  * (GET /api/counters/settings/<folder>). Origin-independent: localhost and
  * 127.0.0.1 read the same data here.
- * @returns {Promise<{presets: Array, lastWritten: Array}|null>}
+ * @returns {Promise<{store: {presets: Array, lastWritten: Array}, raw: string|null}|null>}
  */
 async function fetchStoreFromTosu() {
     if (!isBrowserOrigin()) {
@@ -588,10 +598,50 @@ async function fetchStoreFromTosu() {
             return null;
         }
         const data = await response.json();
-        return storeFromPayload((data && data.values) || {});
+        const values = (data && data.values) || {};
+        return {
+            store: storeFromPayload(values),
+            raw: typeof values[PRESET_STORAGE_SETTING] === "string"
+                ? values[PRESET_STORAGE_SETTING]
+                : null,
+        };
     } catch {
         return null;
     }
+}
+
+/**
+ * Applies a freshly loaded store into module state and self-heals historical
+ * pollution: when the raw store (as it lives in tosu) differs from the cleaned
+ * in-memory store, exactly one write-back is forced to shrink values.json.
+ * Callers must guard on `lastValues === null` (never overwrite an already
+ * loaded authoritative state). A re-entrancy flag prevents the HTTP fallback
+ * and the settings broadcast from both racing through slot creation.
+ */
+let storeApplyInFlight = false;
+
+function applyLoadedStore(store, raw) {
+    if (!store || storeApplyInFlight || lastValues !== null) {
+        return;
+    }
+    storeApplyInFlight = true;
+    customPresets = normalizeLibrary(store.presets);
+    lastWritten = store.lastWritten;
+    ensureDefaultCustomSlots().then(() => {
+        const rawFingerprint = raw ? rawStoreFingerprint(raw) : null;
+        lastPersistedFingerprint = currentStoreFingerprint();
+        if (rawFingerprint !== null && rawFingerprint !== lastPersistedFingerprint) {
+            // Historical pollution stripped on load -> force the write-back
+            // that shrinks values.json back to its real content.
+            if (writeLibraryToTosu()) {
+                lastPersistedFingerprint = currentStoreFingerprint();
+            }
+        } else {
+            persistLibrary();
+        }
+        storeApplyInFlight = false;
+        notifyChanged();
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -736,30 +786,34 @@ async function handleSettingsPacket(packet) {
     if (lastValues === null) {
         // First batch: record baseline, load the store (library + lastWritten),
         // restore the active preset from the picker value.
+        // If the HTTP fallback already applied the store, skip (re-entrancy).
+        if (storeApplyInFlight) {
+            return;
+        }
         lastValues = snapshotOf(payload);
         const rawStore = rawStoreFromPayload(payload);
         const store = storeFromPayload(payload);
         customPresets = normalizeLibrary(store ? store.presets : []);
         lastWritten = store ? store.lastWritten : [];
-        // Baseline the persist guard against the freshly loaded store so the
-        // first persistLibrary() below only fires when something actually
-        // changed (e.g. anchor slots were missing).
-        lastPersistedFingerprint = currentStoreFingerprint();
         // Create missing anchor slots now that the authoritative library is
         // loaded (never persist an empty library over an existing one).
         await ensureDefaultCustomSlots();
-        // Self-heal historical store pollution: if the store as it lives in
-        // tosu contained system keys embedded in preset settings (which
-        // recursively embedded the store and inflated values.json to hundreds
-        // of MB), the cleaned in-memory store differs -> force ONE write-back
-        // to shrink it back to its real content.
+        // Self-heal historical store pollution and flush local changes with a
+        // SINGLE write-back. NOTE: the fingerprint guard is baselined BEFORE
+        // the comparison, so persistLibrary() alone would be a no-op — the
+        // self-heal must write directly when the raw store differs from the
+        // cleaned in-memory store.
         const rawFingerprint = rawStore ? rawStoreFingerprint(rawStore) : null;
+        lastPersistedFingerprint = currentStoreFingerprint();
         if (rawFingerprint !== null && rawFingerprint !== lastPersistedFingerprint) {
-            persistLibrary();
-            lastPersistedFingerprint = currentStoreFingerprint();
+            // Historical pollution stripped on load -> force the write-back
+            // that shrinks values.json back to its real content.
+            if (writeLibraryToTosu()) {
+                lastPersistedFingerprint = currentStoreFingerprint();
+            }
         } else {
-            // Flush any in-memory changes made before the first batch arrived
-            // (no-op when nothing changed — see the fingerprint guard).
+            // Nothing structurally different; only persist if anchor slots
+            // (or other in-memory changes) actually modified the store.
             persistLibrary();
         }
         // Always notify: the UI may have rendered before this first batch.
@@ -914,12 +968,9 @@ export function initPresets() {
     // origin-independent: localhost and 127.0.0.1 are DIFFERENT origins, and
     // tosu's values.json is the single cross-origin source of truth. The
     // settings broadcast (when it arrives) remains authoritative and wins.
-    fetchStoreFromTosu().then((store) => {
-        if (store !== null && lastValues === null) {
-            customPresets = normalizeLibrary(store.presets);
-            lastWritten = store.lastWritten;
-            ensureDefaultCustomSlots();
-            notifyChanged();
+    fetchStoreFromTosu().then((result) => {
+        if (result !== null && lastValues === null) {
+            applyLoadedStore(result.store, result.raw);
         }
     });
 
@@ -930,12 +981,12 @@ export function initPresets() {
         if (lastValues !== null || customPresets.length > 0) {
             return;
         }
-        const store = await fetchStoreFromTosu();
-        if (store !== null) {
-            customPresets = normalizeLibrary(store.presets);
-            lastWritten = store.lastWritten;
+        const result = await fetchStoreFromTosu();
+        if (result !== null) {
+            applyLoadedStore(result.store, result.raw);
+        } else {
+            ensureDefaultCustomSlots();
+            notifyChanged();
         }
-        ensureDefaultCustomSlots();
-        notifyChanged();
     }, 3000);
 }
