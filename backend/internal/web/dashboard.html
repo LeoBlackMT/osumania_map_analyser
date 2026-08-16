@@ -174,8 +174,15 @@
     </section>
   </div>
 
-  <div class="grid4">
+  <div class="grid2">
     <section class="panel"><h2>Key count</h2><div class="body" id="keycounts"></div></section>
+    <section class="panel">
+      <h2>Numeric difficulty <small>0.5 bins · .0 = mid</small></h2>
+      <div class="body chart-wrap"><div id="numericHistogram"></div></div>
+    </section>
+  </div>
+
+  <div class="grid4">
     <section class="panel"><h2>Beatmap type <small>HB/RC/LN/Mix/SV</small></h2><div class="body" id="modes"></div></section>
     <section class="panel"><h2>Mods <small>NM = no mod</small></h2><div class="body" id="mods"></div></section>
     <section class="panel"><h2>Version</h2><div class="body" id="versions"></div></section>
@@ -192,7 +199,7 @@
   </section>
 </main>
 <div id="tip"></div>
-<footer>Aggregate statistics · refreshed every 60 s · vanilla JS + SVG, no trackers.</footer>
+<footer>Aggregate statistics · refreshed every 60 s · server <span id="serverVer">–</span> · vanilla JS + SVG, no trackers.</footer>
 
 <script>
 "use strict";
@@ -497,12 +504,14 @@ function load() {
     })
     .then((s) => {
       document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
+      document.getElementById("serverVer").textContent = "v" + (s.serverVersion || "?");
       document.getElementById("hourRange").textContent = "UTC · " + (currentDays ? currentDays + "d" : "all");
       renderCards(s);
       renderHourBars("onlineByHour", s.onlineByHour || []);
       renderTrend("trend", s.activeTrend || []);
       renderValueBars("starHistogram", s.starHistogram || []);
       renderValueBars("lnRatioHistogram", s.lnRatioHistogram || []);
+      renderValueBars("numericHistogram", s.numericHistogram || []);
       renderHBar("keycounts", s.keycounts || []);
       renderDonut("modes", s.modes || []);
       renderDonut("mods", s.mods || []);
@@ -527,6 +536,8 @@ document.getElementById("range").addEventListener("click", (e) => {
 });
 
 load();
+// Auto-refresh every 60 s (matches the server-side stats cache TTL).
+setInterval(load, 60000);
 </script>
 </body>
 </html>

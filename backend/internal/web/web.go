@@ -23,6 +23,7 @@ type Handler struct {
 	store           *store.Store
 	onlineWindowMin int
 	statsCache      time.Duration
+	version         string
 
 	mu     sync.Mutex
 	cached map[int]cachedStats
@@ -33,11 +34,12 @@ type cachedStats struct {
 	at   time.Time
 }
 
-func NewHandler(st *store.Store, onlineWindowMin, statsCacheSeconds int) *Handler {
+func NewHandler(st *store.Store, onlineWindowMin, statsCacheSeconds int, version string) *Handler {
 	return &Handler{
 		store:           st,
 		onlineWindowMin: onlineWindowMin,
 		statsCache:      time.Duration(statsCacheSeconds) * time.Second,
+		version:         version,
 		cached:          make(map[int]cachedStats),
 	}
 }
@@ -103,6 +105,7 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	stats.ServerVersion = h.version
 	data, err := json.Marshal(stats)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

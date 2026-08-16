@@ -1,6 +1,7 @@
 import { runAnalysisPipeline } from "../pipeline/runAnalysisPipeline.js";
 import { calculateReworkPp } from "../rework/reworkPerformance.js";
 import { applyCompanellaToMixedResult } from "../estimator/mixedEstimator.js";
+import { rcLabelToNumeric } from "../estimator/rcDifficultyFormat.js";
 import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 import { analyzePatternFromText } from "../patterns/service.js";
@@ -1048,7 +1049,17 @@ export async function fetchBeatmapFile(reason) {
         }
 
         if (rework && metadataErrors.length === 0 && !isStaleRequest()) {
-            trackTelemetryAnalyze({
+            // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy 的原生值已是
+            // 标准尺度，直接用；其余算法（Sunny/Companella/Daniel——Daniel 的
+            // 原生值是其 DP 尺度，比标准约高 0.5）用 estDiff 标签反向换算。
+            // 边界标签（< Alpha Low 等）反解为 null → 不上报该字段。
+            const rcNative = state.actualEstimatorAlgorithm === "Azusa" || state.actualEstimatorAlgorithm === "Roxy";
+            const numericDifficulty = rcNative
+                && typeof resolvedNumericDifficulty === "number"
+                && Number.isFinite(resolvedNumericDifficulty)
+                ? resolvedNumericDifficulty
+                : rcLabelToNumeric(resolvedEstDiff);
+            const payload = {
                 algorithm: state.estimatorAlgorithm,
                 actualAlgorithm: state.actualEstimatorAlgorithm,
                 keycount: Number(rework.columnCount),
@@ -1059,7 +1070,11 @@ export async function fetchBeatmapFile(reason) {
                 lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
                 typeBreakdown: typePercentageData ?? null,
                 durationMs: Math.max(0, Math.round(performance.now() - analysisStartedAt)),
-            });
+            };
+            if (Number.isFinite(numericDifficulty)) {
+                payload.numericDifficulty = numericDifficulty;
+            }
+            trackTelemetryAnalyze(payload);
         }
     } catch (error) {
         if (isStaleRequest()) return;

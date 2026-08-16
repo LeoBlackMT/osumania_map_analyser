@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ type DurationStats struct {
 }
 
 type Stats struct {
+	ServerVersion    string        `json:"serverVersion"`
 	TotalInstalls    int64         `json:"totalInstalls"`
 	OnlineNow        int64         `json:"onlineNow"`
 	TodayActive      int64         `json:"todayActive"`
@@ -66,20 +68,22 @@ type Stats struct {
 	Versions         []KV          `json:"versions"`
 	StarHistogram    []Bucket      `json:"starHistogram"`
 	LnRatioHistogram []Bucket      `json:"lnRatioHistogram"`
+	NumericHistogram []Bucket      `json:"numericHistogram"`
 	DurationStats    DurationStats `json:"durationStats"`
 }
 
 type analyzeData struct {
-	Algorithm       string          `json:"algorithm"`
-	ActualAlgorithm string          `json:"actualAlgorithm"`
-	Keycount        int             `json:"keycount"`
-	Mods            []string        `json:"mods"`
-	SpeedRate       float64         `json:"speedRate"`
-	Mode            string          `json:"mode"`
-	Star            float64         `json:"star"`
-	LnRatio         float64         `json:"lnRatio"`
-	TypeBreakdown   json.RawMessage `json:"typeBreakdown"`
-	DurationMs      float64         `json:"durationMs"`
+	Algorithm         string          `json:"algorithm"`
+	ActualAlgorithm   string          `json:"actualAlgorithm"`
+	Keycount          int             `json:"keycount"`
+	Mods              []string        `json:"mods"`
+	SpeedRate         float64         `json:"speedRate"`
+	Mode              string          `json:"mode"`
+	Star              float64         `json:"star"`
+	LnRatio           float64         `json:"lnRatio"`
+	TypeBreakdown     json.RawMessage `json:"typeBreakdown"`
+	DurationMs        float64         `json:"durationMs"`
+	NumericDifficulty *float64        `json:"numericDifficulty"`
 }
 
 // Compute builds the full aggregate snapshot over the requested window.
@@ -192,9 +196,13 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	modes := map[string]int64{}
 	stars := map[float64]int64{}
 	lns := map[float64]int64{}
+	numerics := map[float64]int64{}
 	var starSum, lnSum float64
 	var starN, lnN int64
-	var durations []int64
+	// Duration aggregate: exact sum/count plus a bounded reservoir for the
+	// percentiles, so memory/time stay O(1) as the event table grows.
+	var durSum, durN int64
+	var durSamples []int64
 
 	err := st.ScanAnalyzeData(since, func(dataJSON string) error {
 		var d analyzeData
@@ -234,8 +242,19 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 			lnSum += d.LnRatio
 			lnN++
 		}
+		if d.NumericDifficulty != nil && *d.NumericDifficulty >= -3 && *d.NumericDifficulty <= 30 {
+			// aggregate into 0.5 bins on the Reform numeric scale (.0 = mid)
+			numerics[math.Round(*d.NumericDifficulty*2)/2]++
+		}
 		if d.DurationMs >= 0 {
-			durations = append(durations, int64(d.DurationMs))
+			v := int64(d.DurationMs)
+			durSum += v
+			durN++
+			if len(durSamples) < durationSampleCap {
+				durSamples = append(durSamples, v)
+			} else if j := rand.Int63n(durN); j < durationSampleCap {
+				durSamples[j] = v
+			}
 		}
 		return nil
 	})
@@ -257,13 +276,14 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 
 	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.1f", k) })
 	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.0f%%", k*100) })
+	s.NumericHistogram = histogram(numerics, func(k float64) string { return fmt.Sprintf("%.1f", k) })
 	if starN > 0 {
 		s.AvgStar = math.Round(starSum/float64(starN)*100) / 100
 	}
 	if lnN > 0 {
 		s.AvgLnRatio = math.Round(lnSum/float64(lnN)*100) / 100
 	}
-	s.DurationStats = durationStats(durations)
+	s.DurationStats = durationStats(durSum, durN, durSamples)
 
 	return nil
 }
@@ -295,19 +315,25 @@ func histogram(m map[float64]int64, key func(float64) string) []Bucket {
 	return out
 }
 
-func durationStats(durations []int64) DurationStats {
-	if len(durations) == 0 {
+// durationSampleCap bounds the reservoir used for percentile estimation; the
+// average stays exact (sum/count over every event), only P50/P90 become
+// estimates — with 5000 random samples they converge within ~1-2% error even
+// at a million events.
+const durationSampleCap = 5000
+
+func durationStats(sum, n int64, samples []int64) DurationStats {
+	if n == 0 {
 		return DurationStats{}
 	}
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-	var sum int64
-	for _, d := range durations {
-		sum += d
+	avg := sum / n
+	if len(samples) == 0 {
+		return DurationStats{AvgMs: avg}
 	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
 	return DurationStats{
-		AvgMs: sum / int64(len(durations)),
-		P50Ms: percentile(durations, 50),
-		P90Ms: percentile(durations, 90),
+		AvgMs: avg,
+		P50Ms: percentile(samples, 50),
+		P90Ms: percentile(samples, 90),
 	}
 }
 

@@ -8,7 +8,7 @@
 import { state } from "./appContext.js";
 
 const INSTALL_ID_KEY = "mma.telemetry.installId.v1";
-const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 const ACTIVITY_WINDOW_MS = 30 * 1000;
 const REQUEST_TIMEOUT_MS = 5000;
 

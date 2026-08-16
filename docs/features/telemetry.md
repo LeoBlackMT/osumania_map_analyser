@@ -9,7 +9,7 @@
 | 事件 | 时机 | 载荷 |
 |---|---|---|
 | `boot` | 插件启动、且遥测开启且 endpoint 非空 | 仅 id/kind/version |
-| `heartbeat` | 每 **5 分钟**一次，且最近 30s 内收到 api_v2（游戏已连接） | 仅 id/kind/version |
+| `heartbeat` | 每 **10 分钟**一次，且最近 30s 内收到 api_v2（游戏已连接） | 仅 id/kind/version |
 | `analyze` | 每次成功分析后 | id/kind/version + `data` 字段 |
 
 ## 2. 隐私边界（硬约束）
@@ -17,7 +17,9 @@
 - **匿名标识**：`crypto.randomUUID()`（或回退随机 hex）生成的随机 UUID，存 `localStorage` 键 `mma.telemetry.installId.v1`（失败回退 sessionStorage → 内存）。同一机器同一 tosu 数据目录多实例共享 → 天然去重；换机器/清数据才变。
 - **明确不采**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP（后端不存，连哈希都不存）、UA/OS、时区。
 - **采集字段白名单**（`analyze.data`，与后端 `backend/internal/telemetry/handler.go` 的 `allowedDataKeys` 严格一致）：
-  `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`。
+  `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`、`numericDifficulty`。
+  - `actualAlgorithm` 语义：Mixed 是自动路由算法，`analysis.js` 上报的是**路由后实际命中的子算法**（Roxy/Azusa/Daniel/Companella/Sunny，见 `js/estimator/mixedEstimator.js` 的 `actualEstimatorAlgorithm` 返回值与 `runAnalysisPipeline.js` Mixed 分支），不再是字面 "Mixed"；其余算法（Azusa/Roxy 无效回退）同样上报实际结果。
+  - `numericDifficulty` 语义：标准数值化难度（Reform 段位体系，**.0 = mid**）。Azusa/Roxy（含 Mixed 路由到它们）用原生连续值；其余算法（Sunny/Companella/Daniel）用 `rcLabelToNumeric(estDiff)` 从估计难度字符串**反向换算**——Daniel 原生值是 DP 尺度（比标准约高 0.5），故 Daniel 一律走反解。边界标签（`< Alpha Low`、`> Emik Zeta high`、`Unknown` 等）反解为 null → **不发送该字段**。
 - **开关**：设置项 `enableTelemetry`（Network 分组，默认开），用户可关；endpoint 为空时完全不发送（默认开启但未配置 = no-op）。
 
 ## 3. 模块设计
@@ -27,7 +29,7 @@
 - `initTelemetry()` — 读配置，条件满足则发 `boot`。
 - `setTelemetryConfig()` — settings.js 运行时调用；开关由关→开且 endpoint 非空时补发 `boot`。
 - `noteTelemetryActivity()` — socketHandlers 每个 api_v2 包调用，更新 `lastActivityAt`。
-- `startTelemetryHeartbeat()` — `setInterval(5min)`；仅当 `enabled && endpoint && (now-lastActivityAt < 30s)` 发 `heartbeat`。
+- `startTelemetryHeartbeat()` — `setInterval(10min)`；仅当 `enabled && endpoint && (now-lastActivityAt < 30s)` 发 `heartbeat`。
 - `trackTelemetryAnalyze(data)` — 发 `analyze`（fire-and-forget）。
 
 发送用 `fetch(..., {keepalive:true})` + 5s `AbortController` 超时，`.catch` 静默——**遥测绝不阻塞/破坏插件功能**。
