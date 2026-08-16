@@ -12,6 +12,7 @@ import {
     getBuiltinPresets,
     getBuiltinSettings,
     getCurrentPreset,
+    isLibraryLoaded,
     onPresetsChanged,
     applyPresetByName,
     applyCustomSnapshot,
@@ -144,6 +145,18 @@ function confirmDialog(message, { title = "Please confirm", danger = false } = {
     });
 }
 
+/** Runs an action with uniform error reporting (no silent failures). */
+function guarded(action) {
+    return async (...args) => {
+        try {
+            await action(...args);
+        } catch (error) {
+            console.error("[presets] action failed:", error);
+            showToast(`Unexpected error: ${error?.message || error}`, "error", 6000);
+        }
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Layout
 // ---------------------------------------------------------------------------
@@ -177,7 +190,7 @@ function buildLayout() {
     actionBar.className = "presets-actionbar";
     actionBar.innerHTML = `
         <button id="act-new" class="presets-btn" type="button">New</button>
-        <button id="act-save" class="presets-btn presets-btn-primary" type="button">Save as Preset</button>
+        <button id="act-save" class="presets-btn presets-btn-primary" type="button">Save</button>
         <button id="act-apply" class="presets-btn presets-btn-primary" type="button">Apply Checked</button>
         <button id="act-load-current" class="presets-btn" type="button">Load Current</button>
         <span class="presets-actionbar-sep"></span>
@@ -255,18 +268,18 @@ function buildLayout() {
 }
 
 function wireActions(actionBar) {
-    actionBar.querySelector("#act-new").addEventListener("click", async () => {
+    actionBar.querySelector("#act-new").addEventListener("click", guarded(async () => {
         const reset = await confirmDialog("Clear the editor and start a new preset?", { title: "New preset" });
         if (!reset) {
             return;
         }
         resetEditor();
         showToast("Editor cleared — configure the form and save as a new preset.", "info");
-    });
+    }));
 
-    actionBar.querySelector("#act-save").addEventListener("click", () => saveCurrentPreset());
+    actionBar.querySelector("#act-save").addEventListener("click", guarded(() => saveCurrentPreset()));
 
-    actionBar.querySelector("#act-apply").addEventListener("click", async () => {
+    actionBar.querySelector("#act-apply").addEventListener("click", guarded(async () => {
         const snapshot = collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
             showToast("Nothing is checked to apply.", "error");
@@ -281,9 +294,9 @@ function wireActions(actionBar) {
         }
         await applyCustomSnapshot(snapshot);
         showToast("Checked settings applied and synced to tosu.", "success");
-    });
+    }));
 
-    actionBar.querySelector("#act-load-current").addEventListener("click", async () => {
+    actionBar.querySelector("#act-load-current").addEventListener("click", guarded(async () => {
         const current = await captureCurrentSettings();
         for (const [key, value] of Object.entries(current)) {
             if (key in formValues) {
@@ -292,7 +305,7 @@ function wireActions(actionBar) {
         }
         syncFormControls();
         showToast("Form values loaded from the current overlay settings.", "success");
-    });
+    }));
 
     actionBar.querySelector("#act-select-all").addEventListener("click", () => {
         selectAllCheckboxes(true);
@@ -338,7 +351,7 @@ function wireActions(actionBar) {
     const importBtn = actionBar.querySelector("#act-import");
     const importInput = actionBar.querySelector("#preset-import-file");
     importBtn.addEventListener("click", () => importInput.click());
-    importInput.addEventListener("change", async () => {
+    importInput.addEventListener("change", guarded(async () => {
         const file = importInput.files && importInput.files[0];
         importInput.value = "";
         if (!file) {
@@ -346,7 +359,7 @@ function wireActions(actionBar) {
         }
         const result = await importPresetFromFile(file);
         showToast(result.message, result.ok ? "success" : "error", result.ok ? 3500 : 6000);
-    });
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -732,7 +745,12 @@ function renderList() {
     if (userPresets.length === 0) {
         const empty = document.createElement("div");
         empty.className = "presets-empty";
-        empty.textContent = "No custom presets yet. Configure the form and click Save as Preset.";
+        if (!isLibraryLoaded()) {
+            // Library still streaming in — do not claim there are no presets.
+            empty.textContent = "Loading presets…";
+        } else {
+            empty.textContent = "No custom presets yet. Configure the form and click Save.";
+        }
         listEl.appendChild(empty);
     } else {
         for (const preset of userPresets) {
@@ -969,7 +987,7 @@ async function init() {
     renderList();
     renderForm();
 
-    listEl.addEventListener("click", handleListClick);
+    listEl.addEventListener("click", guarded(handleListClick));
     onPresetsChanged(() => renderList());
 
     // Live value sync from the tosu settings stream (skip focused controls).

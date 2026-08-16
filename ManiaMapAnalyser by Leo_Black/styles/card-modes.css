@@ -94,9 +94,9 @@
 
 .main-card.bars-none {
     grid-template-rows: auto auto;
-    height: 220px;
-    min-height: 220px;
-    max-height: 220px;
+    height: 200px;
+    min-height: 200px;
+    max-height: 200px;
     gap: 4px;
     padding: 10px 10px 30px 10px;
 }
@@ -161,16 +161,22 @@
     max-width: 240px;
 }
 
+/* Etterna mode: content-driven height (same pattern as Full/PP) — the card
+   grows with the seven skill rows, so no internal scrollbar appears regardless
+   of theme/fonts. min-height keeps the resting height stable. */
 .main-card.bars-etterna {
-    height: 560px;
-    min-height: 560px;
-    max-height: 560px;
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 10px;
+    height: auto;
+    min-height: 540px;
+    max-height: none;
+    overflow: visible;
 }
 
 .main-card.bars-etterna.bars-etterna-compact {
-    height: 520px;
     min-height: 520px;
-    max-height: 520px;
 }
 
 .main-card.bars-etterna .cluster-bars {
@@ -181,6 +187,9 @@
    mode-tag 胶囊（bottom:10px、高约 21px）重叠。底部留出一段 margin 把框抬高，
    让框底边避开胶囊。 */
 .main-card.bars-etterna .ett-skill-bars {
+    overflow-x: hidden;
+    overflow-y: visible;
+    max-height: none;
     margin-bottom: 24px;
 }
 

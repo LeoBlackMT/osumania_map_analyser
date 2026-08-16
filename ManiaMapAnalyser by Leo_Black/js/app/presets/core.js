@@ -82,6 +82,11 @@ export function getCurrentPreset() {
     return currentPreset;
 }
 
+/** True once the settings stream delivered the authoritative library. */
+export function isLibraryLoaded() {
+    return lastValues !== null;
+}
+
 /** Registers a UI listener, returns an unsubscribe function. */
 export function onPresetsChanged(callback) {
     listeners.add(callback);

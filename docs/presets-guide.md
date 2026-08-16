@@ -34,6 +34,8 @@
 - **左侧列表**：所有预设的列表，分为 **System**（系统预设）和 **My Presets**（我的预设）两组。
 - **右侧编辑区**：上方是 **Preset Info**（预设信息），下方是**设置表单**（所有可配置项，每项前面有一个复选框）。
 
+> 提示：刚打开或刷新页面时，My Presets 会先显示"Loading presets…"，等 tosu 的设置数据到达后（通常 1~2 秒）才会显示真实的预设列表——这不是丢失，请稍候。
+
 ## 4. 左侧列表详解
 
 ### System（系统预设）
@@ -93,7 +95,7 @@
 | 按钮 | 作用 | 注意事项 |
 | --- | --- | --- |
 | **New** | 清空编辑区，开始创建新预设 | 会弹出确认框；当前编辑内容会被清掉 |
-| **Save as Preset** | 把编辑区的设置（勾选项）+ 预设信息保存为预设 | 如果名字已存在，会弹出确认框询问是否覆盖；名字必须符合命名规则 |
+| **Save** | 把编辑区的设置（勾选项）+ 预设信息保存为预设 | 如果名字已存在，会弹出确认框询问是否覆盖；名字必须符合命名规则 |
 | **Apply Checked** | 把编辑区**勾选**的设置立即应用到插件 | 会弹出确认框；未勾选的设置不受影响 |
 | **Export Current** | 把编辑区当前内容（勾选项 + 预设信息）导出为 .json 文件 | 用于分享或备份当前正在编辑的预设 |
 | **Export All** | 把所有自定义预设导出为一个 .json 文件 | 用于整体备份或分享 |
@@ -101,9 +103,9 @@
 
 ### 推荐工作流程
 
-1. **创建预设**：在表单里调整设置（勾选想要的项）→ 填写 Preset Info → 点 **Save as Preset**。
+1. **创建预设**：在表单里调整设置（勾选想要的项）→ 填写 Preset Info → 点 **Save**。
 2. **应用预设**：在左侧列表点某行的 **Apply**（或编辑后点 **Apply Checked**）。
-3. **修改预设**：列表点 **Edit** → 修改表单/信息 → 点 **Save as Preset**（覆盖）。
+3. **修改预设**：列表点 **Edit** → 修改表单/信息 → 点 **Save**（覆盖）。
 4. **分享预设**：列表点某行的 **Export**（单个）或操作栏 **Export All**（全部）→ 把 .json 文件发给朋友 → 朋友点 **Import** 导入。
 
 ## 7. 常见问题
@@ -159,6 +161,8 @@ The manager has three parts:
 - **List** (left): all presets, grouped into **System** and **My Presets**.
 - **Editor** (right): **Preset Info** on top and the **settings form** below (every setting with a checkbox).
 
+> Note: right after opening or refreshing the page, My Presets shows "Loading presets…" until tosu's settings data arrives (usually 1–2 seconds) — your presets are not lost, just wait a moment.
+
 ## 4. The list in detail
 
 ### System presets
@@ -212,7 +216,7 @@ Form values auto-refresh from tosu's live broadcast (except the field you are ty
 | Button | What it does | Notes |
 | --- | --- | --- |
 | **New** | Clears the editor to start a new preset | Asks for confirmation |
-| **Save as Preset** | Saves the checked settings + Preset Info as a preset | Asks before overwriting an existing name; name must follow the rules |
+| **Save** | Saves the checked settings + Preset Info as a preset | Asks before overwriting an existing name; name must follow the rules |
 | **Apply Checked** | Applies only the checked settings immediately | Asks for confirmation; unchecked settings stay untouched |
 | **Export Current** | Downloads the current editor state (checked settings + info) as .json | For sharing/backing up what you are editing |
 | **Export All** | Downloads all custom presets as one .json file | For full backup or sharing |
@@ -220,9 +224,9 @@ Form values auto-refresh from tosu's live broadcast (except the field you are ty
 
 ### Recommended workflow
 
-1. **Create**: tweak the form (check the fields you want) → fill Preset Info → click **Save as Preset**.
+1. **Create**: tweak the form (check the fields you want) → fill Preset Info → click **Save**.
 2. **Apply**: click **Apply** on a row (or **Apply Checked** after editing).
-3. **Edit**: click **Edit** → modify → **Save as Preset** (overwrites).
+3. **Edit**: click **Edit** → modify → **Save** (overwrites).
 4. **Share**: click **Export** on a row (single) or **Export All** (everything) → send the .json → friend clicks **Import**.
 
 ## 7. FAQ
