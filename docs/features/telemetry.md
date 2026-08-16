@@ -18,6 +18,7 @@
 - **明确不采**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP（后端不存，连哈希都不存）、UA/OS、时区。
 - **采集字段白名单**（`analyze.data`，与后端 `backend/internal/telemetry/handler.go` 的 `allowedDataKeys` 严格一致）：
   `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`。
+  - `actualAlgorithm` 语义：Mixed 是自动路由算法，`analysis.js` 上报的是**路由后实际命中的子算法**（Roxy/Azusa/Daniel/Companella/Sunny，见 `js/estimator/mixedEstimator.js` 的 `actualEstimatorAlgorithm` 返回值与 `runAnalysisPipeline.js` Mixed 分支），不再是字面 "Mixed"；其余算法（Azusa/Roxy 无效回退）同样上报实际结果。
 - **开关**：设置项 `enableTelemetry`（Network 分组，默认开），用户可关；endpoint 为空时完全不发送（默认开启但未配置 = no-op）。
 
 ## 3. 模块设计

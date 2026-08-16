@@ -192,7 +192,7 @@
   </section>
 </main>
 <div id="tip"></div>
-<footer>Aggregate statistics · refreshed every 60 s · vanilla JS + SVG, no trackers.</footer>
+<footer>Aggregate statistics · refreshed every 60 s · server <span id="serverVer">–</span> · vanilla JS + SVG, no trackers.</footer>
 
 <script>
 "use strict";
@@ -497,6 +497,7 @@ function load() {
     })
     .then((s) => {
       document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
+      document.getElementById("serverVer").textContent = "v" + (s.serverVersion || "?");
       document.getElementById("hourRange").textContent = "UTC · " + (currentDays ? currentDays + "d" : "all");
       renderCards(s);
       renderHourBars("onlineByHour", s.onlineByHour || []);
@@ -527,6 +528,8 @@ document.getElementById("range").addEventListener("click", (e) => {
 });
 
 load();
+// Auto-refresh every 60 s (matches the server-side stats cache TTL).
+setInterval(load, 60000);
 </script>
 </body>
 </html>

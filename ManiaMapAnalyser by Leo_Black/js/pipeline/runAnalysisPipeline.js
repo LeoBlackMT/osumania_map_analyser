@@ -159,6 +159,9 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
             ? { ...options, precomputedSunnyResult: sharedSunnyResult }
             : options;
         selectedRework = runMixedEstimatorFromText(rawText, mixedOpts, parser);
+        // Mixed 自动路由到 Roxy/Azusa/Daniel/Companella/Sunny，
+        // 从结果读取实际命中的子算法（与 Azusa/Roxy 分支同语义）。
+        actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
     } else if (estimatorAlgorithm === "Companella") {
         // Companella 本体在主线程异步追加（§7.5），此处跑 Sunny 打底。
         selectedRework = runSunnyEstimatorFromText(rawText, options, parser);
@@ -182,7 +185,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     let rework = selectedRework;
     let sunnyStar = null;
     let normalizationSunnyResult = null;
-    if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm)) {
+    if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm) || estimatorAlgorithm === "Mixed") {
         normalizationSunnyResult = sharedSunnyResult || runSunnyEstimatorFromText(rawText, options, parser);
         sunnyStar = Number(normalizationSunnyResult.star);
         rework = { ...selectedRework, star: sunnyStar };
@@ -198,7 +201,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     if (options.withPpMetrics === true) {
         try {
             let sunnySrc = null;
-            if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm)) {
+            if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm) || estimatorAlgorithm === "Mixed") {
                 sunnySrc = normalizationSunnyResult;
             } else if (estimatorAlgorithm === "Daniel") {
                 sunnySrc = runSunnyEstimatorFromText(rawText, { ...options, withPpMetrics: true }, parser);

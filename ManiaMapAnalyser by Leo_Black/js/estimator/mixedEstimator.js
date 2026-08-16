@@ -207,11 +207,15 @@ export function shouldPreferAzusaRcResult(roxyResult, azusaResult) {
 
 export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) {
     const sunnyBaseline = options.precomputedSunnyResult || runSunnyEstimatorFromText(osuText, options, parsed);
+    // Track which sub-algorithm actually won the routing chain below so callers
+    // (analysis pipeline → telemetry) can report the real algorithm, not "Mixed".
+    let actualAlgorithm = "Sunny";
     const columnCount = Number(sunnyBaseline.columnCount);
     if (!Number.isFinite(columnCount) || !MIXED_SUPPORTED_KEYS.has(columnCount)) {
         return {
             ...sunnyBaseline,
             mixedCompanellaPlan: null,
+            actualEstimatorAlgorithm: actualAlgorithm,
         };
     }
 
@@ -223,6 +227,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
         return {
             ...sunnyBaseline,
             mixedCompanellaPlan: null,
+            actualEstimatorAlgorithm: actualAlgorithm,
         };
     }
 
@@ -239,6 +244,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
         }, parsed);
         if (canUseRcResult(roxyResult)) {
             selectedRework = roxyResult;
+            actualAlgorithm = "Roxy";
             estDiff = roxyResult.estDiff;
             numericDifficulty = roxyResult.numericDifficulty;
             numericDifficultyHint = roxyResult.numericDifficultyHint;
@@ -250,6 +256,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                 }, parsed);
                 if (shouldPreferAzusaRcResult(roxyResult, azusaResult)) {
                     selectedRework = azusaResult;
+                    actualAlgorithm = "Azusa";
                     estDiff = azusaResult.estDiff;
                     numericDifficulty = azusaResult.numericDifficulty;
                     numericDifficultyHint = azusaResult.numericDifficultyHint;
@@ -263,6 +270,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
             }, parsed);
             if (canUseRcResult(azusaResult)) {
                 selectedRework = azusaResult;
+                actualAlgorithm = "Azusa";
                 estDiff = azusaResult.estDiff;
                 numericDifficulty = azusaResult.numericDifficulty;
                 numericDifficultyHint = azusaResult.numericDifficultyHint;
@@ -274,6 +282,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
 
                 if (canUseDaniel) {
                     selectedRework = danielResult;
+                    actualAlgorithm = "Daniel";
                     estDiff = danielResult.estDiff;
                     numericDifficulty = danielResult.numericDifficulty;
                     numericDifficultyHint = danielResult.numericDifficultyHint;
@@ -295,6 +304,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     lnRatio,
                     lnDifficulty,
                 };
+                actualAlgorithm = "Companella";
             } else {
                 const danielResult = tryRunDanielFallback(osuText, options, parsed);
                 const canUseDaniel = danielResult
@@ -305,6 +315,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     rcDifficulty = danielResult.estDiff;
                     rcNumericDifficulty = danielResult.numericDifficulty;
                     rcNumericDifficultyHint = danielResult.numericDifficultyHint;
+                    actualAlgorithm = "Daniel";
                 }
             }
         }
@@ -324,6 +335,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
         numericDifficulty,
         numericDifficultyHint,
         mixedCompanellaPlan: companellaPlan,
+        actualEstimatorAlgorithm: actualAlgorithm,
     };
 }
 

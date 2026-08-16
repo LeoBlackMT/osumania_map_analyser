@@ -42,6 +42,7 @@ type DurationStats struct {
 }
 
 type Stats struct {
+	ServerVersion    string        `json:"serverVersion"`
 	TotalInstalls    int64         `json:"totalInstalls"`
 	OnlineNow        int64         `json:"onlineNow"`
 	TodayActive      int64         `json:"todayActive"`
