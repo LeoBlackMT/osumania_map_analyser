@@ -65,6 +65,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 - **不直接 import / `fs.readFileSync` `.wasm` 文件**：经 `js/ett/versions/` 的 JS glue（`minaclac-*.js`，Emscripten 导出）实例化；`.wasm` 作为静态资源由浏览器 fetch（`calc.js:56-59` `locateFile`）。
 - Node 下经 glue 的 `wasmBinary` 传入预读字节（`calc.js:65-74` `loadEtternaModule`），不要自己加载 `.wasm`。
 - 新增 Etterna 版本：`.wasm` + `.js` glue 成对放入 `js/ett/versions/`，并在 `js/ett/versions/index.js` 注册 loader（`calc.js:47-53` `WASM_FILE_BY_VERSION` 同步登记文件名）。
+- **MSD 上限 patch**：`js/ett/versions/` 下除 `minaclac-68.0-unofficial.wasm`（其 40.0 常量非技能上限）外的 `.wasm` 均已应用 40.0→100.0 的等长替换（`tools/patch-minaclac-msd-cap.mjs`，用法见 `tools/README.md`）。新增 Etterna 版本后须重新运行该脚本；修改 wasm 字节后同步递增 `js/ett/constants.js` 的 `WASM_ASSET_VERSION`（浏览器缓存失效）。
 
 ### 6. 文件夹名精确
 

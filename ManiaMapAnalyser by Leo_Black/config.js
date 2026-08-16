@@ -45,7 +45,7 @@ export const APP_CONFIG = {
     },
 
     etterna: {
-        maxSkillValue: 41.0,
+        maxSkillValue: 45.0,
         vibroJackspeedRatioThreshold: 0.95,
     },
 

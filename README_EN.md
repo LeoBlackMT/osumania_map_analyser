@@ -17,7 +17,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ## Key Features
 - **Real-time Analysis**: Analyzes various data of the current beatmap in real-time during gameplay or beatmap selection.
 - **Multi-mod Support**: Compatible with multiple mods in both lazer and stable, supporting custom speed multipliers and OD adjustments.
-- **Customizable Etterna Version**: Allows users to select different versions of [Etterna](https://github.com/etternagame/etterna) MinaCalc for calculations.
+- **Customizable Etterna Version**: Allows users to select different versions of [Etterna](https://github.com/etternagame/etterna) MinaCalc for calculation while surpassing Etterna's official cap.
 - **Pause Detection**: Detects pauses during gameplay and marks their positions on the graph.
 - **Difficulty Estimation**: Estimates difficulty based on beatmap data and provides detailed analysis results, offering multiple estimation algorithms. Compatible with LN and RC Dans for 4/6/7K.
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand the difficulty distribution of a beatmap.

@@ -155,3 +155,4 @@ export const DAN_INDEX = {
 4. **标签结构**：RC/LN 复合标签以 `"RC || LN"` 形式返回（`reworkEstimatorUtils.js:107`），解析时按 `||` 分割。
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
 6. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed 的 star 仅是内部口径，不作为显示值。
+7. **Etterna MSD 上限突破**：MinaCalc 内置 SSR 技能值上限 40.0 已通过 wasm 二进制等长替换（`f32.const 40.0` → `f32.const 100.0`）提升至 100.0（工具见 `tools/patch-minaclac-msd-cap.mjs`，`tools/README.md`）；显示刻度 `config.js:48 etterna.maxSkillValue = 45.0`（技能条宽度与 MSD 胶囊颜色映射按 45 标定）。浏览器加载 wasm 带 `?v=` cache-bust（`js/ett/constants.js WASM_ASSET_VERSION`，bump 时机：wasm 字节变更）。实测效果：技能值低于饱和区（Overall ≲ 37）的谱面输出逐位不变；处于饱和区（~37–40）的谱面数值随上限平滑上升；触顶谱面（技能值被钳在 40.000）突破 40/42 上限。`minaclac-68.0-unofficial.wasm` 未 patch（其 40.0 常量非技能上限，patch 会改变普通谱面输出）；0.70.0 的 Stream 技能值存在旧版独立的饱和行为（不在本 patch 常量内），其 Overall 与其余技能值正常突破。

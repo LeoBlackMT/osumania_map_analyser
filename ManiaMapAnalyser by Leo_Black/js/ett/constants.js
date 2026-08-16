@@ -11,3 +11,8 @@ export const ETTERNA_VERSION_KEYS = Object.freeze([
     "0.72.3",
     "0.74.0",
 ]);
+
+// Cache-busting query value for the shipped .wasm files. Bump whenever the
+// binary bytes under js/ett/versions/ change (e.g. the MSD cap patch) so
+// browsers refetch instead of serving a stale cached module.
+export const WASM_ASSET_VERSION = "2";

@@ -15,7 +15,7 @@
 ## 主要特性
 - **实时分析**：在游戏/选图过程中实时分析当前谱面的各项数据。
 - **多mod支持**：兼容lazer与stable的多个mod，支持自定义倍速与改变OD。
-- **自定义Ett版本**：允许用户选择不同版本的[Etterna](https://github.com/etternagame/etterna) MinaCalc进行计算。
+- **自定义Ett版本**：允许用户选择不同版本的[Etterna](https://github.com/etternagame/etterna) MinaCalc进行计算，同时突破 Etterna 官方上限。
 - **暂停检测**：在游玩过程中检测暂停次数并在图表上显示暂停位置。
 - **难度估计**：基于谱面数据估算难度，并提供详细的分析结果。同时提供多种难度估计算法。适配4/6/7K的LN与RC段位。
 - **图表可视化**：提供难度变化图，帮助玩家更好地理解谱面难度分布。
