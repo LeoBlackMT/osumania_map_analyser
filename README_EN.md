@@ -53,7 +53,7 @@ This plugin sends anonymous usage statistics by default (active users, online di
 To opt out, turn off "Anonymous Usage Statistics" under Settings → Network.
 
 ## Settings
-Note: It is recommended to start with the default settings and then adjust according to personal preference.
+Note: It is recommended to start with the default settings or a suitable preset, and then adjust according to personal preference.
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
 For the preset system tutorial, see [docs/presets-guide.md](docs/presets-guide.md#english).
 

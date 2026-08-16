@@ -10,7 +10,7 @@
 	{
 		"uniqueID": "GuideButton",
 		"type": "button",
-		"title": "Settings Guide/设置说明",
+		"title": "Settings Guide | 设置说明",
 		"description": "Go to the GitHub repository for settings usage instructions and more information. | 前往 GitHub 仓库查看设置使用说明和更多信息。",
 		"options": [],
 		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/settings.md"
@@ -18,7 +18,7 @@
 	{
 		"uniqueID": "PresetGuideButton",
 		"type": "button",
-		"title": "Presets Guide/预设说明",
+		"title": "Presets Guide | 预设说明",
 		"description": "Go to the GitHub repository for presets usage instructions and more information. | 前往 GitHub 仓库查看预设使用说明和更多信息。",
 		"options": [],
 		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/presets-guide.md"
@@ -51,7 +51,7 @@
 		"uniqueID": "preset",
 		"type": "options",
 		"title": "Preset",
-		"description": "Apply a saved configuration that overwrites the settings below. Choose LastSavedPreset to follow your manual changes (they are saved into it automatically). Manage and share custom presets on the presets.html page (tutorial: docs/presets-guide.md).",
+		"description": "Quickly apply built-in presets that overwrites the settings below. Choose LastSavedPreset to follow your manual changes. Manage, share and apply custom presets on the presets.html page.",
 		"options": [
 			"Default",
 			"Mini",
@@ -458,7 +458,7 @@
 		"title": "Debug Page",
 		"description": "Go to the debug.html page to view and manage debug information. Note: if you changed the folder name or tosu's port, this link may not work. In that case, open the debug.html file in your browser manually.",
 		"options": [],
-		"value": "http://127.0.0.1:24050/ManiaMapAnalyser.by.Leo_Black/debug.html"
+		"value": "http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/debug.html"
 	},
 	{
 		"uniqueID": "debugUseAmount",

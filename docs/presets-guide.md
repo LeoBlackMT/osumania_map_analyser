@@ -20,6 +20,7 @@
 
 1. 在浏览器地址栏输入：`http://localhost:24050/<插件目录名>/presets.html`
    - 例如插件目录名为 `ManiaMapAnalyser by Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
+   - 下载下来的目录名可能不同，请根据实际情况修改。一般情况为 `ManiaMapAnalyser.by.Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`。
    - 如果修改过端口，把 `24050` 换成你的端口
 2. 页面加载后，你看到的就是预设管理器。
 
@@ -33,7 +34,7 @@
 - **左侧列表**：所有预设的列表，分为 **System**（系统预设）和 **My Presets**（我的预设）两组。
 - **右侧编辑区**：上方是 **Preset Info**（预设信息），下方是**设置表单**（所有可配置项，每项前面有一个复选框）。
 
-> 提示：刚打开或刷新页面时，My Presets 会先显示"Loading presets…"，等 tosu 的设置数据到达后（通常 1~2 秒）才会显示真实的预设列表——这不是丢失，请稍候。
+> 提示：刚打开或刷新页面时，My Presets 会先显示"Loading presets…"，等 tosu 的设置数据到达后才会显示真实的预设列表。
 
 ## 4. 左侧列表详解
 
@@ -102,7 +103,7 @@
 
 ### 推荐工作流程
 
-1. **创建预设**：在表单里调整设置（勾选想要的项）→ 填写 Preset Info → 点 **Save**。
+1. **创建预设**：先点击 **New**，随后在表单里调整设置（勾选想要的项）→ 填写 Preset Info → 点 **Save**。
 2. **应用预设**：在左侧列表点某行的 **Apply**（或编辑后点 **Apply Checked**）。
 3. **修改预设**：列表点 **Edit** → 修改表单/信息 → 点 **Save**（覆盖）。
 4. **分享预设**：列表点某行的 **Export**（单个）或操作栏 **Export All**（全部）→ 把 .json 文件发给朋友 → 朋友点 **Import** 导入。
@@ -147,6 +148,7 @@ The manager is a standalone page inside the plugin folder:
 
 1. Open your browser and go to: `http://localhost:24050/<plugin folder name>/presets.html`
    - E.g. `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
+   - The downloaded folder name may differ; adjust accordingly. Usually it is `ManiaMapAnalyser.by.Leo_Black`, so visit `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`.
    - If you changed the port, replace `24050` with your port.
 2. The page that loads is the Presets Manager.
 
@@ -160,7 +162,7 @@ The manager has three parts:
 - **List** (left): all presets, grouped into **System** and **My Presets**.
 - **Editor** (right): **Preset Info** on top and the **settings form** below (every setting with a checkbox).
 
-> Note: right after opening or refreshing the page, My Presets shows "Loading presets…" until tosu's settings data arrives (usually 1–2 seconds) — your presets are not lost, just wait a moment.
+> Note: right after opening or refreshing the page, My Presets shows "Loading presets…" until tosu's settings data arrives.
 
 ## 4. The list in detail
 
@@ -223,7 +225,7 @@ Form values auto-refresh from tosu's live broadcast (except the field you are ty
 
 ### Recommended workflow
 
-1. **Create**: tweak the form (check the fields you want) → fill Preset Info → click **Save**.
+1. **Create**: click **New** → tweak the form (check the fields you want) → fill Preset Info → click **Save**.
 2. **Apply**: click **Apply** on a row (or **Apply Checked** after editing).
 3. **Edit**: click **Edit** → modify → **Save** (overwrites).
 4. **Share**: click **Export** on a row (single) or **Export All** (everything) → send the .json → friend clicks **Import**.

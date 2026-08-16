@@ -52,7 +52,7 @@
 如不希望上报，可在 tosu 设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
 
 ## 设置说明
-注意：推荐直接使用默认设置开始体验，之后再根据个人喜好进行调整。
+注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。
 见 [docs/settings.md](docs/settings.md) 了解详细设置说明。
 预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。
 
