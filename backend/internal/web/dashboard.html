@@ -68,7 +68,6 @@
   .delta.flat { color: var(--muted); }
 
   .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 12px; margin-bottom: 12px; }
-  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .panel {
     background: var(--panel);
@@ -164,20 +163,18 @@
     </section>
   </div>
 
-  <div class="grid3">
-    <section class="panel">
-      <h2>Star rating <small>0.5-star bins</small></h2>
-      <div class="body chart-wrap"><div id="starHistogram"></div></div>
-    </section>
-    <section class="panel">
-      <h2>LN ratio <small>5% bins</small></h2>
-      <div class="body chart-wrap"><div id="lnRatioHistogram"></div></div>
-    </section>
-    <section class="panel">
-      <h2>Numeric difficulty <small>0.5 bins · .0 = mid</small></h2>
-      <div class="body chart-wrap"><div id="numericHistogram"></div></div>
-    </section>
-  </div>
+  <section class="panel" style="margin-bottom:12px">
+    <h2>Star rating <small>0.5-star bins</small></h2>
+    <div class="body chart-wrap"><div id="starHistogram"></div></div>
+  </section>
+  <section class="panel" style="margin-bottom:12px">
+    <h2>LN ratio <small>5% bins</small></h2>
+    <div class="body chart-wrap"><div id="lnRatioHistogram"></div></div>
+  </section>
+  <section class="panel" style="margin-bottom:12px">
+    <h2>Numeric difficulty <small>0.5 bins · .0 = mid</small></h2>
+    <div class="body chart-wrap"><div id="numericHistogram"></div></div>
+  </section>
 
   <div class="grid4">
     <section class="panel"><h2>Key count</h2><div class="body" id="keycounts"></div></section>
