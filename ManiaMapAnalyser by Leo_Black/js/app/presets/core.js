@@ -21,8 +21,10 @@ import {
     AUTO_SAVE_PRESET_NAME,
     DEFAULT_SLOT_NAMES,
     PRESET_STORAGE_SETTING,
+    SYSTEM_SNAPSHOT_KEYS,
     parseStore,
     storeFromPayload,
+    rawStoreFingerprint,
     serializeStore,
     storeFingerprint,
     normalizeLibrary,
@@ -214,7 +216,7 @@ export async function applyCustomSnapshot(snapshot, presetName = null) {
         markWritten(lastWritten, snapshot, anchor);
         writeBackToTosu(anchor, snapshot);
     }
-    lastValues = { ...lastValues, ...snapshot, preset: anchor };
+    lastValues = { ...lastValues, ...stripSystemKeys(snapshot), preset: anchor };
     notifyChanged();
 }
 
@@ -264,7 +266,7 @@ export async function applyPresetByName(name) {
     }
     // Mirror the write-back into lastValues so the echo broadcast of the same
     // values is not mistaken for a manual settings change.
-    lastValues = { ...lastValues, ...snapshot, preset: name };
+    lastValues = { ...lastValues, ...stripSystemKeys(snapshot), preset: name };
     notifyChanged();
     return true;
 }
@@ -452,7 +454,7 @@ export async function autoSaveCurrentPreset() {
         } else {
             persistLibrary();
         }
-        lastValues = { ...lastValues, ...snapshot, preset: anchored.name };
+        lastValues = { ...lastValues, ...stripSystemKeys(snapshot), preset: anchored.name };
         return;
     }
 
@@ -471,7 +473,7 @@ export async function saveToLastSavedPreset() {
     } else {
         persistLibrary();
     }
-    lastValues = { ...lastValues, ...snapshot, preset: AUTO_SAVE_PRESET_NAME };
+    lastValues = { ...lastValues, ...stripSystemKeys(snapshot), preset: AUTO_SAVE_PRESET_NAME };
 }
 
 /** Creates or updates the fixed "LastSavedPreset" container in memory. */
@@ -607,7 +609,7 @@ function writeBackToTosu(presetName, snapshot) {
         return;
     }
     const values = Object.keys(snapshot)
-        .filter((key) => key !== "wsEndpoint")
+        .filter((key) => key !== "wsEndpoint" && !SYSTEM_SNAPSHOT_KEYS.has(key))
         .map((key) => ({
             uniqueID: key,
             value: snapshot[key],
@@ -668,17 +670,54 @@ function extractPresetValue(payload) {
     return null;
 }
 
+/**
+ * Returns the RAW presetStorage string from a payload, WITHOUT sanitization.
+ * Used to detect historical store pollution (system keys embedded in preset
+ * settings) so the cleaned store can be written back exactly once.
+ */
+function rawStoreFromPayload(payload) {
+    if (Array.isArray(payload)) {
+        const entry = payload.find((item) => item?.uniqueID === PRESET_STORAGE_SETTING);
+        return entry && typeof entry.value === "string" ? entry.value : null;
+    }
+    if (payload && typeof payload === "object") {
+        return typeof payload[PRESET_STORAGE_SETTING] === "string"
+            ? payload[PRESET_STORAGE_SETTING]
+            : null;
+    }
+    return null;
+}
+
 function snapshotOf(payload) {
     if (Array.isArray(payload)) {
         const out = {};
         for (const entry of payload) {
-            if (entry && typeof entry.uniqueID === "string") {
+            if (entry && typeof entry.uniqueID === "string"
+                && !SYSTEM_SNAPSHOT_KEYS.has(entry.uniqueID)) {
                 out[entry.uniqueID] = entry.value;
             }
         }
         return out;
     }
-    return { ...payload };
+    const out = { ...payload };
+    for (const key of SYSTEM_SNAPSHOT_KEYS) {
+        delete out[key];
+    }
+    return out;
+}
+
+/**
+ * Returns a copy of `values` with the system keys (presetStorage/preset)
+ * stripped. Used wherever a settings snapshot is built for storage — those
+ * keys must never end up inside a preset, or the store recursively embeds
+ * itself and values.json explodes (observed: 264MB).
+ */
+function stripSystemKeys(values) {
+    const out = { ...values };
+    for (const key of SYSTEM_SNAPSHOT_KEYS) {
+        delete out[key];
+    }
+    return out;
 }
 
 function hasKeyChanged(prev, next, key) {
@@ -698,6 +737,7 @@ async function handleSettingsPacket(packet) {
         // First batch: record baseline, load the store (library + lastWritten),
         // restore the active preset from the picker value.
         lastValues = snapshotOf(payload);
+        const rawStore = rawStoreFromPayload(payload);
         const store = storeFromPayload(payload);
         customPresets = normalizeLibrary(store ? store.presets : []);
         lastWritten = store ? store.lastWritten : [];
@@ -708,9 +748,20 @@ async function handleSettingsPacket(packet) {
         // Create missing anchor slots now that the authoritative library is
         // loaded (never persist an empty library over an existing one).
         await ensureDefaultCustomSlots();
-        // Flush any in-memory changes made before the first batch arrived
-        // (no-op when nothing changed — see the fingerprint guard).
-        persistLibrary();
+        // Self-heal historical store pollution: if the store as it lives in
+        // tosu contained system keys embedded in preset settings (which
+        // recursively embedded the store and inflated values.json to hundreds
+        // of MB), the cleaned in-memory store differs -> force ONE write-back
+        // to shrink it back to its real content.
+        const rawFingerprint = rawStore ? rawStoreFingerprint(rawStore) : null;
+        if (rawFingerprint !== null && rawFingerprint !== lastPersistedFingerprint) {
+            persistLibrary();
+            lastPersistedFingerprint = currentStoreFingerprint();
+        } else {
+            // Flush any in-memory changes made before the first batch arrived
+            // (no-op when nothing changed — see the fingerprint guard).
+            persistLibrary();
+        }
         // Always notify: the UI may have rendered before this first batch.
         notifyChanged();
 
@@ -815,7 +866,7 @@ async function overwriteCustomPreset(presetValue) {
     } else {
         persistLibrary();
     }
-    lastValues = { ...lastValues, ...snapshot, preset: presetValue };
+    lastValues = { ...lastValues, ...stripSystemKeys(snapshot), preset: presetValue };
 }
 
 // ---------------------------------------------------------------------------
