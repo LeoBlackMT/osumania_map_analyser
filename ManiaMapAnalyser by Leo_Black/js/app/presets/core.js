@@ -73,6 +73,11 @@ export function getBuiltinPresets() {
     return builtinPresets;
 }
 
+/** Returns the settings of a built-in preset by id (null when unavailable). */
+export function getBuiltinSettings(id) {
+    return builtinCache.get(id) || null;
+}
+
 export function getCurrentPreset() {
     return currentPreset;
 }
@@ -101,6 +106,8 @@ async function loadBuiltinPresets() {
                 const fileResponse = await fetch(`./presets/${preset.file}`, { cache: "no-store" });
                 const data = await fileResponse.json();
                 builtinCache.set(preset.id, (data && data.settings) || {});
+                // Merge metadata from the preset file (version etc.) into the list entry.
+                preset.version = (data && typeof data.version === "number") ? data.version : 1;
             } catch {
                 // Keep the entry out of builtinCache; it is simply not applicable.
             }
@@ -235,24 +242,51 @@ export async function applyPresetByName(name) {
 // Custom preset CRUD
 // ---------------------------------------------------------------------------
 
-/** Creates or updates (same-name overwrite) a user preset from a snapshot. */
-export function createCustomPreset(name, snapshot) {
+// User preset names: English letters, digits, underscore, hyphen, 1-40 chars.
+// Fixed anchor slots ("Custom 1" etc.) are system-created and exempt.
+const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+/** Converts a preset name into a stable slug id (lowercase, - separators). */
+export function slugify(name) {
+    return String(name || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+}
+
+/**
+ * Creates or updates (same-name overwrite) a user preset.
+ * @param {string} name preset name (English letters/digits/_/-)
+ * @param {object} snapshot partial settings snapshot
+ * @param {{description?: string, version?: number}} [meta]
+ */
+export function createCustomPreset(name, snapshot, meta = {}) {
     const cleanName = String(name || "").trim();
+    const isSystemSlot = DEFAULT_SLOT_NAMES.includes(cleanName);
     if (!cleanName || cleanName === "Custom" || cleanName === AUTO_SAVE_PRESET_NAME) {
+        return null;
+    }
+    if (!isSystemSlot && !PRESET_NAME_RE.test(cleanName)) {
         return null;
     }
     if (findBuiltinPresetByName(cleanName)) {
         return null;
     }
 
+    const version = normalizeVersion(meta.version);
     const existing = customPresets.find((preset) => preset.name === cleanName);
     if (existing) {
         existing.settings = snapshot || {};
+        existing.description = String(meta.description ?? existing.description ?? "");
+        existing.version = version;
         existing.updatedAt = Date.now();
     } else {
         const preset = {
-            id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+            id: slugify(cleanName),
             name: cleanName,
+            description: String(meta.description ?? ""),
+            version,
             settings: snapshot || {},
             createdAt: Date.now(),
         };
@@ -264,27 +298,55 @@ export function createCustomPreset(name, snapshot) {
     return existing || customPresets[customPresets.length - 1];
 }
 
-/** Renames a user preset by id. Returns true on success. */
-export function renameCustomPreset(id, newName) {
-    const cleanName = String(newName || "").trim();
-    if (!cleanName || cleanName === "Custom" || cleanName === AUTO_SAVE_PRESET_NAME) {
-        return false;
-    }
+/** Normalizes a version value to a positive integer (default 1). */
+function normalizeVersion(value) {
+    const num = Number(value);
+    return Number.isInteger(num) && num > 0 ? num : 1;
+}
+
+/** Updates preset metadata (name/description/version) by id. Returns true on success. */
+export function updatePresetMetadata(id, meta = {}) {
     const preset = customPresets.find((item) => item.id === id);
     if (!preset) {
         return false;
     }
-    if (findBuiltinPresetByName(cleanName)) {
-        return false;
+
+    if (meta.name !== undefined) {
+        const cleanName = String(meta.name).trim();
+        if (!cleanName || cleanName === "Custom" || cleanName === AUTO_SAVE_PRESET_NAME) {
+            return false;
+        }
+        if (!PRESET_NAME_RE.test(cleanName)) {
+            return false;
+        }
+        if (findBuiltinPresetByName(cleanName)) {
+            return false;
+        }
+        if (customPresets.some((item) => item.id !== id && item.name === cleanName)) {
+            return false;
+        }
+        preset.name = cleanName;
+        preset.id = slugify(cleanName);
     }
-    if (customPresets.some((item) => item.id !== id && item.name === cleanName)) {
-        return false;
+    if (meta.description !== undefined) {
+        preset.description = String(meta.description ?? "");
+    }
+    if (meta.version !== undefined) {
+        preset.version = normalizeVersion(meta.version);
     }
 
-    preset.name = cleanName;
     persistLibrary();
     notifyChanged();
     return true;
+}
+
+/** Renames a user preset by id. Returns true on success. */
+export function renameCustomPreset(id, newName) {
+    const preset = customPresets.find((item) => item.id === id);
+    if (!preset) {
+        return false;
+    }
+    return updatePresetMetadata(id, { name: newName });
 }
 
 /** Deletes a user preset by id. Fixed anchor slots cannot be deleted. */

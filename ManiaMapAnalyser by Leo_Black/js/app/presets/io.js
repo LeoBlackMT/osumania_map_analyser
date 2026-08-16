@@ -1,8 +1,9 @@
 /**
  * Preset export / import for sharing between players.
  * Formats:
- *  - single preset: { format: "mma-preset", version: 1, name, settings, exportedAt }
- *  - collection:    { format: "mma-preset-collection", version: 1, presets: [...] }
+ *  - single preset v2: { format: "mma-preset", version: 2, preset: {id, name, description, version, settings}, exportedAt }
+ *  - collection v2:    { format: "mma-preset-collection", version: 2, presets: [...] }
+ *  - v1 (name + settings at top level) is accepted on import.
  */
 
 import {
@@ -12,7 +13,6 @@ import {
 
 const FORMAT_SINGLE = "mma-preset";
 const FORMAT_COLLECTION = "mma-preset-collection";
-const FORMAT_VERSION = 1;
 
 function safeFileName(name) {
     return String(name || "preset")
@@ -32,41 +32,63 @@ function download(text, fileName) {
     URL.revokeObjectURL(url);
 }
 
-/** Exports one custom preset as a downloadable json file. */
-export function exportPresetToFile(preset) {
-    const data = {
+function singlePayload(name, description, version, settings) {
+    return {
         format: FORMAT_SINGLE,
-        version: FORMAT_VERSION,
-        name: preset.name,
-        settings: preset.settings,
+        version: 2,
+        preset: {
+            name,
+            description: description || "",
+            version: Number.isInteger(version) && version > 0 ? version : 1,
+            settings: settings || {},
+        },
         exportedAt: new Date().toISOString(),
     };
-    download(JSON.stringify(data, null, 2), `${safeFileName(preset.name)}.json`);
+}
+
+/** Exports one custom preset as a downloadable json file. */
+export function exportPresetToFile(preset) {
+    download(
+        JSON.stringify(singlePayload(preset.name, preset.description, preset.version, preset.settings), null, 2),
+        `${safeFileName(preset.name)}.json`,
+    );
+}
+
+/** Exports the currently edited (unsaved) preset as a downloadable json file. */
+export function exportCurrentToFile(name, description, version, settings) {
+    download(
+        JSON.stringify(singlePayload(name, description, version, settings), null, 2),
+        `${safeFileName(name || "preset")}.json`,
+    );
 }
 
 /** Exports the whole custom library as a downloadable json file. */
 export function exportLibraryToFile() {
     const data = {
         format: FORMAT_COLLECTION,
-        version: FORMAT_VERSION,
-        presets: getCustomPresets().map((preset) => ({
-            name: preset.name,
-            settings: preset.settings,
-            exportedAt: preset.updatedAt || preset.createdAt,
-        })),
+        version: 2,
+        presets: getCustomPresets()
+            .filter((preset) => preset.name !== "Last Saved Preset")
+            .map((preset) => ({
+                name: preset.name,
+                description: preset.description || "",
+                version: preset.version || 1,
+                settings: preset.settings,
+                exportedAt: preset.updatedAt || preset.createdAt,
+            })),
         exportedAt: new Date().toISOString(),
     };
     download(JSON.stringify(data, null, 2), "mma-presets.json");
 }
 
-function importSingle(data) {
-    const name = String(data.name || "").trim();
-    if (!name || !data.settings || typeof data.settings !== "object") {
-        throw new Error("Invalid preset file: missing name or settings.");
+function importSingle(name, description, version, settings) {
+    const cleanName = String(name || "").trim();
+    if (!cleanName || !settings || typeof settings !== "object") {
+        throw new Error("Invalid preset: missing name or settings.");
     }
-    const created = createCustomPreset(name, data.settings);
+    const created = createCustomPreset(cleanName, settings, { description, version });
     if (!created) {
-        throw new Error(`Preset "${name}" could not be created (reserved or duplicate system name).`);
+        throw new Error(`Preset "${cleanName}" could not be created (reserved, invalid name, or duplicate system name).`);
     }
     return created.name;
 }
@@ -84,17 +106,25 @@ export async function importPresetFromFile(file) {
     }
 
     try {
+        // Collection (v1/v2 share the same shape).
         if (parsed?.format === FORMAT_COLLECTION && Array.isArray(parsed.presets)) {
             if (parsed.presets.length === 0) {
                 return { ok: false, message: "The collection is empty." };
             }
-            const names = parsed.presets.map((item) => importSingle(item));
+            const names = parsed.presets.map((item) => {
+                const p = item?.preset || item;
+                return importSingle(p.name, p.description, p.version, p.settings);
+            });
             return { ok: true, message: `Imported ${names.length} presets: ${names.join(", ")}.` };
         }
+
+        // Single preset (v2 wraps in .preset; v1 has fields at top level).
         if (parsed?.format === FORMAT_SINGLE) {
-            const name = importSingle(parsed);
+            const p = parsed.preset || parsed;
+            const name = importSingle(p.name, p.description, p.version, p.settings);
             return { ok: true, message: `Preset "${name}" imported.` };
         }
+
         return { ok: false, message: "Unrecognized preset file format." };
     } catch (error) {
         return { ok: false, message: error.message };

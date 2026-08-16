@@ -1,6 +1,8 @@
 {
+  "id": "im-interlude-main",
   "name": "For Interlude Player",
   "description": "Pattern analysis, InterludeSR on the left, shown outside play.",
+  "version": 1,
   "settings": {
     "contentBar": "Pattern",
     "srText": "InterludeSR",

@@ -1,6 +1,8 @@
 {
+  "id": "tyrcs-wild-dan",
   "name": "Wild Dan (WIP)",
   "description": "Difficulty graph, ReworkSR, Sunny estimation with extended range.",
+  "version": 1,
   "settings": {
     "contentBar": "Graph",
     "estimatorAlgorithm": "Sunny",

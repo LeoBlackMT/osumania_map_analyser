@@ -1,6 +1,8 @@
 {
+  "id": "the-limit-does-not-exist",
   "name": "The Limit Does Not Exist",
   "description": "Difficulty graph, MSD, Sunny estimation with extended range.",
+  "version": 1,
   "settings": {
     "contentBar": "Graph",
     "srText": "MSD",

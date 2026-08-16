@@ -1,31 +1,45 @@
 /**
  * Presets manager page (presets.html).
- * Renders a self-extending settings form (generated from settings.json),
- * the preset list, CRUD, Apply / Save actions and export/import.
+ * Left: categorized preset list (System incl. Default + My Presets).
+ * Right: metadata panel + self-extending settings form (checkboxes control
+ * which fields are included in the snapshot). Top: independent action bar.
+ * All destructive actions require a confirmation modal; feedback uses toasts.
  */
 
 import { socket } from "../appContext.js";
 import {
     getCustomPresets,
     getBuiltinPresets,
+    getBuiltinSettings,
     getCurrentPreset,
     onPresetsChanged,
     applyPresetByName,
     applyCustomSnapshot,
     createCustomPreset,
-    renameCustomPreset,
+    updatePresetMetadata,
     deleteCustomPreset,
 } from "./core.js";
 import {
     exportPresetToFile,
+    exportCurrentToFile,
     exportLibraryToFile,
     importPresetFromFile,
 } from "./io.js";
-import { loadSettingsSchema } from "./schema.js";
+import { loadSettingsSchema, buildDefaultSnapshot } from "./schema.js";
 import {
     AUTO_SAVE_PRESET_NAME,
     DEFAULT_SLOT_NAMES,
 } from "./storage.js";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+// System settings never shown in the editor form.
+const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
+// Settings shown but unchecked by default (connection parameter).
+const DEFAULT_UNCHECKED_KEYS = new Set(["wsEndpoint"]);
+const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -35,17 +49,17 @@ let schema = null;
 let entries = [];
 const formValues = {};
 const formIncluded = {};
+let editingId = null; // id of the custom preset being edited (null = new)
 
 let listEl = null;
 let formEl = null;
-let hintEl = null;
-let saveNameInput = null;
-let saveBtn = null;
-let applyBtn = null;
-let loadCurrentBtn = null;
-let exportAllBtn = null;
-let importInput = null;
 let editorEl = null;
+let metaNameInput = null;
+let metaDescInput = null;
+let metaVersionInput = null;
+let metaIdReadout = null;
+let toastRoot = null;
+let modalRoot = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,12 +74,82 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
-function showHint(message, isError) {
-    if (!hintEl) {
+function slugify(name) {
+    return String(name || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+}
+
+// ---------------------------------------------------------------------------
+// Toast notifications (top-right, stacked, auto-dismiss)
+// ---------------------------------------------------------------------------
+
+function showToast(message, type = "info", duration = 3500) {
+    if (!toastRoot) {
         return;
     }
-    hintEl.textContent = message;
-    hintEl.classList.toggle("error", Boolean(isError));
+    const toast = document.createElement("div");
+    toast.className = `presets-toast presets-toast-${type}`;
+    toast.textContent = message;
+    toastRoot.appendChild(toast);
+    setTimeout(() => toast.classList.add("show"), 10);
+    setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+// ---------------------------------------------------------------------------
+// Confirmation modal (async)
+// ---------------------------------------------------------------------------
+
+function confirmDialog(message, { title = "Please confirm", danger = false } = {}) {
+    return new Promise((resolve) => {
+        modalRoot.textContent = "";
+        modalRoot.hidden = false;
+
+        const box = document.createElement("div");
+        box.className = "presets-modal-box";
+
+        const heading = document.createElement("h3");
+        heading.className = "presets-modal-title";
+        heading.textContent = title;
+
+        const body = document.createElement("p");
+        body.className = "presets-modal-message";
+        body.textContent = message;
+
+        const actions = document.createElement("div");
+        actions.className = "presets-modal-actions";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "presets-btn";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.addEventListener("click", () => {
+            modalRoot.hidden = true;
+            resolve(false);
+        });
+
+        const okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = `presets-btn ${danger ? "presets-btn-danger" : "presets-btn-primary"}`;
+        okBtn.textContent = "Confirm";
+        okBtn.addEventListener("click", () => {
+            modalRoot.hidden = true;
+            resolve(true);
+        });
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(okBtn);
+        box.appendChild(heading);
+        box.appendChild(body);
+        box.appendChild(actions);
+        modalRoot.appendChild(box);
+        okBtn.focus();
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -90,19 +174,26 @@ function buildLayout() {
     const header = document.createElement("header");
     header.className = "presets-header";
     header.innerHTML = `
-        <h1>Presets Manager</h1>
-        <div class="presets-header-actions">
-            <input id="preset-save-name" class="presets-save-name" type="text"
-                   placeholder="New preset name..." maxlength="40">
-            <button id="preset-save-btn" class="presets-btn presets-btn-primary" type="button">Save as Preset</button>
-            <button id="preset-apply-btn" class="presets-btn presets-btn-primary" type="button">Apply Checked</button>
-            <button id="preset-load-current-btn" class="presets-btn" type="button">Use Current Settings</button>
-            <button id="preset-export-all-btn" class="presets-btn" type="button">Export All</button>
-            <button id="preset-import-btn" class="presets-btn" type="button">Import</button>
-            <input id="preset-import-file" type="file" accept="application/json,.json" hidden>
+        <div class="presets-header-info">
+            <h1>Presets Manager</h1>
+            <p class="presets-header-sub">Create, edit, apply, export and import preset configurations for the Mania Map Analyser overlay.</p>
         </div>
     `;
     root.appendChild(header);
+
+    const actionBar = document.createElement("div");
+    actionBar.className = "presets-actionbar";
+    actionBar.innerHTML = `
+        <button id="act-new" class="presets-btn" type="button">New</button>
+        <button id="act-save" class="presets-btn presets-btn-primary" type="button">Save as Preset</button>
+        <button id="act-apply" class="presets-btn presets-btn-primary" type="button">Apply Checked</button>
+        <span class="presets-actionbar-sep"></span>
+        <button id="act-export-current" class="presets-btn" type="button">Export Current</button>
+        <button id="act-export-all" class="presets-btn" type="button">Export All</button>
+        <button id="act-import" class="presets-btn" type="button">Import</button>
+        <input id="preset-import-file" type="file" accept="application/json,.json" hidden>
+    `;
+    root.appendChild(actionBar);
 
     const main = document.createElement("main");
     main.className = "presets-main";
@@ -113,65 +204,115 @@ function buildLayout() {
 
     const editorWrap = document.createElement("section");
     editorWrap.className = "presets-editor-wrap";
-    editorEl = document.createElement("div");
-    editorEl.className = "presets-editor";
-    editorEl.textContent = "Loading settings…";
-    editorWrap.appendChild(editorEl);
-    main.appendChild(editorWrap);
 
+    const meta = document.createElement("div");
+    meta.className = "presets-meta";
+    meta.innerHTML = `
+        <div class="presets-meta-title">Preset Info</div>
+        <label class="presets-meta-field">
+            <span>Name</span>
+            <input id="meta-name" type="text" maxlength="40" placeholder="my_preset">
+            <small>English letters, digits, _ and - only, max 40 chars.</small>
+        </label>
+        <label class="presets-meta-field">
+            <span>Description</span>
+            <input id="meta-desc" type="text" maxlength="200" placeholder="What is this preset for?">
+        </label>
+        <div class="presets-meta-row">
+            <label class="presets-meta-field">
+                <span>Version</span>
+                <input id="meta-version" type="number" min="1" step="1" value="1">
+                <small>Whole number; higher = newer.</small>
+            </label>
+            <label class="presets-meta-field">
+                <span>ID (auto)</span>
+                <input id="meta-id" type="text" readonly>
+            </label>
+        </div>
+    `;
+    editorWrap.appendChild(meta);
+
+    editorEl = document.createElement("div");
+    editorEl.className = "presets-form-scroll";
+    editorEl.innerHTML = '<p class="presets-empty">Loading settings…</p>';
+    editorWrap.appendChild(editorEl);
+
+    main.appendChild(editorWrap);
     root.appendChild(main);
 
-    hintEl = document.createElement("p");
-    hintEl.className = "presets-hint";
-    root.appendChild(hintEl);
+    toastRoot = document.createElement("div");
+    toastRoot.className = "presets-toast-container";
+    document.body.appendChild(toastRoot);
 
-    saveNameInput = document.getElementById("preset-save-name");
-    saveBtn = document.getElementById("preset-save-btn");
-    applyBtn = document.getElementById("preset-apply-btn");
-    loadCurrentBtn = document.getElementById("preset-load-current-btn");
-    exportAllBtn = document.getElementById("preset-export-all-btn");
-    importInput = document.getElementById("preset-import-file");
+    modalRoot = document.createElement("div");
+    modalRoot.className = "presets-modal";
+    modalRoot.hidden = true;
+    document.body.appendChild(modalRoot);
 
-    saveBtn.addEventListener("click", () => {
-        const name = String(saveNameInput.value || "").trim();
-        if (!name) {
-            showHint("Enter a preset name first.", true);
+    metaNameInput = document.getElementById("meta-name");
+    metaDescInput = document.getElementById("meta-desc");
+    metaVersionInput = document.getElementById("meta-version");
+    metaIdReadout = document.getElementById("meta-id");
+
+    wireActions(actionBar);
+}
+
+function wireActions(actionBar) {
+    actionBar.querySelector("#act-new").addEventListener("click", async () => {
+        const reset = await confirmDialog("Clear the editor and start a new preset?", { title: "New preset" });
+        if (!reset) {
             return;
         }
-        const existed = getCustomPresets().some((preset) => preset.name === name);
-        const preset = createCustomPreset(name, collectCheckedSnapshot());
-        if (!preset) {
-            showHint("Invalid preset name (reserved or duplicate system name).", true);
-            return;
-        }
-        saveNameInput.value = "";
-        showHint(existed ? `Preset "${preset.name}" updated.` : `Preset "${preset.name}" saved.`, false);
+        resetEditor();
+        showToast("Editor cleared — configure the form and save as a new preset.", "info");
     });
 
-    applyBtn.addEventListener("click", async () => {
+    actionBar.querySelector("#act-save").addEventListener("click", () => saveCurrentPreset());
+
+    actionBar.querySelector("#act-apply").addEventListener("click", async () => {
         const snapshot = collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
-            showHint("Nothing checked to apply.", true);
+            showToast("Nothing is checked to apply.", "error");
+            return;
+        }
+        const ok = await confirmDialog(
+            `Apply the checked settings (${Object.keys(snapshot).length} fields) to the overlay now?`,
+            { title: "Apply settings" },
+        );
+        if (!ok) {
             return;
         }
         await applyCustomSnapshot(snapshot);
-        showHint("Checked settings applied and synced to tosu.", false);
+        showToast("Checked settings applied and synced to tosu.", "success");
     });
 
-    loadCurrentBtn.addEventListener("click", () => {
-        fillFormFromDefaults();
-        showHint("Form reset to factory defaults (values refresh from tosu broadcast).", false);
+    actionBar.querySelector("#act-export-current").addEventListener("click", () => {
+        const snapshot = collectCheckedSnapshot();
+        if (Object.keys(snapshot).length === 0) {
+            showToast("Nothing checked to export.", "error");
+            return;
+        }
+        exportCurrentToFile(
+            metaNameInput.value.trim(),
+            metaDescInput.value.trim(),
+            Number(metaVersionInput.value),
+            snapshot,
+        );
+        showToast("Current editor state exported.", "success");
     });
 
-    exportAllBtn.addEventListener("click", () => {
-        if (getCustomPresets().filter((p) => p.name !== AUTO_SAVE_PRESET_NAME).length === 0) {
-            showHint("No custom presets to export.", true);
+    actionBar.querySelector("#act-export-all").addEventListener("click", () => {
+        const count = getCustomPresets().filter((p) => p.name !== AUTO_SAVE_PRESET_NAME).length;
+        if (count === 0) {
+            showToast("No custom presets to export.", "error");
             return;
         }
         exportLibraryToFile();
+        showToast(`Exported ${count} presets.`, "success");
     });
 
-    const importBtn = document.getElementById("preset-import-btn");
+    const importBtn = actionBar.querySelector("#act-import");
+    const importInput = actionBar.querySelector("#preset-import-file");
     importBtn.addEventListener("click", () => importInput.click());
     importInput.addEventListener("change", async () => {
         const file = importInput.files && importInput.files[0];
@@ -180,8 +321,92 @@ function buildLayout() {
             return;
         }
         const result = await importPresetFromFile(file);
-        showHint(result.message, !result.ok);
+        showToast(result.message, result.ok ? "success" : "error", result.ok ? 3500 : 6000);
     });
+}
+
+// ---------------------------------------------------------------------------
+// Editor state
+// ---------------------------------------------------------------------------
+
+function resetEditor() {
+    editingId = null;
+    metaNameInput.value = "";
+    metaDescInput.value = "";
+    metaVersionInput.value = "1";
+    metaIdReadout.value = "";
+    fillFormFromDefaults();
+    selectAllCheckboxes(true);
+    highlightActiveRow(null);
+}
+
+async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = false } = {}) {
+    editingId = isBuiltin || isDefault ? null : preset.id;
+    metaNameInput.value = preset.name || "";
+    metaDescInput.value = preset.description || "";
+    metaVersionInput.value = String(preset.version || 1);
+    metaIdReadout.value = isBuiltin || isDefault ? "" : slugify(preset.name);
+
+    for (const key of Object.keys(formIncluded)) {
+        formIncluded[key] = false;
+    }
+    for (const [key, value] of Object.entries(preset.settings || {})) {
+        if (key in formValues) {
+            formValues[key] = value;
+            formIncluded[key] = true;
+        }
+    }
+    syncFormControls();
+    highlightActiveRow(preset.name);
+    showToast(`"${preset.name}" loaded into the editor. Uncheck fields to exclude them.`, "info", 2500);
+}
+
+async function saveCurrentPreset() {
+    const name = metaNameInput.value.trim();
+    if (!name) {
+        showToast("Enter a preset name first.", "error");
+        return;
+    }
+    if (!PRESET_NAME_RE.test(name)) {
+        showToast("Name must be English letters, digits, _ or - (max 40 chars).", "error", 5000);
+        return;
+    }
+    const description = metaDescInput.value.trim();
+    const version = Number(metaVersionInput.value);
+    const snapshot = collectCheckedSnapshot();
+    if (Object.keys(snapshot).length === 0) {
+        showToast("Nothing is checked — the preset would be empty.", "error");
+        return;
+    }
+
+    const existing = getCustomPresets().find((preset) => preset.name === name);
+    if (existing) {
+        const ok = await confirmDialog(
+            `Preset "${name}" already exists. Overwrite it?`,
+            { title: "Overwrite preset", danger: true },
+        );
+        if (!ok) {
+            return;
+        }
+        const updated = createCustomPreset(name, snapshot, { description, version });
+        if (!updated) {
+            showToast("Preset could not be created (reserved or duplicate system name).", "error");
+            return;
+        }
+        editingId = updated.id;
+        metaIdReadout.value = updated.id;
+        showToast(`Preset "${name}" updated.`, "success");
+        return;
+    }
+
+    const created = createCustomPreset(name, snapshot, { description, version });
+    if (!created) {
+        showToast("Preset could not be created (reserved or duplicate system name).", "error");
+        return;
+    }
+    editingId = created.id;
+    metaIdReadout.value = created.id;
+    showToast(`Preset "${name}" saved.`, "success");
 }
 
 // ---------------------------------------------------------------------------
@@ -189,13 +414,17 @@ function buildLayout() {
 // ---------------------------------------------------------------------------
 
 function renderForm() {
-    editorEl.textContent = "";
+    const wrap = document.getElementById("presets-app").querySelector(".presets-form-scroll");
+    wrap.textContent = "";
     formEl = document.createElement("div");
     formEl.className = "presets-form";
-    editorEl.appendChild(formEl);
+    wrap.appendChild(formEl);
 
     let currentGroup = null;
     for (const entry of entries) {
+        if (EXCLUDED_KEYS.has(entry.uniqueID)) {
+            continue;
+        }
         if (entry.type === "header") {
             currentGroup = document.createElement("div");
             currentGroup.className = "presets-group";
@@ -221,7 +450,7 @@ function renderForm() {
 function buildSettingRow(entry) {
     const key = entry.uniqueID;
     formValues[key] = entry.value;
-    formIncluded[key] = true;
+    formIncluded[key] = !DEFAULT_UNCHECKED_KEYS.has(key);
 
     const row = document.createElement("label");
     row.className = "presets-setting";
@@ -230,7 +459,7 @@ function buildSettingRow(entry) {
     const include = document.createElement("input");
     include.type = "checkbox";
     include.className = "presets-setting-include";
-    include.checked = true;
+    include.checked = formIncluded[key];
     include.addEventListener("change", () => {
         formIncluded[key] = include.checked;
     });
@@ -327,24 +556,18 @@ function buildControl(entry, key) {
 }
 
 function syncFormControls() {
-    const rows = formEl ? formEl.querySelectorAll(".presets-setting") : [];
+    if (!formEl) {
+        return;
+    }
+    const rows = formEl.querySelectorAll(".presets-setting");
     for (const row of rows) {
         const key = row.dataset.presetKey;
         if (!key || !(key in formValues)) {
             continue;
         }
         const control = row.querySelector(".presets-setting-control");
-        if (!control) {
-            continue;
-        }
-        const input = control.firstElementChild;
-        if (!input) {
-            continue;
-        }
-        if (input.type === "checkbox" && input.classList.contains("presets-setting-include")) {
-            continue;
-        }
-        if (document.activeElement === input) {
+        const input = control && control.firstElementChild;
+        if (!input || document.activeElement === input) {
             continue;
         }
         const value = formValues[key];
@@ -364,7 +587,10 @@ function syncFormControls() {
 
 function fillFormFromDefaults() {
     for (const entry of entries) {
-        if (entry.type === "header" || entry.type === "button" || !(entry.uniqueID in formValues)) {
+        if (EXCLUDED_KEYS.has(entry.uniqueID) || entry.type === "header" || entry.type === "button") {
+            continue;
+        }
+        if (!(entry.uniqueID in formValues)) {
             continue;
         }
         formValues[entry.uniqueID] = entry.value;
@@ -372,7 +598,20 @@ function fillFormFromDefaults() {
     syncFormControls();
 }
 
-/** Builds the partial snapshot from the checked form fields. */
+function selectAllCheckboxes(checked) {
+    if (!formEl) {
+        return;
+    }
+    const rows = formEl.querySelectorAll(".presets-setting");
+    for (const row of rows) {
+        const include = row.querySelector(".presets-setting-include");
+        if (include) {
+            include.checked = checked;
+            formIncluded[row.dataset.presetKey] = checked;
+        }
+    }
+}
+
 function collectCheckedSnapshot() {
     const snapshot = {};
     for (const [key, included] of Object.entries(formIncluded)) {
@@ -383,53 +622,29 @@ function collectCheckedSnapshot() {
     return snapshot;
 }
 
-function loadPresetIntoForm(preset) {
-    for (const key of Object.keys(formIncluded)) {
-        formIncluded[key] = false;
-    }
-    for (const [key, value] of Object.entries(preset.settings || {})) {
-        if (key in formValues) {
-            formValues[key] = value;
-            formIncluded[key] = true;
-        }
-    }
-    syncFormControls();
-    const rows = formEl ? formEl.querySelectorAll(".presets-setting") : [];
-    for (const row of rows) {
-        const include = row.querySelector(".presets-setting-include");
-        if (include) {
-            include.checked = formIncluded[row.dataset.presetKey] === true;
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Preset list
 // ---------------------------------------------------------------------------
 
-function buildPresetRow(preset, { isSystem, active, actions }) {
+function buildPresetRow(preset, { isSystem = false, active = false, actions = [] }) {
     const row = document.createElement("div");
     row.className = `presets-item${active ? " active" : ""}`;
     row.dataset.presetName = preset.name;
 
     const name = escapeHtml(preset.name);
     const desc = escapeHtml(preset.description || "");
-    let actionsHtml = "";
-    if (actions !== "none") {
-        actionsHtml = `<div class="presets-item-actions">
-            <button type="button" class="presets-btn presets-btn-apply" data-action="apply">Apply</button>
-            ${actions === "all"
-                ? `<button type="button" class="presets-btn" data-action="edit">Edit</button>
-                   <button type="button" class="presets-btn" data-action="rename">Rename</button>
-                   <button type="button" class="presets-btn presets-btn-danger" data-action="delete">Delete</button>
-                   <button type="button" class="presets-btn" data-action="export">Export</button>`
-                : ""}
-        </div>`;
-    }
+    const version = Number.isInteger(preset.version) && preset.version > 0 ? `v${preset.version}` : "";
+
+    const actionsHtml = actions.length > 0
+        ? `<div class="presets-item-actions">${actions.map((action) => {
+            const className = action === "apply" ? "presets-btn-apply" : action === "delete" ? "presets-btn-danger" : "";
+            return `<button type="button" class="presets-btn ${className}" data-action="${action}">${action[0].toUpperCase()}${action.slice(1)}</button>`;
+        }).join("")}</div>`
+        : "";
 
     row.innerHTML = `
         <div class="presets-item-info">
-            <div class="presets-item-name">${name}${isSystem ? '<span class="presets-item-badge">System</span>' : ""}</div>
+            <div class="presets-item-name">${name}${isSystem ? '<span class="presets-item-badge">System</span>' : ""}${version ? `<span class="presets-item-version">${escapeHtml(version)}</span>` : ""}</div>
             <div class="presets-item-desc"${preset.description ? ` title="${escapeHtml(preset.description)}"` : ""}>${desc}</div>
         </div>
         ${actionsHtml}
@@ -443,6 +658,41 @@ function renderList() {
     }
     listEl.textContent = "";
     const activeName = getCurrentPreset();
+
+    // System presets (Default first, then built-ins).
+    const systemSection = document.createElement("div");
+    systemSection.className = "presets-section";
+    systemSection.textContent = "System";
+    listEl.appendChild(systemSection);
+
+    listEl.appendChild(buildPresetRow(
+        {
+            name: "Default",
+            description: "Reset to the factory default configuration (values from settings.json).",
+            version: 1,
+        },
+        {
+            isSystem: true,
+            active: activeName === "Default",
+            actions: ["edit", "apply"],
+        },
+    ));
+
+    for (const preset of getBuiltinPresets()) {
+        listEl.appendChild(buildPresetRow(preset, {
+            isSystem: true,
+            active: activeName === preset.name,
+            actions: ["edit", "apply"],
+        }));
+    }
+
+    listEl.appendChild(buildPresetRow(
+        {
+            name: AUTO_SAVE_PRESET_NAME,
+            description: "Automatically keeps the latest manual configuration after you change settings.",
+        },
+        { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: [] },
+    ));
 
     // Custom presets.
     const customSection = document.createElement("div");
@@ -461,34 +711,23 @@ function renderList() {
         listEl.appendChild(empty);
     } else {
         for (const preset of userPresets) {
+            const isSlot = DEFAULT_SLOT_NAMES.includes(preset.name);
+            const actions = ["edit", "apply", "export"]
+                .concat(isSlot ? [] : ["rename", "delete"]);
             listEl.appendChild(buildPresetRow(preset, {
                 isSystem: false,
                 active: activeName === preset.name,
-                actions: DEFAULT_SLOT_NAMES.includes(preset.name) ? "apply" : "all",
+                actions,
             }));
         }
     }
+}
 
-    // System presets.
-    const systemSection = document.createElement("div");
-    systemSection.className = "presets-section";
-    systemSection.textContent = "System";
-    listEl.appendChild(systemSection);
-
-    for (const preset of getBuiltinPresets()) {
-        listEl.appendChild(buildPresetRow(preset, {
-            isSystem: true,
-            active: activeName === preset.name,
-        }));
+function highlightActiveRow(name) {
+    const rows = listEl ? listEl.querySelectorAll(".presets-item") : [];
+    for (const row of rows) {
+        row.classList.toggle("editing", row.dataset.presetName === name);
     }
-
-    listEl.appendChild(buildPresetRow(
-        {
-            name: AUTO_SAVE_PRESET_NAME,
-            description: "Automatically keeps the latest manual configuration after you change settings.",
-        },
-        { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: "none" },
-    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -544,12 +783,12 @@ function finishRename(row) {
     if (!preset) {
         return;
     }
-    if (!renameCustomPreset(preset.id, input.value)) {
-        showHint("Invalid or duplicate name.", true);
+    if (!updatePresetMetadata(preset.id, { name: input.value })) {
+        showToast("Invalid or duplicate name.", "error");
         renderList();
         return;
     }
-    showHint("", false);
+    showToast("Preset renamed.", "success");
 }
 
 async function handleListClick(event) {
@@ -564,23 +803,37 @@ async function handleListClick(event) {
     const name = row.dataset.presetName;
 
     switch (actionBtn.dataset.action) {
-        case "apply": {
-            if (name === AUTO_SAVE_PRESET_NAME) {
-                showHint("Last Saved Preset keeps following your manual changes.", false);
+        case "edit": {
+            if (name === "Default") {
+                const defaults = await buildDefaultSnapshot();
+                await loadPresetIntoEditor({ name: "Default", description: "Factory default configuration.", version: 1, settings: defaults }, { isDefault: true });
                 return;
             }
-            if (await applyPresetByName(name)) {
-                showHint(`Preset "${name}" applied and synced to tosu.`, false);
-            } else {
-                showHint(`Preset "${name}" not found.`, true);
+            const builtin = getBuiltinPresets().find((preset) => preset.name === name);
+            if (builtin) {
+                const settings = getBuiltinSettings(builtin.id);
+                await loadPresetIntoEditor({ ...builtin, settings: settings || {} }, { isBuiltin: true });
+                return;
+            }
+            const custom = getCustomPresets().find((preset) => preset.name === name);
+            if (custom) {
+                await loadPresetIntoEditor(custom);
             }
             break;
         }
-        case "edit": {
-            const preset = getCustomPresets().find((item) => item.name === name);
-            if (preset) {
-                loadPresetIntoForm(preset);
-                showHint(`Preset "${name}" loaded into the form. Uncheck fields to exclude them.`, false);
+        case "apply": {
+            if (name === AUTO_SAVE_PRESET_NAME) {
+                showToast("Last Saved Preset keeps following your manual changes.", "info");
+                return;
+            }
+            const ok = await confirmDialog(`Apply preset "${name}" now?`, { title: "Apply preset" });
+            if (!ok) {
+                return;
+            }
+            if (await applyPresetByName(name)) {
+                showToast(`Preset "${name}" applied and synced to tosu.`, "success");
+            } else {
+                showToast(`Preset "${name}" not found.`, "error");
             }
             break;
         }
@@ -598,9 +851,16 @@ async function handleListClick(event) {
             if (!preset) {
                 return;
             }
-            if (window.confirm(`Delete preset "${preset.name}"?`)) {
+            const ok = await confirmDialog(
+                `Delete preset "${preset.name}"? This cannot be undone.`,
+                { title: "Delete preset", danger: true },
+            );
+            if (ok) {
                 deleteCustomPreset(preset.id);
-                showHint("Preset deleted.", false);
+                if (editingId === preset.id) {
+                    resetEditor();
+                }
+                showToast("Preset deleted.", "success");
             }
             break;
         }
@@ -608,6 +868,7 @@ async function handleListClick(event) {
             const preset = getCustomPresets().find((item) => item.name === name);
             if (preset) {
                 exportPresetToFile(preset);
+                showToast(`Preset "${preset.name}" exported.`, "success");
             }
             break;
         }

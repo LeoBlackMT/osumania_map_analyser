@@ -7,13 +7,14 @@
 
 预设系统允许用户一键应用或保存整套插件配置。与早期版本（硬编码于 `js/app/presets.js`）不同，当前实现是完全**自拓展**的：设置 schema 来自 `settings.json` 本身，新增设置项无需修改任何预设代码。
 
-- **内置预设**（只读）：存放于**插件目录内**的 `presets/*.json`（清单 + 每预设一个文件），每个预设只含**覆盖子集**（相对默认值有差异的键）。应用时仅覆盖这些键，未覆盖的设置保留当前值。
-- **Default 预设**：不落盘，应用时由 `settings.json` 的 `value` 字段动态生成全量出厂快照。
+- **内置预设**（只读，SYSTEM 分类）：存放于**插件目录内**的 `presets/*.json`（清单 + 每预设一个文件），每个预设只含**覆盖子集**（相对默认值有差异的键）。应用时仅覆盖这些键，未覆盖的设置保留当前值。
+- **Default 预设**：不落盘（SYSTEM 分类首行），应用时由 `settings.json` 的 `value` 字段动态生成全量出厂快照（与 config.js defaults 对齐）。
+- **预设结构**：`{id, name, description, version, settings}`——`id` 由 name 自动生成（slug，可省略）；`name` 限英文字母/数字/`_`/`-`（≤40 字符，系统槽 "Custom N" 豁免）；`version` 为纯数字（越大越新）。
 - **自定义预设**：用户在 presets.html 管理器中创建，支持**部分快照**（编辑时取消勾选的字段不纳入，应用时保留原状态）。
 - **Last Saved Preset 自动跟随**（Auto 模式）：未锚定自定义预设时，用户在 tosu 设置页的手动修改自动存入该容器；它是跟随标记，**不是**可应用的快照。
 - **锚定行为**：选中自定义预设后手动修改 → 自动覆盖该预设；选中内置预设后手动修改 → 修改进入 Last Saved Preset。
 - **固定锚定槽**：Custom 1 / Custom 2 / Custom 3 首次加载自动创建（物化当前配置），不可重命名/删除。
-- **导出/导入**：单个预设或全库导出为 json 文件，可导入分享（`mma-preset` / `mma-preset-collection` 格式，带版本号与校验）。
+- **导出/导入**：单个预设、当前编辑态或全库导出为 json 文件（`mma-preset` / `mma-preset-collection` 格式 v2，含 metadata；导入兼容 v1 旧格式）。
 
 ## 使用方法
 
@@ -26,10 +27,10 @@
 ### 预设管理器（浏览器，`presets.html`）
 
 - 打开 `http://<host>:<port>/<插件目录名>/presets.html`（默认 `http://localhost:24050/<插件目录名>/presets.html`）。
-- 左侧：预设列表（My Presets：Apply/Edit/Rename/Delete/Export；System：Apply；Last Saved Preset 只读）。
-- 右侧：**自动生成**的设置表单（来自 settings.json，header 分组、checkbox/options/text/color/number 控件），每项前有**复选框**控制是否纳入快照。
-- 顶栏动作：**Save as Preset**（勾选字段存为新预设）、**Apply Checked**（勾选字段应用并写回 tosu）、**Use Current Settings**（表单恢复默认值，随后由 tosu 广播刷新为当前值）、**Export All**、**Import**。
-- 表单值随 tosu 设置广播自动同步（正在聚焦的控件除外）。
+- **顶部操作栏**（独立、sticky）：New（清空编辑器，需确认）、Save as Preset（保存/覆盖，需确认）、Apply Checked（应用勾选字段，需确认）、Export Current（导出当前编辑态）、Export All、Import。
+- **左侧列表**（分类）：SYSTEM 分类 = Default（首行，动态出厂快照）+ 11 个内置预设 + Last Saved Preset（只读行）；My Presets = 自定义预设（Custom 1-3 固定槽仅 Edit/Apply/Export）。每行按钮：Edit（加载到编辑区并高亮）、Apply（一键应用，需确认）、自定义行另有 Rename/Delete/Export。
+- **右侧编辑区**：Preset Info 面板（Name/Description/Version 可编辑，ID 自动生成只读）+ 自动生成的设置表单（来自 settings.json，header 分组；`preset`/`presetStorage` 系统设置排除不显示，`wsEndpoint` 默认不勾选）。
+- **反馈**：所有操作结果通过右上角 toast 通知（自动消失）；破坏性操作（应用/删除/覆盖/导入/清空）均弹窗二次确认。
 
 ## 架构
 

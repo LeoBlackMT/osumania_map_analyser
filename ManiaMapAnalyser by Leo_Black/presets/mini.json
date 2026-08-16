@@ -1,6 +1,8 @@
 {
+  "id": "mini",
   "name": "mini",
   "description": "Star rating only: no card body content, no top-right content, no map tag capsule.",
+  "version": 1,
   "settings": {
     "contentBar": "None",
     "srText": "Pattern",

@@ -1,6 +1,8 @@
 {
+  "id": "daniel-like",
   "name": "Daniel-like",
   "description": "Difficulty graph, MSD, Daniel estimator.",
+  "version": 1,
   "settings": {
     "contentBar": "Graph",
     "srText": "MSD",

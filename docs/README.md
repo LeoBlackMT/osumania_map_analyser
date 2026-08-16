@@ -26,6 +26,7 @@
 | --- | --- | --- |
 | docs/README.md | 人类 | 本文档 |
 | [settings.md](settings.md) | 人类 | 插件设置说明文档 |
+| [presets-guide.md](presets-guide.md) | 人类 | 预设系统新手教程（零基础双语教学，逐按钮讲解） |
 | [azusa_algorithm.md](azusa_algorithm.md) | 人类/AI | Azusa算法说明文档(英文) |
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
@@ -77,6 +78,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | --- | --- | --- |
 | docs/README.md | Human | This document |
 | [settings.md](settings.md) | Human | Plugin settings guide |
+| [presets-guide.md](presets-guide.md) | Human | Presets beginner guide (bilingual tutorial, every button explained) |
 | [azusa_algorithm.md](azusa_algorithm.md) | Human/AI | Azusa algorithm document (English) |
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
