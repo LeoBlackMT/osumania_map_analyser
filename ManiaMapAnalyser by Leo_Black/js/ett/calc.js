@@ -1,5 +1,5 @@
 import { OsuFileParser } from "../parser/osuFileParser.js";
-import { ETTERNA_VERSION_KEYS, SUPPORTED_KEYS } from "./constants.js";
+import { ETTERNA_VERSION_KEYS, SUPPORTED_KEYS, WASM_ASSET_VERSION } from "./constants.js";
 import {
     DEFAULT_ETTERNA_VERSION,
     resolveEtternaVersionLoaderForKeycount,
@@ -60,8 +60,15 @@ const WASM_FILE_BY_VERSION = Object.freeze(Object.fromEntries(
 
 async function loadEtternaModule(version, loader) {
     const locateFile = (path) => {
-        const url = new URL(`./versions/${path}`, import.meta.url).toString();
-        return IS_NODE ? toWasmPath(url) : url;
+        const url = new URL(`./versions/${path}`, import.meta.url);
+        if (!IS_NODE) {
+            // Browser fetch: bust HTTP cache so updated .wasm bytes (e.g. the
+            // MSD cap patch) are actually re-downloaded. Node preloads via
+            // wasmBinary and resolves a filesystem path from pathname only,
+            // so the query never reaches the fs path.
+            url.searchParams.set("v", WASM_ASSET_VERSION);
+        }
+        return IS_NODE ? toWasmPath(url) : url.toString();
     };
 
     if (!IS_NODE) {
