@@ -139,6 +139,8 @@
         - 默认启用，请不要随意关闭。
     - **Always Show LN Difficulty**
         - 始终显示LN难度，默认关闭。
+    - **Preset Storage (Internal)**: 自定义预设的内部存储（JSON），由预设管理器自动维护。
+        - 请勿手动编辑，除非你清楚自己在做什么。
         - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则会误判非LN图的LN难度。
 
 ***
@@ -281,3 +283,5 @@
     - **Always Show LN Difficulty**
         - When enabled, always show LN Difficulty. Default is disabled.
         - This option only takes effect when "Improve Sunny LN Estimation" is enabled, or it may misjudge LN difficulty for non-LN maps.
+    - **Preset Storage (Internal)**: Internal storage for custom presets (JSON), maintained automatically by the preset manager.
+        - Do not edit unless you know what you are doing.
