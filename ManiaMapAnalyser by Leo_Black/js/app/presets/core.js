@@ -794,7 +794,7 @@ export function initPresets() {
     // Load built-in presets eagerly ONLY on the manager page, where the list
     // is rendered. The game overlay (index.html, also loaded inside the tosu
     // in-game CEF iframe) never shows the manager list — eagerly fetching the
-    // 12+ preset JSON files there wastes bandwidth and memory on every load,
+    // 10+ preset JSON files there wastes bandwidth and memory on every load,
     // which amplifies the crash-reload loop seen in production. applyPresetByName
     // still loads them lazily when a built-in preset is actually applied.
     if (typeof window !== "undefined" && /presets\.html/i.test(window.location.pathname || "")) {

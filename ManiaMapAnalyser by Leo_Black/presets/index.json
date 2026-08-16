@@ -60,12 +60,6 @@
       "name": "DanielLike",
       "description": "Difficulty graph, MSD, Daniel estimator.",
       "file": "daniel-like.json"
-    },
-    {
-      "id": "tyrcs-wild-dan",
-      "name": "WildDanWIP",
-      "description": "Difficulty graph, ReworkSR, Sunny estimation with extended range.",
-      "file": "tyrcs-wild-dan.json"
     }
   ]
 }
