@@ -704,6 +704,34 @@ function renderList() {
     listEl.textContent = "";
     const activeName = getCurrentPreset();
 
+    // Custom presets come first (they are the user's own).
+    const customSection = document.createElement("div");
+    customSection.className = "presets-section";
+    customSection.textContent = "My Presets";
+    listEl.appendChild(customSection);
+
+    const userPresets = getCustomPresets()
+        .filter((preset) => preset.name !== AUTO_SAVE_PRESET_NAME)
+        .filter((preset) => !getBuiltinPresets().some((builtin) => builtin.name === preset.name));
+
+    if (userPresets.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "presets-empty";
+        empty.textContent = "No custom presets yet. Configure the form and click Save as Preset.";
+        listEl.appendChild(empty);
+    } else {
+        for (const preset of userPresets) {
+            const isSlot = DEFAULT_SLOT_NAMES.includes(preset.name);
+            const actions = ["edit", "apply", "export"]
+                .concat(isSlot ? [] : ["rename", "delete"]);
+            listEl.appendChild(buildPresetRow(preset, {
+                isSystem: false,
+                active: activeName === preset.name,
+                actions,
+            }));
+        }
+    }
+
     // System presets (Default first, then built-ins).
     const systemSection = document.createElement("div");
     systemSection.className = "presets-section";
@@ -738,34 +766,6 @@ function renderList() {
         },
         { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: [] },
     ));
-
-    // Custom presets.
-    const customSection = document.createElement("div");
-    customSection.className = "presets-section";
-    customSection.textContent = "My Presets";
-    listEl.appendChild(customSection);
-
-    const userPresets = getCustomPresets()
-        .filter((preset) => preset.name !== AUTO_SAVE_PRESET_NAME)
-        .filter((preset) => !getBuiltinPresets().some((builtin) => builtin.name === preset.name));
-
-    if (userPresets.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "presets-empty";
-        empty.textContent = "No custom presets yet. Configure the form and click Save as Preset.";
-        listEl.appendChild(empty);
-    } else {
-        for (const preset of userPresets) {
-            const isSlot = DEFAULT_SLOT_NAMES.includes(preset.name);
-            const actions = ["edit", "apply", "export"]
-                .concat(isSlot ? [] : ["rename", "delete"]);
-            listEl.appendChild(buildPresetRow(preset, {
-                isSystem: false,
-                active: activeName === preset.name,
-                actions,
-            }));
-        }
-    }
 }
 
 function highlightActiveRow(name) {

@@ -467,15 +467,22 @@ function updateAutoContainer(snapshot) {
 // ---------------------------------------------------------------------------
 
 function persistLibrary() {
+    // Never write before the authoritative library arrived from the settings
+    // stream: persisting the not-yet-loaded (empty) library would overwrite an
+    // existing one in localStorage/presetStorage.
+    if (lastValues === null) {
+        return;
+    }
     cacheLibrary(customPresets);
     writeLibraryToTosu();
 }
 
 /** Writes the library into the presetStorage tosu setting (values.json). */
 function writeLibraryToTosu() {
-    // Only the browser page (127.0.0.1) writes back; in-game overlays load from
-    // localhost (different origin) and stay read-only.
-    if (window.location.hostname !== "127.0.0.1") {
+    // Write-back happens only from a browser page (the manager page or the
+    // overlay in a browser tab): localhost and 127.0.0.1 are both fine.
+    // The in-game CEF overlay never opens presets.html, so it stays read-only.
+    if (!isBrowserOrigin()) {
         return;
     }
     const folderName = typeof window.COUNTER_PATH === "string"
@@ -496,12 +503,18 @@ function writeLibraryToTosu() {
     });
 }
 
+/** True when the page runs in a regular browser (localhost / 127.0.0.1). */
+function isBrowserOrigin() {
+    const host = window.location.hostname;
+    return host === "127.0.0.1" || host === "localhost";
+}
+
 // ---------------------------------------------------------------------------
 // tosu write-back (preset apply echo)
 // ---------------------------------------------------------------------------
 
 function writeBackToTosu(presetName, snapshot) {
-    if (window.location.hostname !== "127.0.0.1") {
+    if (!isBrowserOrigin()) {
         return;
     }
     const folderName = typeof window.COUNTER_PATH === "string"
@@ -598,6 +611,11 @@ async function handleSettingsPacket(packet) {
         lastValues = snapshotOf(payload);
         customPresets = loadLibrary(payload);
         cacheLibrary(customPresets);
+        // Create missing anchor slots now that the authoritative library is
+        // loaded (never persist an empty library over an existing one).
+        await ensureDefaultCustomSlots();
+        // Flush any in-memory changes made before the first batch arrived.
+        persistLibrary();
         // Always notify: the UI may have rendered before this first batch.
         notifyChanged();
 
@@ -710,7 +728,15 @@ export function initPresets() {
     initialized = true;
 
     currentPreset = loadActivePreset();
-    ensureDefaultCustomSlots();
+    // Anchor slots are created AFTER the first settings broadcast loads the
+    // library (see handleSettingsPacket) — creating them here would persist an
+    // empty library over an existing one.
+
+    // Load built-in presets eagerly so the manager list renders them without
+    // waiting for a preset apply.
+    loadBuiltinPresets().then(() => {
+        notifyChanged();
+    });
 
     // Observe the tosu settings stream on our own commands connection.
     socket.commands((packet) => {
