@@ -1,0 +1,16 @@
+{
+  "id": "full-overview",
+  "name": "FullOverview",
+  "description": "Pattern, Etterna and graph together, ReworkSR on the left, graph at top-right.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Full",
+    "srText": "Pattern",
+    "VibroDetection": false,
+    "reverseCardExtendDirection": true,
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

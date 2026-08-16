@@ -8,20 +8,20 @@
 		"value": ""
 	},
 	{
-		"uniqueID": "GuideButtonEN",
+		"uniqueID": "GuideButton",
 		"type": "button",
-		"title": "Settings Guide(English)",
-		"description": "Go to the repo's README_EN.md file for settings usage instructions and more information.",
-		"options": [],
-		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/settings.md#english"
-	},
-	{
-		"uniqueID": "GuideButtonCN",
-		"type": "button",
-		"title": "设置说明(中文)",
-		"description": "前往 GitHub 页面查看下方所有设置的说明。",
+		"title": "Settings Guide | 设置说明",
+		"description": "Go to the GitHub repository for settings usage instructions and more information. | 前往 GitHub 仓库查看设置使用说明和更多信息。",
 		"options": [],
 		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/settings.md"
+	},
+	{
+		"uniqueID": "PresetGuideButton",
+		"type": "button",
+		"title": "Presets Guide | 预设说明",
+		"description": "Go to the GitHub repository for presets usage instructions and more information. | 前往 GitHub 仓库查看预设使用说明和更多信息。",
+		"options": [],
+		"value": "https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/presets-guide.md"
 	},
 	{
 		"uniqueID": "IssueButton",
@@ -38,6 +38,46 @@
 		"description": "View estimator algorithm's benchmark results and performance data.",
 		"options": [],
 		"value": "https://benchmark.leoblack.top/"
+	},
+	{
+		"uniqueID": "hPresets",
+		"type": "header",
+		"title": "Presets",
+		"description": "",
+		"options": [],
+		"value": ""
+	},
+	{
+		"uniqueID": "preset",
+		"type": "options",
+		"title": "Preset",
+		"description": "Quickly apply built-in presets that overwrites the settings below. Choose LastSavedPreset to follow your manual changes. Manage, share and apply custom presets on the presets.html page.",
+		"options": [
+			"Default",
+			"Mini",
+			"ForOsuPlayer",
+			"ForEtternaPlayer",
+			"ForInterludePlayer",
+			"PatternFocus",
+			"FullOverview",
+			"VibroPlayer",
+			"JackPlayer",
+			"TheLimitDoesNotExist",
+			"DanielLike",
+			"Custom1",
+			"Custom2",
+			"Custom3",
+			"LastSavedPreset"
+		],
+		"value": "Default"
+	},
+	{
+		"uniqueID": "PresetButton",
+		"type": "button",
+		"title": "Presets Manage Page",
+		"description": "Go to the presets.html page to manage and share custom presets. Warning: if you changed the floder name or tosu's port,  this link may not work. In that case, open the presets.html file in your browser manually.",
+		"options": [],
+		"value": "http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html"
 	},
 	{
 		"uniqueID": "hModules",
@@ -412,6 +452,14 @@
 		"value": ""
 	},
 	{
+		"uniqueID": "DebugButton",
+		"type": "button",
+		"title": "Debug Page",
+		"description": "Go to the debug.html page to view and manage debug information. Note: if you changed the folder name or tosu's port, this link may not work. In that case, open the debug.html file in your browser manually.",
+		"options": [],
+		"value": "http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/debug.html"
+	},
+	{
 		"uniqueID": "debugUseAmount",
 		"type": "checkbox",
 		"title": "Use Amount For Category",
@@ -426,12 +474,21 @@
 		"description": "When enabled, Azusa always calls Sunny reference with cvtFlag=HO to remove LN inflation from partial LN maps.",
 		"options": [],
 		"value": true
-	},{
+	},
+	{
     	"uniqueID": "enableAlwaysShowLNDifficulty",
     	"type": "checkbox",
     	"title": "Always Show LN Difficulty",
     	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
     	"options": [],
     	"value": false
+	},
+	{
+		"uniqueID": "presetStorage",
+		"type": "text",
+		"title": "Preset Storage (Internal)",
+		"description": "Internal storage for custom presets (JSON). Do not edit unless you know what you are doing.",
+		"options": [],
+		"value": ""
 	}
 ]

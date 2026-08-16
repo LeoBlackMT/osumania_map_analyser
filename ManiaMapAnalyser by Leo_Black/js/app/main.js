@@ -9,6 +9,9 @@ import { setRecomputeHandler, scheduleRecompute } from "./scheduler.js";
 import { loadSettings } from "./settings.js";
 import { setupSocketListener } from "./socketHandlers.js";
 import { initTriangleField } from "./triangles.js";
+// Side-effect import: presets module self-initializes (registers the preset
+// settings-stream listener) on load; it must be loaded exactly once.
+import "./presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "./telemetry.js";
 
 setRecomputeHandler(fetchBeatmapFile);

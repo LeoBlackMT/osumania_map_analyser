@@ -66,12 +66,12 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
 
 1. **监听注册**：`settings.js:707 setupSettingsCommandListener()`（幂等，`state.settingsCommandSubscribed` 守卫 settings.js:708-710）→ `socket.commands((packet) => {...})` settings.js:714。
 2. **解包**：`settings.js:695 extractSettingsPayloadFromCommandPacket(packet)`——数组直接返回；`{command: "getSettings", message}` 取 `message`；其余返回 null 丢弃。
-3. **逐个应用**：`settings.js:733-767` 共 **35 个 applyIf**（与 35 个实际设置一一对应），每个产生一个 `xxxChanged` 布尔。全部走 hasKey 守卫 + `applyXxxSetting(parseXxxValue(payload))`。
-4. **遗留 autoMode 检查**：settings.js:769-774，见 §6。
-5. **聚合**：`changed`（settings.js:776-810，35 个标志 OR）与 `recomputeNeeded`（settings.js:812-831，20 个计算/显示相关标志 OR）。区别：纯显示类（如 `customColorChanged`、`cardOpacityChanged`）只在 `changed` 中，不触发重算。
-6. **缓存失效**：settings.js:833-850——`clearResultCache()` 仅当计算相关标志变化时触发（estimator/azusaSunnyReferenceHo/etternaVersion/companellaEtternaVersion/debug/sv/vibro/wsEndpoint/forceSunnyWindow/enableLNDifficulty/enableAnalyzeLN/enableAlwaysShowLNDifficulty/display6kLevel/extendedEstimationRange）。`wsEndpointChanged` 只在 `changed` 不在 `recomputeNeeded`，故在此显式列出（settings.js:834 注释）。完整写门与失效语义见 [result-cache.md](result-cache.md)。
-7. **首包解析**：settings.js:852-856 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
-8. **重算调度**：settings.js:858-859 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
+3. **逐个应用（数据表驱动）**：`settings.js:731 SETTING_HANDLERS`——36 行 `{ key, parse, apply }` 表（settings.js:731-768），监听器循环遍历（settings.js:829-831）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，每个键产生一个 `changedMap[key]` 布尔。全部走 hasKey 守卫（`applyIf` settings.js:824-825）+ `applyXxxSetting(parseXxxValue(payload))`。
+4. **遗留 autoMode 检查**：settings.js:833-838，见 §6。
+5. **聚合**：`changed`（settings.js:840，`SETTING_HANDLERS.some(changedMap[key])`）与 `recomputeNeeded`（settings.js:841-843，按 `SETTING_RECOMPUTE_KEYS` 集合过滤）。区别：纯显示类（不在 `SETTING_RECOMPUTE_KEYS`，如 `cardOpacity`、`cardBgBlur`）只在 `changed` 中，不触发重算。
+6. **缓存失效**：settings.js:851-855——`clearResultCache()` 仅当 `SETTING_CACHE_KEYS` 集合内键变化时触发（estimator/azusaSunnyReferenceHo/etternaVersion/companellaEtternaVersion/sv/vibro/wsEndpoint/forceSunnyWindow/enableLNDifficulty/enableAnalyzeLN/enableAlwaysShowLNDifficulty/extendedEstimationRange）。`wsEndpoint` 只在 `changed` 不在 `recomputeNeeded`，故在 `SETTING_CACHE_KEYS` 中显式列出（settings.js:846-849 注释）。完整写门与失效语义见 [result-cache.md](result-cache.md)。
+7. **首包解析**：settings.js:857-861 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
+8. **重算调度**：settings.js:863-867 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
 
 ## 6. 遗留逻辑（注意事项）
 
@@ -109,5 +109,5 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - **applyXxxSetting 统一模式**：`parse→compare(与 state 现值比较)→mutate state→side effects(视觉刷新/缓存清理等)→return changed`。所有 apply 函数返回 changed 布尔，供 §5 第 5 步聚合。新增设置必须遵循此模式（见 [guides/adding-a-setting.md](../guides/adding-a-setting.md)）。
 - **VibroDetection 大小写**：settings.json 的 uniqueID 是 `VibroDetection`（大写 V，settings.json:277），命令通道键名与之相同（settings.js:746、settings.js:964 回退对象）；state 字段是小写 `state.vibroDetection`（appContext.js:111）。按 uniqueID 查找/新增时必须精确匹配 PascalCase。
 - **settingsCommandTimeoutMs = 1500**：定义于 `config.js:71 APP_CONFIG.timing.settingsCommandTimeoutMs`，经 `appContext.js:176 SETTINGS_COMMAND_TIMEOUT_MS` 导出，由 `waitForInitialSettingsFromCommand`（settings.js:871-889）用作超时（超时 reject "getSettings timeout"）。
-- **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:907-943）与 applyIf 链（settings.js:733-767）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。
+- **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:912-949，启动基线，手工逐行）与 `SETTING_HANDLERS` 表（settings.js:731-768，运行时，数据驱动）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。注意：**只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
 - **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:833-850）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。

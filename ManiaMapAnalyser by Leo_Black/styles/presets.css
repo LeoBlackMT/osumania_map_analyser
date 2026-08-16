@@ -1,0 +1,618 @@
+/* Presets manager page (presets.html) — dark card style consistent with the overlay. */
+
+:root {
+    --presets-bg: #17181d;
+    --presets-panel: #20232b;
+    --presets-panel-2: #292e39;
+    --presets-border: #383e4b;
+    --presets-text: #e8eaf0;
+    --presets-muted: #9aa0ae;
+    --presets-accent: #4f8cff;
+    --presets-success: #4fc47f;
+    --presets-warning: #e0a83c;
+    --presets-danger: #e5534b;
+    --presets-radius: 10px;
+    --presets-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* Custom scrollbars (reference: benchmark theme.css) */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(128, 179, 255, 0.45) rgba(10, 15, 28, 0.35);
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: rgba(10, 15, 28, 0.35);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(128, 179, 255, 0.58), rgba(103, 255, 226, 0.45));
+    border-radius: 999px;
+    border: 2px solid rgba(10, 15, 28, 0.45);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(128, 179, 255, 0.78), rgba(103, 255, 226, 0.62));
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+body {
+    margin: 0;
+    background: var(--presets-bg);
+    color: var(--presets-text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#presets-app {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 20px 20px 40px;
+}
+
+/* ---------------------------------------------------------------------------
+   Header
+---------------------------------------------------------------------------- */
+
+.presets-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, var(--presets-panel) 0%, #262b36 100%);
+    border: 1px solid var(--presets-border);
+    border-radius: var(--presets-radius);
+    box-shadow: var(--presets-shadow);
+    margin-bottom: 14px;
+}
+
+.presets-header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.presets-header-sub {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--presets-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Action bar (independent, sticky)
+---------------------------------------------------------------------------- */
+
+.presets-actionbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(32, 35, 43, 0.94);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--presets-border);
+    border-radius: var(--presets-radius);
+    box-shadow: var(--presets-shadow);
+    margin-bottom: 14px;
+}
+
+.presets-actionbar-sep {
+    width: 1px;
+    height: 22px;
+    background: var(--presets-border);
+    margin: 0 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons
+---------------------------------------------------------------------------- */
+
+.presets-btn {
+    padding: 7px 14px;
+    border: 1px solid var(--presets-border);
+    border-radius: 8px;
+    background: var(--presets-panel-2);
+    color: var(--presets-text);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+
+.presets-btn:hover {
+    background: #333947;
+    border-color: #4a5162;
+}
+
+.presets-btn:active {
+    transform: translateY(1px);
+}
+
+.presets-btn-primary {
+    background: var(--presets-accent);
+    border-color: var(--presets-accent);
+    color: #fff;
+}
+
+.presets-btn-primary:hover {
+    background: #3d78e6;
+    border-color: #3d78e6;
+}
+
+.presets-btn-danger {
+    color: var(--presets-danger);
+    border-color: var(--presets-danger);
+    background: transparent;
+}
+
+.presets-btn-danger:hover {
+    background: rgba(229, 83, 75, 0.14);
+}
+
+.presets-btn-apply {
+    border-color: var(--presets-accent);
+    color: var(--presets-accent);
+    background: transparent;
+}
+
+.presets-btn-apply:hover {
+    background: rgba(79, 140, 255, 0.14);
+}
+
+.presets-btn-guide {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--presets-accent);
+    border-color: var(--presets-accent);
+    background: transparent;
+}
+
+.presets-btn-guide:hover {
+    background: rgba(79, 140, 255, 0.14);
+    border-color: #6ea3ff;
+}
+
+.presets-btn-guide:active {
+    transform: translateY(1px);
+}
+
+.presets-btn-guide::before {
+    content: "↗";
+    margin-right: 5px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Main layout
+---------------------------------------------------------------------------- */
+
+.presets-main {
+    display: grid;
+    grid-template-columns: 330px 1fr;
+    gap: 14px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .presets-main {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Preset list (left)
+---------------------------------------------------------------------------- */
+
+.presets-list {
+    background: var(--presets-panel);
+    border: 1px solid var(--presets-border);
+    border-radius: var(--presets-radius);
+    padding: 12px;
+    max-height: calc(100vh - 190px);
+    overflow-y: auto;
+    box-shadow: var(--presets-shadow);
+}
+
+.presets-section {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--presets-muted);
+    margin: 14px 4px 6px;
+}
+
+.presets-section:first-child {
+    margin-top: 0;
+}
+
+.presets-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.presets-item:hover {
+    background: var(--presets-panel-2);
+}
+
+.presets-item.active {
+    border-color: var(--presets-accent);
+    background: rgba(79, 140, 255, 0.10);
+}
+
+.presets-item.editing {
+    border-color: var(--presets-success);
+    background: rgba(79, 196, 127, 0.08);
+}
+
+.presets-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.presets-item-name {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    word-break: break-word;
+}
+
+.presets-item-badge {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(79, 140, 255, 0.22);
+    color: var(--presets-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.presets-item-version {
+    font-size: 11px;
+    color: var(--presets-muted);
+    background: var(--presets-panel-2);
+    padding: 0 6px;
+    border-radius: 8px;
+}
+
+.presets-item-desc {
+    font-size: 12px;
+    color: var(--presets-muted);
+    word-break: break-word;
+}
+
+.presets-item-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.presets-item-actions .presets-btn {
+    padding: 3px 9px;
+    font-size: 12px;
+}
+
+.presets-empty {
+    color: var(--presets-muted);
+    font-size: 13px;
+    padding: 10px 4px;
+}
+
+.presets-rename-input {
+    padding: 4px 8px;
+    border: 1px solid var(--presets-accent);
+    border-radius: 6px;
+    background: var(--presets-panel-2);
+    color: var(--presets-text);
+    width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   Editor (right): metadata + form
+---------------------------------------------------------------------------- */
+
+.presets-editor-wrap {
+    background: var(--presets-panel);
+    border: 1px solid var(--presets-border);
+    border-radius: var(--presets-radius);
+    box-shadow: var(--presets-shadow);
+    overflow: hidden;
+}
+
+.presets-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    padding: 14px 16px;
+    background: var(--presets-panel-2);
+    border-bottom: 1px solid var(--presets-border);
+}
+
+.presets-meta-title {
+    grid-column: 1 / -1;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--presets-accent);
+}
+
+.presets-meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    color: var(--presets-muted);
+    min-width: 0;
+}
+
+.presets-meta-field input {
+    padding: 6px 10px;
+    border: 1px solid var(--presets-border);
+    border-radius: 7px;
+    background: var(--presets-panel);
+    color: var(--presets-text);
+    font-size: 13px;
+    width: 100%;
+}
+
+.presets-meta-field input:focus {
+    outline: none;
+    border-color: var(--presets-accent);
+}
+
+.presets-meta-field input[readonly] {
+    color: var(--presets-muted);
+    opacity: 0.85;
+}
+
+.presets-meta-field small {
+    font-size: 11px;
+    color: var(--presets-muted);
+}
+
+.presets-meta-row {
+    display: contents;
+}
+
+/* Form */
+
+.presets-form-scroll {
+    max-height: calc(100vh - 420px);
+    min-height: 320px;
+    overflow-y: auto;
+    padding: 6px 16px 18px;
+}
+
+.presets-form-scroll .presets-empty {
+    padding: 20px 4px;
+}
+
+.presets-group-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--presets-accent);
+    border-bottom: 1px solid var(--presets-border);
+    padding-bottom: 6px;
+    margin: 16px 0 6px;
+}
+
+.presets-group:first-child .presets-group-title {
+    margin-top: 10px;
+}
+
+.presets-setting {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 8px;
+    border-radius: 8px;
+    transition: background 0.12s ease;
+}
+
+.presets-setting:hover {
+    background: var(--presets-panel-2);
+}
+
+.presets-setting-include {
+    align-self: start;
+    margin-top: 2px;
+}
+
+.presets-setting-include {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--presets-accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.presets-setting-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.presets-setting-title {
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.presets-setting-desc {
+    font-size: 12px;
+    color: var(--presets-muted);
+}
+
+.presets-setting-control {
+    display: flex;
+    align-items: center;
+}
+
+.presets-setting-control select,
+.presets-setting-control input[type="text"],
+.presets-setting-control input[type="number"] {
+    padding: 5px 9px;
+    border: 1px solid var(--presets-border);
+    border-radius: 7px;
+    background: var(--presets-panel-2);
+    color: var(--presets-text);
+    max-width: 220px;
+    font-size: 13px;
+    min-height: 30px;
+}
+
+.presets-setting-control input:focus,
+.presets-setting-control select:focus {
+    outline: none;
+    border-color: var(--presets-accent);
+}
+
+.presets-setting-control input[type="checkbox"],
+.presets-setting-control input[type="color"] {
+    accent-color: var(--presets-accent);
+    cursor: pointer;
+}
+
+/* Value checkboxes (e.g. boolean settings) match the include checkbox size. */
+.presets-setting-control input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.presets-setting-readonly {
+    font-size: 12px;
+    color: var(--presets-muted);
+    font-family: Consolas, monospace;
+    word-break: break-all;
+    max-width: 220px;
+}
+
+/* ---------------------------------------------------------------------------
+   Toasts (top-right, stacked)
+---------------------------------------------------------------------------- */
+
+.presets-toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 360px;
+    pointer-events: none;
+}
+
+.presets-toast {
+    padding: 10px 14px;
+    border-radius: 9px;
+    background: var(--presets-panel-2);
+    border: 1px solid var(--presets-border);
+    color: var(--presets-text);
+    font-size: 13px;
+    box-shadow: var(--presets-shadow);
+    opacity: 0;
+    transform: translateX(24px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    pointer-events: auto;
+}
+
+.presets-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.presets-toast-success {
+    border-color: var(--presets-success);
+}
+
+.presets-toast-error {
+    border-color: var(--presets-danger);
+}
+
+.presets-toast-info {
+    border-color: var(--presets-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Confirmation modal
+---------------------------------------------------------------------------- */
+
+.presets-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 11, 15, 0.6);
+    backdrop-filter: blur(3px);
+}
+
+.presets-modal[hidden] {
+    display: none;
+}
+
+.presets-modal-box {
+    min-width: 320px;
+    max-width: 460px;
+    padding: 20px 22px;
+    border-radius: 12px;
+    background: var(--presets-panel);
+    border: 1px solid var(--presets-border);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.presets-modal-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.presets-modal-message {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: var(--presets-muted);
+    word-break: break-word;
+}
+
+.presets-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}

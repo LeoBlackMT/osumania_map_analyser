@@ -4,6 +4,17 @@
 
 ## 中文
 
+- **预设（Presets）**：
+    - **Preset**: 选择预设以一键应用下方所有设置。
+        - Default: 恢复默认配置。
+        - Mini: 极简模式（不显示卡片主体内容）。
+        - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: 面向不同玩家的推荐配置。
+        - PatternFocus / FullOverview / VibroPlayer / JackPlayer: 面向不同游玩场景的配置。
+        - TheLimitDoesNotExist / DanielLike: 面向高难与特殊玩法的配置。
+        - Custom1 / Custom2 / Custom3: 自定义预设槽位，可在预设管理器页面管理。随后可以快速在 tosu 设置页应用，无需前往预设管理器手动应用。
+        - LastSavedPreset: 自动跟随手动修改，修改会自动保存到其中。
+    - **自定义预设管理**: 在浏览器中打开管理页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
+    - **预设指南**： 请前往 [docs/presets-guide.md](presets-guide.md) 查看预设使用说明和更多信息。
 - **模块设定**：
     - **Card Body Content**：选择在卡片主体显示的内容。
         - None: 不显示任何内容。即短卡片模式。
@@ -130,11 +141,24 @@
     - **Always Show LN Difficulty**
         - 始终显示LN难度，默认关闭。
         - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则会误判非LN图的LN难度。
+    - **Preset Storage (Internal)**: 自定义预设的内部存储（JSON），由预设管理器自动维护。
+        - 请勿手动编辑，除非你清楚自己在做什么。
 
 ***
 
 ## English
 
+- **Presets**:
+    - **Preset**: Select a preset to apply all settings below at once.
+        - Default: Reset to the factory default configuration.
+        - Mini: Minimal mode (no card body content).
+        - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: recommended configurations for different player types.
+        - PatternFocus / FullOverview / VibroPlayer / JackPlayer: configurations for different play styles.
+        - TheLimitDoesNotExist / DanielLike: configurations for high-difficulty and niche play styles.
+        - Custom1 / Custom2 / Custom3: custom preset slots, manageable on the management page in a browser. They can be quickly applied in the tosu settings page without going to the management page.
+        - LastSavedPreset: automatically follows your manual changes; changes are saved into it automatically.
+    - **Custom preset management**: Open the management page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
+    - **Presets Guide**: Please refer to [docs/presets-guide.md](presets-guide.md) for instructions on using presets and more information.
 - **Module Settings**:
     - **Card Body Content**: Select what to display in the main body of the card.
         - None: Displays nothing. Short card mode.
@@ -218,7 +242,7 @@
         - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
         - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
         - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
-    - **Pause Detection Threshold**: Set the minimum duration (ms) for a time freeze to be counted as a pause.
+    - **Pause Detection Threshold**: Set the Minimum duration (ms) for a time freeze to be counted as a pause.
         - A pause is only confirmed when the game time has been frozen for longer than this threshold.
         - Default is 500ms. If game lag causes false positives, increase this value appropriately.
     - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation
@@ -261,3 +285,5 @@
     - **Always Show LN Difficulty**
         - When enabled, always show LN Difficulty. Default is disabled.
         - This option only takes effect when "Improve Sunny LN Estimation" is enabled, or it may misjudge LN difficulty for non-LN maps.
+    - **Preset Storage (Internal)**: Internal storage for custom presets (JSON), maintained automatically by the preset manager.
+        - Do not edit unless you know what you are doing.

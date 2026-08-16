@@ -1,0 +1,16 @@
+{
+  "id": "daniel-like",
+  "name": "DanielLike",
+  "description": "Difficulty graph, MSD, Daniel estimator.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Graph",
+    "srText": "MSD",
+    "estimatorAlgorithm": "Daniel",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "forceSunnyWindow": false,
+    "enableLNDifficulty": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

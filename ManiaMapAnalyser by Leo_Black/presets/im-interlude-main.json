@@ -1,0 +1,16 @@
+{
+  "id": "im-interlude-main",
+  "name": "ForInterludePlayer",
+  "description": "Pattern analysis, InterludeSR on the left, shown outside play.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Pattern",
+    "srText": "InterludeSR",
+    "VibroDetection": false,
+    "cardVisibility": "OutsidePlay",
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

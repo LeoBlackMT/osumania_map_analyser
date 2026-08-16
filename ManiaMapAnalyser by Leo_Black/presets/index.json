@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "Mini",
+      "name": "Mini",
+      "description": "Star rating only: no card body content, no top-right content, no map tag capsule.",
+      "file": "mini.json"
+    },
+    {
+      "id": "im-osu-main",
+      "name": "ForOsuPlayer",
+      "description": "Difficulty graph in the card body, pattern in the top-left capsule, estimated difficulty at top-right.",
+      "file": "im-osu-main.json"
+    },
+    {
+      "id": "im-etterna-main",
+      "name": "ForEtternaPlayer",
+      "description": "Etterna skillset bars in the card body with MSD on both capsules.",
+      "file": "im-etterna-main.json"
+    },
+    {
+      "id": "im-interlude-main",
+      "name": "ForInterludePlayer",
+      "description": "Pattern analysis, InterludeSR on the left, shown outside play.",
+      "file": "im-interlude-main.json"
+    },
+    {
+      "id": "pattern-focus",
+      "name": "PatternFocus",
+      "description": "Pattern analysis in the card body and the top-left capsule.",
+      "file": "pattern-focus.json"
+    },
+    {
+      "id": "full-overview",
+      "name": "FullOverview",
+      "description": "Pattern, Etterna and graph together, ReworkSR on the left, graph at top-right.",
+      "file": "full-overview.json"
+    },
+    {
+      "id": "vibro-player",
+      "name": "VibroPlayer",
+      "description": "Etterna skillset bars with MSD, graph at top-right.",
+      "file": "vibro-player.json"
+    },
+    {
+      "id": "jack-player",
+      "name": "JackPlayer",
+      "description": "Difficulty graph, MSD on the left, estimated difficulty at top-right.",
+      "file": "jack-player.json"
+    },
+    {
+      "id": "the-limit-does-not-exist",
+      "name": "TheLimitDoesNotExist",
+      "description": "Difficulty graph, MSD, Sunny estimation with extended range.",
+      "file": "the-limit-does-not-exist.json"
+    },
+    {
+      "id": "daniel-like",
+      "name": "DanielLike",
+      "description": "Difficulty graph, MSD, Daniel estimator.",
+      "file": "daniel-like.json"
+    }
+  ]
+}

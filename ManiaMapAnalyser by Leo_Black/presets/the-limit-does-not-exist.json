@@ -1,0 +1,17 @@
+{
+  "id": "the-limit-does-not-exist",
+  "name": "TheLimitDoesNotExist",
+  "description": "Difficulty graph, MSD, Sunny estimation with extended range.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Graph",
+    "srText": "MSD",
+    "estimatorAlgorithm": "Sunny",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true,
+    "extendedEstimationRange": true
+  }
+}

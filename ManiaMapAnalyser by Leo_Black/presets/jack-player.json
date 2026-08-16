@@ -1,0 +1,15 @@
+{
+  "id": "jack-player",
+  "name": "JackPlayer",
+  "description": "Difficulty graph, MSD on the left, estimated difficulty at top-right.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Graph",
+    "srText": "MSD",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

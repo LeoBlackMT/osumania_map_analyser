@@ -1,0 +1,16 @@
+{
+  "id": "pattern-focus",
+  "name": "PatternFocus",
+  "description": "Pattern analysis in the card body and the top-left capsule.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Pattern",
+    "srText": "Pattern",
+    "VibroDetection": false,
+    "cardVisibility": "OutsidePlay",
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

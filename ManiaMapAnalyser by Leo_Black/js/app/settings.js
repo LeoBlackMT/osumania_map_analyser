@@ -722,6 +722,71 @@ export function applyUseOsuFontSetting(value) {
     return changed;
 }
 
+/**
+ * Data-driven settings schema: every tosu setting maps to a parse+apply pair.
+ * The command listener below iterates this table (instead of hardcoding one
+ * line per setting), and preset modules import the key sets to stay in sync
+ * automatically. Adding a setting = add one row here + a parse/apply pair.
+ */
+const SETTING_HANDLERS = [
+    { key: "wsEndpoint", parse: parseWsEndpointValue, apply: applyWsEndpointSetting },
+    { key: "contentBar", parse: parseContentBarValue, apply: applyContentBarSetting },
+    { key: "srText", parse: parseSrTextValue, apply: applySrTextSetting },
+    { key: "debugUseAmount", parse: parseDebugUseAmountValue, apply: applyDebugUseAmountSetting },
+    { key: "diffText", parse: parseDiffTextValue, apply: applyDiffTextSetting },
+    { key: "estimatorAlgorithm", parse: parseEstimatorAlgorithmValue, apply: applyEstimatorAlgorithmSetting },
+    { key: "azusaSunnyReferenceHo", parse: parseAzusaSunnyReferenceHoValue, apply: applyAzusaSunnyReferenceHoSetting },
+    { key: "etternaVersion", parse: parseEtternaVersionValue, apply: applyEtternaVersionSetting },
+    { key: "companellaEtternaVersion", parse: parseCompanellaEtternaVersionValue, apply: applyCompanellaEtternaVersionSetting },
+    { key: "enablePauseDetection", parse: parseEnablePauseDetectionValue, apply: applyPauseDetectionSetting },
+    { key: "pauseDetectionThreshold", parse: parsePauseDetectionThresholdValue, apply: applyPauseDetectionThresholdSetting },
+    { key: "enableEtternaRainbowBars", parse: parseEnableEtternaRainbowBarsValue, apply: applyEnableEtternaRainbowBarsSetting },
+    { key: "enableStatusMarquee", parse: parseEnableStatusMarqueeValue, apply: applyEnableStatusMarqueeSetting },
+    { key: "VibroDetection", parse: parseVibroDetectionValue, apply: applyVibroDetectionSetting },
+    { key: "showModeTagCapsule", parse: parseShowModeTagCapsuleValue, apply: applyShowModeTagCapsuleSetting },
+    { key: "enableNumericDifficulty", parse: parseEnableNumericDifficultyValue, apply: applyEnableNumericDifficultySetting },
+    { key: "cardVisibility", parse: parseCardVisibilityValue, apply: applyCardVisibilitySetting },
+    { key: "cardOpacity", parse: parseCardOpacityValue, apply: applyCardOpacitySetting },
+    { key: "cardRadius", parse: parseCardRadiusValue, apply: applyCardRadiusSetting },
+    { key: "cardBgBlur", parse: parseCardBgBlurValue, apply: applyCardBgBlurSetting },
+    { key: "enableUpdateCheck", parse: parseEnableUpdateCheckValue, apply: applyEnableUpdateCheckSetting },
+    { key: "enableResultCache", parse: parseEnableResultCacheValue, apply: applyEnableResultCacheSetting },
+    { key: "reverseCardExtendDirection", parse: parseReverseCardExtendDirectionValue, apply: applyReverseCardExtendDirectionSetting },
+    { key: "useOsuFont", parse: parseUseOsuFontValue, apply: applyUseOsuFontSetting },
+    { key: "useSvDetection", parse: parseSvDetectionValue, apply: applyUseSvDetectionSetting },
+    { key: "forceSunnyWindow", parse: parseForceSunnyWindowValue, apply: applyForceSunnyWindowSetting },
+    { key: "enableLNDifficulty", parse: parseEnableLNDifficultyValue, apply: applyEnableLNDifficultySetting },
+    { key: "enableAnalyzeLN", parse: parseEnableAnalyzeLNValue, apply: applyEnableAnalyzeLNSetting },
+    { key: "enableAlwaysShowLNDifficulty", parse: parseEnableAlwaysShowLNDifficultyValue, apply: applyEnableAlwaysShowLNDifficultySetting },
+    { key: "enableTelemetry", parse: parseEnableTelemetryValue, apply: applyEnableTelemetrySetting },
+    { key: "display6kLevel", parse: parseDisplay6kLevelValue, apply: applyDisplay6kLevelSetting },
+    { key: "extendedEstimationRange", parse: parseExtendedEstimationRangeValue, apply: applyExtendedEstimationRangeSetting },
+    { key: "enableOsuTheme", parse: parseEnableOsuThemeValue, apply: applyEnableOsuThemeSetting },
+    { key: "enableFloatingTriangles", parse: parseEnableFloatingTrianglesValue, apply: applyEnableFloatingTrianglesSetting },
+    { key: "enableCoverArt", parse: parseEnableCoverArtValue, apply: applyEnableCoverArtSetting },
+    { key: "customBackgroundColor", parse: parseCustomBackgroundColorValue, apply: applyCustomBackgroundColorSetting },
+];
+
+/** Keys whose change requires a recompute (mirrors the old recomputeNeeded list). */
+export const SETTING_RECOMPUTE_KEYS = new Set([
+    "contentBar", "srText", "debugUseAmount", "diffText",
+    "estimatorAlgorithm", "azusaSunnyReferenceHo", "etternaVersion",
+    "companellaEtternaVersion", "enablePauseDetection", "pauseDetectionThreshold",
+    "enableEtternaRainbowBars", "VibroDetection", "showModeTagCapsule",
+    "useSvDetection", "forceSunnyWindow", "enableLNDifficulty",
+    "enableAnalyzeLN", "enableAlwaysShowLNDifficulty", "display6kLevel",
+    "extendedEstimationRange",
+]);
+
+/** Keys whose change invalidates the result cache (mirrors the old clearResultCache list). */
+export const SETTING_CACHE_KEYS = new Set([
+    "estimatorAlgorithm", "azusaSunnyReferenceHo", "etternaVersion",
+    "companellaEtternaVersion", "useSvDetection", "VibroDetection",
+    "wsEndpoint", "forceSunnyWindow", "enableLNDifficulty",
+    "enableAnalyzeLN", "enableAlwaysShowLNDifficulty",
+    "extendedEstimationRange",
+]);
+
 function extractSettingsPayloadFromCommandPacket(packet) {
     if (Array.isArray(packet)) {
         return packet;
@@ -760,42 +825,10 @@ export function setupSettingsCommandListener() {
             hasKey(key) ? applyFn(parseResult) : false;
 
         state.settingsReceivedFromCommand = true;
-        const wsEndpointChanged = applyIf("wsEndpoint", applyWsEndpointSetting, parseWsEndpointValue(payload));
-        const contentBarChanged = applyIf("contentBar", applyContentBarSetting, parseContentBarValue(payload));
-        const srTextChanged = applyIf("srText", applySrTextSetting, parseSrTextValue(payload));
-        const debugChanged = applyIf("debugUseAmount", applyDebugUseAmountSetting, parseDebugUseAmountValue(payload));
-        const diffTextChanged = applyIf("diffText", applyDiffTextSetting, parseDiffTextValue(payload));
-        const estimatorChanged = applyIf("estimatorAlgorithm", applyEstimatorAlgorithmSetting, parseEstimatorAlgorithmValue(payload));
-        const azusaSunnyReferenceHoChanged = applyIf("azusaSunnyReferenceHo", applyAzusaSunnyReferenceHoSetting, parseAzusaSunnyReferenceHoValue(payload));
-        const etternaVersionChanged = applyIf("etternaVersion", applyEtternaVersionSetting, parseEtternaVersionValue(payload));
-        const companellaEtternaVersionChanged = applyIf("companellaEtternaVersion", applyCompanellaEtternaVersionSetting, parseCompanellaEtternaVersionValue(payload));
-        const pauseChanged = applyIf("enablePauseDetection", applyPauseDetectionSetting, parseEnablePauseDetectionValue(payload));
-        const pauseThresholdChanged = applyIf("pauseDetectionThreshold", applyPauseDetectionThresholdSetting, parsePauseDetectionThresholdValue(payload));
-        const rainbowChanged = applyIf("enableEtternaRainbowBars", applyEnableEtternaRainbowBarsSetting, parseEnableEtternaRainbowBarsValue(payload));
-        const statusMarqueeChanged = applyIf("enableStatusMarquee", applyEnableStatusMarqueeSetting, parseEnableStatusMarqueeValue(payload));
-        const vibroChanged = applyIf("VibroDetection", applyVibroDetectionSetting, parseVibroDetectionValue(payload));
-        const modeTagVisibilityChanged = applyIf("showModeTagCapsule", applyShowModeTagCapsuleSetting, parseShowModeTagCapsuleValue(payload));
-        const numericDifficultyChanged = applyIf("enableNumericDifficulty", applyEnableNumericDifficultySetting, parseEnableNumericDifficultyValue(payload));
-        const cardVisibilityChanged = applyIf("cardVisibility", applyCardVisibilitySetting, parseCardVisibilityValue(payload));
-        const cardOpacityChanged = applyIf("cardOpacity", applyCardOpacitySetting, parseCardOpacityValue(payload));
-        const cardRadiusChanged = applyIf("cardRadius", applyCardRadiusSetting, parseCardRadiusValue(payload));
-        const cardBgBlurChanged = applyIf("cardBgBlur", applyCardBgBlurSetting, parseCardBgBlurValue(payload));
-        const enableUpdateCheckChanged = applyIf("enableUpdateCheck", applyEnableUpdateCheckSetting, parseEnableUpdateCheckValue(payload));
-        const resultCacheChanged = applyIf("enableResultCache", applyEnableResultCacheSetting, parseEnableResultCacheValue(payload));
-        const reverseCardDirectionChanged = applyIf("reverseCardExtendDirection", applyReverseCardExtendDirectionSetting, parseReverseCardExtendDirectionValue(payload));
-        const osuFontChanged = applyIf("useOsuFont", applyUseOsuFontSetting, parseUseOsuFontValue(payload));
-        const svChanged = applyIf("useSvDetection", applyUseSvDetectionSetting, parseSvDetectionValue(payload));
-        const forceSunnyWindowChanged = applyIf("forceSunnyWindow", applyForceSunnyWindowSetting, parseForceSunnyWindowValue(payload));
-        const enableLNDifficultyChanged = applyIf("enableLNDifficulty", applyEnableLNDifficultySetting, parseEnableLNDifficultyValue(payload));
-        const enableAnalyzeLNChanged = applyIf("enableAnalyzeLN", applyEnableAnalyzeLNSetting, parseEnableAnalyzeLNValue(payload));
-        const enableAlwaysShowLNDifficultyChanged = applyIf("enableAlwaysShowLNDifficulty", applyEnableAlwaysShowLNDifficultySetting, parseEnableAlwaysShowLNDifficultyValue(payload));
-        const enableTelemetryChanged = applyIf("enableTelemetry", applyEnableTelemetrySetting, parseEnableTelemetryValue(payload));
-        const display6kLevelChanged = applyIf("display6kLevel", applyDisplay6kLevelSetting, parseDisplay6kLevelValue(payload));
-        const extendedEstimationRangeChanged = applyIf("extendedEstimationRange", applyExtendedEstimationRangeSetting, parseExtendedEstimationRangeValue(payload));
-        const osuThemeChanged = applyIf("enableOsuTheme", applyEnableOsuThemeSetting, parseEnableOsuThemeValue(payload));
-        const floatingTrianglesChanged = applyIf("enableFloatingTriangles", applyEnableFloatingTrianglesSetting, parseEnableFloatingTrianglesValue(payload));
-        const coverArtChanged = applyIf("enableCoverArt", applyEnableCoverArtSetting, parseEnableCoverArtValue(payload));
-        const customColorChanged = applyIf("customBackgroundColor", applyCustomBackgroundColorSetting, parseCustomBackgroundColorValue(payload));
+        const changedMap = {};
+        for (const handler of SETTING_HANDLERS) {
+            changedMap[handler.key] = applyIf(handler.key, handler.apply, handler.parse(payload));
+        }
 
         const legacyAutoMode = parseAutoModeValue(payload);
         if (legacyAutoMode && !isAutoDisplayEnabled()) {
@@ -804,82 +837,20 @@ export function setupSettingsCommandListener() {
             refreshAutoDisplayProfile();
         }
 
-        const changed = contentBarChanged
-            || wsEndpointChanged
-            || srTextChanged
-            || debugChanged
-            || diffTextChanged
-            || estimatorChanged
-            || azusaSunnyReferenceHoChanged
-            || etternaVersionChanged
-            || companellaEtternaVersionChanged
-            || pauseChanged
-            || pauseThresholdChanged
-            || rainbowChanged
-            || statusMarqueeChanged
-            || vibroChanged
-            || modeTagVisibilityChanged
-            || numericDifficultyChanged
-            || cardVisibilityChanged
-            || cardOpacityChanged
-            || cardRadiusChanged
-            || cardBgBlurChanged
-            || enableUpdateCheckChanged
-            || resultCacheChanged
-            || reverseCardDirectionChanged
-            || osuFontChanged
-            || osuThemeChanged
-            || floatingTrianglesChanged
-            || coverArtChanged
-            || customColorChanged
-            || svChanged
-            || forceSunnyWindowChanged
-            || enableLNDifficultyChanged
-            || enableAnalyzeLNChanged
-            || enableAlwaysShowLNDifficultyChanged
-            || display6kLevelChanged
-            || extendedEstimationRangeChanged
-            || enableTelemetryChanged;
-
-        const recomputeNeeded = contentBarChanged
-            || srTextChanged
-            || debugChanged
-            || diffTextChanged
-            || estimatorChanged
-            || azusaSunnyReferenceHoChanged
-            || etternaVersionChanged
-            || companellaEtternaVersionChanged
-            || pauseChanged
-            || pauseThresholdChanged
-            || rainbowChanged
-            || vibroChanged
-            || modeTagVisibilityChanged
-            || svChanged
-            || forceSunnyWindowChanged
-            || enableLNDifficultyChanged
-            || enableAnalyzeLNChanged
-            || enableAlwaysShowLNDifficultyChanged
-            || display6kLevelChanged
-            || extendedEstimationRangeChanged;
+        const changed = SETTING_HANDLERS.some((handler) => changedMap[handler.key]);
+        const recomputeNeeded = SETTING_HANDLERS.some(
+            (handler) => SETTING_RECOMPUTE_KEYS.has(handler.key) && changedMap[handler.key],
+        );
 
         // Invalidate cached results when any computation-affecting setting changed.
-        // wsEndpointChanged lives in `changed` only (not recomputeNeeded), so it is listed here explicitly.
-        // debugChanged + display6kLevelChanged are display-only (toggle-diff proved zero output-contract
-        // diffs; task 13 evidence): they stay in recomputeNeeded so the cache HIT path re-derives
-        // (sixKConst / debugUseAmount post-processing) without clearing the cache or re-fetching.
-        // enableAlwaysShowLNDifficulty stays here — toggle-diff showed real estDiff diffs on lnRatio<0.15 maps.
-        if (estimatorChanged
-            || azusaSunnyReferenceHoChanged
-            || etternaVersionChanged
-            || companellaEtternaVersionChanged
-            || svChanged
-            || vibroChanged
-            || wsEndpointChanged
-            || forceSunnyWindowChanged
-            || enableLNDifficultyChanged
-            || enableAnalyzeLNChanged
-            || enableAlwaysShowLNDifficultyChanged
-            || extendedEstimationRangeChanged) {
+        // wsEndpoint is listed explicitly: it lives in `changed` only (not recomputeNeeded).
+        // debugUseAmount + display6kLevel are display-only (toggle-diff proved zero
+        // output-contract diffs): they stay in recomputeNeeded so the cache HIT path
+        // re-derives without clearing the cache or re-fetching.
+        // enableAlwaysShowLNDifficulty stays here — toggle-diff showed real estDiff diffs.
+        if (SETTING_HANDLERS.some(
+            (handler) => SETTING_CACHE_KEYS.has(handler.key) && changedMap[handler.key],
+        )) {
             clearResultCache();
         }
 

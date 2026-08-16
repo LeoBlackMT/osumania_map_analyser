@@ -1,0 +1,15 @@
+{
+  "id": "Mini",
+  "name": "Mini",
+  "description": "Star rating only: no card body content, no top-right content, no map tag capsule.",
+  "version": 1,
+  "settings": {
+    "contentBar": "None",
+    "srText": "Pattern",
+    "VibroDetection": false,
+    "useSvDetection": false,
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}

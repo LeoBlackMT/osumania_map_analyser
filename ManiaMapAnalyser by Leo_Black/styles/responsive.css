@@ -32,9 +32,9 @@
     }
 
     .main-card.bars-none {
-        height: 238px;
-        min-height: 238px;
-        max-height: 238px;
+        height: 200px;
+        min-height: 200px;
+        max-height: 200px;
     }
 
     .main-card.bars-etterna {

@@ -11,10 +11,10 @@ ManiaMapAnalyser by Leo_Black/
 ├── config.js            ← ② JS 默认值 + options 枚举白名单
 ├── js/parser/settingsParser.js  ← ③ parse{uniqueID}Value 解析器（工厂内定义 + 返回表导出）
 ├── js/app/appContext.js ← ④ state 字段 + parser 解构导出
-└── js/app/settings.js   ← ⑤ 三处接线：applyXxxSetting 函数 + applySettingsFrom + applyIf 链/聚合
+└── js/app/settings.js   ← ⑤ 两处接线：applyXxxSetting 函数 + applySettingsFrom（启动）+ SETTING_HANDLERS 表（运行时）+ SETTING_RECOMPUTE_KEYS / SETTING_CACHE_KEYS 集合
 ```
 
-管线总览见 settings-pipeline.md §2（启动流程）与 §5（运行时变更流程）。**最容易漏的是第 5 步——settings.js 的三处接线，以及第 6 步缓存失效**。下面以虚构设置 `enableExample`（checkbox）为主线走完全程，每步附真实代码作为模板。
+管线总览见 settings-pipeline.md §2（启动流程）与 §5（运行时变更流程）。**最容易漏的是第 5 步——settings.js 的两处接线（启动手工链 + 运行时数据表），以及第 6 步缓存失效**。下面以虚构设置 `enableExample`（checkbox）为主线走完全程，每步附真实代码作为模板。
 
 ---
 
@@ -165,9 +165,9 @@ parseExampleModeValue,
 
 ---
 
-## 步骤 5 — settings.js 三处接线（最容易漏）
+## 步骤 5 — settings.js 两处接线（最容易漏）
 
-文件：`ManiaMapAnalyser by Leo_Black/js/app/settings.js`。**启动路径**（`applySettingsFrom` settings.js:907-943）与**运行时路径**（applyIf 链 settings.js:733-767）必须同步添加，否则新设置在启动/运行时有一条路径不生效（settings-pipeline.md §9）。
+文件：`ManiaMapAnalyser by Leo_Black/js/app/settings.js`。**启动路径**（`applySettingsFrom` settings.js:912-949，手工逐行）与**运行时路径**（`SETTING_HANDLERS` 表 settings.js:731-768，数据驱动）必须同步添加，否则新设置在启动/运行时有一条路径不生效（settings-pipeline.md §9）。**注意：只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
 
 ### 5a. 添加 apply 函数
 
@@ -187,25 +187,21 @@ export function applyEnableExampleSetting(value) {
 
 ### 5b. 加入 applySettingsFrom（启动基线链）
 
-`applySettingsFrom`（settings.js:907-943）加一行：`applyEnableExampleSetting(parseEnableExampleValue(source));`。它由两条路径调用：settings.json 文件基线（settings.js:946-947）与无文件时的 defaults 回退对象（settings.js:950-986，该对象手工拼装 35 键，全部来自 `APP_CONFIG.defaults`）。**回退对象建议同步加键**（如 `enableExample: APP_CONFIG.defaults.enableExample`）——虽然 parser 缺键时会回退 defaults（少了也能跑），但保持 35 键全量模式与现有代码一致。
+`applySettingsFrom`（settings.js:912-949）加一行：`applyEnableExampleSetting(parseEnableExampleValue(source));`。它由两条路径调用：settings.json 文件基线（settings.js:951-953）与无文件时的 defaults 回退对象（settings.js:954-992，该对象手工拼装 36 键，全部来自 `APP_CONFIG.defaults`）。**回退对象建议同步加键**（如 `enableExample: APP_CONFIG.defaults.enableExample`）——虽然 parser 缺键时会回退 defaults（少了也能跑），但保持全量模式与现有代码一致。
 
-### 5c. 加入 applyIf 链 + 聚合
+### 5c. 加入 SETTING_HANDLERS 表 + 键集合
 
-运行时监听 `setupSettingsCommandListener`（settings.js:707）内：
+运行时监听 `setupSettingsCommandListener`（settings.js:802）内已数据化，新增设置只需**在表中加一行**：
 
-- **applyIf 链**（settings.js:733-767）加一行，链上每个 `xxxChanged` 都走 **hasKey 守卫**（`applyIf` settings.js:729-730 = `hasKey(key) ? applyFn(parseResult) : false`；`hasKey` 定义于 settings.js:723-728，数组按 `uniqueID` 查找、对象用 `hasOwnProperty`）。**hasKey 守卫的作用**：tosu 命令可能不发全部设置（用户没碰过的分组），直接 apply 会让 parser 内部回退的 config defaults 覆盖 settings.json 基线——守卫让未发送的键保持基线不动（settings-pipeline.md §3）。loadSettings 的文件基线阶段不走此守卫。
-
-```js
-const enableExampleChanged = applyIf("enableExample", applyEnableExampleSetting, parseEnableExampleValue(payload));
-```
-
-- **聚合**：`changed`（settings.js:776-810）与 `recomputeNeeded`（settings.js:812-831）两个 OR 链都加 `|| enableExampleChanged`。区别：纯显示类设置只在 `changed`（立即应用视觉变更，不重算），计算/显示相关设置进 `recomputeNeeded`（触发 `scheduleRecompute` settings.js:858-859）。吃不准就两边都加（代价只是多余重算，不会错）。
+- **`SETTING_HANDLERS` 表**（settings.js:731-768）加一行：`{ key: "enableExample", parse: parseEnableExampleValue, apply: applyEnableExampleSetting }`。监听器自动循环（settings.js:829-831）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，全部走 hasKey 守卫（`applyIf` settings.js:824-825 = `hasKey(key) ? applyFn(parseResult) : false`；`hasKey` settings.js:818-823，数组按 `uniqueID` 查找、对象用 `hasOwnProperty`）。**hasKey 守卫的作用**：tosu 命令可能不发全部设置（用户没碰过的分组），直接 apply 会让 parser 内部回退的 config defaults 覆盖 settings.json 基线——守卫让未发送的键保持基线不动（settings-pipeline.md §3）。loadSettings 的文件基线阶段不走此守卫。
+- **重算键集**：若新设置是计算/显示相关（应触发 `scheduleRecompute`），加入 `SETTING_RECOMPUTE_KEYS`（settings.js:771-779）。纯显示类不加（`changed` 为 true 时立即应用视觉变更，不重算）。
+- **缓存失效键集**：若新设置影响计算结果，加入 `SETTING_CACHE_KEYS`（settings.js:782-788）——缓存键不含任何设置（`analysis.js:305` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**。纯显示设置**不得**加入（覆盖检查处理）。
 
 > ⚠️ 陷阱（本步密集区）：
-> - **两处必须同步**：applyIf 链（settings.js:733-767）与 applySettingsFrom（settings.js:907-943）漏一处 = 启动或运行时一条路径失效。
-> - 键名字符串必须是 uniqueID 原样（`"VibroDetection"` settings.js:746 大写 V 的前车之鉴），parser 名 `parse{uniqueID}Value`、函数名 `apply{uniqueID}Setting` 三处命名要一致。
-> - changed 标志命名约定 `xxxChanged`，聚合时漏加 = 设置生效了但 UI 不刷新/不重算。
-> - apply 函数必须返回 changed 布尔，聚合依赖它；函数内 compare 用 `state.xxx !== next` 而非 `!== value`（value 可能未归一化）。
+> - **两处必须同步**：`applySettingsFrom`（settings.js:912-949）与 `SETTING_HANDLERS` 表（settings.js:731-768）漏一处 = 启动或运行时一条路径失效。
+> - 键名字符串必须是 uniqueID 原样（`"VibroDetection"` settings.js:745 大写 V 的前车之鉴），parser 名 `parse{uniqueID}Value`、函数名 `apply{uniqueID}Setting` 三处命名要一致。
+> - `SETTING_RECOMPUTE_KEYS` / `SETTING_CACHE_KEYS` 的键名与 `SETTING_HANDLERS` 的 `key` 完全一致（同为 uniqueID），改表时同步集合，否则重算/缓存失效漏判。
+> - apply 函数必须返回 changed 布尔，监听器聚合依赖它；函数内 compare 用 `state.xxx !== next` 而非 `!== value`（value 可能未归一化）。
 
 ---
 
@@ -213,20 +209,17 @@ const enableExampleChanged = applyIf("enableExample", applyEnableExampleSetting,
 
 **先判断该不该加**：判断标准见 [cache-invalidation.md](cache-invalidation.md)（决策指南）。粗判：设置影响**估算结果/解析/分析产物**（算法选择、倍速、OD、键型分析、SV 检测、etterna 版本等）→ 计算影响；只影响**外观/显示**（颜色、透明度、文案、布局）→ 纯显示。显示类**不得**加入失效列表——覆盖检查（result-cache.md §6）已处理，加入只会白白丢命中。
 
-**若是计算影响设置**：在失效列表（settings.js:833-850）加条件。缓存键不含任何设置（`analysis.js:305` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**：
+**若是计算影响设置**：在失效集合（`settings.js:782-788 SETTING_CACHE_KEYS`）加键。缓存键不含任何设置（`analysis.js:305` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**：
 
 ```js
-if (estimatorChanged
-    || /* ... 现有 14 个 ... */
-    || enableExampleChanged) {
-    clearResultCache();
-}
+// settings.js SETTING_CACHE_KEYS 内追加
+"enableExample",
 ```
 
 > ⚠️ 陷阱：
-> - 失效列表的条件变量必须用聚合时定义的 `xxxChanged` 标志（settings.js:835-848），与 recomputeNeeded 是两套判断——`wsEndpointChanged` 只在 `changed` 里（不在 recomputeNeeded），所以在失效列表被显式列出（settings.js:834 注释）。
+> - 失效集合的键名必须与 `SETTING_HANDLERS` 的 `key` 完全一致（同为 uniqueID 原样），由监听器按表遍历自动判断（settings.js:851-855）——不需要也不存在手工 `xxxChanged` 条件变量。
 > - 不要与"关闭缓存时清一次"混淆：`applyEnableResultCacheSetting` settings.js:666 内 settings.js:672-674 是停用前清理残留，不是运行期失效（result-cache.md §9）。
-> - 新计算影响设置若加入了失效列表，记得同时把它的 changed 标志加进 recomputeNeeded（步骤 5c），否则重算不会被触发，只有缓存被清空。
+> - 新计算影响设置若加入了失效集合，记得同时把它的键加进 `SETTING_RECOMPUTE_KEYS`（步骤 5c），否则重算不会被触发，只有缓存被清空。
 
 ---
 

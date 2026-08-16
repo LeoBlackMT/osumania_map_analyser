@@ -1,0 +1,13 @@
+{
+  "id": "im-osu-main",
+  "name": "ForOsuPlayer",
+  "description": "Difficulty graph in the card body, pattern in the top-left capsule, estimated difficulty at top-right.",
+  "version": 1,
+  "settings": {
+    "contentBar": "Graph",
+    "srText": "Pattern",
+    "enableLNDifficulty": true,
+    "enableAnalyzeLN": true,
+    "enableAlwaysShowLNDifficulty": true
+  }
+}
