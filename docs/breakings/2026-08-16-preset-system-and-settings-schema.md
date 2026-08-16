@@ -29,7 +29,7 @@
 **修改内容（What changed）**：相对 main 新增完整预设系统：
 - 新模块目录 `ManiaMapAnalyser by Leo_Black/js/app/presets/`（core.js / schema.js / storage.js / io.js / manager.js / index.js）。
 - 新页面 `ManiaMapAnalyser by Leo_Black/presets.html` + 新样式 `styles/presets.css`（预设管理器 UI）。
-- 新静态目录 `ManiaMapAnalyser by Leo_Black/presets/`（index.json 清单 + 12 个内置预设文件，每文件 = 元数据 + settings 覆盖）。
+- 新静态目录 `ManiaMapAnalyser by Leo_Black/presets/`（index.json 清单 + 10 个内置预设文件，每文件 = 元数据 + settings 覆盖）。
 - `js/app/main.js` 新增副作用导入 `./presets/index.js`（恰好一次，注册预设设置流监听）。
 - `js/app/socket.js` 的 `sendCommand` 增加重试上限（命令 socket 未就绪时最多 ~2s 放弃），缓解页面加载时的 getSettings 重试风暴。
 
@@ -148,7 +148,7 @@
 **What changed**: Relative to main, a complete preset system is added:
 - New module directory `ManiaMapAnalyser by Leo_Black/js/app/presets/` (core.js / schema.js / storage.js / io.js / manager.js / index.js).
 - New page `ManiaMapAnalyser by Leo_Black/presets.html` + new stylesheet `styles/presets.css` (preset manager UI).
-- New static directory `ManiaMapAnalyser by Leo_Black/presets/` (index.json manifest + 12 built-in preset files, each = metadata + settings overrides).
+- New static directory `ManiaMapAnalyser by Leo_Black/presets/` (index.json manifest + 10 built-in preset files, each = metadata + settings overrides).
 - `js/app/main.js` gains a side-effect import `./presets/index.js` (exactly once, registers the preset settings-stream listener).
 - `js/app/socket.js` `sendCommand` gains a retry cap (~2s when the command socket is not ready), reducing getSettings retry storms on page load.
 

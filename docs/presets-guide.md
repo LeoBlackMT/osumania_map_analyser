@@ -12,7 +12,7 @@
 - **一键保存**：把当前调好的配置存成一个预设，以后随时恢复。
 - **分享给朋友**：把预设导出成文件，朋友导入即可使用。
 
-插件自带 11 个内置预设（系统预设，只读），你也可以创建任意多个自定义预设。
+插件自带 10 个内置预设（系统预设，只读），你也可以创建任意多个自定义预设。
 
 ## 2. 如何打开预设管理器？
 
@@ -43,11 +43,11 @@
 系统预设由插件自带，**不能删除**。点击应用即可使用。
 
 - **Default**：恢复出厂设置。应用后所有设置回到插件默认值。
-- 11 个内置预设，例如：
+- 10 个内置预设，例如：
   - **Mini**：极简模式，只显示星数。
   - **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer**：面向不同玩家的推荐配置。
   - **PatternFocus / FullOverview / VibroPlayer / JackPlayer**：面向不同游玩场景。
-  - **TheLimitDoesNotExist / DanielLike / WildDanWIP**：面向高难与特殊玩法。
+  - **TheLimitDoesNotExist / DanielLike**：面向高难与特殊玩法。
 - **LastSavedPreset**（只读行）：它不是可应用的预设，而是"自动跟随"标记——选择它之后，你在 tosu 设置页手动修改的设置会自动保存到这里，永远保留你最后一次的手动配置。
 
 每个预设行都有按钮：
@@ -141,7 +141,7 @@ A preset is a snapshot of the plugin's settings. The plugin has dozens of settin
 - **Save in one click**: store your current configuration as a preset and restore it later.
 - **Share with friends**: export a preset to a file; friends import it and get the same configuration.
 
-The plugin ships with 11 built-in presets (read-only system presets). You can also create any number of custom presets.
+The plugin ships with 10 built-in presets (read-only system presets). You can also create any number of custom presets.
 
 ## 2. How do I open the Presets Manager?
 
@@ -172,7 +172,7 @@ The manager has three parts:
 Built into the plugin and **cannot be deleted**.
 
 - **Default**: factory reset — applies the plugin's default values to everything.
-- 11 built-in presets, e.g. **Mini** (star rating only), **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer** (recommended configs per player type), **PatternFocus / FullOverview / VibroPlayer / JackPlayer** (per play style), **TheLimitDoesNotExist / DanielLike / WildDanWIP** (high-difficulty / niche).
+- 10 built-in presets, e.g. **Mini** (star rating only), **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer** (recommended configs per player type), **PatternFocus / FullOverview / VibroPlayer / JackPlayer** (per play style), **TheLimitDoesNotExist / DanielLike** (high-difficulty / niche).
 - **LastSavedPreset** (read-only row): not an applicable preset but a "follow mode" marker — while selected, your manual changes in the tosu settings page are saved into it automatically, keeping your latest manual configuration.
 
 Buttons on each row:

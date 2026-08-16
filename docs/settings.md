@@ -10,7 +10,7 @@
         - Mini: 极简模式（不显示卡片主体内容）。
         - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: 面向不同玩家的推荐配置。
         - PatternFocus / FullOverview / VibroPlayer / JackPlayer: 面向不同游玩场景的配置。
-        - TheLimitDoesNotExist / DanielLike / WildDanWIP: 面向高难与特殊玩法的配置。
+        - TheLimitDoesNotExist / DanielLike: 面向高难与特殊玩法的配置。
         - Custom1 / Custom2 / Custom3: 自定义预设槽位，可在预设管理器页面管理。随后可以快速在 tosu 设置页应用，无需前往预设管理器手动应用。
         - LastSavedPreset: 自动跟随手动修改，修改会自动保存到其中。
     - **自定义预设管理**: 在浏览器中打开管理页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
@@ -154,7 +154,7 @@
         - Mini: Minimal mode (no card body content).
         - ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer: recommended configurations for different player types.
         - PatternFocus / FullOverview / VibroPlayer / JackPlayer: configurations for different play styles.
-        - TheLimitDoesNotExist / DanielLike / WildDanWIP: configurations for high-difficulty and niche play styles.
+        - TheLimitDoesNotExist / DanielLike: configurations for high-difficulty and niche play styles.
         - Custom1 / Custom2 / Custom3: custom preset slots, manageable on the management page in a browser. They can be quickly applied in the tosu settings page without going to the management page.
         - LastSavedPreset: automatically follows your manual changes; changes are saved into it automatically.
     - **Custom preset management**: Open the management page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
