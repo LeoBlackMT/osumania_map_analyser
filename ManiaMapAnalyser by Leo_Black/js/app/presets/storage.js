@@ -92,7 +92,9 @@ export function storeFingerprint(presets, lastWritten = []) {
 
 /**
  * Canonical form of the write-back queue: presetName + snapshot only
- * (timestamps stripped).
+ * (timestamps and system keys stripped). Snapshot objects may contain
+ * historically embedded presetStorage/preset values that inflate values.json
+ * to hundreds of MB — they are dropped here too.
  */
 function normalizeLastWritten(lastWritten = []) {
     if (!Array.isArray(lastWritten)) {
@@ -100,10 +102,37 @@ function normalizeLastWritten(lastWritten = []) {
     }
     return lastWritten
         .filter((record) => record && typeof record === "object")
-        .map((record) => ({
-            presetName: typeof record.presetName === "string" ? record.presetName : "",
-            snapshot: record.snapshot && typeof record.snapshot === "object" ? record.snapshot : {},
-        }));
+        .map((record) => {
+            const snapshot = record.snapshot && typeof record.snapshot === "object"
+                ? record.snapshot
+                : {};
+            const cleanSnapshot = { ...snapshot };
+            for (const key of SYSTEM_SNAPSHOT_KEYS) {
+                delete cleanSnapshot[key];
+            }
+            return {
+                presetName: typeof record.presetName === "string" ? record.presetName : "",
+                snapshot: cleanSnapshot,
+            };
+        });
+}
+
+/** Strips system keys from a raw lastWritten queue (parse-time cleanup). */
+function cleanLastWritten(lastWritten) {
+    if (!Array.isArray(lastWritten)) {
+        return [];
+    }
+    return lastWritten
+        .filter((record) => record && typeof record === "object")
+        .map((record) => {
+            const snapshot = record.snapshot && typeof record.snapshot === "object"
+                ? { ...record.snapshot }
+                : {};
+            for (const key of SYSTEM_SNAPSHOT_KEYS) {
+                delete snapshot[key];
+            }
+            return { ...record, snapshot };
+        });
 }
 
 /**
@@ -151,7 +180,7 @@ export function parseStore(raw) {
         if (parsed && typeof parsed === "object") {
             return {
                 presets: sanitizePresets(parsed.presets),
-                lastWritten: Array.isArray(parsed.lastWritten) ? parsed.lastWritten : [],
+                lastWritten: cleanLastWritten(parsed.lastWritten),
             };
         }
     } catch {
