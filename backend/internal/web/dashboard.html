@@ -163,21 +163,26 @@
     </section>
   </div>
 
-  <section class="panel" style="margin-bottom:12px">
-    <h2>Star rating <small>0.5-star bins</small></h2>
-    <div class="body chart-wrap"><div id="starHistogram"></div></div>
-  </section>
-  <section class="panel" style="margin-bottom:12px">
-    <h2>LN ratio <small>5% bins</small></h2>
-    <div class="body chart-wrap"><div id="lnRatioHistogram"></div></div>
-  </section>
-  <section class="panel" style="margin-bottom:12px">
-    <h2>Numeric difficulty <small>0.5 bins · .0 = mid</small></h2>
-    <div class="body chart-wrap"><div id="numericHistogram"></div></div>
-  </section>
+  <div class="grid2">
+    <section class="panel">
+      <h2>Star rating <small>0.5-star bins</small></h2>
+      <div class="body chart-wrap"><div id="starHistogram"></div></div>
+    </section>
+    <section class="panel">
+      <h2>LN ratio <small>5% bins</small></h2>
+      <div class="body chart-wrap"><div id="lnRatioHistogram"></div></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="panel"><h2>Key count</h2><div class="body" id="keycounts"></div></section>
+    <section class="panel">
+      <h2>Numeric difficulty <small>0.5 bins · .0 = mid</small></h2>
+      <div class="body chart-wrap"><div id="numericHistogram"></div></div>
+    </section>
+  </div>
 
   <div class="grid4">
-    <section class="panel"><h2>Key count</h2><div class="body" id="keycounts"></div></section>
     <section class="panel"><h2>Beatmap type <small>HB/RC/LN/Mix/SV</small></h2><div class="body" id="modes"></div></section>
     <section class="panel"><h2>Mods <small>NM = no mod</small></h2><div class="body" id="mods"></div></section>
     <section class="panel"><h2>Version</h2><div class="body" id="versions"></div></section>
