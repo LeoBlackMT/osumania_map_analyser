@@ -148,37 +148,37 @@ if (identityParts.length === 0 && hasMetadataIdentity) {
 
 原因：meta 键只含标题，**碰撞风险**（同标题不同谱面共用一键）；且 md5 缺失意味着无法检测文件替换。因此 meta 身份下的分析结果只读不写，缓存对该类谱面实际上不生效。
 
-## 9. 失效列表（settings.js:833-850）
+## 9. 失效列表（settings.js `SETTING_CACHE_KEYS`）
 
-settings.js 的命令监听回调在**任何计算相关设置变化**时调 `clearResultCache()`（`settings.js:849`）。完整 12 个条件（`settings.js:835-848`）：
+settings.js 的命令监听回调在**任何计算相关设置变化**时调 `clearResultCache()`（`settings.js:851-855`，遍历 `SETTING_HANDLERS` 并过滤 `SETTING_CACHE_KEYS` 集合）。完整 12 个键（`settings.js:782-788`）：
 
-| # | 条件变量 | 对应设置 |
+| # | 设置键 | 对应设置 |
 | --- | --- | --- |
-| 1 | `estimatorChanged` | estimatorAlgorithm |
-| 2 | `azusaSunnyReferenceHoChanged` | azusaSunnyReferenceHo |
-| 3 | `etternaVersionChanged` | etternaVersion |
-| 4 | `companellaEtternaVersionChanged` | companellaEtternaVersion |
-| 5 | `svChanged` | useSvDetection |
-| 6 | `vibroChanged` | VibroDetection（uniqueID 大写 V，state 字段小写 `state.vibroDetection`） |
-| 7 | `wsEndpointChanged` | wsEndpoint（仅在 `changed` 不在 `recomputeNeeded`，故显式列出——`settings.js:834` 注释） |
-| 8 | `forceSunnyWindowChanged` | forceSunnyWindow |
-| 9 | `enableLNDifficultyChanged` | enableLNDifficulty |
-| 10 | `enableAnalyzeLNChanged` | enableAnalyzeLN |
-| 11 | `enableAlwaysShowLNDifficultyChanged` | enableAlwaysShowLNDifficulty |
-| 12 | `extendedEstimationRangeChanged` | extendedEstimationRange |
+| 1 | `estimatorAlgorithm` | estimatorAlgorithm |
+| 2 | `azusaSunnyReferenceHo` | azusaSunnyReferenceHo |
+| 3 | `etternaVersion` | etternaVersion |
+| 4 | `companellaEtternaVersion` | companellaEtternaVersion |
+| 5 | `useSvDetection` | useSvDetection |
+| 6 | `VibroDetection` | VibroDetection（uniqueID 大写 V，state 字段小写 `state.vibroDetection`） |
+| 7 | `wsEndpoint` | wsEndpoint（仅在 `changed` 不在 `recomputeNeeded`，故显式列出——`settings.js:846-849` 注释） |
+| 8 | `forceSunnyWindow` | forceSunnyWindow |
+| 9 | `enableLNDifficulty` | enableLNDifficulty |
+| 10 | `enableAnalyzeLN` | enableAnalyzeLN |
+| 11 | `enableAlwaysShowLNDifficulty` | enableAlwaysShowLNDifficulty |
+| 12 | `extendedEstimationRange` | extendedEstimationRange |
 
 **已移出失效列表的显示派生设置**（toggle-diff 实证零输出契约差异，30 样本子集）：
 
-- `debugUseAmount`（debugChanged）——命中时重放排序 + Category 覆盖（§10）。
-- `display6kLevel`（display6kLevelChanged）——命中时按缓存 star 重算 sixKConst（§10）。
+- `debugUseAmount`——命中时重放排序 + Category 覆盖（§10）。
+- `display6kLevel`——命中时按缓存 star 重算 sixKConst（§10）。
 
-两者**仍保留在 recomputeNeeded**（`settings.js:814`、:830）：设置变化仍会触发一次调度重算，但重算走**缓存命中分支**（不 fetch、不跑 pipeline），只做命中恢复 + 重派生 + 重新渲染——这就是显示更新机制。`enableAlwaysShowLNDifficulty` **不能**移出（toggle-diff 显示 estDiff 在 lnRatio<0.15 谱面上有真实差异——它改变了计算产出的 estDiff 字符串）。
+两者**仍保留在 `SETTING_RECOMPUTE_KEYS`**（settings.js:771-779）：设置变化仍会触发一次调度重算，但重算走**缓存命中分支**（不 fetch、不跑 pipeline），只做命中恢复 + 重派生 + 重新渲染——这就是显示更新机制。`enableAlwaysShowLNDifficulty` **不能**移出（toggle-diff 显示 estDiff 在 lnRatio<0.15 谱面上有真实差异——它改变了计算产出的 estDiff 字符串）。
 
 **规则**：
 
-- 新增**计算影响**设置必须加入此列表——缓存键不含它（§5），漏加会静默提供过期结果。
+- 新增**计算影响**设置必须加入 `SETTING_CACHE_KEYS`——缓存键不含它（§5），漏加会静默提供过期结果。
 - 纯**显示**设置**不得**加入——覆盖检查（§6）已处理；若该设置改变的是"写时快照内的显示派生值"，则需要 §10 的命中重派生而不是失效（否则白丢命中）。
-- **不要与关闭清除混淆**：`settings.js:672-674` 是 `applyEnableResultCacheSetting`（`settings.js:666`）内"缓存从开启切到关闭时清一次缓存"，语义是停用前清理残留；`settings.js:833-850` 才是运行期失效列表。前者是设置本身的副作用（settings-pipeline.md §8），后者是任何计算设置变化的统一失效点。
+- **不要与关闭清除混淆**：`settings.js:672-674` 是 `applyEnableResultCacheSetting`（`settings.js:666`）内"缓存从开启切到关闭时清一次缓存"，语义是停用前清理残留；`SETTING_CACHE_KEYS` 才是运行期失效集合。前者是设置本身的副作用（settings-pipeline.md §8），后者是任何计算设置变化的统一失效点。
 
 ## 10. 命中恢复（actualEstimatorAlgorithm + 显示派生重算）
 

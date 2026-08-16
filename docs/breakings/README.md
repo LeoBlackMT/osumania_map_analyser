@@ -17,6 +17,7 @@
 | 文档 | 日期 | 分支/主题 | 说明 |
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | 分析管线性能优化：worker 单次往返协议、runAnalysisPipeline 纯函数、共享模块纯度（worker 根因修复）、缓存失效收窄与命中重派生、vibro 修复披露、perf 验收口径修订（12 项） |
+| [2026-08-16-preset-system-and-settings-schema.md](2026-08-16-preset-system-and-settings-schema.md) | 2026-08-16 | pr/45（preset system） | 预设系统（相对 main 净变更）：新增 presets 模块/presets.html/内置预设、设置监听器数据化（SETTING_HANDLERS）、settings.json 预设分组与按钮、presetStorage 单一权威存储、快照系统键剥离、写回幂等化 |
 
 [返回 docs 索引](../README.md)
 
@@ -41,5 +42,6 @@
 | Document | Date | Branch/Topic | Description |
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | Analysis pipeline optimization: worker single-round-trip protocol, runAnalysisPipeline pure function, shared-module purity (worker root-cause fix), cache invalidation narrowing + hit re-derivation, vibro fix disclosure, perf acceptance-criteria revision (12 items) |
+| [2026-08-16-preset-system-and-settings-schema.md](2026-08-16-preset-system-and-settings-schema.md) | 2026-08-16 | pr/45 (preset system) | Preset system (net changes vs main): new presets modules/presets.html/built-in presets, data-driven settings listener (SETTING_HANDLERS), settings.json preset group & buttons, presetStorage single source of truth, snapshot system-key stripping, idempotent write-back |
 
 [Back to docs index](../README.md)

@@ -41,10 +41,13 @@
 | --- | --- |
 | `index.js` | 入口：副作用导入，`initPresets()` 自初始化（被 `main.js` 引用，恰好一次） |
 | `schema.js` | **自拓展核心**：fetch `settings.json`，按命名约定 `apply{Key}Setting` 在 settings.js 导出中动态查找并注册 applier；`getterFor` 读取当前用户值；`buildDefaultSnapshot` 从 `value` 字段生成出厂快照 |
-| `core.js` | 应用逻辑：快照应用（部分语义）、设置流处理、echo 防护、写回、自定义预设 CRUD、Auto 跟随 |
-| `storage.js` | 持久化：`presetStorage`（tosu 设置项，单一权威存储，v2 结构 `{v, lastWritten, presets}`）读写、写回去重队列 |
+| `core.js` | 应用逻辑：设置流处理、echo 防护、写回、自定义预设 CRUD、Auto 跟随、init；re-export 拆分模块的 API |
+| `snapshot.js` | 快照纯函数：`snapshotOf`/`stripSystemKeys`/`hasKeyChanged`/`captureCurrentSettings`/`applySnapshot`（无模块状态依赖） |
+| `builtin.js` | 内置预设加载（`presets/*.json`）：清单 + 逐文件解析，自包含缓存 |
+| `form.js` | presets.html 表单渲染（自拓展设置表单、复选框、值控件），经 `createForm(api)` 注入状态 |
+| `storage.js` | 持久化：`presetStorage`（tosu 设置项，单一权威存储，v2 结构 `{v, lastWritten, presets}`）读写、写回去重队列、系统键剥离 |
 | `io.js` | 导出/导入（Blob 下载 / file input 上传，格式校验） |
-| `manager.js` | presets.html 页面 UI：自动生成表单、复选框、列表 CRUD、导入导出 |
+| `manager.js` | presets.html 页面 UI：布局、动作栏、列表 CRUD、导入导出接线 |
 
 ### 自拓展机制（schema.js）
 
