@@ -1,30 +1,5 @@
 [
 	{
-		"uniqueID": "preset",
-		"type": "options",
-		"title": "Preset（预设）",
-		"description": "Apply a preset that overwrites every setting below with a saved configuration. Choose Last Saved Preset to keep following manual changes (they are saved into the Last Saved Preset automatically). Custom presets can be created/renamed/deleted in the overlay page (http://localhost:24050/Your plugin folder name/index.html?edit=1).",
-		"options": [
-			"Default",
-			"mini",
-			"For osu Player",
-			"For Etterna Player",
-			"For Interlude Player",
-			"Pattern Focus",
-			"Full Overview",
-			"Vibro Player",
-			"Jack Player",
-			"The Limit Does Not Exist(Dear Reflec...)",
-			"Daniel-like",
-			"tyrcs wild dan for dressurf(WIP)",
-			"Custom 1",
-			"Custom 2",
-			"Custom 3",
-			"Last Saved Preset"
-		],
-		"value": "Default"
-	},
-	{
 		"uniqueID": "hLinks",
 		"type": "header",
 		"title": "Links",
@@ -63,6 +38,39 @@
 		"description": "View estimator algorithm's benchmark results and performance data.",
 		"options": [],
 		"value": "https://benchmark.leoblack.top/"
+	},
+	{
+		"uniqueID": "hPresets",
+		"type": "header",
+		"title": "Presets",
+		"description": "",
+		"options": [],
+		"value": ""
+	},
+	{
+		"uniqueID": "preset",
+		"type": "options",
+		"title": "Preset",
+		"description": "Apply a saved configuration that overwrites all settings below. Choose Last Saved Preset to follow your manual changes (they are saved into it automatically). Manage custom presets by opening the plugin page with ?edit=1 in a browser.",
+		"options": [
+			"Default",
+			"mini",
+			"For osu Player",
+			"For Etterna Player",
+			"For Interlude Player",
+			"Pattern Focus",
+			"Full Overview",
+			"Vibro Player",
+			"Jack Player",
+			"The Limit Does Not Exist",
+			"Daniel-like",
+			"Wild Dan (WIP)",
+			"Custom 1",
+			"Custom 2",
+			"Custom 3",
+			"Last Saved Preset"
+		],
+		"value": "Default"
 	},
 	{
 		"uniqueID": "hModules",

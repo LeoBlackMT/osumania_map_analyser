@@ -23,6 +23,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand the difficulty distribution of a beatmap.
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution in the beatmap to help players understand its structure.
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
+- **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
 - **SV Detection**: Detects whether a beatmap is an SV (speed variation) map.
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 

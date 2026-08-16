@@ -405,7 +405,7 @@ const PRESET_DEFS = [
     },
     {
         id: "the-limit-does-not-exist",
-        name: "The Limit Does Not Exist(Dear Reflec...)",
+        name: "The Limit Does Not Exist",
         description: "Difficulty graph, MSD, Sunny estimation with extended range.",
         settings: {
             contentBar: "Graph",
@@ -487,7 +487,7 @@ const PRESET_DEFS = [
     },
     {
         id: "tyrcs-wild-dan",
-        name: "tyrcs wild dan for dressurf(WIP)",
+        name: "Wild Dan (WIP)",
         description: "Difficulty graph, ReworkSR, Sunny estimation with extended range.",
         settings: {
             contentBar: "Graph",
