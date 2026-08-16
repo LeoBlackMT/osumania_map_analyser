@@ -94,9 +94,9 @@
 
 .main-card.bars-none {
     grid-template-rows: auto auto;
-    height: 268px;
-    min-height: 268px;
-    max-height: 268px;
+    height: 220px;
+    min-height: 220px;
+    max-height: 220px;
     gap: 4px;
     padding: 10px 10px 30px 10px;
 }
