@@ -107,7 +107,7 @@ Body (max 16 KB):
 }
 ```
 
-Returns `204 No Content`. `400` for a bad body, `405` for wrong method, `429` when rate limited. The `data` object is filtered server-side to these keys only: `algorithm`, `actualAlgorithm`, `keycount`, `mods`, `speedRate`, `mode`, `star`, `lnRatio`, `typeBreakdown`, `durationMs`.
+Returns `204 No Content`. `400` for a bad body, `405` for wrong method, `429` when rate limited. The `data` object is filtered server-side to these keys only: `algorithm`, `actualAlgorithm`, `keycount`, `mods`, `speedRate`, `mode`, `star`, `lnRatio`, `typeBreakdown`, `durationMs`, `numericDifficulty` (optional; standard numeric difficulty, .0 = mid, see `docs/features/telemetry.md`).
 
 CORS is enabled for `POST`/`OPTIONS` (the plugin runs on `http://localhost:24050`).
 
@@ -129,11 +129,11 @@ A background loop deletes `events` older than `MMA_TELEMETRY_RETENTION_DAYS` (de
 
 ## Deployment (Linux)
 
-Cross-compile from any machine (no Docker, no cgo):
+Cross-compile from any machine (no Docker, no cgo). `-X main.version=` injects the backend version (returned as `serverVersion` in `/api/v1/stats`, shown in the dashboard footer and the startup log); without it the build reports `dev`:
 
 ```bash
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/telemetry-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.0.0 -s -w" -o bin/telemetry-server ./cmd/server
 ```
 
 On the server:

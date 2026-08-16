@@ -58,9 +58,6 @@ func Load() (Config, error) {
 	if cfg.Addr == "" {
 		cfg.Addr = ":8080"
 	}
-	if cfg.RetentionDays <= 0 {
-		cfg.RetentionDays = 365
-	}
 	if cfg.OnlineWindowMin <= 0 {
 		cfg.OnlineWindowMin = 10
 	}

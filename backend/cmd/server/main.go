@@ -16,6 +16,10 @@ import (
 	"osumania-telemetry/internal/web"
 )
 
+// version is injected at build time via
+// `-ldflags "-X main.version=<tag>"`; local/dev builds report "dev".
+var version = "dev"
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -30,7 +34,7 @@ func main() {
 
 	limiter := ratelimit.New(cfg.RateLimitPerMin)
 	eventHandler := telemetry.NewHandler(st, limiter)
-	webHandler := web.NewHandler(st, cfg.OnlineWindowMin, cfg.StatsCacheSeconds)
+	webHandler := web.NewHandler(st, cfg.OnlineWindowMin, cfg.StatsCacheSeconds, version)
 
 	go retentionLoop(st, cfg.RetentionDays)
 
@@ -56,13 +60,17 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("osumania-telemetry listening on %s", cfg.Addr)
+	log.Printf("osumania-telemetry %s listening on %s", version, cfg.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}
 }
 
 func retentionLoop(st *store.Store, retentionDays int) {
+	if retentionDays <= 0 {
+		log.Printf("retention: disabled (keep events forever)")
+		return
+	}
 	run := func() {
 		cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
 		if n, err := st.DeleteEventsBefore(cutoff); err != nil {

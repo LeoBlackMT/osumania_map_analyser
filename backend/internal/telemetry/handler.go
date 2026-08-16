@@ -20,16 +20,17 @@ const maxBodyBytes = 16 * 1024
 // allowedDataKeys is the only data a client may contribute. Everything else is
 // dropped server-side so a modified client cannot smuggle extra fields.
 var allowedDataKeys = map[string]bool{
-	"algorithm":       true,
-	"actualAlgorithm": true,
-	"keycount":        true,
-	"mods":            true,
-	"speedRate":       true,
-	"mode":            true,
-	"star":            true,
-	"lnRatio":         true,
-	"typeBreakdown":   true,
-	"durationMs":      true,
+	"algorithm":         true,
+	"actualAlgorithm":   true,
+	"keycount":          true,
+	"mods":              true,
+	"speedRate":         true,
+	"mode":              true,
+	"star":              true,
+	"lnRatio":           true,
+	"typeBreakdown":     true,
+	"durationMs":        true,
+	"numericDifficulty": true,
 }
 
 type eventPayload struct {
