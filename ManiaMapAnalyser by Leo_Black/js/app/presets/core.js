@@ -8,6 +8,7 @@ import { socket, state } from "../appContext.js";
 import {
     SETTING_RECOMPUTE_KEYS,
     SETTING_CACHE_KEYS,
+    getCounterPathForCommand,
 } from "../settings.js";
 import { clearResultCache } from "../resultCache.js";
 import { scheduleRecompute } from "../scheduler.js";
@@ -41,7 +42,6 @@ let customPresets = [];
 let currentPreset = "Default";
 let lastValues = null;
 let initialized = false;
-let builtinLoaded = false;
 let builtinPresets = []; // [{ id, name, description, file }]
 let builtinCache = new Map(); // id -> settings object
 
@@ -92,11 +92,23 @@ export function onPresetsChanged(callback) {
 // Built-in presets (presets/*.json)
 // ---------------------------------------------------------------------------
 
-async function loadBuiltinPresets() {
-    if (builtinLoaded) {
-        return;
+let builtinPromise = null;
+
+/**
+ * Loads built-in presets (index.json + per-preset files). Concurrent callers
+ * share one promise so nobody observes a half-loaded list.
+ */
+function loadBuiltinPresets() {
+    if (!builtinPromise) {
+        builtinPromise = doLoadBuiltinPresets().catch((error) => {
+            builtinPromise = null;
+            throw error;
+        });
     }
-    builtinLoaded = true;
+    return builtinPromise;
+}
+
+async function doLoadBuiltinPresets() {
     try {
         const response = await fetch("./presets/index.json", { cache: "no-store" });
         const index = await response.json();
@@ -199,12 +211,6 @@ function findBuiltinPresetByName(name) {
     return builtinPresets.find((preset) => preset.name === name) || null;
 }
 
-function findPresetByName(name) {
-    return findBuiltinPresetByName(name)
-        || customPresets.find((preset) => preset.name === name)
-        || null;
-}
-
 /**
  * Applies a preset by name and syncs the result back to tosu.
  * "Default" resets to the factory snapshot (generated from settings.json values).
@@ -218,15 +224,21 @@ export async function applyPresetByName(name) {
     if (name === "Default") {
         snapshot = await buildDefaultSnapshot();
     } else {
-        let preset = findPresetByName(name);
-        if (!preset && DEFAULT_SLOT_NAMES.includes(name)) {
-            createCustomPreset(name, await captureCurrentSettings());
-            preset = findPresetByName(name);
+        const builtin = findBuiltinPresetByName(name);
+        if (builtin) {
+            // Built-in entries only carry metadata; settings live in builtinCache.
+            snapshot = builtinCache.get(builtin.id) || {};
+        } else {
+            let preset = customPresets.find((p) => p.name === name);
+            if (!preset && DEFAULT_SLOT_NAMES.includes(name)) {
+                createCustomPreset(name, await captureCurrentSettings());
+                preset = customPresets.find((p) => p.name === name);
+            }
+            if (!preset) {
+                return false;
+            }
+            snapshot = preset.settings || {};
         }
-        if (!preset) {
-            return false;
-        }
-        snapshot = preset.settings || {};
     }
 
     await applySnapshot(snapshot);
@@ -740,8 +752,28 @@ export function initPresets() {
 
     // Observe the tosu settings stream on our own commands connection.
     socket.commands((packet) => {
-        handleSettingsPacket(packet);
+        handleSettingsPacket(packet).catch((error) => {
+            console.error("[presets] settings stream handler failed:", error);
+        });
     });
+
+    // The manager page does not go through loadSettings(), so request the
+    // settings stream explicitly (idempotent — duplicates are harmless).
+    if (typeof socket.sendCommand === "function") {
+        socket.sendCommand("getSettings", getCounterPathForCommand());
+    }
+
+    // Fallback: if no settings broadcast arrives (tosu offline), load the
+    // cached library after a short grace period so the page still works.
+    // The persist guard keeps this read-only (no overwriting presetStorage).
+    setTimeout(() => {
+        if (lastValues !== null) {
+            return;
+        }
+        customPresets = loadLibrary({});
+        ensureDefaultCustomSlots();
+        notifyChanged();
+    }, 3000);
 
     // Cross-page sync via localStorage events (presetStorage writes arrive
     // through the settings stream instead; this covers cache/active changes).

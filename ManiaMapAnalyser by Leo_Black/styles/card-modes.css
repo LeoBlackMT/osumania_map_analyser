@@ -94,9 +94,9 @@
 
 .main-card.bars-none {
     grid-template-rows: auto auto;
-    height: 248px;
-    min-height: 248px;
-    max-height: 248px;
+    height: 268px;
+    min-height: 268px;
+    max-height: 268px;
     gap: 4px;
     padding: 10px 10px 30px 10px;
 }
@@ -162,15 +162,15 @@
 }
 
 .main-card.bars-etterna {
-    height: 540px;
-    min-height: 540px;
-    max-height: 540px;
+    height: 560px;
+    min-height: 560px;
+    max-height: 560px;
 }
 
 .main-card.bars-etterna.bars-etterna-compact {
-    height: 500px;
-    min-height: 500px;
-    max-height: 500px;
+    height: 520px;
+    min-height: 520px;
+    max-height: 520px;
 }
 
 .main-card.bars-etterna .cluster-bars {

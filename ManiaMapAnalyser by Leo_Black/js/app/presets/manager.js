@@ -381,8 +381,23 @@ async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = fal
         }
     }
     syncFormControls();
+    syncIncludeCheckboxes();
     highlightActiveRow(preset.name);
     showToast(`"${preset.name}" loaded into the editor. Uncheck fields to exclude them.`, "info", 2500);
+}
+
+/** Syncs the include-checkbox DOM to the formIncluded state. */
+function syncIncludeCheckboxes() {
+    if (!formEl) {
+        return;
+    }
+    const rows = formEl.querySelectorAll(".presets-setting");
+    for (const row of rows) {
+        const include = row.querySelector(".presets-setting-include");
+        if (include) {
+            include.checked = formIncluded[row.dataset.presetKey] === true;
+        }
+    }
 }
 
 async function saveCurrentPreset() {
