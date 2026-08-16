@@ -107,7 +107,7 @@ curl -d '{"id":"00000000-0000-4000-8000-000000000000","kind":"boot","version":"1
 }
 ```
 
-返回 `204 No Content`。请求体错误返回 `400`，方法错误返回 `405`，被限流返回 `429`。`data` 对象在服务端只保留以下键：`algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`。
+返回 `204 No Content`。请求体错误返回 `400`，方法错误返回 `405`，被限流返回 `429`。`data` 对象在服务端只保留以下键：`algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`、`numericDifficulty`（可选，标准数值化难度 .0=mid，见 `docs/features/telemetry.md`）。
 
 对 `POST`/`OPTIONS` 开放 CORS（插件运行在 `http://localhost:24050`）。
 

@@ -68,20 +68,22 @@ type Stats struct {
 	Versions         []KV          `json:"versions"`
 	StarHistogram    []Bucket      `json:"starHistogram"`
 	LnRatioHistogram []Bucket      `json:"lnRatioHistogram"`
+	NumericHistogram []Bucket      `json:"numericHistogram"`
 	DurationStats    DurationStats `json:"durationStats"`
 }
 
 type analyzeData struct {
-	Algorithm       string          `json:"algorithm"`
-	ActualAlgorithm string          `json:"actualAlgorithm"`
-	Keycount        int             `json:"keycount"`
-	Mods            []string        `json:"mods"`
-	SpeedRate       float64         `json:"speedRate"`
-	Mode            string          `json:"mode"`
-	Star            float64         `json:"star"`
-	LnRatio         float64         `json:"lnRatio"`
-	TypeBreakdown   json.RawMessage `json:"typeBreakdown"`
-	DurationMs      float64         `json:"durationMs"`
+	Algorithm         string          `json:"algorithm"`
+	ActualAlgorithm   string          `json:"actualAlgorithm"`
+	Keycount          int             `json:"keycount"`
+	Mods              []string        `json:"mods"`
+	SpeedRate         float64         `json:"speedRate"`
+	Mode              string          `json:"mode"`
+	Star              float64         `json:"star"`
+	LnRatio           float64         `json:"lnRatio"`
+	TypeBreakdown     json.RawMessage `json:"typeBreakdown"`
+	DurationMs        float64         `json:"durationMs"`
+	NumericDifficulty *float64        `json:"numericDifficulty"`
 }
 
 // Compute builds the full aggregate snapshot over the requested window.
@@ -194,6 +196,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 	modes := map[string]int64{}
 	stars := map[float64]int64{}
 	lns := map[float64]int64{}
+	numerics := map[float64]int64{}
 	var starSum, lnSum float64
 	var starN, lnN int64
 	// Duration aggregate: exact sum/count plus a bounded reservoir for the
@@ -239,6 +242,10 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 			lnSum += d.LnRatio
 			lnN++
 		}
+		if d.NumericDifficulty != nil && *d.NumericDifficulty >= -3 && *d.NumericDifficulty <= 30 {
+			// aggregate into 0.5 bins on the Reform numeric scale (.0 = mid)
+			numerics[math.Round(*d.NumericDifficulty*2)/2]++
+		}
 		if d.DurationMs >= 0 {
 			v := int64(d.DurationMs)
 			durSum += v
@@ -269,6 +276,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 
 	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.1f", k) })
 	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.0f%%", k*100) })
+	s.NumericHistogram = histogram(numerics, func(k float64) string { return fmt.Sprintf("%.1f", k) })
 	if starN > 0 {
 		s.AvgStar = math.Round(starSum/float64(starN)*100) / 100
 	}
