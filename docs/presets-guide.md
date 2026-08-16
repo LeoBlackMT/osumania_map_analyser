@@ -1,6 +1,5 @@
 # 预设系统新手教程 / Presets Guide for Beginners
 
-> 本教程面向零基础用户，从零开始讲解预设系统的每一个按钮和概念。
 > English version [below](#english).
 
 # 中文

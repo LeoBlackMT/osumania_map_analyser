@@ -19,19 +19,14 @@ import {
 } from "./schema.js";
 import {
     AUTO_SAVE_PRESET_NAME,
-    CUSTOM_PRESETS_KEY,
-    ACTIVE_PRESET_KEY,
     DEFAULT_SLOT_NAMES,
     PRESET_STORAGE_SETTING,
-    loadLibrary,
-    cacheLibrary,
-    serializeLibrary,
-    libraryFromPayload,
-    loadActivePreset,
-    persistActivePreset,
-    readLastWritten,
-    markWritten,
+    parseStore,
+    storeFromPayload,
+    serializeStore,
+    normalizeLibrary,
     recentlyWritten,
+    markWritten,
 } from "./storage.js";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +34,7 @@ import {
 // ---------------------------------------------------------------------------
 
 let customPresets = [];
+let lastWritten = []; // broadcast-shared write-back dedup queue
 let currentPreset = "Default";
 let lastValues = null;
 let initialized = false;
@@ -198,11 +194,10 @@ export async function applyCustomSnapshot(snapshot, presetName = null) {
     const anchor = presetName || currentPreset;
     if (presetName) {
         currentPreset = presetName;
-        persistActivePreset(presetName);
     }
     if (shouldWriteBack(snapshot, anchor)) {
         writeBackToTosu(anchor, snapshot);
-        markWritten(snapshot, anchor);
+        markWritten(lastWritten, snapshot, anchor);
     }
     lastValues = { ...lastValues, ...snapshot, preset: anchor };
     notifyChanged();
@@ -248,10 +243,9 @@ export async function applyPresetByName(name) {
 
     await applySnapshot(snapshot);
     currentPreset = name;
-    persistActivePreset(name);
     if (shouldWriteBack(snapshot, name)) {
         writeBackToTosu(name, snapshot);
-        markWritten(snapshot, name);
+        markWritten(lastWritten, snapshot, name);
     }
     // Mirror the write-back into lastValues so the echo broadcast of the same
     // values is not mistaken for a manual settings change.
@@ -435,9 +429,9 @@ export async function autoSaveCurrentPreset() {
         anchored.updatedAt = Date.now();
         persistLibrary();
         notifyChanged();
-        if (!recentlyWritten() && shouldWriteBack(snapshot, anchored.name)) {
+        if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, anchored.name)) {
             writeBackToTosu(anchored.name, snapshot);
-            markWritten(snapshot, anchored.name);
+            markWritten(lastWritten, snapshot, anchored.name);
         }
         lastValues = { ...lastValues, ...snapshot, preset: anchored.name };
         return;
@@ -452,11 +446,10 @@ export async function saveToLastSavedPreset() {
     updateAutoContainer(snapshot);
     persistLibrary();
     currentPreset = AUTO_SAVE_PRESET_NAME;
-    persistActivePreset();
     notifyChanged();
-    if (!recentlyWritten() && shouldWriteBack(snapshot, AUTO_SAVE_PRESET_NAME)) {
+    if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, AUTO_SAVE_PRESET_NAME)) {
         writeBackToTosu(AUTO_SAVE_PRESET_NAME, snapshot);
-        markWritten(snapshot, AUTO_SAVE_PRESET_NAME);
+        markWritten(lastWritten, snapshot, AUTO_SAVE_PRESET_NAME);
     }
     lastValues = { ...lastValues, ...snapshot, preset: AUTO_SAVE_PRESET_NAME };
 }
@@ -480,21 +473,20 @@ function updateAutoContainer(snapshot) {
 }
 
 // ---------------------------------------------------------------------------
-// Persistence (presetStorage + localStorage cache)
+// Persistence (single authoritative store: presetStorage tosu setting)
 // ---------------------------------------------------------------------------
 
 function persistLibrary() {
-    // Never write before the authoritative library arrived from the settings
+    // Never write before the authoritative store arrived from the settings
     // stream: persisting the not-yet-loaded (empty) library would overwrite an
-    // existing one in localStorage/presetStorage.
+    // existing one in values.json.
     if (lastValues === null) {
         return;
     }
-    cacheLibrary(customPresets);
     writeLibraryToTosu();
 }
 
-/** Writes the library into the presetStorage tosu setting (values.json). */
+/** Writes the library (+ lastWritten queue) into the presetStorage tosu setting. */
 function writeLibraryToTosu() {
     // Write-back happens only from a browser page (the manager page or the
     // overlay in a browser tab): localhost and 127.0.0.1 are both fine.
@@ -513,10 +505,11 @@ function writeLibraryToTosu() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([{
             uniqueID: PRESET_STORAGE_SETTING,
-            value: serializeLibrary(customPresets),
+            value: serializeStore(customPresets, lastWritten),
         }]),
     }).catch(() => {
-        // Best-effort sync; the library is still cached locally.
+        // Best-effort sync; the library stays in memory and re-syncs on next
+        // successful write.
     });
 }
 
@@ -524,6 +517,37 @@ function writeLibraryToTosu() {
 function isBrowserOrigin() {
     const host = window.location.hostname;
     return host === "127.0.0.1" || host === "localhost";
+}
+
+/**
+ * Pulls the preset store straight from tosu's values file
+ * (GET /api/counters/settings/<folder>). Origin-independent: localhost and
+ * 127.0.0.1 read the same data here.
+ * @returns {Promise<{presets: Array, lastWritten: Array}|null>}
+ */
+async function fetchStoreFromTosu() {
+    if (!isBrowserOrigin()) {
+        return null;
+    }
+    const folderName = typeof window.COUNTER_PATH === "string"
+        ? window.COUNTER_PATH.trim()
+        : "";
+    if (!folderName) {
+        return null;
+    }
+    try {
+        const response = await fetch(
+            `/api/counters/settings/${encodeURIComponent(folderName)}`,
+            { cache: "no-store" },
+        );
+        if (!response.ok) {
+            return null;
+        }
+        const data = await response.json();
+        return storeFromPayload((data && data.values) || {});
+    } catch {
+        return null;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -546,7 +570,13 @@ function writeBackToTosu(presetName, snapshot) {
             uniqueID: key,
             value: snapshot[key],
         }));
+    // Ship the store (library + lastWritten) in the same POST so every origin
+    // sees the echo guard state through the broadcast.
     values.push({ uniqueID: "preset", value: presetName });
+    values.push({
+        uniqueID: PRESET_STORAGE_SETTING,
+        value: serializeStore(customPresets, lastWritten),
+    });
 
     fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
         method: "POST",
@@ -558,8 +588,7 @@ function writeBackToTosu(presetName, snapshot) {
 }
 
 function shouldWriteBack(snapshot, presetName) {
-    const list = readLastWritten();
-    const last = list && list[0];
+    const last = lastWritten[0];
     if (!last || last.presetName !== presetName) {
         return true;
     }
@@ -624,10 +653,12 @@ async function handleSettingsPacket(packet) {
     const presetValue = extractPresetValue(payload);
 
     if (lastValues === null) {
-        // First batch: record baseline, load the library, restore active preset.
+        // First batch: record baseline, load the store (library + lastWritten),
+        // restore the active preset from the picker value.
         lastValues = snapshotOf(payload);
-        customPresets = loadLibrary(payload);
-        cacheLibrary(customPresets);
+        const store = storeFromPayload(payload);
+        customPresets = normalizeLibrary(store ? store.presets : []);
+        lastWritten = store ? store.lastWritten : [];
         // Create missing anchor slots now that the authoritative library is
         // loaded (never persist an empty library over an existing one).
         await ensureDefaultCustomSlots();
@@ -639,7 +670,6 @@ async function handleSettingsPacket(packet) {
         if (presetValue && presetValue !== currentPreset) {
             if (presetValue === "Default" || !(await applyPresetByName(presetValue))) {
                 currentPreset = "Default";
-                persistActivePreset();
                 notifyChanged();
             }
         }
@@ -649,11 +679,12 @@ async function handleSettingsPacket(packet) {
     const prev = lastValues;
     lastValues = snapshotOf(payload);
 
-    // Sync the library when another page changed presetStorage.
-    const library = libraryFromPayload(payload);
-    if (library !== null && serializeLibrary(customPresets) !== serializeLibrary(library)) {
-        customPresets = library;
-        cacheLibrary(customPresets);
+    // Sync the store (library + lastWritten) when another page changed it —
+    // this is the single cross-origin source of truth via the broadcast.
+    const store = storeFromPayload(payload);
+    if (store !== null) {
+        customPresets = normalizeLibrary(store.presets);
+        lastWritten = store.lastWritten;
         notifyChanged();
     }
 
@@ -664,9 +695,9 @@ async function handleSettingsPacket(packet) {
         .some((key) => hasKeyChanged(prev, lastValues, key));
 
     // Echo broadcast: the payload matches a recent write-back of the same
-    // preset. Delayed echoes must not be treated as picker switches.
-    const lastWrittenNow = readLastWritten();
-    const isWriteBackEcho = Boolean(lastWrittenNow) && lastWrittenNow.some((record) =>
+    // preset (shared lastWritten queue). Delayed echoes must not be treated
+    // as picker switches.
+    const isWriteBackEcho = lastWritten.some((record) =>
         record.presetName === presetValue
         && Object.keys(record.snapshot).every((key) =>
             !(key in record.snapshot) || record.snapshot[key] === lastValues[key]));
@@ -677,7 +708,6 @@ async function handleSettingsPacket(packet) {
                 await saveToLastSavedPreset();
             } else {
                 currentPreset = AUTO_SAVE_PRESET_NAME;
-                persistActivePreset();
                 notifyChanged();
             }
             return;
@@ -689,7 +719,6 @@ async function handleSettingsPacket(packet) {
                 await overwriteCustomPreset(presetValue);
             } else if (!(await applyPresetByName(presetValue))) {
                 currentPreset = "Default";
-                persistActivePreset();
                 notifyChanged();
             }
             return;
@@ -701,7 +730,6 @@ async function handleSettingsPacket(packet) {
             await saveToLastSavedPreset();
         } else if (!(await applyPresetByName(presetValue))) {
             currentPreset = "Default";
-            persistActivePreset();
             notifyChanged();
         }
         return;
@@ -725,11 +753,10 @@ async function overwriteCustomPreset(presetValue) {
     updateAutoContainer(snapshot);
     persistLibrary();
     currentPreset = presetValue;
-    persistActivePreset();
     notifyChanged();
-    if (!recentlyWritten() && shouldWriteBack(snapshot, presetValue)) {
+    if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, presetValue)) {
         writeBackToTosu(presetValue, snapshot);
-        markWritten(snapshot, presetValue);
+        markWritten(lastWritten, snapshot, presetValue);
     }
     lastValues = { ...lastValues, ...snapshot, preset: presetValue };
 }
@@ -744,7 +771,8 @@ export function initPresets() {
     }
     initialized = true;
 
-    currentPreset = loadActivePreset();
+    // The active preset name comes from the tosu picker value (broadcast) —
+    // no browser-side state needed.
     // Anchor slots are created AFTER the first settings broadcast loads the
     // library (see handleSettingsPacket) — creating them here would persist an
     // empty library over an existing one.
@@ -768,27 +796,32 @@ export function initPresets() {
         socket.sendCommand("getSettings", getCounterPathForCommand());
     }
 
-    // Fallback: if no settings broadcast arrives (tosu offline), load the
-    // cached library after a short grace period so the page still works.
-    // The persist guard keeps this read-only (no overwriting presetStorage).
-    setTimeout(() => {
-        if (lastValues !== null) {
-            return;
-        }
-        customPresets = loadLibrary({});
-        ensureDefaultCustomSlots();
-        notifyChanged();
-    }, 3000);
-
-    // Cross-page sync via localStorage events (presetStorage writes arrive
-    // through the settings stream instead; this covers cache/active changes).
-    window.addEventListener("storage", (event) => {
-        if (event.key === CUSTOM_PRESETS_KEY || event.key === ACTIVE_PRESET_KEY) {
-            customPresets = loadLibrary(lastValues || {});
-            if (event.key === ACTIVE_PRESET_KEY) {
-                currentPreset = loadActivePreset();
-            }
+    // Eagerly pull the authoritative store straight from tosu. This is
+    // origin-independent: localhost and 127.0.0.1 are DIFFERENT origins, and
+    // tosu's values.json is the single cross-origin source of truth. The
+    // settings broadcast (when it arrives) remains authoritative and wins.
+    fetchStoreFromTosu().then((store) => {
+        if (store !== null && lastValues === null) {
+            customPresets = normalizeLibrary(store.presets);
+            lastWritten = store.lastWritten;
+            ensureDefaultCustomSlots();
             notifyChanged();
         }
     });
+
+    // Fallback: if neither the broadcast nor the HTTP pull delivered anything
+    // (tosu offline), start with an empty library after a short grace period.
+    // The persist guard keeps this read-only (no overwriting presetStorage).
+    setTimeout(async () => {
+        if (lastValues !== null || customPresets.length > 0) {
+            return;
+        }
+        const store = await fetchStoreFromTosu();
+        if (store !== null) {
+            customPresets = normalizeLibrary(store.presets);
+            lastWritten = store.lastWritten;
+        }
+        ensureDefaultCustomSlots();
+        notifyChanged();
+    }, 3000);
 }

@@ -41,7 +41,7 @@
 | `index.js` | 入口：副作用导入，`initPresets()` 自初始化（被 `main.js` 引用，恰好一次） |
 | `schema.js` | **自拓展核心**：fetch `settings.json`，按命名约定 `apply{Key}Setting` 在 settings.js 导出中动态查找并注册 applier；`getterFor` 读取当前用户值；`buildDefaultSnapshot` 从 `value` 字段生成出厂快照 |
 | `core.js` | 应用逻辑：快照应用（部分语义）、设置流处理、echo 防护、写回、自定义预设 CRUD、Auto 跟随 |
-| `storage.js` | 持久化：`presetStorage`（tosu 设置项）读写、localStorage 缓存、旧库迁移、写回去重队列 |
+| `storage.js` | 持久化：`presetStorage`（tosu 设置项，单一权威存储，v2 结构 `{v, lastWritten, presets}`）读写、写回去重队列 |
 | `io.js` | 导出/导入（Blob 下载 / file input 上传，格式校验） |
 | `manager.js` | presets.html 页面 UI：自动生成表单、复选框、列表 CRUD、导入导出 |
 
@@ -64,21 +64,20 @@ tosu WebSocket 设置广播
       └─ presetStorage 变化 → 同步库（跨页面）
   → applySnapshot：逐键调 applier，按 SETTING_RECOMPUTE_KEYS / SETTING_CACHE_KEYS
     决定 scheduleRecompute / clearResultCache（部分快照：缺键跳过 = 保留当前值）
-  → 写回：POST /api/counters/settings/<folder>（仅 127.0.0.1 页面；localhost overlay 只读）
+  → 写回：POST /api/counters/settings/<folder>（浏览器页面 localhost/127.0.0.1；CEF overlay 只读）
 ```
 
 ### 持久化（presetStorage）
 
-- 自定义预设库序列化后存入 tosu 设置项 `presetStorage`（text，位于 Debug Options 分组，values.json 中）。
-- 随实例设置转移（换设备拷贝 tosu settings 目录即可）、随 getSettings 广播到达**所有页面**（包括游戏内 overlay，解决 127.0.0.1/localhost origin 隔离问题）、插件更新/清浏览器缓存不丢。
-- localStorage（`mma.presets.custom.v1`）仅作缓存；首次加载检测到旧库自动迁移（含旧 "Auto" 容器改名 "LastSavedPreset"）。
+- 自定义预设库与写回去重队列（lastWritten）序列化后存入 tosu 设置项 `presetStorage`（text，位于 Debug Options 分组，values.json 中）。**不使用浏览器存储**：localhost 与 127.0.0.1 是不同 origin，localStorage 会按 origin 隔离导致数据不一致——单一 tosu 存储经广播/HTTP GET 到达所有页面（含游戏内 overlay），天然跨 origin 一致。
+- 页面加载时优先从设置广播读取 store；广播未到时通过 `GET /api/counters/settings/<folder>` 直接拉取（origin 无关）；两者都失败（tosu 离线）则以空库启动。旧 v1 格式（裸数组）自动兼容读取（含旧 "Auto" 容器改名 "LastSavedPreset"）。
 - `presetStorage` 的写回不参与 preset 写回去重（库变更总是写）。
 
 ### echo 防护与跨页面协调
 
 - 写回去重：`shouldWriteBack` 对比最近写回快照，重复不写；`markWritten` 入队（深度 3）。
 - 自动保存节流：`recentlyWritten` 1.5s 窗口，防止滞后页面把预设应用 echo 误判为手动修改。
-- 跨页面同步：presetStorage 广播（主）+ localStorage `storage` 事件（缓存/激活名）。
+- 跨页面/跨 origin 同步：全部通过 tosu 设置广播（presetStorage + lastWritten 随每次写回一并下发），任意页面改动所有页面即时一致。
 
 ## 注意事项
 

@@ -54,7 +54,7 @@
 ## 设置说明
 注意：推荐直接使用默认设置开始体验，之后再根据个人喜好进行调整。
 见 [docs/settings.md](docs/settings.md) 了解详细设置说明。
-预设系统新手教程见 [docs/presets-guide.md](docs/presets-guide.md)。
+预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。
 
 ## Roxy 算法说明
 Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。

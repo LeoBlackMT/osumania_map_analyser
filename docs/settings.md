@@ -14,6 +14,7 @@
         - Custom1 / Custom2 / Custom3: 自定义预设槽位，可在预设管理器页面管理。
         - LastSavedPreset: 自动跟随手动修改，修改会自动保存到其中。
     - **自定义预设管理**: 在浏览器中打开插件页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
+    - **预设指南**： 请前往 [docs/presets-guide.md](presets-guide.md) 查看预设使用说明和更多信息。
 - **模块设定**：
     - **Card Body Content**：选择在卡片主体显示的内容。
         - None: 不显示任何内容。即短卡片模式。
@@ -139,9 +140,9 @@
         - 默认启用，请不要随意关闭。
     - **Always Show LN Difficulty**
         - 始终显示LN难度，默认关闭。
+        - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则会误判非LN图的LN难度。
     - **Preset Storage (Internal)**: 自定义预设的内部存储（JSON），由预设管理器自动维护。
         - 请勿手动编辑，除非你清楚自己在做什么。
-        - 该选项仅在启用 Improve Sunny LN Estimation 时有效，否则会误判非LN图的LN难度。
 
 ***
 
@@ -157,6 +158,7 @@
         - Custom1 / Custom2 / Custom3: custom preset slots, manageable on the plugin page in a browser.
         - LastSavedPreset: automatically follows your manual changes; changes are saved into it automatically.
     - **Custom preset management**: Open the plugin page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
+    - **Presets Guide**: Please refer to [docs/presets-guide.md](presets-guide.md) for instructions on using presets and more information.
 - **Module Settings**:
     - **Card Body Content**: Select what to display in the main body of the card.
         - None: Displays nothing. Short card mode.

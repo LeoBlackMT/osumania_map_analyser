@@ -1,47 +1,31 @@
 /**
- * Preset persistence:
- *  - Primary store: the `presetStorage` tosu setting (text, lives in
- *    settings/<folder>.values.json). It travels with the tosu instance,
- *    survives plugin updates / browser cache clears, and reaches every page
- *    (including in-game overlays) through the getSettings broadcast.
- *  - Cache: localStorage mirrors the last known library for fast first paint.
- *  - Migration: legacy localStorage libraries (mma.presets.custom.v1) are
- *    moved into presetStorage on first load.
+ * Preset persistence — single authoritative store: the `presetStorage` tosu
+ * setting (text, lives in settings/<folder>.values.json).
+ *
+ * It travels with the tosu instance, survives plugin updates and browser
+ * cache clears, and reaches EVERY page (browser + in-game overlays, any
+ * origin — localhost or 127.0.0.1) through the getSettings broadcast, so no
+ * browser-side storage is needed at all.
+ *
+ * Store shape (version 2):
+ *   { v: 2, lastWritten: [{presetName, snapshot, t}], presets: [...] }
+ * Version 1 (a bare preset array) is accepted on read and migrated in memory.
  */
 
-export const CUSTOM_PRESETS_KEY = "mma.presets.custom.v1";
-export const ACTIVE_PRESET_KEY = "mma.presets.active.v1";
-const LAST_WRITTEN_KEY = "mma.presets.lastWritten.v1";
-const LEGACY_AUTO_NAME = "Auto";
 export const AUTO_SAVE_PRESET_NAME = "LastSavedPreset";
 export const PRESET_STORAGE_SETTING = "presetStorage";
 export const DEFAULT_SLOT_NAMES = ["Custom1", "Custom2", "Custom3"];
 
-// ---------------------------------------------------------------------------
-// localStorage helpers
-// ---------------------------------------------------------------------------
-
-function readStorageValue(key) {
-    try {
-        return window.localStorage.getItem(key);
-    } catch {
-        return null;
-    }
-}
-
-function writeStorageValue(key, value) {
-    try {
-        window.localStorage.setItem(key, value);
-    } catch {
-        // Storage failures must not break the runtime.
-    }
-}
+const STORE_VERSION = 2;
+const LEGACY_AUTO_NAME = "Auto";
+const WRITE_BACK_THROTTLE_MS = 1500;
+const LAST_WRITTEN_DEPTH = 3;
 
 // ---------------------------------------------------------------------------
-// Library (custom presets)
+// Store serialization / parsing
 // ---------------------------------------------------------------------------
 
-function sanitizeLibrary(parsed) {
+function sanitizePresets(parsed) {
     if (!Array.isArray(parsed)) {
         return [];
     }
@@ -54,13 +38,43 @@ function sanitizeLibrary(parsed) {
     );
 }
 
-/** Serializes the library for presetStorage (json string) and localStorage. */
-export function serializeLibrary(presets) {
-    return JSON.stringify(presets);
+/** Serializes the full store (presets + lastWritten) for presetStorage. */
+export function serializeStore(presets, lastWritten = []) {
+    return JSON.stringify({
+        v: STORE_VERSION,
+        lastWritten: Array.isArray(lastWritten) ? lastWritten : [],
+        presets,
+    });
 }
 
-/** Reads the library from a getSettings payload (presetStorage key). */
-export function libraryFromPayload(payload) {
+/**
+ * Parses a store from a raw presetStorage value.
+ * @returns {{presets: Array, lastWritten: Array}|null} null when unavailable/invalid.
+ */
+export function parseStore(raw) {
+    if (typeof raw !== "string" || raw.length === 0) {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            // v1: bare preset array.
+            return { presets: sanitizePresets(parsed), lastWritten: [] };
+        }
+        if (parsed && typeof parsed === "object") {
+            return {
+                presets: sanitizePresets(parsed.presets),
+                lastWritten: Array.isArray(parsed.lastWritten) ? parsed.lastWritten : [],
+            };
+        }
+    } catch {
+        // fall through
+    }
+    return null;
+}
+
+/** Reads the store from a getSettings payload (presetStorage key). */
+export function storeFromPayload(payload) {
     let raw = null;
     if (Array.isArray(payload)) {
         const entry = payload.find((item) => item?.uniqueID === PRESET_STORAGE_SETTING);
@@ -70,113 +84,42 @@ export function libraryFromPayload(payload) {
             ? payload[PRESET_STORAGE_SETTING]
             : null;
     }
-    if (!raw) {
-        return null;
-    }
-    try {
-        return sanitizeLibrary(JSON.parse(raw));
-    } catch {
-        return null;
-    }
-}
-
-/** Reads the library from the localStorage cache. */
-export function libraryFromCache() {
-    try {
-        const raw = readStorageValue(CUSTOM_PRESETS_KEY);
-        return raw ? sanitizeLibrary(JSON.parse(raw)) : [];
-    } catch {
-        return [];
-    }
-}
-
-/** Writes the library into the localStorage cache (best effort). */
-export function cacheLibrary(presets) {
-    writeStorageValue(CUSTOM_PRESETS_KEY, serializeLibrary(presets));
+    return parseStore(raw);
 }
 
 /**
- * Loads the library with migration:
- * 1. presetStorage payload (authoritative) if present;
- * 2. otherwise the localStorage cache;
- * 3. legacy "Auto" container is renamed to "LastSavedPreset".
+ * Normalizes a parsed preset list: renames the legacy "Auto" container to
+ * "LastSavedPreset". Returns the list itself.
  */
-export function loadLibrary(payload) {
-    let presets = libraryFromPayload(payload);
-    if (presets === null) {
-        presets = libraryFromCache();
-    }
-    presets = presets || [];
-
-    if (!presets.some((preset) => preset.name === AUTO_SAVE_PRESET_NAME)) {
-        const legacy = presets.find((preset) => preset.name === LEGACY_AUTO_NAME);
+export function normalizeLibrary(presets) {
+    const list = presets || [];
+    if (!list.some((preset) => preset.name === AUTO_SAVE_PRESET_NAME)) {
+        const legacy = list.find((preset) => preset.name === LEGACY_AUTO_NAME);
         if (legacy) {
             legacy.name = AUTO_SAVE_PRESET_NAME;
         }
     }
-    return presets;
+    return list;
 }
 
 // ---------------------------------------------------------------------------
-// Active preset name
+// Write-back dedup (cross-page / cross-origin echo guard)
 // ---------------------------------------------------------------------------
 
-export function loadActivePreset() {
-    try {
-        const raw = readStorageValue(ACTIVE_PRESET_KEY);
-        if (typeof raw === "string" && raw.trim()) {
-            const value = raw.trim();
-            return value === LEGACY_AUTO_NAME ? AUTO_SAVE_PRESET_NAME : value;
-        }
-    } catch {
-        // ignore
-    }
-    return "Default";
+/**
+ * True when ANY preset was written back very recently, per the lastWritten
+ * queue of the given store (the authoritative, broadcast-shared copy — same
+ * data on every origin).
+ */
+export function recentlyWritten(lastWritten = []) {
+    const now = Date.now();
+    return lastWritten.some((r) => r && typeof r.t === "number" && now - r.t < WRITE_BACK_THROTTLE_MS);
 }
 
-export function persistActivePreset(name) {
-    writeStorageValue(ACTIVE_PRESET_KEY, name);
-}
-
-// ---------------------------------------------------------------------------
-// Write-back dedup (cross-page echo guard)
-// ---------------------------------------------------------------------------
-
-const WRITE_BACK_THROTTLE_MS = 1500;
-const LAST_WRITTEN_DEPTH = 3;
-
-export function readLastWritten() {
-    try {
-        const raw = window.localStorage.getItem(LAST_WRITTEN_KEY);
-        if (!raw) {
-            return null;
-        }
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-            return parsed;
-        }
-        // Legacy single-record format.
-        return [parsed];
-    } catch {
-        return null;
+/** Prepends a write-back record to the queue (mutates the array). */
+export function markWritten(lastWritten, snapshot, presetName) {
+    lastWritten.unshift({ presetName, snapshot: { ...snapshot }, t: Date.now() });
+    if (lastWritten.length > LAST_WRITTEN_DEPTH) {
+        lastWritten.length = LAST_WRITTEN_DEPTH;
     }
-}
-
-export function markWritten(snapshot, presetName) {
-    const list = readLastWritten() || [];
-    list.unshift({ presetName, snapshot: { ...snapshot }, t: Date.now() });
-    if (list.length > LAST_WRITTEN_DEPTH) {
-        list.length = LAST_WRITTEN_DEPTH;
-    }
-    try {
-        window.localStorage.setItem(LAST_WRITTEN_KEY, JSON.stringify(list));
-    } catch {
-        // Storage failure only costs us cross-page dedup.
-    }
-}
-
-/** True when ANY preset was written back very recently (by any page). */
-export function recentlyWritten() {
-    const list = readLastWritten();
-    return Boolean(list && list.some((r) => Date.now() - r.t < WRITE_BACK_THROTTLE_MS));
 }

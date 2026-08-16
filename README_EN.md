@@ -55,7 +55,7 @@ To opt out, turn off "Anonymous Usage Statistics" under Settings → Network.
 ## Settings
 Note: It is recommended to start with the default settings and then adjust according to personal preference.
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
-For the preset system beginner tutorial, see [docs/presets-guide.md](docs/presets-guide.md#english).
+For the preset system tutorial, see [docs/presets-guide.md](docs/presets-guide.md#english).
 
 ## Roxy Algorithm Explanation
 Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
