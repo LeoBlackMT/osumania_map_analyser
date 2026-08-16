@@ -24,6 +24,7 @@ import {
     parseStore,
     storeFromPayload,
     serializeStore,
+    storeFingerprint,
     normalizeLibrary,
     recentlyWritten,
     markWritten,
@@ -495,6 +496,16 @@ function updateAutoContainer(snapshot) {
 // Persistence (single authoritative store: presetStorage tosu setting)
 // ---------------------------------------------------------------------------
 
+// Fingerprint of the last store payload actually written to tosu. When the
+// current store content matches it, persistLibrary() is a no-op — this is the
+// guard that breaks the broadcast->POST->broadcast loop (every page receives
+// the echo of its own write and must NOT write again).
+let lastPersistedFingerprint = null;
+
+function currentStoreFingerprint() {
+    return storeFingerprint(customPresets, lastWritten);
+}
+
 function persistLibrary() {
     // Never write before the authoritative store arrived from the settings
     // stream: persisting the not-yet-loaded (empty) library would overwrite an
@@ -502,22 +513,33 @@ function persistLibrary() {
     if (lastValues === null) {
         return;
     }
-    writeLibraryToTosu();
+    const fingerprint = currentStoreFingerprint();
+    if (fingerprint === lastPersistedFingerprint) {
+        // Content unchanged — nothing to persist. Avoids the write-back echo
+        // loop where each page re-POSTs what it just received.
+        return;
+    }
+    if (writeLibraryToTosu()) {
+        lastPersistedFingerprint = fingerprint;
+    }
 }
 
-/** Writes the library (+ lastWritten queue) into the presetStorage tosu setting. */
+/**
+ * Writes the library (+ lastWritten queue) into the presetStorage tosu setting.
+ * Returns true when the POST was actually issued.
+ */
 function writeLibraryToTosu() {
     // Write-back happens only from a browser page (the manager page or the
     // overlay in a browser tab): localhost and 127.0.0.1 are both fine.
     // The in-game CEF overlay never opens presets.html, so it stays read-only.
     if (!isBrowserOrigin()) {
-        return;
+        return false;
     }
     const folderName = typeof window.COUNTER_PATH === "string"
         ? window.COUNTER_PATH.trim()
         : "";
     if (!folderName) {
-        return;
+        return false;
     }
     fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
         method: "POST",
@@ -530,6 +552,7 @@ function writeLibraryToTosu() {
         // Best-effort sync; the library stays in memory and re-syncs on next
         // successful write.
     });
+    return true;
 }
 
 /** True when the page runs in a regular browser (localhost / 127.0.0.1). */
@@ -678,10 +701,15 @@ async function handleSettingsPacket(packet) {
         const store = storeFromPayload(payload);
         customPresets = normalizeLibrary(store ? store.presets : []);
         lastWritten = store ? store.lastWritten : [];
+        // Baseline the persist guard against the freshly loaded store so the
+        // first persistLibrary() below only fires when something actually
+        // changed (e.g. anchor slots were missing).
+        lastPersistedFingerprint = currentStoreFingerprint();
         // Create missing anchor slots now that the authoritative library is
         // loaded (never persist an empty library over an existing one).
         await ensureDefaultCustomSlots();
-        // Flush any in-memory changes made before the first batch arrived.
+        // Flush any in-memory changes made before the first batch arrived
+        // (no-op when nothing changed — see the fingerprint guard).
         persistLibrary();
         // Always notify: the UI may have rendered before this first batch.
         notifyChanged();
@@ -704,6 +732,10 @@ async function handleSettingsPacket(packet) {
     if (store !== null) {
         customPresets = normalizeLibrary(store.presets);
         lastWritten = store.lastWritten;
+        // The broadcast content IS the persisted state (it came from tosu) —
+        // align the persist guard so this page does not immediately re-POST
+        // the echo it just received (breaks the broadcast->POST->broadcast loop).
+        lastPersistedFingerprint = currentStoreFingerprint();
         notifyChanged();
     }
 
@@ -713,13 +745,18 @@ async function handleSettingsPacket(packet) {
         .filter((key) => !IGNORED_DIFF_KEYS.has(key))
         .some((key) => hasKeyChanged(prev, lastValues, key));
 
-    // Echo broadcast: the payload matches a recent write-back of the same
-    // preset (shared lastWritten queue). Delayed echoes must not be treated
-    // as picker switches.
-    const isWriteBackEcho = lastWritten.some((record) =>
-        record.presetName === presetValue
-        && Object.keys(record.snapshot).every((key) =>
-            !(key in record.snapshot) || record.snapshot[key] === lastValues[key]));
+    // Echo broadcast: the payload matches a recent write-back (shared
+    // lastWritten queue). Matches on SETTINGS CONTENT, not on the preset field
+    // — a dashboard save broadcasts without a "preset" entry, and treating that
+    // as a fresh picker switch/auto-save on EVERY page would re-POST forever.
+    const isWriteBackEcho = lastWritten.some((record) => {
+        const snapshot = record && record.snapshot ? record.snapshot : null;
+        if (!snapshot || Object.keys(snapshot).length === 0) {
+            return false;
+        }
+        return Object.keys(snapshot).every((key) =>
+            lastValues[key] === snapshot[key]);
+    });
 
     if (presetValue && presetValue !== currentPreset && !isWriteBackEcho) {
         if (presetValue === AUTO_SAVE_PRESET_NAME) {
@@ -797,11 +834,17 @@ export function initPresets() {
     // library (see handleSettingsPacket) — creating them here would persist an
     // empty library over an existing one.
 
-    // Load built-in presets eagerly so the manager list renders them without
-    // waiting for a preset apply.
-    loadBuiltinPresets().then(() => {
-        notifyChanged();
-    });
+    // Load built-in presets eagerly ONLY on the manager page, where the list
+    // is rendered. The game overlay (index.html, also loaded inside the tosu
+    // in-game CEF iframe) never shows the manager list — eagerly fetching the
+    // 12+ preset JSON files there wastes bandwidth and memory on every load,
+    // which amplifies the crash-reload loop seen in production. applyPresetByName
+    // still loads them lazily when a built-in preset is actually applied.
+    if (typeof window !== "undefined" && /presets\.html/i.test(window.location.pathname || "")) {
+        loadBuiltinPresets().then(() => {
+            notifyChanged();
+        });
+    }
 
     // Observe the tosu settings stream on our own commands connection.
     socket.commands((packet) => {

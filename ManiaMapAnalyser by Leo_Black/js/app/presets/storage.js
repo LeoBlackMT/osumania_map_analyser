@@ -48,6 +48,37 @@ export function serializeStore(presets, lastWritten = []) {
 }
 
 /**
+ * Canonical fingerprint of the store CONTENT (presets + write-back queue
+ * WITHOUT timestamps). Two stores that describe the same logical state produce
+ * the same fingerprint, so the caller can skip a redundant POST when nothing
+ * actually changed. Timestamps (`t`) are transient cross-page dedup state and
+ * must not participate in the comparison.
+ */
+export function storeFingerprint(presets, lastWritten = []) {
+    return JSON.stringify({
+        v: STORE_VERSION,
+        lastWritten: normalizeLastWritten(lastWritten),
+        presets,
+    });
+}
+
+/**
+ * Canonical form of the write-back queue: presetName + snapshot only
+ * (timestamps stripped).
+ */
+function normalizeLastWritten(lastWritten = []) {
+    if (!Array.isArray(lastWritten)) {
+        return [];
+    }
+    return lastWritten
+        .filter((record) => record && typeof record === "object")
+        .map((record) => ({
+            presetName: typeof record.presetName === "string" ? record.presetName : "",
+            snapshot: record.snapshot && typeof record.snapshot === "object" ? record.snapshot : {},
+        }));
+}
+
+/**
  * Parses a store from a raw presetStorage value.
  * @returns {{presets: Array, lastWritten: Array}|null} null when unavailable/invalid.
  */
