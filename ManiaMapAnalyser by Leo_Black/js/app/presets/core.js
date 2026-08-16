@@ -147,6 +147,11 @@ export async function captureCurrentSettings() {
 /**
  * Applies a (possibly partial) snapshot: only keys present in the snapshot
  * are applied; everything else keeps its current value.
+ *
+ * Each key is applied defensively: apply functions may touch overlay DOM
+ * elements that do not exist on the manager page (presets.html) — a failure
+ * must never abort the rest of the snapshot. State changes made before the
+ * failure still count (the write-back + broadcast re-render on the overlay).
  */
 export async function applySnapshot(snapshot) {
     const { appliers } = await loadSettingsSchema();
@@ -163,7 +168,16 @@ export async function applySnapshot(snapshot) {
         if (!applier) {
             continue;
         }
-        if (applier(value)) {
+        let changed = false;
+        try {
+            changed = applier(value) === true;
+        } catch (error) {
+            console.error(`[presets] apply "${key}" failed (DOM may be missing on this page):`, error);
+            // The state may already have been updated — treat as changed so
+            // recompute/cache invalidation still fire when needed.
+            changed = true;
+        }
+        if (changed) {
             if (SETTING_RECOMPUTE_KEYS.has(key)) {
                 recomputeNeeded = true;
             }
