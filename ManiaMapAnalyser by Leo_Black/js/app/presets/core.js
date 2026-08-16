@@ -210,8 +210,8 @@ export async function applyCustomSnapshot(snapshot, presetName = null) {
         currentPreset = presetName;
     }
     if (shouldWriteBack(snapshot, anchor)) {
-        writeBackToTosu(anchor, snapshot);
         markWritten(lastWritten, snapshot, anchor);
+        writeBackToTosu(anchor, snapshot);
     }
     lastValues = { ...lastValues, ...snapshot, preset: anchor };
     notifyChanged();
@@ -258,8 +258,8 @@ export async function applyPresetByName(name) {
     await applySnapshot(snapshot);
     currentPreset = name;
     if (shouldWriteBack(snapshot, name)) {
-        writeBackToTosu(name, snapshot);
         markWritten(lastWritten, snapshot, name);
+        writeBackToTosu(name, snapshot);
     }
     // Mirror the write-back into lastValues so the echo broadcast of the same
     // values is not mistaken for a manual settings change.
@@ -441,11 +441,15 @@ export async function autoSaveCurrentPreset() {
     if (anchored) {
         anchored.settings = snapshot;
         anchored.updatedAt = Date.now();
-        persistLibrary();
         notifyChanged();
         if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, anchored.name)) {
-            writeBackToTosu(anchored.name, snapshot);
+            // Mark FIRST so the write-back POST ships the fresh lastWritten
+            // queue; that single POST also persists the updated library
+            // (store). One POST per change — no extra broadcasts.
             markWritten(lastWritten, snapshot, anchored.name);
+            writeBackToTosu(anchored.name, snapshot);
+        } else {
+            persistLibrary();
         }
         lastValues = { ...lastValues, ...snapshot, preset: anchored.name };
         return;
@@ -458,12 +462,13 @@ export async function autoSaveCurrentPreset() {
 export async function saveToLastSavedPreset() {
     const snapshot = { ...lastValues };
     updateAutoContainer(snapshot);
-    persistLibrary();
     currentPreset = AUTO_SAVE_PRESET_NAME;
     notifyChanged();
     if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, AUTO_SAVE_PRESET_NAME)) {
-        writeBackToTosu(AUTO_SAVE_PRESET_NAME, snapshot);
         markWritten(lastWritten, snapshot, AUTO_SAVE_PRESET_NAME);
+        writeBackToTosu(AUTO_SAVE_PRESET_NAME, snapshot);
+    } else {
+        persistLibrary();
     }
     lastValues = { ...lastValues, ...snapshot, preset: AUTO_SAVE_PRESET_NAME };
 }
@@ -765,12 +770,13 @@ async function overwriteCustomPreset(presetValue) {
         target.updatedAt = Date.now();
     }
     updateAutoContainer(snapshot);
-    persistLibrary();
     currentPreset = presetValue;
     notifyChanged();
     if (!recentlyWritten(lastWritten) && shouldWriteBack(snapshot, presetValue)) {
-        writeBackToTosu(presetValue, snapshot);
         markWritten(lastWritten, snapshot, presetValue);
+        writeBackToTosu(presetValue, snapshot);
+    } else {
+        persistLibrary();
     }
     lastValues = { ...lastValues, ...snapshot, preset: presetValue };
 }
