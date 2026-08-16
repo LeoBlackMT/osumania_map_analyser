@@ -100,6 +100,7 @@
 | **Export Current** | 把编辑区当前内容（勾选项 + 预设信息）导出为 .json 文件 | 用于分享或备份当前正在编辑的预设 |
 | **Export All** | 把所有自定义预设导出为一个 .json 文件 | 用于整体备份或分享 |
 | **Import** | 导入 .json 预设文件 | 选择文件后自动导入；格式错误会提示 |
+| **Guide** | 在新窗口打开这份新手教程 | 随时查阅，不离开管理器 |
 
 ### 推荐工作流程
 
@@ -222,6 +223,7 @@ Form values auto-refresh from tosu's live broadcast (except the field you are ty
 | **Export Current** | Downloads the current editor state (checked settings + info) as .json | For sharing/backing up what you are editing |
 | **Export All** | Downloads all custom presets as one .json file | For full backup or sharing |
 | **Import** | Imports a .json preset file | Errors are reported if the format is wrong |
+| **Guide** | Opens this beginner guide in a new window | Always at hand without leaving the manager |
 
 ### Recommended workflow
 

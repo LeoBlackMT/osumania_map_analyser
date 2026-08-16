@@ -27,9 +27,10 @@
 ### 预设管理器（浏览器，`presets.html`）
 
 - 打开 `http://<host>:<port>/<插件目录名>/presets.html`（默认 `http://localhost:24050/<插件目录名>/presets.html`）。
-- **顶部操作栏**（独立、sticky）：New（清空编辑器，需确认）、Save（保存/覆盖，需确认）、Apply Checked（应用勾选字段，需确认）、Export Current（导出当前编辑态）、Export All、Import。
+- **顶部操作栏**（独立、sticky）：New（清空编辑器，需确认）、Save（保存/覆盖，需确认）、Apply Checked（应用勾选字段，需确认）、Export Current（导出当前编辑态）、Export All、Import、Guide（新窗口打开 [预设新手教程](../presets-guide.md)）。
 - **左侧列表**（分类）：SYSTEM 分类 = Default（首行，动态出厂快照）+ 11 个内置预设 + LastSavedPreset（只读行）；My Presets = 自定义预设（Custom1-3 固定槽仅 Edit/Apply/Export）。每行按钮：Edit（加载到编辑区并高亮）、Apply（一键应用，需确认）、自定义行另有 Rename/Delete/Export。
-- **右侧编辑区**：Preset Info 面板（Name/Description/Version 可编辑，ID 自动生成只读）+ 自动生成的设置表单（来自 settings.json，header 分组；`preset`/`presetStorage` 系统设置排除不显示，`wsEndpoint` 默认不勾选）。
+- **右侧编辑区**：Preset Info 面板（Name/Description/Version 可编辑，ID 自动生成只读）+ 自动生成的设置表单（来自 settings.json，header 分组；`preset`/`presetStorage` 系统设置排除不显示，`wsEndpoint` 默认不勾选）。每行左侧复选框（勾选 = 纳入预设）与右侧布尔设置控件尺寸一致。
+- **滚动**：页面所有可滚动区域（左侧列表、右侧表单）使用自定义细滚动条（配色随主题，圆角）。
 - **反馈**：所有操作结果通过右上角 toast 通知（自动消失）；破坏性操作（应用/删除/覆盖/导入/清空）均弹窗二次确认。
 
 ## 架构

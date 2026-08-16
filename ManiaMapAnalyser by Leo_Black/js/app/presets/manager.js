@@ -202,6 +202,11 @@ function buildLayout() {
         <button id="act-export-all" class="presets-btn" type="button">Export All</button>
         <button id="act-import" class="presets-btn" type="button">Import</button>
         <input id="preset-import-file" type="file" accept="application/json,.json" hidden>
+        <span class="presets-actionbar-sep"></span>
+        <a id="act-guide" class="presets-btn presets-btn-guide" href="https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/presets-guide.md"
+            target="_blank" rel="noopener noreferrer" role="button">
+            Guide
+        </a>
     `;
     root.appendChild(actionBar);
 

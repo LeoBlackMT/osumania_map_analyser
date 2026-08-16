@@ -19,6 +19,36 @@
     box-sizing: border-box;
 }
 
+/* Custom scrollbars (reference: benchmark theme.css) */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(128, 179, 255, 0.45) rgba(10, 15, 28, 0.35);
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: rgba(10, 15, 28, 0.35);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(128, 179, 255, 0.58), rgba(103, 255, 226, 0.45));
+    border-radius: 999px;
+    border: 2px solid rgba(10, 15, 28, 0.45);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(128, 179, 255, 0.78), rgba(103, 255, 226, 0.62));
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
 body {
     margin: 0;
     background: var(--presets-bg);
@@ -146,6 +176,31 @@ body {
 
 .presets-btn-apply:hover {
     background: rgba(79, 140, 255, 0.14);
+}
+
+.presets-btn-guide {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--presets-accent);
+    border-color: var(--presets-accent);
+    background: transparent;
+}
+
+.presets-btn-guide:hover {
+    background: rgba(79, 140, 255, 0.14);
+    border-color: #6ea3ff;
+}
+
+.presets-btn-guide:active {
+    transform: translateY(1px);
+}
+
+.presets-btn-guide::before {
+    content: "↗";
+    margin-right: 5px;
+    font-size: 12px;
+    line-height: 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -381,9 +436,9 @@ body {
 .presets-setting {
     display: grid;
     grid-template-columns: auto 1fr auto;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
-    padding: 8px 6px;
+    padding: 9px 8px;
     border-radius: 8px;
     transition: background 0.12s ease;
 }
@@ -393,10 +448,16 @@ body {
 }
 
 .presets-setting-include {
+    align-self: start;
+    margin-top: 2px;
+}
+
+.presets-setting-include {
     width: 16px;
     height: 16px;
     accent-color: var(--presets-accent);
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 .presets-setting-info {
@@ -431,6 +492,7 @@ body {
     color: var(--presets-text);
     max-width: 220px;
     font-size: 13px;
+    min-height: 30px;
 }
 
 .presets-setting-control input:focus,
@@ -443,6 +505,13 @@ body {
 .presets-setting-control input[type="color"] {
     accent-color: var(--presets-accent);
     cursor: pointer;
+}
+
+/* Value checkboxes (e.g. boolean settings) match the include checkbox size. */
+.presets-setting-control input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
 }
 
 .presets-setting-readonly {
