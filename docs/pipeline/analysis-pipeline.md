@@ -162,7 +162,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 - 每次 `fetchBeatmapFile` 开始时自增全局序号（appContext.js:149 `analysisRequestSeq`），闭包捕获本次的 `requestSeq`。
 - 之后任何时刻（每个 await 之后）调用 `isStaleRequest()` 比对：一旦期间又发起了新分析（序号被推进），本次请求即过期，**立即 return 放弃渲染**，防止过期请求的结果覆盖新结果。
 - 检查点遍布异步边界：fetch 响应后（:337、:344）、估算后（:515）、Interlude（:591）、Etterna（:651）、Companella（:701、:715）、异常路径（:919）、finally（:935）。
-- worker 内部还有**同等的过期丢弃**：`manager.js:47 latestId` 只接受最新请求的响应（:54），30s 超时保护（:68-73）。
+- worker 内部还有**同等的过期丢弃**：`manager.js` 用 `pendingRequests` Map + 共享 `message` 监听按 id 匹配；新请求先 `rejectAllPending` 取消旧在途请求，过期/已取消响应直接忽略，30s 超时保护（manager.js:95-100）。
 
 ## 7. fetchBeatmapFile 主流程
 
@@ -215,9 +215,9 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 - **附属段开关**：`withPattern/withEtterna/withInterlude` 取自 needComputed（fetch 前的保守值，与缓存覆盖检查同源，analysis.js:365-368）。默认 false——仅请求需要的段，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界：主线程消费段有回退分支，见下）。
 - **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。
-- **worker 往返**：manager 发 `{id, type:"pipeline", input}`，compute.worker.js 的 `"pipeline"` 消息分支**异步**调 `runAnalysisPipeline(input)` 经 then/catch 回传（原 4 估算器消息保留不动）；latestId + 30s 超时语义不变。
+- **worker 往返**：manager 发 `{id, type:"pipeline", input}`，compute.worker.js 的 `"pipeline"` 消息分支**异步**调 `runAnalysisPipeline(input)` 经 then/catch 回传（原 4 估算器消息保留不动）；`pendingRequests` 取消 + 30s 超时语义保持 worker 防挂起。
 - **归一化星数复用决策**（仅影响性能，不改数值）：Mixed 与 Azusa(`forceSunnyReferenceHo=false`) 的内部 Sunny 与归一化调用使用相同 options → 预计算一份 Sunny 结果经 `precomputedSunnyResult` 喂给估算器并复用其 star；Azusa(`forceSunnyReferenceHo=true`) 内部用 `cvtFlag:"HO"`、Roxy 内部用 canonicalized 文本 → 独立计算（决策表见 worker.md §4.5）。
-- **估算失败**：pipeline 不吞估算器/SunnyWindow 抛错——直接向上传播，analysis.js 外层 catch（:377-399）`resetReworkDisplay()` + `errors.push("Rework failed: ...")` + 失败路径回退元信息解析（pipeline 抛错时 parsedSummary 未返回，catch 内用最小 OsuFileParser 补齐 parsedInfo 供渲染降级，与旧 parseMetadataFromBeatmap 行为一致）；`errors[]` 恒为空（预留软失败通道），合并与写门条件不变。
+- **估算失败**：pipeline 不吞估算器/SunnyWindow 抛错——直接向上传播，analysis.js 估算块 catch 先做 `isStaleRequest()` 守卫（过期请求因新请求取消而 reject 时直接 return，不做失败 UI），非过期才 `resetReworkDisplay()` + `errors.push("Rework failed: ...")` + 失败路径回退元信息解析（pipeline 抛错时 parsedSummary 未返回，catch 内用最小 OsuFileParser 补齐 parsedInfo 供渲染降级，与旧 parseMetadataFromBeatmap 行为一致）；`errors[]` 恒为空（预留软失败通道），合并与写门条件不变。
 - **SunnyWindow 合并留在 analysis.js**（:483-496）：`sunnyWindow.estDiff` 的 LN 段替换 `resolvedEstDiff`、`typePercentageData`、`lnStar`、`pendingMixedCompanellaContext.lnDifficulty` 等展示/缓存逻辑仍在原处，逐行未变。
 - **graph 去留决策**（实测记录）：graph 数组占 pipeline 消息体 ~99%（withGraph 时），但 structuredClone 耗时仅 0.6–3.2ms（3.6 万点马拉松谱面）vs 主线程重算估算器 30–400ms——graph 留在 pipeline（worker）内，不搬主线程。
 
@@ -300,7 +300,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | --- | --- | --- | --- |
 | `socketRecalcLazyDelayMs` | 200ms | config.js:70 `APP_CONFIG.timing.socketRecalcLazyDelayMs` → appContext.js:175 `SOCKET_RECALC_LAZY_DELAY_MS` | scheduler.js:22-23 `scheduleRecompute` 防抖窗口（socketHandlers.js:305、settings.js:859 传入 `useLazyDelay=true`） |
 | `settingsCommandTimeoutMs` | 1500ms | config.js:71 `APP_CONFIG.timing.settingsCommandTimeoutMs` → appContext.js:176 `SETTINGS_COMMAND_TIMEOUT_MS`（settings.js:50 导入） | settings.js:871 `waitForInitialSettingsFromCommand(timeoutMs)` 的 getSettings 响应超时（超时 reject "getSettings timeout"），详见 settings-pipeline.md §9 |
-| worker 安全超时 | 30s | manager.js:68-73 硬编码 | `runInWorker` 防挂起，超时 reject "Worker timeout" |
+| worker 安全超时 | 30s | manager.js:95-100 硬编码 | `runInWorker` 防挂起，超时 reject "Worker timeout" |
 | 重连间隔 | 1s | socket.js:43 | WebSocket 断开重连 |
 | `sendCommand` 重试 | 100ms/1s，至多 3 次 | socket.js:71-76/:82-87 | 命令通道未就绪/发送失败 |
 
@@ -309,7 +309,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **stale 请求不写缓存**：写门含 `!isStaleRequest()`（analysis.js:745）与代数守卫 `genAtStart === resultCacheGeneration()`（:746）双保险——前者防"过期分析结果覆盖新结果"（含缓存），后者防"clear 之后旧分析写回"（result-cache.md §7）。
 - **meta 降级 identity 不缓存**：`analysis.js:776` `put(cacheKey, {...}, { skip: isMetaDegraded })`——meta: 身份只读不写，碰撞风险下宁可每张图重算（result-cache.md §8）。
 - **分析失败路径**：估算块 catch → `analysis.js:551 resetReworkDisplay()`（定义 :215-246）——重置 actualEstimatorAlgorithm、数值/胶囊/图/meta 全清、mode tag 回 "Mix"、SV 标签隐藏、必要时显示 "Graph unavailable"；外层 catch（:918-933，fetch/解析失败）同样调用并在 overlay 显示 "Load failed"。
-- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退（analysis.js:458），Worker 构造失败（manager.js:23-25）与 30s 超时（manager.js:68-73）都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
+- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退（analysis.js:458），Worker 构造失败（manager.js:38-41）与 30s 超时（manager.js:95-100）都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
 - **缓存键不含显示类设置**：`display6kLevel`、`forceSunnyWindow`、etterna 版本等不进键，正确性依赖 settings.js 失效列表——任何新计算影响设置漏加失效 = 静默过期结果（result-cache.md §9）。
 - **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导（analysis.js:284-286 注释），仅供覆盖检查；实际 shows*/need* 在 override 后重算（:362-365）——修改 needComputed 推导时注意保持两处一致。
 - **changeKind 只消费一次**：`analysis.js:262` 取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理（:258-261），避免换歌动画重复播放。

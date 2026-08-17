@@ -157,6 +157,7 @@ export function initTelemetry() {
 // Called by settings.js whenever telemetry settings change at runtime.
 export function setTelemetryConfig() {
     readConfig();
+    syncTelemetryHeartbeat();
     maybeBoot();
 }
 
@@ -166,20 +167,35 @@ export function noteTelemetryActivity() {
     lastActivityAt = Date.now();
 }
 
-export function startTelemetryHeartbeat() {
+export function stopTelemetryHeartbeat() {
     if (heartbeatTimerId) {
-        return;
+        clearInterval(heartbeatTimerId);
+        heartbeatTimerId = 0;
     }
+}
 
-    heartbeatTimerId = window.setInterval(() => {
-        if (!isActive()) {
+function syncTelemetryHeartbeat() {
+    if (isActive()) {
+        if (heartbeatTimerId) {
             return;
         }
-        if (Date.now() - lastActivityAt > ACTIVITY_WINDOW_MS) {
-            return;
-        }
-        send("heartbeat");
-    }, HEARTBEAT_INTERVAL_MS);
+
+        heartbeatTimerId = window.setInterval(() => {
+            if (!isActive()) {
+                return;
+            }
+            if (Date.now() - lastActivityAt > ACTIVITY_WINDOW_MS) {
+                return;
+            }
+            send("heartbeat");
+        }, HEARTBEAT_INTERVAL_MS);
+    } else {
+        stopTelemetryHeartbeat();
+    }
+}
+
+export function startTelemetryHeartbeat() {
+    syncTelemetryHeartbeat();
 }
 
 export function trackTelemetryAnalyze(data) {

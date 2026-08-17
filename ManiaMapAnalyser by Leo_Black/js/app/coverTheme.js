@@ -99,14 +99,24 @@ function loadImage(url) {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.crossOrigin = "anonymous";
+
+        const cleanup = () => {
+            image.onload = null;
+            image.onerror = null;
+        };
+
         image.onload = () => {
+            cleanup();
             if (image.naturalWidth > 0 && image.naturalHeight > 0) {
                 resolve(image);
             } else {
                 reject(new Error("Empty image"));
             }
         };
-        image.onerror = () => reject(new Error("Image load failed"));
+        image.onerror = () => {
+            cleanup();
+            reject(new Error("Image load failed"));
+        };
         image.src = url;
     });
 }

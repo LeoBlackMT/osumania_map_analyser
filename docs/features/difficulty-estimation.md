@@ -80,8 +80,8 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 `js/app/worker/manager.js` 管理 Worker 生命周期：
 
 - `manager.js:41 runInWorker`：创建 Worker 失败（不支持或构造异常，`manager.js:15-27 ensureWorker`）时返回 `null`（`manager.js:43`），调用方回退到主线程同步执行；
-- `manager.js:80 isWorkerAvailable`：查询 Worker 是否可用；
-- `manager.js:49-74`：只接受最新请求的结果（`latestId` 匹配），并带 30 秒超时兜底。
+- `manager.js:129 isWorkerAvailable`：查询 Worker 是否可用；
+- `manager.js:83-124 runInWorker`：新请求先取消全部在途请求（`pendingRequests` Map），共享 `message` 监听按 id 匹配响应，并带 30 秒超时兜底。
 
 `analysis.js` 中所有 worker 估算器的调用均采用 `wp ? await wp : runXxxEstimatorFromText(...)` 模式：
 

@@ -21,38 +21,39 @@ Node 回归脚本（computeOutput）直接 await runAnalysisPipeline（第三端
 
 ## 2. Worker 生命周期（manager.js）
 
-`js/app/worker/manager.js` 是 worker 的唯一持有者，模块级闭包变量 `worker / nextId / latestId`（manager.js:11-13）。
+`js/app/worker/manager.js` 是 worker 的唯一持有者，模块级闭包变量 `worker / nextId / pendingRequests / messageHandlerAttached`（manager.js:11-16）。
 
 ### 2.1 创建与复用
 
-- `ensureWorker()`（manager.js:15-27）：`worker` 已存在直接返回（**单例复用**）；不存在则 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`（manager.js:18-21，`import.meta.url` 相对**模块文件**解析：`new URL` 模式，勿改相对字符串，见 module-conventions.md §3）。
-- **构造失败**（不支持 Worker 的环境，如部分 WebView/禁用 worker 的浏览器）：`catch` 置 `worker = null`（manager.js:23-25），**不抛错**，由调用方走同步回退。
-- 崩溃恢复：worker 运行时崩溃后 `worker` 引用仍指向已死的实例，下一次请求时 `postMessage` 会抛错 → `runInWorker` 的 Promise reject → analysis.js 外层 catch 按失败路径处理；重新创建发生在下一次 `ensureWorker()` 前需要显式重建的场景（当前实现不自动重建，失败路径不依赖 worker 恢复）。
+- `ensureWorker()`（manager.js:16-43）：`worker` 已存在直接返回（**单例复用**）；不存在则 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`（manager.js:19-22，`import.meta.url` 相对**模块文件**解析：`new URL` 模式，勿改相对字符串，见 module-conventions.md §3）。
+- **构造失败**（不支持 Worker 的环境，如部分 WebView/禁用 worker 的浏览器）：`catch` 置 `worker = null`（manager.js:38-41），**不抛错**，由调用方走同步回退。
+- 崩溃恢复：`ensureWorker()` 为新建 worker 注册 `error` 监听；worker 运行时崩溃会**拒绝全部在途请求、`terminate()` 已死实例并置 `worker = null`**，下一次请求自动重建。这同时避免崩溃后 pending promise/listener 永久滞留。
 
-### 2.2 latestId 过期机制
+### 2.2 请求取消与响应匹配
 
-`runInWorker(input)`（manager.js:40-74）：
+`runInWorker(input)`（manager.js:83-124）：
 
-- `generateId()`（manager.js:29-32）自增 `nextId` 生成 `req-<n>-<ts>`。
-- `latestId = id`（manager.js:46），**每次新请求直接推进 latestId，旧的在途请求立即作废**（相当于取消）。
-- 响应回调（manager.js:49-61）：`event.data` 解构 `{ id, result, error }`；`respId !== latestId` 的响应**直接丢弃**（manager.js:53），旧请求的迟到响应永远不会污染新请求。
-- 正常完成后 `removeEventListener` 解绑（manager.js:55），错误 reject `new Error(error)`（:57），成功 resolve result（:59）。
+- `generateId()`（manager.js:45-48）自增 `nextId` 生成 `req-<n>-<ts>`。
+- 每次新请求先 `rejectAllPending(new Error("Worker request superseded"))`（manager.js:50-56）：**旧的在途请求立即 settle，不再保留 listener/promise**，避免快速换歌/改设置时累积泄漏。
+- 响应匹配改为**单一共享 `message` 监听**（`attachMessageHandler`，manager.js:58-75）：按 `event.data.id` 查 `pendingRequests` Map；查得到才 resolve/reject 并清理超时，查不到（已过期/已取消）直接忽略。因此旧请求的迟到响应永远不会污染新请求，也不需要逐请求 `removeEventListener`。
+- 正常完成或错误时 `pendingRequests.delete(id)` + `clearTimeout(timeoutId)`；错误 reject `new Error(error)`，成功 resolve result。
 
 ### 2.3 30s 超时
 
-- `setTimeout`（manager.js:67-72）：30s 内未收到响应（且该请求仍是 latestId）→ 解绑并 `reject(new Error("Worker timeout"))`。
+- 每个请求的 `setTimeout`（manager.js:95-100）：30s 内未收到响应 → 从 `pendingRequests` 删除并 `reject(new Error("Worker timeout"))`。
+- `postMessage` 同步抛错时也会清理该请求并 reject。
 - **stale 粒度差异**（详见 §7）：pipeline 单次往返消息在 worker 内**不可中断**，30s 超时是唯一的最坏情况保护；旧 4 估算器消息时代可以在每个 runX 边界丢弃过期请求，粒度更细。
 
 ### 2.4 同步回退链
 
 ```
-runInWorker 返回 null（Worker 构造失败，manager.js:23-25）
+runInWorker 返回 null（Worker 构造失败，manager.js:38-41）
   → analysis.js:375 走 await runAnalysisPipeline(pipelineInput)
   → 同一函数、同一输入，逐位相同输出
   → 仅有的代价：估算在主线程同步执行（可能卡顿）
 ```
 
-`isWorkerAvailable()`（manager.js:79-81）暴露可用性查询（当前仅 debug 面板使用）。
+`isWorkerAvailable()`（manager.js:129-131）暴露可用性查询（当前仅 debug 面板使用）。
 
 ## 3. 消息协议
 
@@ -226,8 +227,8 @@ graph 数组占 withGraph 消息体 ~99%，但 **structuredClone 耗时 0.6~3.2m
 | 层 | 粒度 | 机制 |
 | --- | --- | --- |
 | 主线程请求序号 | 每次 `fetchBeatmapFile`（analysis.js:231-233 `analysisRequestSeq`） | 每个 await 后 `isStaleRequest()` 检查（:325/:332/:495/:576/:676/:732/:747），过期立即 return |
-| worker latestId | 每次 `runInWorker`（manager.js:46） | 响应按 `respId !== latestId` 丢弃（manager.js:53） |
-| pipeline 消息内部 | **一次往返，不可中断** | worker 内 `runAnalysisPipeline` 一旦开始就跑到结束；30s 超时（manager.js:67-72）是最坏情况保护 |
+| worker pendingRequests | 每次 `runInWorker` | 新请求先 `rejectAllPending`；共享 `message` 监听按 id 匹配 `pendingRequests`，过期/已取消响应直接忽略 |
+| pipeline 消息内部 | **一次往返，不可中断** | worker 内 `runAnalysisPipeline` 一旦开始就跑到结束；30s 超时（manager.js:95-100）是最坏情况保护 |
 | 旧 4 估算器消息 | **每次 runX 可中止** | 旧消息时代主线程可在估算器之间丢弃过期响应（粒度更细，现已无调用方） |
 
 **pipeline 单次往返的取舍**：一次性带回全部产物（含二次 Ett、pattern、graph），代价是 worker 内无法在中途放弃，30s 超时兜底。对典型谱面（总耗时 <1s）无实际影响。

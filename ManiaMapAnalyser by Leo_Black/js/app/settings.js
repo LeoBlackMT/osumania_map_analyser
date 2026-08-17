@@ -63,6 +63,7 @@ import {
     clearDiffGraph,
     redrawPauseMarkers,
     setGraphCursorVisible,
+    syncGraphAnimationLoop,
     updateDiffTextVisibility,
 } from "./graph.js";
 import {
@@ -429,6 +430,7 @@ export function setRuntimeContentBar(contentBar) {
     } else {
         setGraphCursorVisible(false);
     }
+    syncGraphAnimationLoop();
     return changed;
 }
 
@@ -453,6 +455,7 @@ export function setEffectiveContentBarForMap(contentBarOrNull) {
     } else {
         setGraphCursorVisible(false);
     }
+    syncGraphAnimationLoop();
 
     return changed;
 }

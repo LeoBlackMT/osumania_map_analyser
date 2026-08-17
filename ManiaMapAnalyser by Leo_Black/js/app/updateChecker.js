@@ -183,10 +183,11 @@ async function runUpdateCheckIfDueInternal({ enabled, currentVersion, onResult, 
         return;
     }
 
+    let timeoutId = 0;
     try {
         const hasAbortController = typeof AbortController !== "undefined";
         const controller = hasAbortController ? new AbortController() : null;
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
             if (controller) {
                 controller.abort();
             }
@@ -202,6 +203,7 @@ async function runUpdateCheckIfDueInternal({ enabled, currentVersion, onResult, 
         });
         const response = await inFlightCheckPromise;
         clearTimeout(timeoutId);
+        timeoutId = 0;
 
         if (!response.ok) {
             throw new Error(`latest release request failed: ${response.status}`);
@@ -232,6 +234,9 @@ async function runUpdateCheckIfDueInternal({ enabled, currentVersion, onResult, 
 
         emitResult(onResult, false, "", "");
     } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
         inFlightCheckPromise = null;
     }
 }
