@@ -371,6 +371,8 @@ export function clearDiffGraph() {
 
         clearPauseMarkersDom(view);
     });
+
+    syncGraphAnimationLoop();
 }
 
 export function setGraphCursorVisible(visible) {
@@ -520,21 +522,35 @@ export function updateGraphCursor(explicitTimeMs = null) {
     setGraphCursorVisible(true);
 }
 
-export function startGraphAnimationLoop() {
-    if (state.graphAnimationStarted) {
-        return;
+let graphAnimationFrameId = 0;
+
+function graphAnimationTick() {
+    graphAnimationFrameId = 0;
+    if (hasAnyGraphModeEnabled()) {
+        updateGraphCursor();
+        graphAnimationFrameId = requestAnimationFrame(graphAnimationTick);
+    } else {
+        state.graphAnimationStarted = false;
     }
+}
 
-    state.graphAnimationStarted = true;
-
-    const tick = () => {
-        if (hasAnyGraphModeEnabled()) {
-            updateGraphCursor();
+export function syncGraphAnimationLoop() {
+    if (hasAnyGraphModeEnabled()) {
+        if (!state.graphAnimationStarted) {
+            state.graphAnimationStarted = true;
+            graphAnimationFrameId = requestAnimationFrame(graphAnimationTick);
         }
-        requestAnimationFrame(tick);
-    };
+    } else {
+        if (graphAnimationFrameId) {
+            cancelAnimationFrame(graphAnimationFrameId);
+            graphAnimationFrameId = 0;
+        }
+        state.graphAnimationStarted = false;
+    }
+}
 
-    requestAnimationFrame(tick);
+export function startGraphAnimationLoop() {
+    syncGraphAnimationLoop();
 }
 
 // toFixed(1) is sufficient for a 260px-wide viewBox — saves ~20% string length vs (2)
@@ -706,6 +722,8 @@ export function updateDiffTextVisibility() {
     } else {
         setGraphCursorVisible(false);
     }
+
+    syncGraphAnimationLoop();
 
     if (!showRightCapsule && reworkRightCapsuleEl) {
         reworkRightCapsuleEl.textContent = "-";

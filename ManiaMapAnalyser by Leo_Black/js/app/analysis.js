@@ -437,6 +437,7 @@ export async function fetchBeatmapFile(reason) {
                 parsedInfo = pipelineResult.parsedSummary;
                 applyContentBarOverride(parsedInfo.columnCount);
             } catch (error) {
+                if (isStaleRequest()) return;
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || contentBarShows("Graph")) {
                     showDiffGraphError("Graph unavailable");

@@ -29,7 +29,7 @@
 - `initTelemetry()` — 读配置，条件满足则发 `boot`。
 - `setTelemetryConfig()` — settings.js 运行时调用；开关由关→开且 endpoint 非空时补发 `boot`。
 - `noteTelemetryActivity()` — socketHandlers 每个 api_v2 包调用，更新 `lastActivityAt`。
-- `startTelemetryHeartbeat()` — `setInterval(10min)`；仅当 `enabled && endpoint && (now-lastActivityAt < 30s)` 发 `heartbeat`。
+- `startTelemetryHeartbeat()` / `stopTelemetryHeartbeat()` — 遥测激活时才启动 `setInterval(10min)`；`setTelemetryConfig()` 在关闭遥测时同步停止 interval，避免禁用后定时器常驻。心跳仅在 `enabled && endpoint && (now-lastActivityAt < 30s)` 时发送。
 - `trackTelemetryAnalyze(data)` — 发 `analyze`（fire-and-forget）。
 
 发送用 `fetch(..., {keepalive:true})` + 5s `AbortController` 超时，`.catch` 静默——**遥测绝不阻塞/破坏插件功能**。
