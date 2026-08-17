@@ -87,9 +87,10 @@ function convertHitObjects(objects, keys) {
             lastRow.Data[column] = NoteType.NORMAL;
         } else if (cur === NoteType.NORMAL || cur === NoteType.HOLDHEAD) {
             // keep stacked note behavior
-        } else {
-            throw new Error(`Stacked note at ${time}, column ${column + 1}, coincides with ${cur}`);
         }
+        // else: the column is mid-hold (HOLDBODY) or releasing (HOLDTAIL) on this
+        // row, which .osu should never contain. Drop the offending note instead of
+        // aborting the whole chart, so the rest of the map still gets analysed.
     }
 
     function startHold(column, time, endTime) {
@@ -107,9 +108,10 @@ function convertHitObjects(objects, keys) {
         if (cur === NoteType.NOTHING || cur === NoteType.NORMAL) {
             lastRow.Data[column] = NoteType.HOLDHEAD;
             holdingUntil[column] = endTime;
-        } else {
-            throw new Error(`Stacked LN at ${time}, column ${column + 1}, head coincides with ${cur}`);
         }
+        // else: an LN head landing on a column that is still held (HOLDBODY/
+        // HOLDHEAD) or releasing on this row (HOLDTAIL). Drop the offending hold
+        // and let the hold already in progress keep its own release.
     }
 
     for (const obj of objects) {

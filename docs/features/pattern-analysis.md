@@ -105,6 +105,10 @@
 - 按行切分 `.osu` 文本，分节解析 `[Difficulty]`（CircleSize → Keys，缺省 4）、`[TimingPoints]`、`[HitObjects]`。
 - 命中 `[HitObjects]` 中 `type & 128` 的物件标记为 Hold，记录 `EndTime`（`patternOsuParser.js:236-247`）；其余为 HitCircle。
 - 输出 `createChart(keys, snaps, bpm, sv)`（`chart.js:17`）：`Notes` 为时间行数组，每行 `Data` 是长度为 `Keys` 的 `NoteType` 数组——这是后续所有计算的统一输入。无 timing points 时兜底 `createBPM(4, 500.0)` 与速度 1.0（`patternOsuParser.js:279-282`）。
+- **同列冲突物件按"丢弃后来者"处理**（`addNote` / `startHold`）：每行每列只能承载一个 `NoteType`，因此当新音符或新 LN 头落在一个正在持续（`HOLDBODY`）或本行正在释放（`HOLDTAIL`）的列上时，**丢弃该物件并继续解析**，已在进行中的 LN 保留自己的释放。合法谱面不会进入该分支，输出与丢弃逻辑引入前逐位一致。
+    - 覆盖场景：同列 LN 重叠、LN 内插同列普通音符、同一时刻两个同列 LN 头、同列 LN 首尾相接（前一条的结束时间 = 后一条的开始时间）。
+    - **已知取舍**：首尾相接的 LN 链是合法写法，但受限于"每行每列单一 `NoteType`"的数据模型无法同时表达尾与头，目前会丢弃后一条 LN，使该列的 LN 时长被低估。如需保留需改数据模型，属独立议题。
+    - 该分支此前为 `throw`，会使**整张谱面**的键型分析失败（app 层软失败为 `Pattern analyze failed: ...`，见 `js/app/analysis.js` `renderBodySectionError`），而估计器侧的 `parser/osuFileParser.js` 对同样的谱面并不抛错——即出现"星数正常、键型面板报错"的不一致。
 
 ### ② 汇总入口 — `patterns/service.js:4` `analyzePatternFromText`
 
