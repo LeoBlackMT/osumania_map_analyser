@@ -259,26 +259,7 @@ export async function runAzusaPrimaryGate(osuText, options) {
     const origLowGate = Number(d.blend?.lowGate) ?? 0;
     const origHighGate = Number(d.blend?.highGate) ?? 0;
 
-    // Run full pipeline with original isotonic
-    const { final } = runFullPipeline(
-        blendValue, origLowGate, origHighGate, primary, sunny, daniel,
-        // Need to import original isotonic — use the result's own pipeline instead
-        null, // will use result's own calibrate + isotonic as fallback
-    );
-
-    // Since we can't easily re-run block calibrate + isotonic with different blend,
-    // compute the delta and apply it
-    const origBlend = Number(d.blendNumeric);
-    const origFinal = Number(d.finalNumeric);
-    const delta = blendValue - origBlend;
-
-    // Approximate: final shifts roughly proportionally to blend shift
-    // But for accuracy, re-run the full pipeline
-    // We have the original isotonic table from the import — it's already in azusaEstimator
-    // For debug comparison, use the delta approach (approximate but close)
-    const approxFinal = clamp(origFinal + delta * 0.8, -2, 20);
-
-    // Actually, let's re-run properly using the same calibration logic
+    // Re-run full pipeline with the new blend value and original isotonic
     const pipeline = runFullPipeline(
         blendValue, origLowGate, origHighGate,
         Number.isFinite(primary) ? primary : null,
@@ -307,6 +288,8 @@ export async function runAzusaPrimaryGate(osuText, options) {
          [19.2000,18.7000],[20.0000,19.2000],[21.2000,19.8000],[22.5000,20.0000]],
     );
 
+    const origBlend = Number(d.blendNumeric);
+    const origFinal = Number(d.finalNumeric);
     const hint = `primaryGate: blend=${blendValue.toFixed(2)} (orig=${origBlend?.toFixed(2)}) → final=${pipeline.final.toFixed(2)} (orig=${origFinal?.toFixed(2)})`;
     return makeVariantResult(result, pipeline.final, hint);
 }
