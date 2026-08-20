@@ -320,6 +320,76 @@ const ALGORITHM_REGISTRY = Object.freeze([
         note: "Debug-only proxy for the removed hand-split/tech idea; it uses current Roxy hand/tech stream summaries and is not a recovered historical model.",
         run: runRoxyOverfitVariant("RoxyHandSplitTech", "debug-roxy-hand-split-tech-proxy"),
     },
+    {
+        id: "AzusaPipeline",
+        label: "Azusa pipeline (all stages)",
+        group: "Azusa diagnostics",
+        note: "Shows all Azusa intermediate values: primary → blend → calibrate → residual → isotonic → refCorrect → final.",
+        run: async (osuText, options) => {
+            const result = await runAzusaEstimatorFromText(osuText, {
+                ...options,
+                forceSunnyReferenceHo: false,
+            });
+            if (!result || result.errors?.length > 0) {
+                return result || makeInvalidResult("Azusa returned null");
+            }
+            const d = result.debug || {};
+            const hint = [
+                `pri=${d.primaryNumeric}`,
+                `dan=${d.danielNumeric}`,
+                `sun=${d.sunnyNumeric}`,
+                `blend=${d.blendNumeric}`,
+                `calib=${d.calibratedNumeric}`,
+                `gapRes=${d.curveGapResidual}`,
+                `out=${d.outputNumeric}`,
+                `refCorr=${d.postCurveGapResidual}`,
+                `final=${d.finalNumeric}`,
+                `gate: lo=${d.blend?.lowGate} hi=${d.blend?.highGate}`,
+                `lowBase=${d.blend?.lowBase} highBase=${d.blend?.highBase}`,
+                `notes=${d.notes}`,
+            ].join(" | ");
+            return { ...result, numericDifficultyHint: hint };
+        },
+    },
+    {
+        id: "AzusaPrimaryOnly",
+        label: "Azusa primaryNumeric only",
+        group: "Azusa diagnostics",
+        note: "Azusa raw strain score (before blend/calibration) — shows the structural model output.",
+        run: async (osuText, options) => {
+            const result = await runAzusaEstimatorFromText(osuText, {
+                ...options,
+                forceSunnyReferenceHo: false,
+            });
+            return makeNumericResult(result, result?.debug?.primaryNumeric, "debug-azusa-primary");
+        },
+    },
+    {
+        id: "AzusaBlendOnly",
+        label: "Azusa blendNumeric only",
+        group: "Azusa diagnostics",
+        note: "Azusa output after blend (before calibration) — shows Daniel+Sunny fusion effect.",
+        run: async (osuText, options) => {
+            const result = await runAzusaEstimatorFromText(osuText, {
+                ...options,
+                forceSunnyReferenceHo: false,
+            });
+            return makeNumericResult(result, result?.debug?.blendNumeric, "debug-azusa-blend");
+        },
+    },
+    {
+        id: "AzusaCalibratedOnly",
+        label: "Azusa calibratedNumeric only",
+        group: "Azusa diagnostics",
+        note: "Azusa output after block calibration (before residual/isotonic) — shows calibration stage.",
+        run: async (osuText, options) => {
+            const result = await runAzusaEstimatorFromText(osuText, {
+                ...options,
+                forceSunnyReferenceHo: false,
+            });
+            return makeNumericResult(result, result?.debug?.calibratedNumeric, "debug-azusa-calibrated");
+        },
+    },
 ]);
 
 const ALGORITHM_BY_ID = new Map(ALGORITHM_REGISTRY.map((entry) => [entry.id, entry]));

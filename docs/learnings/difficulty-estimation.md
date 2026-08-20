@@ -83,6 +83,36 @@
 - **低难 floor 量化**（<11 向下取整 0.5 网格）曾带来 Mixed <11 Close +14pp，但同样存在显示一致性问题（estDiff 基于未量化值），且对 expected 11~12 但输出 10.75~10.88 的图有害（floor 10.88→10.50，Close→Moderate）——**已随量化整体回退**。
 - Azusa 对「结构难但段位低」的图（star of andromeda 等）也系统性低估——这是**标注与算法共识的分歧**（expected 11+ 但主流算法都认为 10 级），任何规则修复都是过拟合。
 
+### 3.6 Malody 数据对 Azusa 的改进评估——**无法在不损害 osu 的前提下改进**（2026-08）
+
+**背景**：benchmark 仓库新增了 Malody 来源数据（1662 张，89.7% expected <11），`expected` 列为 Reform 数值化难度（与 osu 同标度）。评估是否能用 Malody 数据改进 Azusa 低难精度。
+
+**分析定位**：通过逐阶段追踪 Azusa 中间值，精确定位 Malody 偏差来源：
+
+| 阶段 | Malody bias | osu bias | 说明 |
+|---|---|---|---|
+| primaryNumeric | +0.203 | -1.070 | ✅ 原始应变模型对 Malody 已经很好 |
+| blendNumeric | **-0.874** | +0.222 | ❌ 融合步骤引入偏差 |
+| calibratedNumeric | -1.477 | -0.370 | ❌ 校准表放大偏差 |
+
+Blend 偏差根因：`lowGateSource = daniel`，Daniel 在 Malody 上系统性低估 ~1.5（osu 上仅 -0.7），导致 gate 正确识别为低难但 lowBase 公式（`-8.317 + 1.536*sunny`）对 Malody 的 mapping 不匹配。
+
+**尝试过的方法**：
+
+1. **isotonic 校准表重训练**（PAVA 拟合 osu+Malody）：5-fold CV 结果 osu MAE +2.3%，Exact -4.0pp。过拟合——训练集看似改善，泛化后 osu 退化。osu 低难区间仅 28-33 个样本，拟合不可靠。
+2. **调整 lowGateSource**（用 primaryNumeric 替代 daniel）：全量 benchmark osu MAE +7.5%，[4,6) MAE +137%。破坏 gate 机制设计意图——primary 在 osu 低难上偏高（bias +1.0~+1.5），导致 gate 误判为高难。
+
+**结论**：当前无法在不损害 osu 精度的前提下，通过 Malody 数据改进 Azusa 算法。根本原因：
+1. osu 低难样本极少（28-33/区间），任何校准调整泛化不可靠。
+2. Malody 与 osu 的 structural response 不同（Daniel/Sunny 在两平台 bias 方向和幅度不同），单一校准表无法同时服务。
+3. Blend 公式为 osu 拟合（lowBase 截距 -8.317 + 系数 1.536*sunny），这是设计约束而非校准缺陷。
+4. 更根本的改进需要重新设计 blend 公式或为不同平台建立独立校准路径——但这违反算法应通用的原则。
+
+**关键教训**：
+- 改进低难不能只看训练集指标，必须用 held-out CV 验证。
+- 校准表（isotonic/block）是在已有 blend 输出上做映射，无法修复 blend 公式的结构性问题。
+- 小样本区间（28-33 个）的拟合结果不可靠，任何调整都是过拟合。
+
 ---
 
 ## 4. 方法论（有效的工作流）
