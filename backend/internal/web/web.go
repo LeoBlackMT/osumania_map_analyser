@@ -17,6 +17,12 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
+//go:embed dashboard.css
+var dashboardCSS []byte
+
+//go:embed dashboard.js
+var dashboardJS []byte
+
 const maxDays = 365
 
 type Handler struct {
@@ -52,7 +58,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(dashboardHTML)
+	case "/dashboard.css":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(dashboardCSS)
+	case "/dashboard.js":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(dashboardJS)
 	case "/api/v1/stats":
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
