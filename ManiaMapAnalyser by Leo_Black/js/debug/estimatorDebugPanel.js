@@ -20,6 +20,10 @@ import {
     evaluateRoxyOverfitVariant,
     ROXY_OVERFIT_REPORT,
 } from "./roxyOverfitModels.generated.js";
+import {
+    runAzusaPrimaryGate,
+    runAzusaRetrainedIsotonic,
+} from "./azusaVariants.js";
 
 const STORAGE_KEY = "mma-debug-estimator-panel-v1";
 const DEFAULT_ALGORITHMS = ["Roxy", "Azusa", "Mixed"];
@@ -321,74 +325,20 @@ const ALGORITHM_REGISTRY = Object.freeze([
         run: runRoxyOverfitVariant("RoxyHandSplitTech", "debug-roxy-hand-split-tech-proxy"),
     },
     {
-        id: "AzusaPipeline",
-        label: "Azusa pipeline (all stages)",
-        group: "Azusa diagnostics",
-        note: "Shows all Azusa intermediate values: primary → blend → calibrate → residual → isotonic → refCorrect → final.",
-        run: async (osuText, options) => {
-            const result = await runAzusaEstimatorFromText(osuText, {
-                ...options,
-                forceSunnyReferenceHo: false,
-            });
-            if (!result || result.errors?.length > 0) {
-                return result || makeInvalidResult("Azusa returned null");
-            }
-            const d = result.debug || {};
-            const hint = [
-                `pri=${d.primaryNumeric}`,
-                `dan=${d.danielNumeric}`,
-                `sun=${d.sunnyNumeric}`,
-                `blend=${d.blendNumeric}`,
-                `calib=${d.calibratedNumeric}`,
-                `gapRes=${d.curveGapResidual}`,
-                `out=${d.outputNumeric}`,
-                `refCorr=${d.postCurveGapResidual}`,
-                `final=${d.finalNumeric}`,
-                `gate: lo=${d.blend?.lowGate} hi=${d.blend?.highGate}`,
-                `lowBase=${d.blend?.lowBase} highBase=${d.blend?.highBase}`,
-                `notes=${d.notes}`,
-            ].join(" | ");
-            return { ...result, numericDifficultyHint: hint };
-        },
+        id: "AzusaPrimaryGate",
+        label: "Azusa primary gate [experiment]",
+        group: "Azusa experiments",
+        overfit: true,
+        note: "Azusa with lowGateSource=primary instead of daniel. Tested: osu MAE +7.5%, [4,6) +137%. Preserved for comparison.",
+        run: runAzusaPrimaryGate,
     },
     {
-        id: "AzusaPrimaryOnly",
-        label: "Azusa primaryNumeric only",
-        group: "Azusa diagnostics",
-        note: "Azusa raw strain score (before blend/calibration) — shows the structural model output.",
-        run: async (osuText, options) => {
-            const result = await runAzusaEstimatorFromText(osuText, {
-                ...options,
-                forceSunnyReferenceHo: false,
-            });
-            return makeNumericResult(result, result?.debug?.primaryNumeric, "debug-azusa-primary");
-        },
-    },
-    {
-        id: "AzusaBlendOnly",
-        label: "Azusa blendNumeric only",
-        group: "Azusa diagnostics",
-        note: "Azusa output after blend (before calibration) — shows Daniel+Sunny fusion effect.",
-        run: async (osuText, options) => {
-            const result = await runAzusaEstimatorFromText(osuText, {
-                ...options,
-                forceSunnyReferenceHo: false,
-            });
-            return makeNumericResult(result, result?.debug?.blendNumeric, "debug-azusa-blend");
-        },
-    },
-    {
-        id: "AzusaCalibratedOnly",
-        label: "Azusa calibratedNumeric only",
-        group: "Azusa diagnostics",
-        note: "Azusa output after block calibration (before residual/isotonic) — shows calibration stage.",
-        run: async (osuText, options) => {
-            const result = await runAzusaEstimatorFromText(osuText, {
-                ...options,
-                forceSunnyReferenceHo: false,
-            });
-            return makeNumericResult(result, result?.debug?.calibratedNumeric, "debug-azusa-calibrated");
-        },
+        id: "AzusaRetrainedIso",
+        label: "Azusa retrained isotonic [experiment]",
+        group: "Azusa experiments",
+        overfit: true,
+        note: "Azusa with PAVA isotonic fitted on osu+Malody combined data (low range). Tested: Malody MAE -54%, osu CV MAE +2.3%. Preserved for comparison.",
+        run: runAzusaRetrainedIsotonic,
     },
 ]);
 
