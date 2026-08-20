@@ -243,8 +243,8 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 			lnN++
 		}
 		if d.NumericDifficulty != nil && *d.NumericDifficulty >= -3 && *d.NumericDifficulty <= 30 {
-			// aggregate into 0.5 bins on the Reform numeric scale (.0 = mid)
-			numerics[math.Round(*d.NumericDifficulty*2)/2]++
+			// aggregate into 0.25 bins on the Reform numeric scale (.0 = mid)
+			numerics[math.Round(*d.NumericDifficulty*4)/4]++
 		}
 		if d.DurationMs >= 0 {
 			v := int64(d.DurationMs)
@@ -276,7 +276,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 
 	s.StarHistogram = histogram(stars, func(k float64) string { return fmt.Sprintf("%.1f", k) })
 	s.LnRatioHistogram = histogram(lns, func(k float64) string { return fmt.Sprintf("%.0f%%", k*100) })
-	s.NumericHistogram = histogram(numerics, func(k float64) string { return fmt.Sprintf("%.1f", k) })
+	s.NumericHistogram = histogram(numerics, func(k float64) string { return fmt.Sprintf("%.2f", k) })
 	if starN > 0 {
 		s.AvgStar = math.Round(starSum/float64(starN)*100) / 100
 	}

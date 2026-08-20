@@ -6,5 +6,8 @@ telemetry.db-*
 # Build artifacts (compiled binaries).
 bin/
 
+# Local scratch (preview runs, downloaded DBs, screenshots).
+temp/
+
 # Private docs (teaching notes for the maintainer only).
 docs/
