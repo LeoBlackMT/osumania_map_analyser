@@ -502,17 +502,6 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.useOsuFont);
     }
 
-    function parsePauseDetectionThresholdValue(settingsPayload) {
-        const value = extractSettingValue(settingsPayload, "pauseDetectionThreshold");
-        if (value !== undefined && value !== null) {
-            const num = Number(value);
-            if (Number.isFinite(num) && num > 0) {
-                return Math.round(num);
-            }
-        }
-        return appConfig.defaults.pauseDetectionThresholdMs;
-    }
-
     function parseDisplay6kLevelValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "display6kLevel");
         return normalizeBooleanSetting(value, appConfig.defaults.display6kLevel);
@@ -582,7 +571,6 @@ export function createSettingsParsers(appConfig) {
         parseCompanellaEtternaVersionValue,
         parseEnablePauseDetectionValue,
         parseEnableResultCacheValue,
-        parsePauseDetectionThresholdValue,
         parseVibroDetectionValue,
         parseEnableEtternaRainbowBarsValue,
         parseEnableStatusMarqueeValue,

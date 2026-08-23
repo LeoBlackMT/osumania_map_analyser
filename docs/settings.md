@@ -103,9 +103,6 @@
         - 注意：该选项对所有使用了Sunny算法的功能生效。
     - **Analyze LN Parts**: 按LN分析谱面成分。
         - 显示谱面中有多少部分属于LN/HB/Mix/RC，并显示在左下角谱面标签胶囊中。
-    - **Pause Detection Threshold**: 设置暂停检测的时间阈值（毫秒）。
-        - 只有当游戏时间冻结超过该时长后，才会被判定为一次暂停。
-        - 默认值为500ms。如果游戏卡顿导致误判，可适当提高该值。
     - **Estimator Algorithm**: 选择用于难度估计的算法。
         - Mixed: (推荐)综合下方四个算法的混合算法，准确度相对较高。自动选择适配当前谱面的算法。
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
@@ -242,9 +239,6 @@
         - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
         - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
         - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
-    - **Pause Detection Threshold**: Set the Minimum duration (ms) for a time freeze to be counted as a pause.
-        - A pause is only confirmed when the game time has been frozen for longer than this threshold.
-        - Default is 500ms. If game lag causes false positives, increase this value appropriately.
     - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation
         - Removes rice parts and LN parts which LN% is too low, before Sunny Algorithm calculate Star Rate, making Sunny Algorithm more accurate on LN maps.
         - Note: This option affects all features that use the Sunny algorithm.

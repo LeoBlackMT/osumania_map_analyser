@@ -22,7 +22,6 @@ import {
     parseCustomBackgroundColorValue,
     parseEnablePauseDetectionValue,
     parseEnableResultCacheValue,
-    parsePauseDetectionThresholdValue,
     parseEstimatorAlgorithmValue,
     parseAzusaSunnyReferenceHoValue,
     parseEtternaVersionValue,
@@ -572,8 +571,6 @@ export function applyPauseDetectionSetting(value) {
         state.isPaused = false;
         state.pauseTimeMs = 0;
         state.frozenInterpMs = 0;
-        state.pauseFreezeStartRealMs = 0;
-        state.pauseFreezeSongTimeMs = 0;
         state.pauseMarkerTimes = [];
         state.pauseCount = 0;
     } else if (!Number.isFinite(state.frozenInterpMs)) {
@@ -582,14 +579,6 @@ export function applyPauseDetectionSetting(value) {
 
     updatePauseCountVisibility();
     redrawPauseMarkers();
-    return changed;
-}
-
-export function applyPauseDetectionThresholdSetting(value) {
-    const num = Number(value);
-    const next = (Number.isFinite(num) && num > 0) ? Math.round(num) : APP_CONFIG.defaults.pauseDetectionThresholdMs;
-    const changed = state.pauseDetectionThresholdMs !== next;
-    state.pauseDetectionThresholdMs = next;
     return changed;
 }
 
@@ -742,7 +731,6 @@ const SETTING_HANDLERS = [
     { key: "etternaVersion", parse: parseEtternaVersionValue, apply: applyEtternaVersionSetting },
     { key: "companellaEtternaVersion", parse: parseCompanellaEtternaVersionValue, apply: applyCompanellaEtternaVersionSetting },
     { key: "enablePauseDetection", parse: parseEnablePauseDetectionValue, apply: applyPauseDetectionSetting },
-    { key: "pauseDetectionThreshold", parse: parsePauseDetectionThresholdValue, apply: applyPauseDetectionThresholdSetting },
     { key: "enableEtternaRainbowBars", parse: parseEnableEtternaRainbowBarsValue, apply: applyEnableEtternaRainbowBarsSetting },
     { key: "enableStatusMarquee", parse: parseEnableStatusMarqueeValue, apply: applyEnableStatusMarqueeSetting },
     { key: "VibroDetection", parse: parseVibroDetectionValue, apply: applyVibroDetectionSetting },
@@ -774,7 +762,7 @@ const SETTING_HANDLERS = [
 export const SETTING_RECOMPUTE_KEYS = new Set([
     "contentBar", "srText", "debugUseAmount", "diffText",
     "estimatorAlgorithm", "azusaSunnyReferenceHo", "etternaVersion",
-    "companellaEtternaVersion", "enablePauseDetection", "pauseDetectionThreshold",
+    "companellaEtternaVersion", "enablePauseDetection",
     "enableEtternaRainbowBars", "VibroDetection", "showModeTagCapsule",
     "useSvDetection", "forceSunnyWindow", "enableLNDifficulty",
     "enableAnalyzeLN", "enableAlwaysShowLNDifficulty", "display6kLevel",
@@ -923,7 +911,6 @@ export async function loadSettings() {
         applyEtternaVersionSetting(parseEtternaVersionValue(source));
         applyCompanellaEtternaVersionSetting(parseCompanellaEtternaVersionValue(source));
         applyPauseDetectionSetting(parseEnablePauseDetectionValue(source));
-        applyPauseDetectionThresholdSetting(parsePauseDetectionThresholdValue(source));
         applyEnableEtternaRainbowBarsSetting(parseEnableEtternaRainbowBarsValue(source));
         applyEnableStatusMarqueeSetting(parseEnableStatusMarqueeValue(source));
         applyVibroDetectionSetting(parseVibroDetectionValue(source));
@@ -967,7 +954,6 @@ export async function loadSettings() {
             etternaVersion: APP_CONFIG.defaults.etternaVersion,
             companellaEtternaVersion: APP_CONFIG.defaults.companellaEtternaVersion,
             enablePauseDetection: APP_CONFIG.defaults.pauseDetectionEnabled,
-            pauseDetectionThreshold: APP_CONFIG.defaults.pauseDetectionThresholdMs,
             enableEtternaRainbowBars: APP_CONFIG.defaults.enableEtternaRainbowBars,
             enableStatusMarquee: APP_CONFIG.defaults.enableStatusMarquee,
             VibroDetection: APP_CONFIG.defaults.vibroDetection,

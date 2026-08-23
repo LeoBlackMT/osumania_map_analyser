@@ -364,19 +364,6 @@
     	"value": false
 	},
 	{
-		"uniqueID": "pauseDetectionThreshold",
-		"type": "options",
-		"title": "Pause Detection Threshold",
-		"description": "Set the minimum duration (ms) for a freeze to be counted as a pause. Higher values reduce false positives from game lag.",
-		"options": [
-			"100",
-			"200",
-			"500",
-			"1000"
-		],
-		"value": "500"
-	},
-	{
 		"uniqueID": "estimatorAlgorithm",
 		"type": "options",
 		"title": "Estimator Algorithm",

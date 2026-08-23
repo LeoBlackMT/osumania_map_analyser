@@ -42,7 +42,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ## Notes
 1. The plugin needs to run in the `static` directory of tosu. Ensure it is placed directly in that directory, not nested inside another folder.
 2. This plugin relies on the correct parsing of beatmap data. Certain special or non-standard beatmaps may lead to inaccurate analysis results.
-3. If game lag causes false positives, consider increasing the pause detection threshold.
+3. Pause detection is based on the pause state reported natively by tosu (`game.paused`) and is not affected by beatmap time stalls caused by game lag.
 4. Although the difficulty estimation algorithms have been tuned, inaccuracies may still exist; please use them only as a reference. For 4K, high difficulties are generally more accurate with an overall error of no more than half a Dan, while low difficulties may be less accurate; in specific patterns like Minijack, Stamina, and Anchor, the estimation results may have larger deviations. For 6K and 7K, the overall performance is relatively average. It is recommended that players combine the estimation results with their actual gameplay experience for judgment and not rely too heavily on the estimates.
 5. The plugin's performance may be affected by the complexity of the beatmap and the features selected; in some cases, lag or delays may occur. Please adjust the settings according to your actual situation for a better experience.
 6. If you encounter any issues, feel free to submit an issue.

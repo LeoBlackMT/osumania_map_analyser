@@ -30,7 +30,7 @@ ManiaMapAnalyser by Leo_Black/
 - `options`：checkbox 类为 `[]`，options 类为字符串数组。
 - `value`：默认值，checkbox 为布尔、options 为字符串（字符串数组中的一项）。
 
-**checkbox 模板**（对照真实条目 `enablePauseDetection` settings.json:269）：
+**checkbox 模板**（对照真实条目 `enablePauseDetection` settings.json:311）：
 
 ```json
 {
@@ -43,7 +43,7 @@ ManiaMapAnalyser by Leo_Black/
 }
 ```
 
-**options 模板**（对照真实条目 `estimatorAlgorithm` settings.json:338）：
+**options 模板**（对照真实条目 `estimatorAlgorithm` settings.json:367）：
 
 ```json
 {
@@ -88,13 +88,13 @@ exampleMode: ["Off", "Light", "Full"],
 
 文件：`ManiaMapAnalyser by Leo_Black/js/parser/settingsParser.js`。
 
-在工厂 `createSettingsParsers(appConfig)`（settingsParser.js:233）内部添加 `parse{uniqueID}Value`，**同时在返回表（settingsParser.js:574-614）导出**。
+在工厂 `createSettingsParsers(appConfig)`（settingsParser.js:233）内部添加 `parse{uniqueID}Value`，**同时在返回表（settingsParser.js:561-600）导出**。
 
-**命名约定**：`parse{uniqueID}Value`（如 `parseEnablePauseDetectionValue` settingsParser.js:372）。settings.js 按此约定引用（settings-pipeline.md §3）。
+**命名约定**：`parse{uniqueID}Value`（如 `parseEnablePauseDetectionValue` settingsParser.js:369）。settings.js 按此约定引用（settings-pipeline.md §3）。
 
 **取原始值**：用 `extractSettingValue(settingsPayload, key)`（settingsParser.js:211）——它兼容三种 payload 形状（数组 `[{uniqueID, value}]`、对象键值、嵌套 `{settings: {...}}`），新 parser 一律经它取值，不要自己解析。
 
-**checkbox parser 模板**（对照 `parseEnablePauseDetectionValue` settingsParser.js:372）：
+**checkbox parser 模板**（对照 `parseEnablePauseDetectionValue` settingsParser.js:369）：
 
 ```js
 function parseEnableExampleValue(settingsPayload) {
@@ -134,7 +134,7 @@ return {
 > - **parser 名与键名必须精确匹配**：命令通道键名 = uniqueID = PascalCase（`parseVibroDetectionValue` 内部取键 `"VibroDetection"` settingsParser.js:387，大写 V）。漏改大小写 = 设置永远读不到。
 > - 返回表漏导出 = appContext.js 解构（步骤 4）与 settings.js import（步骤 5）直接报 undefined。
 > - 不要为布尔设置发明新 normalize——`normalizeBooleanSetting` 已覆盖所有输入形态。
-> - 数值型设置参考 `parsePauseDetectionThresholdValue` settingsParser.js:512（`Number(value)` + 有限性校验 + 非法回退默认）。
+> - options 型设置参考 `parseCardOpacityValue`（枚举比对 + 非法值回退默认，settingsParser.js:440-453）；数值/字符串归一化参考 `parseWsEndpointValue`（settingsParser.js:520-545）。非法/缺失一律落回 `appConfig.defaults`（回退链总述见 settings-pipeline.md §3）。
 
 ---
 
@@ -171,7 +171,7 @@ parseExampleModeValue,
 
 ### 5a. 添加 apply 函数
 
-仿 `applyPauseDetectionSetting` settings.js:544 的统一模式：`parse→compare(与 state 现值比较)→mutate state→side effects→return changed`（settings-pipeline.md §9）：
+仿 `applyPauseDetectionSetting` settings.js:566 的统一模式：`parse→compare(与 state 现值比较)→mutate state→side effects→return changed`（settings-pipeline.md §9）：
 
 ```js
 export function applyEnableExampleSetting(value) {

@@ -3,13 +3,11 @@ import {
     MOD_BIT_FLAG_ENTRIES,
     NOTE_END_MARGIN_MS,
     PAUSE_DETECT_EPSILON_MS,
-    PAUSE_DETECTION_THRESHOLD_MS,
     SONG_TIME_JUMP_THRESHOLD_MS,
     SORTED_KNOWN_MOD_CODES,
     socket,
     state,
 } from "./appContext.js";
-import { computePauseTransition } from "./pauseDetection.js";
 import {
     extractCurrentSongTimeMs as extractCurrentSongTimeMsFromPayload,
     getModData as getModDataFromPayload,
@@ -21,7 +19,6 @@ import {
 } from "./modeLogic.js";
 import {
     addPauseMarker,
-    clearAllPauseMarkers,
     resetPauseRuntime,
     updateGraphCursor,
 } from "./graph.js";
@@ -92,36 +89,24 @@ function updateSongTimeState(data) {
     }
 
     if (state.pauseDetectionEnabled && state.isInPlayState) {
-        const pauseTransition = computePauseTransition({
-            previousTimeMs: previousTime,
-            currentTimeMs: scaledLiveTimeMs,
-            isPaused: state.isPaused,
-            jumpThresholdMs: SONG_TIME_JUMP_THRESHOLD_MS,
-            noteEndMarginMs: NOTE_END_MARGIN_MS,
-            timelineStartMs: state.songStartMs,
-            timelineEndMs: state.songEndMs,
-            epsilonMs: PAUSE_DETECT_EPSILON_MS,
-            freezeStartRealMs: state.pauseFreezeStartRealMs,
-            freezeSongTimeMs: state.pauseFreezeSongTimeMs,
-            pauseThresholdMs: state.pauseDetectionThresholdMs,
-            nowRealMs: now,
-        });
-
-        state.pauseFreezeStartRealMs = pauseTransition.freezeStartRealMs;
-        state.pauseFreezeSongTimeMs = pauseTransition.freezeSongTimeMs;
-
-        if (pauseTransition.shouldClearMarkers) {
-            clearAllPauseMarkers();
-        }
-
-        if (pauseTransition.shouldAddMarker) {
-            addPauseMarker(pauseTransition.pauseTimeMs);
-            state.pauseTimeMs = pauseTransition.pauseTimeMs;
-            state.frozenInterpMs = pauseTransition.frozenInterpMs;
-        }
-
-        state.isPaused = pauseTransition.nextPaused;
-        if (!state.isPaused) {
+        // 直接采用 tosu api_v2 的 game.paused 原生暂停标志，不再通过谱面时间
+        // 冻结来推断暂停——游戏卡顿导致的 time 停滞不再产生误判。旧版 tosu
+        // 无此字段时（undefined）一律视为未暂停，仅暂停检测不可用，不影响其余功能。
+        const gamePaused = data?.game?.paused === true;
+        if (gamePaused && !state.isPaused) {
+            // 仅在谱面时间线内记录暂停标记（开头之前 / 末尾缓冲带内不记）。
+            const hasTimelineEnd = Number.isFinite(state.songEndMs);
+            const hasTimelineStart = Number.isFinite(state.songStartMs);
+            const atTimelineEnd = hasTimelineEnd && scaledLiveTimeMs >= (state.songEndMs - NOTE_END_MARGIN_MS);
+            const beforeTimelineStart = hasTimelineStart && scaledLiveTimeMs < state.songStartMs;
+            if (!atTimelineEnd && !beforeTimelineStart) {
+                addPauseMarker(scaledLiveTimeMs);
+                state.pauseTimeMs = scaledLiveTimeMs;
+                state.frozenInterpMs = scaledLiveTimeMs;
+            }
+            state.isPaused = true;
+        } else if (!gamePaused && state.isPaused) {
+            state.isPaused = false;
             state.pauseTimeMs = 0;
         }
     } else {

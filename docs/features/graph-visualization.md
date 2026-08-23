@@ -125,12 +125,12 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 暂停标记把暂停检测产出的暂停时间点画成竖直虚线。数据源与生命周期：
 
-- `state.pauseMarkerTimes`（数组，`appContext.js:127`）与 `state.pauseCount`（`appContext.js:128`）；开关为 `state.pauseDetectionEnabled`（`appContext.js:93`）。检测逻辑见 [pause-detection.md](pause-detection.md)。
+- `state.pauseMarkerTimes`（数组，`appContext.js:132`）与 `state.pauseCount`（`appContext.js:133`）；开关为 `state.pauseDetectionEnabled`（`appContext.js:98`）。检测逻辑见 [pause-detection.md](pause-detection.md)。
 - 新增：`graph.js:318 addPauseMarker(songTimeMs)`——push 到 `pauseMarkerTimes`、更新 `pauseCount`、`updatePauseCountVisibility()`、`redrawPauseMarkers()`。
 - 绘制：`graph.js:273 drawPauseMarkersForView(view)`——先 `clearPauseMarkersDom(view)`；若 `pauseDetectionEnabled` 且存在 `graphSeries` 且视图启用，则对每个标记时间 clamp 到 `[minTime, maxTime]` 后映射为 x 坐标，`document.createElementNS` 创建 `<line>`，类名 `star-graph-pause-marker`，描边色/宽度取 `APP_CONFIG.graph.pauseLineColor` / `pauseLineWidth`（`graph.js:299-300`），y 范围取视图纵向边界（`graph.js:284` 经 `graph.js:32 getGraphLineVerticalBounds`，body 视图上下各外扩 5px）。
-- 重绘：`graph.js:305 redrawPauseMarkers()`——对启用视图逐视图重画。渲染完成（`graph.js:648`）、暂停开关变更（`settings.js:562`）、新增标记后（`graph.js:326`）都会触发。
+- 重绘：`graph.js:305 redrawPauseMarkers()`——对启用视图逐视图重画。渲染完成（`graph.js:662`）、暂停开关变更（`settings.js:581`）、新增标记后（`graph.js:326`）都会触发。
 - 清除：`graph.js:246 clearPauseMarkersDom(view = null)`（带 view 清单个，否则清全部）；`graph.js:311 clearAllPauseMarkers()`（同时清空 `pauseMarkerTimes`、`pauseCount` 并刷新 HUD）；`graph.js:329 resetPauseRuntime(clearMarkers)` 在 `clearMarkers` 时调用前者。
-- 清空时机：`clearDiffGraph`（`graph.js:372`）、加载（`graph.js:407`）、错误（`graph.js:449`）、设置关闭（`settings.js:555` 清空数组）。
+- 清空时机：`clearDiffGraph`（`graph.js:339`）、加载（`graph.js:388`）、错误（`graph.js:426`）、设置关闭（`settings.js:569-577` 清空数组）。
 - 联动：`socketHandlers.js:62-72` 在回退到最早暂停点之前时 `resetPauseRuntime(true)`，实现"重绕即清除旧暂停标记"。
 
 ## 7. 常量（config.js graph 块）

@@ -5,7 +5,7 @@
 
 ## 1. 功能概述
 
-暂停检测用于实时识别玩家在游玩过程中的**暂停**（游戏时间冻结），并在两处展示：
+暂停检测用于实时识别玩家在游玩过程中的**暂停**（来自 tosu api_v2 的原生 `game.paused` 标志），并在两处展示：
 
 1. **难度图表**：在暂停发生的谱面时间位置绘制红色竖线标记（`star-graph-pause-marker`）。
 2. **卡片右下角**：显示 `Pause Count: N` 计数（`index.html:94` 的 `<div id="pause-count">`，DOM 引用见 `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:52` 的 `pauseCountEl`）。
@@ -20,91 +20,53 @@
 
 1. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:54-55`）。
 2. 记录 `state.songStartMs` / `state.songEndMs`（谱面第一个/最后一个物件的谱面时间，`socketHandlers.js:57-60`），作为判定时间轴边界。
-3. 仅在 `state.pauseDetectionEnabled && state.isInPlayState` 时执行暂停状态机（`socketHandlers.js:91`）。
+3. 读取 **tosu api_v2 原生暂停标志** `data?.game?.paused`（`socketHandlers.js:95`）——游戏是否暂停由 tosu 直接上报，**不再**通过"谱面时间冻结 ≥ 阈值"来推断。
 
-### 2.2 状态机：computePauseTransition
-
-核心纯函数为 `ManiaMapAnalyser by Leo_Black/js/app/pauseDetection.js:1` 的 `computePauseTransition(...)`，无 DOM 依赖，入参：
-
-- `previousTimeMs` / `currentTimeMs`：上一帧与本帧的谱面时间。
-- `isPaused`：当前是否处于暂停冻结态。
-- `jumpThresholdMs`：跳变阈值（`SONG_TIME_JUMP_THRESHOLD_MS`，默认 2000ms）。
-- `noteEndMarginMs`：时间轴末尾缓冲（`NOTE_END_MARGIN_MS`，默认 500ms）。
-- `timelineStartMs` / `timelineEndMs`：谱面时间轴起止（`songStartMs` / `songEndMs`）。
-- `epsilonMs`：时间冻结判定的容差（`PAUSE_DETECT_EPSILON_MS`，默认 0）。
-- `freezeStartRealMs` / `freezeSongTimeMs`：当前冻结起点的墙钟时间 / 谱面时间（跨帧记忆）。
-- `pauseThresholdMs`：判定为暂停的最小冻结时长（`state.pauseDetectionThresholdMs`，默认 500ms）。
-- `nowRealMs`：当前墙钟时间（`performance.now()`）。
-
-返回 `{ jumped, atEnd, sameTime, nextPaused, shouldAddMarker, shouldClearMarkers, frozenInterpMs, pauseTimeMs, freezeStartRealMs, freezeSongTimeMs }`。
-
-### 2.3 判定公式（pauseDetection.js:40-81）
-
-- **atEnd**（`pauseDetection.js:41`）：`now >= timelineEndMs - noteEndMarginMs`，即当前时间已进入谱面末尾 500ms 缓冲带。
-- **beforeStart**（`pauseDetection.js:43`）：`now < timelineStartMs`，即时间线尚未到达谱面开头。
-- **timeDelta**（`pauseDetection.js:45`）：`now - prev`，两帧谱面时间差。
-- **jumped**（`pauseDetection.js:46`）：`|timeDelta| > jumpThresholdMs`，且**不是**"向前的小跳变"（`timeDelta > 0 && timeDelta < threshold` 的情况不算 jumped）。即：向后的跳变、或超过 2000ms 的大向前跳变都视为跳变。
-- **sameTime**（`pauseDetection.js:47`）：`|timeDelta| <= epsilonMs`，两帧谱面时间未前进。`PAUSE_DETECT_EPSILON_MS` 默认 0（`config.js:72`），即只有谱面时间**完全冻结**才算。
-
-状态转移（`pauseDetection.js:57-81`）：
+### 2.2 状态转移（socketHandlers.js:91-116）
 
 | 条件 | 行为 |
 | --- | --- |
-| `jumped && !atEnd && !beforeStart` | 视为时间线跳变（seek/重载），退出暂停、`shouldClearMarkers=true`、清冻结起点 |
-| `sameTime && !atEnd && !beforeStart` | 冻结检测：无冻结起点则记录 `freezeStartRealMs=nowReal`、`freezeSongTimeMs=now`；已有起点且 `nowReal - freezeStartRealMs >= pauseThresholdMs`（默认 500ms）时判定暂停：`nextPaused=true`、`shouldAddMarker=true`、`frozenInterpMs = pauseTimeMs = freezeSongTimeMs`（冻结时的谱面时间） |
-| `nextPaused`（之前暂停，时间恢复前进） | 解除暂停，清冻结起点 |
-| 其他 | 清冻结起点（时间正常前进，未到阈值） |
+| `gamePaused && !state.isPaused`（进入暂停） | 若暂停点处于谱面时间线内（不在 `beforeStart`/`atTimelineEnd` 区域），`addPauseMarker(scaledLiveTimeMs)` 并设置 `pauseTimeMs`、`frozenInterpMs` 为暂停时刻的谱面时间；无论是否记录标记，`state.isPaused = true`（`socketHandlers.js:96-107`） |
+| `!gamePaused && state.isPaused`（解除暂停） | `isPaused = false`、`pauseTimeMs = 0`（`socketHandlers.js:108-111`） |
+| 非游玩状态或检测关闭 | `isPaused = false`、`pauseTimeMs = 0`、`frozenInterpMs = songTimeMs`（`socketHandlers.js:112-116`） |
 
-输入非法（非有限数值）时返回全空态，`nextPaused` 保持原值（`pauseDetection.js:25-38`）。
+标记只在**进入暂停的那一帧**记录一次（`!state.isPaused` 守卫），暂停持续期间不会重复计数。
 
-### 2.4 调用接线（socketHandlers.js:91-128）
+时间线边界语义与旧版一致：
 
-```js
-const pauseTransition = computePauseTransition({ ... });   // socketHandlers.js:92-105
-state.pauseFreezeStartRealMs = pauseTransition.freezeStartRealMs;   // :107
-state.pauseFreezeSongTimeMs = pauseTransition.freezeSongTimeMs;     // :108
-if (pauseTransition.shouldClearMarkers) clearAllPauseMarkers();     // :110-112
-if (pauseTransition.shouldAddMarker) {                              // :114-118
-    addPauseMarker(pauseTransition.pauseTimeMs);
-    state.pauseTimeMs = pauseTransition.pauseTimeMs;
-    state.frozenInterpMs = pauseTransition.frozenInterpMs;
-}
-state.isPaused = pauseTransition.nextPaused;                        // :120
-if (!state.isPaused) state.pauseTimeMs = 0;                         // :121-123
-```
+- **beforeStart**（`socketHandlers.js:101`）：`scaledLiveTimeMs < songStartMs`，时间线尚未到达谱面开头——不记录标记。
+- **atTimelineEnd**（`socketHandlers.js:100`）：`scaledLiveTimeMs >= songEndMs - NOTE_END_MARGIN_MS`，已进入谱面末尾 500ms 缓冲带——不记录标记。
 
-非游玩状态或检测关闭时：`isPaused=false`、`pauseTimeMs=0`、`frozenInterpMs=songTimeMs`（`socketHandlers.js:124-128`）。
+**兼容性**：旧版 tosu 的 api_v2 若无 `game.paused` 字段（undefined），一律视为未暂停——暂停检测静默不可用，不影响其余功能；无需任何回退启发式。
 
-### 2.5 时间线回退清理（socketHandlers.js:62-72）
+### 2.3 时间线回退清理（socketHandlers.js:62-72）
 
 若已收集暂停标记，且当前谱面时间倒退到**最早标记之前**（`scaledLiveTimeMs + PAUSE_DETECT_EPSILON_MS < earliestPauseTimeMs`），说明时间线被重置（如重开本图），调用 `resetPauseRuntime(true)` 清空全部标记与计数。
 
-### 2.6 生命周期清理
+### 2.4 生命周期清理
 
-- **进入游玩 / 离开游玩（非结算）**：`resetPauseRuntime(true)`（`socketHandlers.js:159-163`）。
-- **离开游玩到结算**：`resetPauseRuntime(false)`（不清标记，`socketHandlers.js:161-162`）。
-- **谱面/Mod 变更**：`resetPauseRuntime(true)`（`socketHandlers.js:300`）。
+- **进入游玩 / 离开游玩（非结算）**：`resetPauseRuntime(true)`（`socketHandlers.js:148-149`）。
+- **离开游玩到结算**：`resetPauseRuntime(false)`（不清标记，`socketHandlers.js:151`）。
+- **谱面/Mod 变更**：`resetPauseRuntime(true)`（`socketHandlers.js:287`）。
 - **分析失败/清空**：`clearAllPauseMarkers()`（`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:231`）。
 
-### 2.7 scheduler.js
+### 2.5 scheduler.js
 
 `ManiaMapAnalyser by Leo_Black/js/app/scheduler.js` **不包含**任何暂停相关逻辑；暂停检测完全由 `socketHandlers.js` 的 `updateSongTimeState` 驱动。
 
 ## 3. 相关 state 字段
 
-定义于 `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:127-133`（初始值）：
+定义于 `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:132-137`（初始值）：
 
 | 字段 | 初始值 | 语义 |
 | --- | --- | --- |
 | `state.pauseMarkerTimes` | `[]` | 已判定暂停的谱面时间戳列表（单位 ms），图表标记的数据源 |
 | `state.pauseCount` | `0` | 暂停次数，恒等于 `pauseMarkerTimes.length`（`graph.js:324` 同步） |
-| `state.isPaused` | `false` | 当前是否处于暂停冻结态 |
-| `state.pauseTimeMs` | `0` | 最近一次暂停的谱面时间；解除暂停后归零（`socketHandlers.js:121-123`） |
-| `state.frozenInterpMs` | `0` | 暂停期间图表光标使用的冻结谱面时间（等于冻结起点谱面时间） |
-| `state.pauseFreezeStartRealMs` | `0` | 当前冻结起点的墙钟时间（`performance.now()`），用于累计冻结时长 |
-| `state.pauseFreezeSongTimeMs` | `0` | 当前冻结起点的谱面时间 |
+| `state.isPaused` | `false` | 当前是否处于暂停态（`game.paused` 的直接反映） |
+| `state.pauseTimeMs` | `0` | 最近一次暂停的谱面时间；解除暂停后归零（`socketHandlers.js:108-110`） |
+| `state.frozenInterpMs` | `0` | 暂停期间图表光标使用的冻结谱面时间（等于暂停时刻的谱面时间） |
 
-控制开关：`state.pauseDetectionEnabled`（`appContext.js:93`）、`state.pauseDetectionThresholdMs`（`appContext.js:94`）。相关状态位：`state.hasSongTimeSample`（`appContext.js:134`，是否已有首帧时间样本）、`state.isInPlayState`（`appContext.js:136`，由 `socketHandlers.js:150-156` 依据 tosu 状态名维护）。
+控制开关：`state.pauseDetectionEnabled`（`appContext.js:98`）。相关状态位：`state.hasSongTimeSample`（`appContext.js:137`，是否已有首帧时间样本）、`state.isInPlayState`（`appContext.js:139`，由 `socketHandlers.js:138-146` 依据 tosu 状态名维护）。
 
 ## 4. 与 graph 的集成
 
@@ -116,11 +78,11 @@ if (!state.isPaused) state.pauseTimeMs = 0;                         // :121-123
 | `redrawPauseMarkers()` | `graph.js:305` | 对所有启用的 graph view 执行 `drawPauseMarkersForView` |
 | `clearAllPauseMarkers()` | `graph.js:311` | `pauseMarkerTimes=[]` + `pauseCount=0` + `clearPauseMarkersDom()` + `updatePauseCountVisibility()` |
 | `addPauseMarker(songTimeMs)` | `graph.js:318` | 校验 `state.pauseDetectionEnabled` 与有限时间后 push 时间戳、同步 `pauseCount`、刷新 HUD 并重画标记 |
-| `resetPauseRuntime(clearMarkers = false)` | `graph.js:329` | 重置全部暂停运行时字段（`isPaused`/`pauseTimeMs`/`frozenInterpMs`/两个 freeze 字段/`hasSongTimeSample`）；`clearMarkers=true` 时额外调用 `clearAllPauseMarkers()` |
+| `resetPauseRuntime(clearMarkers = false)` | `graph.js:329` | 重置暂停运行时字段（`isPaused`/`pauseTimeMs`/`frozenInterpMs`/`hasSongTimeSample`）；`clearMarkers=true` 时额外调用 `clearAllPauseMarkers()` |
 
 内部渲染函数为 `drawPauseMarkersForView(view)`（`graph.js:273`，未导出）：先 `clearPauseMarkersDom(view)`，若检测关闭、无 `graphSeries` 或 view 不可用则直接返回；否则遍历 `state.pauseMarkerTimes`，按 `graphSeries.minTime/maxTime` 归一化映射到 viewbox X 坐标，绘制垂直线 `<line class="star-graph-pause-marker">`，颜色/线宽来自 `APP_CONFIG.graph.pauseLineColor`（`#FF3B3B`）/`pauseLineWidth`（`2`，`config.js:63-64`）。
 
-**调用关系**：`socketHandlers.js` 判定 `shouldAddMarker` → `addPauseMarker` →（更新 HUD + `redrawPauseMarkers`）；判定 `shouldClearMarkers` → `clearAllPauseMarkers`。图表动画帧中，暂停时光标时间取 `getInterpolatedPlaybackTime()`（`graph.js:70-73`），暂停态返回 `state.frozenInterpMs`，保证光标停在冻结位置；`updateGraphCursor` 的暂停传参见 `socketHandlers.js:140-142`。
+**调用关系**：`socketHandlers.js` 检测到进入暂停（`game.paused` 上升沿）→ `addPauseMarker` →（更新 HUD + `redrawPauseMarkers`）；时间线回退重置 → `resetPauseRuntime(true)` → `clearAllPauseMarkers`。图表动画帧中，暂停时光标时间取 `getInterpolatedPlaybackTime()`（`graph.js:70-73`），暂停态返回 `state.frozenInterpMs`，保证光标停在暂停位置；`updateGraphCursor` 的暂停传参参见 `socketHandlers.js:128-130`。
 
 暂停标记的**渲染细节**（SVG 分层、样式、主题）不在本文档范围，见 [graph-visualization.md](graph-visualization.md)。
 
@@ -132,25 +94,25 @@ if (!state.isPaused) state.pauseTimeMs = 0;                         // :121-123
 
 | uniqueID | 位置 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `enablePauseDetection` | `settings.json:269` | checkbox | `true` | 总开关；"Count pauses and draw pause markers on the graph when playing." |
-| `pauseDetectionThreshold` | `settings.json:325` | options | `"500"` | 判定为暂停的最小冻结时长，可选 `100` / `200` / `500` / `1000`（ms）；"Higher values reduce false positives from game lag." |
+| `enablePauseDetection` | `settings.json:311` | checkbox | `true` | 总开关；"Count pauses and draw pause markers on the graph when playing." |
 
 接线逻辑（`ManiaMapAnalyser by Leo_Black/js/app/settings.js`）：
 
-- `applyPauseDetectionSetting(value)`（`settings.js:544`）：写 `state.pauseDetectionEnabled`；**禁用时清空全部暂停状态**——`isPaused`、`pauseTimeMs`、`frozenInterpMs`、`pauseFreezeStartRealMs`、`pauseFreezeSongTimeMs`、`pauseMarkerTimes`、`pauseCount`（`settings.js:549-556`），随后 `updatePauseCountVisibility()` + `redrawPauseMarkers()`（`settings.js:561-562`）。
-- `applyPauseDetectionThresholdSetting(value)`（`settings.js:566`）：数值校验，非法/非正数回退到 `APP_CONFIG.defaults.pauseDetectionThresholdMs`（500）。
-- 解析器：`parseEnablePauseDetectionValue`（`ManiaMapAnalyser by Leo_Black/js/parser/settingsParser.js:372`）、`parsePauseDetectionThresholdValue`（`settingsParser.js:512`），按 uniqueID 命名约定由 `settings.js:742-743` 的 `applyIf` 接线，初始值应用在 `settings.js:917-918`。
-- 默认值：`config.js:84`（`pauseDetectionEnabled: true`）、`config.js:85`（`pauseDetectionThresholdMs: 500`）。
-- 时序常量：`config.js:68`（`songTimeJumpThresholdMs: 2000`）、`config.js:69`（`noteEndMarginMs: 500`）、`config.js:72`（`pauseDetectEpsilonMs: 0`）、`config.js:73`（`pauseDetectionThresholdMs: 500`），经 `appContext.js:170-173` 导出为 `SONG_TIME_JUMP_THRESHOLD_MS` / `NOTE_END_MARGIN_MS` / `PAUSE_DETECT_EPSILON_MS` / `PAUSE_DETECTION_THRESHOLD_MS`。
+- `applyPauseDetectionSetting(value)`（`settings.js:566`）：写 `state.pauseDetectionEnabled`；**禁用时清空全部暂停状态**——`isPaused`、`pauseTimeMs`、`frozenInterpMs`、`pauseMarkerTimes`、`pauseCount`（`settings.js:569-577`），随后 `updatePauseCountVisibility()` + `redrawPauseMarkers()`（`settings.js:581-582`）。
+- 解析器：`parseEnablePauseDetectionValue`（`ManiaMapAnalyser by Leo_Black/js/parser/settingsParser.js:369`），按 uniqueID 命名约定由 `settings.js:733` 的 `SETTING_HANDLERS` 接线，初始值应用在 `settings.js:914`。
+- 默认值：`config.js:84`（`pauseDetectionEnabled: true`）。
+- 时序常量：`config.js:68`（`songTimeJumpThresholdMs: 2000`）、`config.js:69`（`noteEndMarginMs: 500`）、`config.js:72`（`pauseDetectEpsilonMs: 0`），经 `appContext.js:173-175` 导出为 `SONG_TIME_JUMP_THRESHOLD_MS` / `NOTE_END_MARGIN_MS` / `PAUSE_DETECT_EPSILON_MS`。
 
-注意：`pauseDetectionThreshold` 与 `enablePauseDetection` 均**不属于**计算影响设置（不影响估计结果），因此不在 `clearResultCache()` 失效列表中，也不会污染结果缓存键。
+> 历史：v2.0.1 起移除了 `pauseDetectionThreshold` 设置项（原"最小冻结时长"判定）。暂停改为直接采用 tosu api_v2 的 `game.paused` 标志，**游戏卡顿导致的谱面时间停滞不再参与判定**，因此不再需要阈值；`js/app/pauseDetection.js`（`computePauseTransition` 冻结状态机）、`state.pauseFreezeStartRealMs` / `state.pauseFreezeSongTimeMs` 一并删除。
+
+注意：`enablePauseDetection` **不属于**计算影响设置（不影响估计结果），因此不在 `clearResultCache()` 失效列表中，也不会污染结果缓存键。
 
 ## 6. 注意事项
 
-1. **游戏卡顿误判**：若游戏掉帧/卡顿导致谱面时间在多帧内冻结超过阈值，会被计为一次暂停。遇到此情况应调高 `pauseDetectionThreshold`（如 1000ms）。
+1. **不受游戏卡顿影响**：暂停判定基于 tosu 上报的 `game.paused` 原生标志，谱面时间帧间冻结（掉帧/卡顿）不会产生误判；原"卡顿误判需调高阈值"的问题因阈值移除而自然消失。
 2. **仅在游玩状态工作**：`socketHandlers.js:91` 要求 `state.isInPlayState` 为真，结算界面/选图界面不检测。
-3. **跳变不计数**：谱面时间跳动超过 2000ms（seek、重载、切难度）触发 `shouldClearMarkers` 清空标记，而不是记为暂停；从末尾向前的小回退（<2000ms）同理。
-4. **末尾缓冲**：进入谱面最后 500ms 后不再判定暂停（`atEnd`），避免结算前收尾帧被误判。
-5. **Epsilon 容差默认 0**：`PAUSE_DETECT_EPSILON_MS` 为 0（`config.js:72`）意味着只有谱面时间**完全冻结**才进入冻结累积；若游戏在卡顿时仍上报微小变化的时间，可调大该常量（目前无对应设置项，需改代码）。
-6. **倍速归一化**：所有时间判定基于倍速缩放后的谱面时间（`socketHandlers.js:54-55`），DT/HT 下暂停检测阈值语义保持一致（冻结的是谱面时间）。
-7. **禁用即清理**：关闭 `enablePauseDetection` 会立即清空已收集的标记与计数（`settings.js:549-556`），且 `computePauseTransition` 不再运行。
+3. **时间线回退清标记**：谱面时间倒退到最早标记之前（重开本图等）触发 `resetPauseRuntime(true)` 清空标记与计数（`socketHandlers.js:62-72`）。
+4. **末尾缓冲**：进入谱面最后 500ms 后不再记录暂停标记（`atTimelineEnd`）；首物件之前同样不记录（`beforeStart`），避免谱面开始/结束的收尾帧产生无效标记。
+5. **旧版 tosu 兼容**：api_v2 无 `game.paused` 字段时（undefined）视为未暂停——暂停检测静默不可用，不报错、不影响其余功能。
+6. **倍速归一化**：标记时间基于倍速缩放后的谱面时间（`socketHandlers.js:54-55`），DT/HT 下标记位置与谱面时间轴一致。
+7. **禁用即清理**：关闭 `enablePauseDetection` 会立即清空已收集的标记与计数（`settings.js:569-577`），此后暂停检测不再运行。
