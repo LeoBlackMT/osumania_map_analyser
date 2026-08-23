@@ -69,6 +69,7 @@ import {
     updateDiffTextVisibility,
 } from "./graph.js";
 import {
+    animateCardHeightTransition,
     currentEstimatorAlgorithm,
     isAutoDisplayEnabledNow,
     refreshAutoDisplayProfile,
@@ -476,6 +477,12 @@ export async function fetchBeatmapFile(reason) {
             renderContentSkeleton();
             bodyRenderDelayPromise = waitForMainCardResizeTransition();
         }
+
+        // 主体渲染前快照卡片高度（骨架路径下为骨架撑起的高度）。卡片高度现在是
+        // height:auto（随内容生长），内容渲染后的高度变化是瞬时布局——渲染完成
+        // 后用它补一次 height 过渡，恢复平滑伸长（与 setRuntimeContentBar 的
+        // animateCardHeightTransition 用法一致）。
+        const heightBeforeBodyRender = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
         const waitForBodyRenderReady = async () => {
             if (!bodyRenderDelayPromise) {
@@ -1031,6 +1038,10 @@ export async function fetchBeatmapFile(reason) {
         if (isVibroMap && state.diffText === "Difficulty") {
             setEstimateDifficultyText("VIBRO");
         }
+
+        // 主体渲染完成：auto 高度下内容撑开是瞬时的，这里从渲染前高度补过渡动画。
+        // 放在 refreshAutoDisplayProfile 之后，避免 profile 切换已触发的动画被打断重播。
+        animateCardHeightTransition(heightBeforeBodyRender);
 
         const metadataLine = formatMetadataStatus(parsedInfo.metadata);
         const metadataErrors = errors.filter((entry) => {

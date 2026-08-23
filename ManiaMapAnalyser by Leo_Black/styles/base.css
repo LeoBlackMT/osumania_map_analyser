@@ -36,6 +36,11 @@ body {
     margin: 0;
     display: grid;
     grid-template-columns: 1fr;
+    /* 固定高度（而非 min-height）：grid 的 align-content 只在容器有多余空间时
+       生效。卡片 auto 高度且内容超高时，min-height 容器会被内容撑大、余量归零，
+       .extend-upward 的 align-content:end 因此失效（表现为反转后仍向下延伸）。
+       固定为 100% 后，超高内容按 end 对齐从底边锚定、向上溢出，反转语义成立。 */
+    height: 100%;
     min-height: 100%;
     align-content: start;
     gap: 14px;

@@ -146,7 +146,7 @@ function clearCardHeightTransitionState() {
     mainCardEl.style.removeProperty("height");
 }
 
-function animateCardHeightTransition(previousHeight) {
+export function animateCardHeightTransition(previousHeight) {
     if (!mainCardEl) {
         clearCardHeightTransitionState();
         return;
