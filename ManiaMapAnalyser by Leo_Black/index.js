@@ -1,6 +1,6 @@
 import { initialize } from "./js/app/main.js";
 
-const _VERSION = "2.0.0";
+const _VERSION = "2.0.1";
 
 const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top";
 

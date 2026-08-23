@@ -52,7 +52,7 @@
 ### 自拓展机制（schema.js）
 
 - **applier 动态注册**：遍历 `settings.json`，对每个 uniqueID 生成 `apply{首字母大写}Setting` 并在 settings.js 的模块命名空间中查找；找到即注册，找不到（header/button/`preset`/`presetStorage`）自动跳过。个别命名例外：`enablePauseDetection → applyPauseDetectionSetting`。
-- **getter 动态生成**：默认 `state[key]` 直读；例外表覆盖 `user*` 三件套（contentBar/srText/diffText）、`pauseDetectionEnabled`、`pauseDetectionThresholdMs`（字符串化）、`vibroDetection`。
+- **getter 动态生成**：默认 `state[key]` 直读；例外表覆盖 `user*` 三件套（contentBar/srText/diffText）、`pauseDetectionEnabled`、`vibroDetection`。
 - **recompute/cache 键集**：`SETTING_RECOMPUTE_KEYS` / `SETTING_CACHE_KEYS` 由 `settings.js` 导出（settings.js 的监听器已数据化为 `SETTING_HANDLERS` 表），预设模块直接 import，单一来源。
 - **效果**：新增设置 = 改 settings.json（uniqueID/value）+ settings.js（parse/apply 各一）两处，预设系统（表单、快照、应用、重算、缓存）自动跟随。
 
@@ -88,5 +88,4 @@ tosu WebSocket 设置广播
 1. 内置预设名（`presets/index.json` 的 `name`）必须与 `settings.json` 的 `preset` options 一致（不一致时 dashboard 选择后 `applyPresetByName` 找不到 → 回退 Default）。
 2. 新增设置时：settings.js 的 `SETTING_HANDLERS` 加一行（parse/apply 对）并同步 `SETTING_RECOMPUTE_KEYS`/`SETTING_CACHE_KEYS` 集合；`schema.js` 无需改动。
 3. `preset` 与 `presetStorage` 两个 uniqueID 是系统保留键：前者是预设选择器（不参与快照应用），后者是预设库存储（不参与手动修改判定）。
-4. 系统预设的 `pauseDetectionThreshold` 为字符串（如 `"500"`），与 `state.pauseDetectionThresholdMs`（数字）在 getter 中互转。
-5. 部分快照语义：应用任意预设只覆盖快照中存在的键；"Default" 是全量出厂快照（唯一全量预设）。
+4. 部分快照语义：应用任意预设只覆盖快照中存在的键；"Default" 是全量出厂快照（唯一全量预设）。

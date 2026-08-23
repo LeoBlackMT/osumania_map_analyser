@@ -25,7 +25,6 @@ const GETTER_OVERRIDES = {
     srText: (s) => s.userSrText,
     diffText: (s) => s.userDiffText,
     enablePauseDetection: (s) => s.pauseDetectionEnabled,
-    pauseDetectionThreshold: (s) => String(s.pauseDetectionThresholdMs),
     VibroDetection: (s) => s.vibroDetection,
 };
 
