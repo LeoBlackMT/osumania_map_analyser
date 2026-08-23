@@ -3,11 +3,11 @@
     grid-template-rows: auto auto 1fr;
     gap: 8px;
     width: 475px;
-    height: 540px;
+    height: auto;
     min-width: 475px;
     max-width: 475px;
     min-height: 540px;
-    max-height: 540px;
+    max-height: none;
     overflow: hidden;
 }
 
@@ -64,23 +64,29 @@
     border-radius: 1px;
 }
 
+/* Pattern mode: content-driven height — the card grows with the pattern
+   subtype list instead of clipping it; min-height keeps the resting height
+   stable. */
 .main-card.bars-pattern {
-    height: 575px;
+    height: auto;
     min-height: 575px;
-    max-height: 575px;
+    max-height: none;
 }
 
+/* 键型细分列表随卡片高度整体展开；底部留出 margin 避开绝对定位的
+   mode-tag 胶囊（bottom:10px、高约 21px）。 */
 .main-card.bars-pattern .cluster-bars {
-    overflow-y: hidden;
+    overflow-y: visible;
+    margin-bottom: 28px;
 }
 
 .main-card.bars-graph {
     grid-template-rows: auto auto auto;
     align-content: start;
     gap: 6px;
-    height: 396px;
+    height: auto;
     min-height: 396px;
-    max-height: 396px;
+    max-height: none;
 }
 
 .main-card.bars-graph .cluster-bars,
@@ -94,9 +100,9 @@
 
 .main-card.bars-none {
     grid-template-rows: auto auto;
-    height: 200px;
+    height: auto;
     min-height: 200px;
-    max-height: 200px;
+    max-height: none;
     gap: 4px;
     padding: 10px 10px 30px 10px;
 }
