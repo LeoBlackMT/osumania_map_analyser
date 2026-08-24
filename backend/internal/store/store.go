@@ -50,8 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 
 -- Pre-aggregated per-day counters, updated inside the same transaction as the
 -- event insert. Summing this tiny table answers every distribution query;
--- nobody scans the events table for statistics. max_val keeps the per-row
--- maximum (MAX over day rows = the window maximum, no raw data needed).
+-- nobody scans the events table for statistics. max_val/min_val keep the
+-- per-row extrema (MIN/MAX over day rows = the window extrema, no raw data).
 CREATE TABLE IF NOT EXISTS daily_agg (
 	day INTEGER NOT NULL,
 	dim TEXT NOT NULL,
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS daily_agg (
 	count INTEGER NOT NULL DEFAULT 0,
 	sum_val REAL NOT NULL DEFAULT 0,
 	max_val REAL NOT NULL DEFAULT 0,
+	min_val REAL NOT NULL DEFAULT 0,
 	PRIMARY KEY (day, dim, val)
 );
 
@@ -107,40 +108,51 @@ func Open(path string) (*Store, error) {
 	for _, idx := range legacyIndexes {
 		db.Exec("DROP INDEX IF EXISTS " + idx)
 	}
-	// 1.1.0: the max_val column was added for the window-extreme chips.
-	// Pre-1.1.0 databases get it via ALTER; the values are rebuilt by
-	// `telemetry-server -migrate` (a rebuild resets them to the true maxima).
-	if err := ensureDailyAggMaxVal(db); err != nil {
+	// 1.1.0: max_val/min_val columns were added for the window-extreme chips.
+	// Pre-1.1.0 databases get them via ALTER; the values are rebuilt by
+	// `telemetry-server -migrate` (a rebuild resets them to the true extrema).
+	if err := ensureDailyAggExtremes(db); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return &Store{db: db, dbPath: path}, nil
 }
 
-// ensureDailyAggMaxVal adds the max_val column to existing daily_agg tables.
-func ensureDailyAggMaxVal(db *sql.DB) error {
+// ensureDailyAggExtremes adds missing max_val/min_val columns to existing
+// daily_agg tables (idempotent: checks each column individually).
+func ensureDailyAggExtremes(db *sql.DB) error {
+	cols := map[string]bool{}
 	rows, err := db.Query(`PRAGMA table_info(daily_agg)`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var cid int
 		var name, ctype string
 		var notnull, pk int
 		var dflt sql.NullString
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
 			return err
 		}
-		if name == "max_val" {
-			return nil
-		}
+		cols[name] = true
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return err
 	}
-	_, err = db.Exec(`ALTER TABLE daily_agg ADD COLUMN max_val REAL NOT NULL DEFAULT 0`)
-	return err
+	rows.Close()
+	if !cols["max_val"] {
+		if _, err := db.Exec(`ALTER TABLE daily_agg ADD COLUMN max_val REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if !cols["min_val"] {
+		if _, err := db.Exec(`ALTER TABLE daily_agg ADD COLUMN min_val REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -202,11 +214,11 @@ func applyAggTx(tx *sql.Tx, installID, kind string, data map[string]interface{},
 		}
 		for _, inc := range AnalyzeAggIncs(data, ts) {
 			if _, err := tx.Exec(
-				`INSERT INTO daily_agg (day, dim, val, count, sum_val, max_val) VALUES (?, ?, ?, ?, ?, ?)
+				`INSERT INTO daily_agg (day, dim, val, count, sum_val, max_val, min_val) VALUES (?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(day, dim, val) DO UPDATE SET
 				   count = count + excluded.count, sum_val = sum_val + excluded.sum_val,
-				   max_val = MAX(max_val, excluded.max_val)`,
-				inc.Day, inc.Dim, inc.Val, inc.Count, inc.SumVal, inc.MaxVal,
+				   max_val = MAX(max_val, excluded.max_val), min_val = MIN(min_val, excluded.min_val)`,
+				inc.Day, inc.Dim, inc.Val, inc.Count, inc.SumVal, inc.MaxVal, inc.MinVal,
 			); err != nil {
 				return err
 			}
@@ -379,14 +391,16 @@ type AggRow struct {
 	Count  int64
 	SumVal float64
 	MaxVal float64
+	MinVal float64
 }
 
-// DailyAggRows returns all (val, count, sum_val, max_val) rows of a dimension
-// across a day range. Ordering is left to the caller (vals are labels, not
-// numbers). max_val is the max of the per-day maxima — the window maximum.
+// DailyAggRows returns all (val, count, sum_val, max_val, min_val) rows of a
+// dimension across a day range. Ordering is left to the caller (vals are
+// labels, not numbers). max/min are the extrema of the per-day extrema — the
+// window extrema.
 func (s *Store) DailyAggRows(startDayMs, endDayMs int64, dim string) ([]AggRow, error) {
 	rows, err := s.db.Query(
-		`SELECT val, SUM(count), COALESCE(SUM(sum_val), 0), COALESCE(MAX(max_val), 0) FROM daily_agg
+		`SELECT val, SUM(count), COALESCE(SUM(sum_val), 0), COALESCE(MAX(max_val), 0), COALESCE(MIN(min_val), 0) FROM daily_agg
 		 WHERE day >= ? AND day < ? AND dim = ? GROUP BY val`,
 		startDayMs, endDayMs, dim,
 	)
@@ -397,24 +411,12 @@ func (s *Store) DailyAggRows(startDayMs, endDayMs int64, dim string) ([]AggRow, 
 	out := []AggRow{}
 	for rows.Next() {
 		var r AggRow
-		if err := rows.Scan(&r.Val, &r.Count, &r.SumVal, &r.MaxVal); err != nil {
+		if err := rows.Scan(&r.Val, &r.Count, &r.SumVal, &r.MaxVal, &r.MinVal); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-// DailyAggMax returns the maximum value recorded for a dimension in a day
-// range (0 when no data). Computed from the aggregates alone — the raw
-// events table is never involved.
-func (s *Store) DailyAggMax(startDayMs, endDayMs int64, dim string) (float64, error) {
-	var m float64
-	err := s.db.QueryRow(
-		`SELECT COALESCE(MAX(max_val), 0) FROM daily_agg WHERE day >= ? AND day < ? AND dim = ?`,
-		startDayMs, endDayMs, dim,
-	).Scan(&m)
-	return m, err
 }
 
 // KindTotals returns lifetime event counts per kind (survives raw pruning).
@@ -548,6 +550,7 @@ func (s *Store) Migrate(retentionDays int) (*MigrateReport, error) {
 		count  int64
 		sumVal float64
 		maxVal float64
+		minVal float64
 	}
 	acc := make(map[aggKey]*aggVal)
 	rows, err := s.db.Query(`SELECT ts, data FROM events WHERE kind = 'analyze'`)
@@ -570,8 +573,11 @@ func (s *Store) Migrate(retentionDays int) (*MigrateReport, error) {
 				if inc.MaxVal > v.maxVal {
 					v.maxVal = inc.MaxVal
 				}
+				if inc.MinVal < v.minVal {
+					v.minVal = inc.MinVal
+				}
 			} else {
-				acc[k] = &aggVal{inc.Count, inc.SumVal, inc.MaxVal}
+				acc[k] = &aggVal{inc.Count, inc.SumVal, inc.MaxVal, inc.MinVal}
 			}
 		}
 	}
@@ -588,11 +594,11 @@ func (s *Store) Migrate(retentionDays int) (*MigrateReport, error) {
 	}
 	for k, v := range acc {
 		if _, err := tx.Exec(
-			`INSERT INTO daily_agg (day, dim, val, count, sum_val, max_val) VALUES (?, ?, ?, ?, ?, ?)
+			`INSERT INTO daily_agg (day, dim, val, count, sum_val, max_val, min_val) VALUES (?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(day, dim, val) DO UPDATE SET
 			   count = count + excluded.count, sum_val = sum_val + excluded.sum_val,
-			   max_val = MAX(max_val, excluded.max_val)`,
-			k.day, k.dim, k.val, v.count, v.sumVal, v.maxVal,
+			   max_val = MAX(max_val, excluded.max_val), min_val = MIN(min_val, excluded.min_val)`,
+			k.day, k.dim, k.val, v.count, v.sumVal, v.maxVal, v.minVal,
 		); err != nil {
 			tx.Rollback()
 			return nil, err

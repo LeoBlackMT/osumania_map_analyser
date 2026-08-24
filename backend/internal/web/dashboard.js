@@ -7,6 +7,10 @@
 const PALETTE = ["#635bff", "#0d9c5f", "#f5a623", "#cf1e3b", "#06b6d4", "#a855f7", "#ec4899", "#0ea5e9"];
 const CHIP_DAYS = [1, 7, 30, 90];
 const REFRESH_MS = 60000;
+// Display caps for histogram X-ranges (view-only: the server keeps the full
+// bins, and the true extrema live in the second metrics row).
+const DUR_DISPLAY_CAP_MS = 600;
+const PLAY_DISPLAY_CAP = 500;
 
 // ── Window state (shared by chips, custom range, URL, and the fetch) ──
 let win = { days: 30, from: "", to: "" };
@@ -583,23 +587,32 @@ function renderMetrics(s) {
     c.appendChild(chip);
   }
 
-  // Second row: extremes (computed from aggregates, no raw data involved).
+  // Second row: window extrema — four metrics × (min/max) = 8 chips.
   const cm = document.getElementById("metricsMax");
   if (cm) {
     cm.textContent = "";
     const ds = s.durationStats || {};
-    const maxItems = [
-      ["Dur. max", ds.maxMs ? ds.maxMs + " ms" : "—", ds.maxMs ? String(ds.maxMs) : "—"],
-      ["Max ★", s.maxStar ? s.maxStar.toFixed(2) : "—", s.maxStar ? s.maxStar.toFixed(2) : "—"],
-      ["Max numeric", s.maxNumeric != null ? s.maxNumeric.toFixed(2) : "—", s.maxNumeric != null ? s.maxNumeric.toFixed(2) : "—"],
+    const durLive = s.analyzeCount > 0;
+    const starLive = !!s.maxStar;
+    const numLive = s.maxNumeric != null && (s.maxNumeric !== 0 || !!s.minNumeric);
+    const playLive = !!s.playMax;
+    const pairs = [
+      ["Dur.", durLive ? ds.minMs + " ms" : "—", durLive ? String(ds.minMs) : "—", durLive ? ds.maxMs + " ms" : "—", durLive ? String(ds.maxMs) : "—"],
+      ["★", starLive ? s.minStar.toFixed(2) : "—", starLive ? s.minStar.toFixed(2) : "—", starLive ? s.maxStar.toFixed(2) : "—", starLive ? s.maxStar.toFixed(2) : "—"],
+      ["Numeric", numLive ? s.minNumeric.toFixed(2) : "—", numLive ? s.minNumeric.toFixed(2) : "—", numLive ? s.maxNumeric.toFixed(2) : "—", numLive ? s.maxNumeric.toFixed(2) : "—"],
+      ["Plays/day", playLive ? String(s.playMin) : "—", playLive ? String(s.playMin) : "—", playLive ? String(s.playMax) : "—", playLive ? String(s.playMax) : "—"],
     ];
-    for (const [k, v, raw] of maxItems) {
-      const chip = el("div", "chip");
-      const cv = el("div", "cv", v);
-      if (raw !== v) bindTip(cv, raw);
-      chip.appendChild(cv);
-      chip.appendChild(el("div", "ck", k));
-      cm.appendChild(chip);
+    for (const [name, minV, minRaw, maxV, maxRaw] of pairs) {
+      const mk = (v, raw, label) => {
+        const chip = el("div", "chip");
+        const cv = el("div", "cv", v);
+        if (raw !== v) bindTip(cv, raw);
+        chip.appendChild(cv);
+        chip.appendChild(el("div", "ck", label));
+        cm.appendChild(chip);
+      };
+      mk(minV, minRaw, name + " min");
+      mk(maxV, maxRaw, name + " max");
     }
   }
 }
@@ -631,14 +644,12 @@ function render(s) {
   renderDonut("versions", s.versions || []);
   renderHBar("algorithms", s.algorithms || [], 8);
   renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
-  // Duration histogram: show bins up to a display cap — the min of the 5s
-  // storage cap and the window's real max (floored at 1s) — so the dense
-  // sub-second range isn't crushed by a sparse tail. The true maximum lives
-  // in the "Dur. max" chip.
-  const durMax = (s.durationStats && s.durationStats.maxMs) || 0;
-  const durCapMs = Math.min(5000, Math.max(1000, Math.ceil(durMax / 1000) * 1000));
-  renderValueBars("durationHistogram", (s.durationHistogram || []).filter((b) => (b.value || 0) < durCapMs));
-  renderValueBars("playFreq", (s.playFreq || []).filter((b) => b.count > 0));
+  // Duration histogram: view capped at 600ms (the dense sub-second range
+  // stays readable; bins beyond it and the true max live in the chips).
+  renderValueBars("durationHistogram", (s.durationHistogram || []).filter((b) => (b.value || 0) < DUR_DISPLAY_CAP_MS));
+  // Plays per day: continuous 10-count bins, view capped at 500 (server-side
+  // binning continues past 500 — nothing is truncated).
+  renderValueBars("playFreq", (s.playFreq || []).filter((b) => (b.value || 0) <= PLAY_DISPLAY_CAP));
   renderMetrics(s);
 
   // Chart summaries for screen readers (values also live in tooltips/legend).

@@ -41,6 +41,7 @@ type Bucket struct {
 }
 
 type DurationStats struct {
+	MinMs int64 `json:"minMs"`
 	AvgMs int64 `json:"avgMs"`
 	P50Ms int64 `json:"p50Ms"`
 	P90Ms int64 `json:"p90Ms"`
@@ -81,9 +82,13 @@ type Stats struct {
 	NumericHistogram  []Bucket      `json:"numericHistogram"`
 	DurationHistogram []Bucket      `json:"durationHistogram"`
 	DurationStats     DurationStats `json:"durationStats"`
-	PlayFreq          []KV          `json:"playFreq"`
+	PlayFreq          []Bucket      `json:"playFreq"`
+	MinStar           float64       `json:"minStar"`
 	MaxStar           float64       `json:"maxStar"`
+	MinNumeric        float64       `json:"minNumeric"`
 	MaxNumeric        float64       `json:"maxNumeric"`
+	PlayMin           int64         `json:"playMin"`
+	PlayMax           int64         `json:"playMax"`
 }
 
 // Compute builds the dashboard snapshot over the window [fromMs, toMs]
@@ -301,26 +306,31 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 	})
 
 	// Duration: exact average from sum/count, percentiles from the 20ms-bin
-	// CDF (error <= half a bin, deterministic, window-exact); max from
-	// max_val (window maximum without touching raw events).
+	// CDF (error <= half a bin, deterministic, window-exact); min/max from
+	// the per-row extrema (window extrema without touching raw events).
 	s.DurationHistogram = durationHistogram(durRows)
 	s.DurationStats = durationStats(durRows)
-	if durMax, err := st.DailyAggMax(startDayMs, endDayMs, "dur"); err == nil {
-		s.DurationStats.MaxMs = int64(durMax)
+
+	// Extremes (unbounded "ext" dim): star / numeric window min & max.
+	extRows, err := st.DailyAggRows(startDayMs, endDayMs, "ext")
+	if err != nil {
+		return err
 	}
-	if mx, err := st.DailyAggMax(startDayMs, endDayMs, "star"); err == nil {
-		s.MaxStar = mx
-	}
-	if mx, err := st.DailyAggMax(startDayMs, endDayMs, "numeric"); err == nil {
-		s.MaxNumeric = mx
+	for _, r := range extRows {
+		switch r.Val {
+		case "star":
+			s.MinStar, s.MaxStar = r.MinVal, r.MaxVal
+		case "numeric":
+			s.MinNumeric, s.MaxNumeric = r.MinVal, r.MaxVal
+		}
 	}
 
-	// Plays per install per day (install_days.analyze_count).
+	// Plays per install per day: continuous 10-count bins + window extrema.
 	playFreq, err := st.PlayFreqBetween(startDayMs, endDayMs)
 	if err != nil {
 		return err
 	}
-	s.PlayFreq = playFreqKV(playFreq)
+	s.PlayFreq, s.PlayMin, s.PlayMax = playFreqHisto(playFreq)
 
 	return nil
 }
@@ -349,36 +359,29 @@ func weightedAvg(m map[string]int64, parse func(string) (float64, bool)) float64
 	return math.Round(sum/float64(n)*100) / 100
 }
 
-func playFreqKV(m map[int64]int64) []KV {
-	buckets := []struct {
-		label    string
-		min, max int64
-	}{
-		{"1", 1, 1},
-		{"2-4", 2, 4},
-		{"5-9", 5, 9},
-		{"10-19", 10, 19},
-		{"20+", 20, math.MaxInt64},
-	}
-	out := make([]KV, 0, len(buckets))
-	var total int64
-	for _, n := range m {
-		total += n
-	}
-	for _, b := range buckets {
-		var c int64
-		for k, n := range m {
-			if k >= b.min && k <= b.max {
-				c += n
-			}
+// playFreqHisto bins per-install daily play counts into 10-count bins (bin
+// start labels 1, 11, 21, …) and returns the histogram plus window extrema.
+// Binning continues past 500 (nothing is truncated server-side); the
+// frontend caps the chart VIEW at 500.
+func playFreqHisto(m map[int64]int64) ([]Bucket, int64, int64) {
+	sums := map[int64]int64{} // bin start -> count
+	var pmin, pmax int64
+	for c, n := range m {
+		if pmin == 0 || c < pmin {
+			pmin = c
 		}
-		pct := 0.0
-		if total > 0 {
-			pct = math.Round(float64(c)/float64(total)*1000) / 10
+		if c > pmax {
+			pmax = c
 		}
-		out = append(out, KV{Key: b.label, Count: c, Pct: pct})
+		bin := ((c-1)/10)*10 + 1
+		sums[bin] += n
 	}
-	return out
+	out := make([]Bucket, 0, len(sums))
+	for b, n := range sums {
+		out = append(out, Bucket{Key: fmt.Sprintf("%d", b), Value: float64(b), Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Value < out[j].Value })
+	return out, pmin, pmax
 }
 
 func durationHistogram(rows []store.AggRow) []Bucket {
@@ -398,14 +401,30 @@ func durationHistogram(rows []store.AggRow) []Bucket {
 func durationStats(rows []store.AggRow) DurationStats {
 	var total int64
 	var sum float64
+	var first = true
+	var minV, maxV float64
 	for _, r := range rows {
+		if r.Count == 0 {
+			continue
+		}
 		total += r.Count
 		sum += r.SumVal
+		if first {
+			minV, maxV = r.MinVal, r.MaxVal
+			first = false
+			continue
+		}
+		if r.MinVal < minV {
+			minV = r.MinVal
+		}
+		if r.MaxVal > maxV {
+			maxV = r.MaxVal
+		}
 	}
 	if total == 0 {
 		return DurationStats{}
 	}
-	stats := DurationStats{AvgMs: int64(sum) / total}
+	stats := DurationStats{MinMs: int64(minV), AvgMs: int64(sum) / total, MaxMs: int64(maxV)}
 	stats.P50Ms = durationPercentile(rows, 50, total)
 	stats.P90Ms = durationPercentile(rows, 90, total)
 	return stats

@@ -17,7 +17,8 @@ type AggInc struct {
 	Val    string
 	Count  int64
 	SumVal float64
-	MaxVal float64 // per-event value for value-carrying dims (window max via MAX)
+	MaxVal float64 // per-event value (window max via MAX over day rows)
+	MinVal float64 // per-event value (window min via MIN over day rows)
 }
 
 // Duration binning for the analysis-duration metric (plugin sends
@@ -73,7 +74,7 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 	day := ts / DayMs * DayMs
 	incs := make([]AggInc, 0, 12)
 	inc := func(dim, val string, sum float64) {
-		incs = append(incs, AggInc{Day: day, Dim: dim, Val: val, Count: 1, SumVal: sum, MaxVal: sum})
+		incs = append(incs, AggInc{Day: day, Dim: dim, Val: val, Count: 1, SumVal: sum, MaxVal: sum, MinVal: sum})
 	}
 	num := func(k string) (float64, bool) {
 		v, ok := data[k].(float64)
@@ -120,6 +121,16 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 	// Duration: 20ms bins; count + real sum per bin (exact avg, CDF percentiles).
 	if dur, ok := num("durationMs"); ok && dur >= 0 {
 		inc("dur", durationBin(int64(dur)), dur)
+	}
+	// Extremes dim ("ext"): window min/max WITHOUT the histogram bounds, so
+	// whatever the client sent (including outliers beyond the display caps,
+	// e.g. a 1200★ anomaly) is still reflected in the extreme chips. The
+	// histograms/averages keep their legacy bounds and stay readable.
+	if star, ok := num("star"); ok && star > 0 && star < 1e6 {
+		inc("ext", "star", star)
+	}
+	if nv, ok := num("numericDifficulty"); ok && nv >= -3 && nv < 1e6 {
+		inc("ext", "numeric", nv)
 	}
 	return incs
 }

@@ -142,7 +142,7 @@ Cross-compile from any machine (no Docker, no cgo). `-X main.version=` injects t
 
 ```bash
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.1.0 -s -w" -o bin/telemetry-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.1.1 -s -w" -o bin/telemetry-server ./cmd/server
 ```
 
 On the server:
