@@ -84,9 +84,7 @@ function renderCards(s) {
   const trend = s.activeTrend || [];
   const t = trend[trend.length - 1], y = trend[trend.length - 2];
   const todayDelta = (t && y) ? t.active - y.active : null;
-  const sum = (arr) => arr.reduce((a, b) => a + b, 0);
-  const last7 = trend.slice(-7), prev7 = trend.slice(-14, -7);
-  const weekDelta = (last7.length && prev7.length) ? sum(last7.map((d) => d.active)) - sum(prev7.map((d) => d.active)) : null;
+  const weekDelta = (s.weekActive != null && s.weekActivePrev != null) ? s.weekActive - s.weekActivePrev : null;
 
   const ov = document.getElementById("overview");
   ov.textContent = "";
@@ -106,8 +104,8 @@ function renderHBar(id, items, cap) {
   c.textContent = "";
   if (!items.length) { emptyBox(c); return; }
   const limit = (cap && items.length > cap) ? cap : items.length;
-  let max = 1;
-  for (const it of items) if (it.count > max) max = it.count;
+  let total = 0;
+  for (const it of items) total += it.count;
   const bars = el("div", "bars");
   for (let i = 0; i < limit; i++) {
     const it = items[i];
@@ -115,9 +113,10 @@ function renderHBar(id, items, cap) {
     const label = el("span", "bar-label", it.key);
     const track = el("div", "bar-track");
     const fill = el("div", "bar-fill");
-    fill.style.width = Math.round((it.count / max) * 100) + "%";
+    const pct = total > 0 ? Math.round(it.count / total * 100) : 0;
+    fill.style.width = pct + "%";
     fill.style.animationDelay = (i * 30) + "ms";
-    bindTip(row, it.key + " — " + it.count + " (" + Math.round((it.count / max) * 100) + "%)");
+    bindTip(row, it.key + " — " + it.count + " (" + pct + "%)");
     track.appendChild(fill);
     row.appendChild(label);
     row.appendChild(track);
@@ -125,7 +124,7 @@ function renderHBar(id, items, cap) {
     const cntNum = el("span", "num", fmtCompact(it.count));
     bindTip(cntNum, String(it.count));
     cnt.appendChild(cntNum);
-    cnt.appendChild(el("span", "pct", Math.round((it.count / max) * 100) + "%"));
+    cnt.appendChild(el("span", "pct", pct + "%"));
     row.appendChild(cnt);
     bars.appendChild(row);
   }
@@ -140,8 +139,9 @@ function renderHBar(id, items, cap) {
         const label = el("span", "bar-label", it.key);
         const track = el("div", "bar-track");
         const fill = el("div", "bar-fill");
-        fill.style.width = Math.round((it.count / max) * 100) + "%";
-        bindTip(row, it.key + " — " + it.count);
+        const pct = total > 0 ? Math.round(it.count / total * 100) : 0;
+        fill.style.width = pct + "%";
+        bindTip(row, it.key + " — " + it.count + " (" + pct + "%)");
         track.appendChild(fill);
         row.appendChild(label);
         row.appendChild(track);
@@ -229,11 +229,11 @@ function renderLine(id, items) {
   });
 
   // Area fill + line
-  const pts = items.map((it, i) => x(i).toFixed(1) + "," + y(it.count).toFixed(1)).join(" ");
-  const area = "M" + x(0).toFixed(1) + "," + y(items[0].count).toFixed(1) + " L" + pts.replace(/ /g, " L") +
-    " L" + x(n - 1).toFixed(1) + "," + (H - MB).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - MB).toFixed(1) + " Z";
+  const pts = items.map((it, i) => [x(i), y(it.count)]);
+  const linePath = smoothPath(pts);
+  const area = linePath + " L" + x(n - 1).toFixed(1) + "," + (H - MB).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - MB).toFixed(1) + " Z";
   svg.appendChild(svgEl("path", { d: area, fill: "url(#lineAreaGrad)" }));
-  svg.appendChild(svgEl("polyline", { points: pts, fill: "none", stroke: "#635bff", "stroke-width": 1.8, "stroke-linejoin": "round", class: "draw" }));
+  svg.appendChild(svgEl("path", { d: linePath, fill: "none", stroke: "#635bff", "stroke-width": 1.8, "stroke-linejoin": "round", class: "draw" }));
 
   // Crosshair hover overlay
   const hover = svgEl("g", { display: "none" });
@@ -299,6 +299,25 @@ function renderValueBars(id, buckets) {
   renderVChart(id, items, 0);
 }
 
+// ── Smooth cubic bezier path through points ─────────────
+// points: [[x, y], ...] — returns SVG path d string.
+function smoothPath(points) {
+  if (points.length < 2) return "";
+  let d = "M" + points[0][0].toFixed(1) + "," + points[0][1].toFixed(1);
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += "C" + cp1x.toFixed(1) + "," + cp1y.toFixed(1) + " " + cp2x.toFixed(1) + "," + cp2y.toFixed(1) + " " + p2[0].toFixed(1) + "," + p2[1].toFixed(1);
+  }
+  return d;
+}
+
 // ── Line chart with crosshair snap-hover ─────────────
 function renderTrend(id, trend) {
   const c = document.getElementById(id);
@@ -325,13 +344,14 @@ function renderTrend(id, trend) {
     svg.appendChild(tx);
   });
 
-  const actPts = trend.map((d, i) => x(i).toFixed(1) + "," + y(d.active).toFixed(1)).join(" ");
-  const newPts = trend.map((d, i) => x(i).toFixed(1) + "," + y(d.new).toFixed(1)).join(" ");
-  const area = "M" + x(0).toFixed(1) + "," + y(trend[0].active).toFixed(1) + " L" + actPts.replace(/ /g, " L") +
-    " L" + x(n - 1).toFixed(1) + "," + (H - MB).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - MB).toFixed(1) + " Z";
+  const actPts = trend.map((d, i) => [x(i), y(d.active)]);
+  const newPts = trend.map((d, i) => [x(i), y(d.new)]);
+  const actPath = smoothPath(actPts);
+  const newPath = smoothPath(newPts);
+  const area = actPath + " L" + x(n - 1).toFixed(1) + "," + (H - MB).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - MB).toFixed(1) + " Z";
   svg.appendChild(svgEl("path", { d: area, fill: "url(#areaGrad)" }));
-  svg.appendChild(svgEl("polyline", { points: actPts, fill: "none", stroke: "#635bff", "stroke-width": 1.8, "stroke-linejoin": "round", class: "draw" }));
-  svg.appendChild(svgEl("polyline", { points: newPts, fill: "none", stroke: "#f5a623", "stroke-width": 1.2, "stroke-linejoin": "round", "stroke-dasharray": "3 3", class: "draw" }));
+  svg.appendChild(svgEl("path", { d: actPath, fill: "none", stroke: "#635bff", "stroke-width": 1.8, "stroke-linejoin": "round", class: "draw" }));
+  svg.appendChild(svgEl("path", { d: newPath, fill: "none", stroke: "#f5a623", "stroke-width": 1.2, "stroke-dasharray": "3 3", class: "draw" }));
 
   const hover = svgEl("g", { display: "none" });
   const guide = svgEl("line", { class: "hover-guide" });

@@ -42,6 +42,8 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// WAL improves read concurrency when stats queries overlap writes.
+	db.Exec("PRAGMA journal_mode=WAL")
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
@@ -84,6 +86,13 @@ func (s *Store) CountInstallsOnline(since int64) (int64, error) {
 func (s *Store) CountInstallsNew(since int64) (int64, error) {
 	var n int64
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM installs WHERE first_seen >= ?`, since).Scan(&n)
+	return n, err
+}
+
+// CountActiveBetween counts distinct installs with events in [startMs, endMs).
+func (s *Store) CountActiveBetween(startMs, endMs int64) (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(DISTINCT install_id) FROM events WHERE ts >= ? AND ts < ?`, startMs, endMs).Scan(&n)
 	return n, err
 }
 

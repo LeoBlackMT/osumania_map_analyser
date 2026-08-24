@@ -20,8 +20,9 @@ const (
 )
 
 type KV struct {
-	Key   string `json:"key"`
-	Count int64  `json:"count"`
+	Key   string  `json:"key"`
+	Count int64   `json:"count"`
+	Pct   float64 `json:"pct"`
 }
 
 type TrendDay struct {
@@ -48,6 +49,7 @@ type Stats struct {
 	OnlineNow        int64         `json:"onlineNow"`
 	TodayActive      int64         `json:"todayActive"`
 	WeekActive       int64         `json:"weekActive"`
+	WeekActivePrev   int64         `json:"weekActivePrev"`
 	MonthActive      int64         `json:"monthActive"`
 	NewToday         int64         `json:"newToday"`
 	NewWeek          int64         `json:"newWeek"`
@@ -111,6 +113,9 @@ func Compute(st *store.Store, onlineWindowMin, days int) (*Stats, error) {
 		return nil, err
 	}
 	if s.WeekActive, err = st.CountActiveSince(nowMs - 7*dayMs); err != nil {
+		return nil, err
+	}
+	if s.WeekActivePrev, err = st.CountActiveBetween(nowMs-14*dayMs, nowMs-7*dayMs); err != nil {
 		return nil, err
 	}
 	if s.MonthActive, err = st.CountActiveSince(since); err != nil {
@@ -212,7 +217,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 		if d.Algorithm != "" {
 			alg[d.Algorithm]++
 		}
-		if d.ActualAlgorithm != "" {
+		if d.ActualAlgorithm != "" && d.ActualAlgorithm != "Mixed" {
 			actual[d.ActualAlgorithm]++
 		}
 		if d.Keycount > 0 {
@@ -230,7 +235,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 		if d.Mode != "" {
 			modes[d.Mode]++
 		}
-		if d.Star > 0 {
+		if d.Star > 0 && d.Star <= 20 {
 			// aggregate into 0.5-star bins for the bar chart
 			stars[math.Round(d.Star*2)/2]++
 			starSum += d.Star
@@ -242,7 +247,7 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 			lnSum += d.LnRatio
 			lnN++
 		}
-		if d.NumericDifficulty != nil && *d.NumericDifficulty >= -3 && *d.NumericDifficulty <= 30 {
+		if d.NumericDifficulty != nil && *d.NumericDifficulty >= -3 && *d.NumericDifficulty <= 25 {
 			// aggregate into 0.25 bins on the Reform numeric scale (.0 = mid)
 			numerics[math.Round(*d.NumericDifficulty*4)/4]++
 		}
@@ -289,9 +294,17 @@ func buildDistributions(st *store.Store, since int64, s *Stats) error {
 }
 
 func sortedKV(m map[string]int64) []KV {
+	var total int64
+	for _, v := range m {
+		total += v
+	}
 	out := make([]KV, 0, len(m))
 	for k, v := range m {
-		out = append(out, KV{Key: k, Count: v})
+		pct := 0.0
+		if total > 0 {
+			pct = math.Round(float64(v)/float64(total)*1000) / 10
+		}
+		out = append(out, KV{Key: k, Count: v, Pct: pct})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
