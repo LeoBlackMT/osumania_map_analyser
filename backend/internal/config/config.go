@@ -13,7 +13,9 @@ import (
 type Config struct {
 	Addr              string
 	DBPath            string
-	RetentionDays     int
+	RawRetentionDays  int // raw events keep window (debug log only)
+	HourRetentionDays int // install_hours rolling window
+	ActiveMin         int // analyze events per day an install needs to count as active
 	OnlineWindowMin   int
 	RateLimitPerMin   int
 	StatsCacheSeconds int
@@ -43,7 +45,9 @@ func Load() (Config, error) {
 	cfg := Config{
 		Addr:              envStr("MMA_TELEMETRY_ADDR", ":8080"),
 		DBPath:            envStr("MMA_TELEMETRY_DB", "telemetry.db"),
-		RetentionDays:     envInt("MMA_TELEMETRY_RETENTION_DAYS", 365),
+		RawRetentionDays:  envInt("MMA_TELEMETRY_RAW_RETENTION_DAYS", 14),
+		HourRetentionDays: envInt("MMA_TELEMETRY_HOUR_RETENTION_DAYS", 90),
+		ActiveMin:         envInt("MMA_TELEMETRY_ACTIVE_MIN", 10),
 		OnlineWindowMin:   envInt("MMA_TELEMETRY_ONLINE_WINDOW_MIN", 10),
 		RateLimitPerMin:   envInt("MMA_TELEMETRY_RATE_LIMIT_PER_MIN", 120),
 		StatsCacheSeconds: envInt("MMA_TELEMETRY_STATS_CACHE_SECONDS", 60),
@@ -60,6 +64,15 @@ func Load() (Config, error) {
 	}
 	if cfg.OnlineWindowMin <= 0 {
 		cfg.OnlineWindowMin = 10
+	}
+	if cfg.ActiveMin <= 0 {
+		cfg.ActiveMin = 10
+	}
+	if cfg.RawRetentionDays < 0 {
+		return Config{}, fmt.Errorf("MMA_TELEMETRY_RAW_RETENTION_DAYS must be >= 0")
+	}
+	if cfg.HourRetentionDays < 0 {
+		return Config{}, fmt.Errorf("MMA_TELEMETRY_HOUR_RETENTION_DAYS must be >= 0")
 	}
 	if cfg.RateLimitPerMin < 0 {
 		return Config{}, fmt.Errorf("MMA_TELEMETRY_RATE_LIMIT_PER_MIN must be >= 0")

@@ -23,11 +23,12 @@ No user accounts, no login, no personally identifiable information. The plugin s
 ## What it does
 
 - Ingests events at `POST /api/v1/event` (`boot`, `heartbeat`, `analyze`).
-- Stores them in a single SQLite file (`installs` + `events`).
-- Computes aggregate statistics and serves them at `GET /api/v1/stats`.
-- Renders a public dashboard at `/` (no chart library — inline SVG/CSS only).
-- Automatically deletes events older than `MMA_TELEMETRY_RETENTION_DAYS`.
+- Stores them in a single SQLite file with **write-path aggregation**: each event lands in the same transaction as the raw log line and the aggregate tables (`daily_agg` / `install_days` / `install_hours`).
+- Computes aggregate statistics and serves them at `GET /api/v1/stats` (small-table reads only — milliseconds regardless of volume; windows 1d/7d/30d/90d plus a custom date range).
+- Renders a public dashboard at `/` (no chart library — inline SVG/CSS only; 1-day windows show hourly granularity).
+- Raw `events` are a debug log kept `MMA_TELEMETRY_RAW_RETENTION_DAYS` (default 14); every metric comes from permanent aggregates, so retention never changes a number.
 - Optionally snapshots the database to Huawei Cloud OBS (daily ×30 + monthly ×12).
+- One-shot rebuild command: `telemetry-server -migrate` (run with the service stopped; rebuilds every aggregate from raw events, idempotent).
 
 ## Privacy
 
@@ -86,7 +87,9 @@ Configuration is read from a `.env` file (and can be overridden by real environm
 | --- | --- | --- |
 | `MMA_TELEMETRY_ADDR` | `:8080` | Listen address (bind `127.0.0.1:8080` behind a proxy) |
 | `MMA_TELEMETRY_DB` | `telemetry.db` | SQLite path |
-| `MMA_TELEMETRY_RETENTION_DAYS` | `365` | Event retention |
+| `MMA_TELEMETRY_RAW_RETENTION_DAYS` | `14` | Raw event log retention (debug/rebuild source only; never affects metrics) |
+| `MMA_TELEMETRY_ACTIVE_MIN` | `10` | "Active" = >= N analyze events that UTC day |
+| `MMA_TELEMETRY_HOUR_RETENTION_DAYS` | `90` | `install_hours` rolling window (24h distribution / hourly trend cap) |
 | `MMA_TELEMETRY_ONLINE_WINDOW_MIN` | `10` | "Online" = last_seen within N minutes |
 | `MMA_TELEMETRY_RATE_LIMIT_PER_MIN` | `120` | Ingest requests/min/IP (0 disables) |
 | `MMA_TELEMETRY_STATS_CACHE_SECONDS` | `60` | `/api/v1/stats` aggregate cache |
@@ -125,7 +128,13 @@ A fixed-window limiter keyed by client IP, kept **in memory only** (never persis
 
 ## Data retention
 
-A background loop deletes `events` older than `MMA_TELEMETRY_RETENTION_DAYS` (default 365). The `installs` table is tiny and kept. Aggregates are computed on demand and cached for 60 s.
+Three independent tiers (see `data-model.md`):
+
+- **Raw `events`**: `MMA_TELEMETRY_RAW_RETENTION_DAYS` (default 14) — debug log only; deleting it never changes a metric;
+- **`install_hours`**: `MMA_TELEMETRY_HOUR_RETENTION_DAYS` (default 90) — cap for the 24h distribution / hourly trend;
+- **Aggregates (`daily_agg` / `install_days` / `installs`)**: permanent — the source of every dashboard number.
+
+Background loops prune daily. "Active" = >= `MMA_TELEMETRY_ACTIVE_MIN` (default 10) analyze events that day, carried by permanent tables — fully decoupled from any cleanup. Stats are cached per window for 60 s.
 
 ## Deployment (Linux)
 
@@ -133,7 +142,7 @@ Cross-compile from any machine (no Docker, no cgo). `-X main.version=` injects t
 
 ```bash
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.0.0 -s -w" -o bin/telemetry-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.1.0 -s -w" -o bin/telemetry-server ./cmd/server
 ```
 
 On the server:

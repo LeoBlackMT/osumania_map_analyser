@@ -18,10 +18,19 @@
     </div>
     <div class="controls">
       <div class="range" id="range" role="group" aria-label="Time range">
+        <button data-days="1">1d</button>
         <button data-days="7">7d</button>
         <button data-days="30" class="active">30d</button>
         <button data-days="90">90d</button>
-        <button data-days="0">All</button>
+      </div>
+      <div class="custom" id="customBox">
+        <button class="custom-btn" id="customBtn" type="button" aria-expanded="false" aria-controls="customInputs">Custom</button>
+        <span class="custom-inputs" id="customInputs" hidden>
+          <label>From <input type="date" id="fromInput"></label>
+          <label>To <input type="date" id="toInput"></label>
+          <button class="apply-btn" id="applyBtn" type="button">Apply</button>
+        </span>
+        <span class="custom-err" id="customErr" role="status" aria-live="polite"></span>
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -52,7 +61,7 @@
       <div class="body chart-wrap"><div id="onlineByHour"></div></div>
     </section>
     <section class="panel">
-      <h2>Active per day <small>active · new</small></h2>
+      <h2><span id="trendTitle">Active per day</span> <small id="trendSub">active · new</small></h2>
       <div class="body chart-wrap"><div id="trend"></div></div>
     </section>
   </div>
@@ -92,6 +101,17 @@
     <section class="panel">
       <h2>Called algorithm <small>each analyze · once</small></h2>
       <div class="body" id="actualAlgorithms"></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Analysis duration <small>100ms bins</small></h2>
+      <div class="body chart-wrap"><div id="durationHistogram"></div></div>
+    </section>
+    <section class="panel">
+      <h2>Plays per day <small>per install · analyze events</small></h2>
+      <div class="body" id="playFreq"></div>
     </section>
   </div>
 

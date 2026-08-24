@@ -5,7 +5,31 @@
 
 // XSS policy: every client-controlled string is written via textContent only.
 const PALETTE = ["#635bff", "#0d9c5f", "#f5a623", "#cf1e3b", "#06b6d4", "#a855f7", "#ec4899", "#0ea5e9"];
-let currentDays = 30;
+const CHIP_DAYS = [1, 7, 30, 90];
+const REFRESH_MS = 60000;
+
+// ── Window state (shared by chips, custom range, URL, and the fetch) ──
+let win = { days: 30, from: "", to: "" };
+let dataStart = "";   // earliest date with data (from the server), "YYYY-MM-DD"
+let retryDelayMs = 2000;
+let refreshTimer = null;
+let loading = false;
+
+function queryString() {
+  return win.from && win.to ? "from=" + win.from + "&to=" + win.to : "days=" + win.days;
+}
+function windowLabel() {
+  return win.from && win.to ? win.from.slice(5) + " → " + win.to.slice(5) : win.days + "d";
+}
+function syncUrl() {
+  history.replaceState(null, "", location.pathname + "?" + queryString());
+}
+function fmtHourLabel(epochMs) {
+  return new Date(epochMs).toISOString().slice(5, 16); // "MM-DD HH:00" (UTC)
+}
+function todayStr() {
+  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD" (UTC)
+}
 
 // ── Theme: default to system preference, persist choice. ──
 (function initTheme() {
@@ -44,7 +68,7 @@ function svgEl(tag, attrs) {
 }
 function emptyBox(host, msg) {
   host.textContent = "";
-  host.appendChild(el("div", "empty", msg || "No data yet"));
+  host.appendChild(el("div", "empty", msg || "No data in range"));
 }
 
 // ── Compact number formatter ────────────────────────
@@ -201,7 +225,8 @@ function renderVChart(id, items, xEvery) {
 }
 
 // ── Single-series line chart with crosshair snap-hover ─────────────
-// items: [{label, count}] — same as renderVChart input format.
+// items: [{label, count, tip}] — used for the 24h distribution and the
+// hourly trend (windows of one day).
 function renderLine(id, items) {
   const c = document.getElementById(id);
   c.textContent = "";
@@ -218,7 +243,6 @@ function renderLine(id, items) {
   lg.appendChild(svgEl("stop", { offset: "100%", "stop-color": "#635bff", "stop-opacity": "0" }));
   svg.appendChild(lg);
 
-  // Y-axis gridlines
   [0, 1 / 3, 2 / 3, 1].forEach((f) => {
     const gy = (PAD + (1 - f) * (H - MB - PAD)).toFixed(1);
     svg.appendChild(svgEl("line", { x1: ML, y1: gy, x2: W - PAD, y2: gy, class: "grid" }));
@@ -228,14 +252,12 @@ function renderLine(id, items) {
     svg.appendChild(tx);
   });
 
-  // Area fill + line
   const pts = items.map((it, i) => [x(i), y(it.count)]);
   const linePath = smoothPath(pts);
   const area = linePath + " L" + x(n - 1).toFixed(1) + "," + (H - MB).toFixed(1) + " L" + x(0).toFixed(1) + "," + (H - MB).toFixed(1) + " Z";
   svg.appendChild(svgEl("path", { d: area, fill: "url(#lineAreaGrad)" }));
   svg.appendChild(svgEl("path", { d: linePath, fill: "none", stroke: "#635bff", "stroke-width": 1.8, "stroke-linejoin": "round", class: "draw" }));
 
-  // Crosshair hover overlay
   const hover = svgEl("g", { display: "none" });
   const guide = svgEl("line", { class: "hover-guide" });
   guide.setAttribute("y1", PAD); guide.setAttribute("y2", H - MB);
@@ -271,7 +293,6 @@ function renderLine(id, items) {
   svg.addEventListener("mousemove", (e) => showHover(snap(e.clientX), e.clientX, e.clientY));
   svg.addEventListener("mouseleave", hideHover);
 
-  // X-axis labels
   const step = Math.max(1, Math.ceil(n / 12));
   for (let i = 0; i < n; i += step) {
     const tx = svgEl("text", { x: x(i).toFixed(1), y: H - 6, "text-anchor": "middle" });
@@ -300,7 +321,6 @@ function renderValueBars(id, buckets) {
 }
 
 // ── Smooth cubic bezier path through points ─────────────
-// points: [[x, y], ...] — returns SVG path d string.
 function smoothPath(points) {
   if (points.length < 2) return "";
   let d = "M" + points[0][0].toFixed(1) + "," + points[0][1].toFixed(1);
@@ -318,7 +338,7 @@ function smoothPath(points) {
   return d;
 }
 
-// ── Line chart with crosshair snap-hover ─────────────
+// ── Line chart with crosshair snap-hover (two series: active · new) ──
 function renderTrend(id, trend) {
   const c = document.getElementById(id);
   c.textContent = "";
@@ -409,6 +429,27 @@ function renderTrend(id, trend) {
   c.appendChild(svg);
 }
 
+// Trend panel: hourly (window <= 1 day) or daily (active · new).
+function renderTrendSection(s) {
+  const title = document.getElementById("trendTitle");
+  const sub = document.getElementById("trendSub");
+  const hours = s.activeTrendHourly;
+  if (hours && hours.length) {
+    title.textContent = "Active per hour";
+    sub.textContent = "active";
+    const items = hours.map((h) => ({
+      label: fmtHourLabel(h.hour),
+      count: h.active,
+      tip: fmtHourLabel(h.hour) + " UTC — " + h.active + " active",
+    }));
+    renderLine("trend", items);
+  } else {
+    title.textContent = "Active per day";
+    sub.textContent = "active · new";
+    renderTrend("trend", s.activeTrend || []);
+  }
+}
+
 // ── Donut + legend ───────────────────────────────────
 function renderDonut(id, items, maxSlices) {
   const c = document.getElementById(id);
@@ -438,7 +479,7 @@ function renderDonut(id, items, maxSlices) {
   });
   const center = svgEl("text", {
     x: 21, y: 21, "text-anchor": "middle", "dominant-baseline": "central",
-    "font-size": "5.4", fill: "#0a2540", "font-weight": "600",
+    "font-size": "5.4", "font-weight": "600",
   });
   center.textContent = fmtCompact(total);
   bindTip(center, String(total));
@@ -469,9 +510,8 @@ function renderDonut(id, items, maxSlices) {
 function renderMetrics(s) {
   const c = document.getElementById("metrics");
   c.textContent = "";
-  const windowLabel = currentDays ? currentDays + "d" : "all";
   const wEl = document.getElementById("windowLabel");
-  if (wEl) wEl.textContent = windowLabel;
+  if (wEl) wEl.textContent = windowLabel();
   const hour = s.peakOnlineHour != null ? " · " + String(s.peakOnlineHour).padStart(2, "0") + ":00 UTC" : "";
   const items = [
     ["Avg ★", s.avgStar ? s.avgStar.toFixed(2) : "—", s.avgStar ? s.avgStar.toFixed(2) : "—"],
@@ -493,48 +533,158 @@ function renderMetrics(s) {
   }
 }
 
+// ── Accessibility: chart summaries (rendered content stays untouched) ──
+function labelChart(id, text) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.setAttribute("role", "img");
+  node.setAttribute("aria-label", text);
+}
+
 // ── Fetch + dispatch ─────────────────────────────────
+function render(s) {
+  const wl = windowLabel();
+  document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
+  document.getElementById("serverVer").textContent = "v" + (s.serverVersion || "?");
+  document.getElementById("hourRange").textContent = "UTC · " + wl;
+
+  renderCards(s);
+  renderHourBars("onlineByHour", s.onlineByHour || []);
+  renderTrendSection(s);
+  renderValueBars("starHistogram", s.starHistogram || []);
+  renderValueBars("lnRatioHistogram", s.lnRatioHistogram || []);
+  renderValueBars("numericHistogram", s.numericHistogram || [], "numeric");
+  renderHBar("keycounts", s.keycounts || []);
+  renderDonut("modes", s.modes || []);
+  renderDonut("mods", s.mods || []);
+  renderDonut("versions", s.versions || []);
+  renderHBar("algorithms", s.algorithms || [], 8);
+  renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
+  renderValueBars("durationHistogram", s.durationHistogram || []);
+  renderHBar("playFreq", (s.playFreq || []).filter((b) => b.count > 0));
+  renderMetrics(s);
+
+  // Chart summaries for screen readers (values also live in tooltips/legend).
+  labelChart("onlineByHour", "Active installs by hour of day, " + wl);
+  labelChart("trend", document.getElementById("trendTitle").textContent + ", " + wl);
+  labelChart("starHistogram", "Star rating histogram, " + wl);
+  labelChart("lnRatioHistogram", "LN ratio histogram, " + wl);
+  labelChart("numericHistogram", "Numeric difficulty histogram, " + wl);
+  labelChart("durationHistogram", "Analysis duration histogram, " + wl);
+  labelChart("playFreq", "Plays per install per day, " + wl);
+}
+
 function load() {
-  document.getElementById("updated").textContent = "loading…";
-  fetch("/api/v1/stats?days=" + currentDays)
-    .then((r) => {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
+  if (loading) return;
+  loading = true;
+  const status = document.getElementById("updated");
+  status.textContent = "updating…";
+
+  fetch("/api/v1/stats?" + queryString())
+    .then((r) => r.json().catch(() => null).then((j) => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok) throw new Error((j && j.error) || "request failed");
+      return j;
     })
     .then((s) => {
-      document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
-      document.getElementById("serverVer").textContent = "v" + (s.serverVersion || "?");
-      document.getElementById("hourRange").textContent = "UTC · " + (currentDays ? currentDays + "d" : "all");
-      renderCards(s);
-      renderHourBars("onlineByHour", s.onlineByHour || []);
-      renderTrend("trend", s.activeTrend || []);
-      renderValueBars("starHistogram", s.starHistogram || []);
-      renderValueBars("lnRatioHistogram", s.lnRatioHistogram || []);
-      renderValueBars("numericHistogram", s.numericHistogram || [], "numeric");
-      renderHBar("keycounts", s.keycounts || []);
-      renderDonut("modes", s.modes || []);
-      renderDonut("mods", s.mods || []);
-      renderDonut("versions", s.versions || []);
-      renderHBar("algorithms", s.algorithms || [], 8);
-      renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
-      renderMetrics(s);
+      retryDelayMs = 2000;
+      dataStart = s.dataStart || "";
+      syncDateLimits();
+      render(s);
+      loading = false;
     })
     .catch((err) => {
-      const ov = document.getElementById("overview");
-      ov.textContent = "";
-      ov.appendChild(el("div", "error", "Failed to load statistics: " + err.message));
+      // Keep the previous content; retry with backoff.
+      status.textContent = "update failed — retrying in " + Math.round(retryDelayMs / 1000) + "s (" + err.message + ")";
+      const delay = retryDelayMs;
+      retryDelayMs = Math.min(retryDelayMs * 2, 60000);
+      loading = false;
+      setTimeout(load, delay);
     });
 }
 
-// ── Bindings ─────────────────────────────────────────
+// ── Window controls ──────────────────────────────────
+const fromInput = document.getElementById("fromInput");
+const toInput = document.getElementById("toInput");
+const customBox = document.getElementById("customBox");
+const customErr = document.getElementById("customErr");
+
+function showCustomErr(msg) {
+  customErr.textContent = msg || "";
+}
+function syncDateLimits() {
+  const today = todayStr();
+  toInput.max = today;
+  if (dataStart) fromInput.min = dataStart;
+}
+function syncControls() {
+  document.querySelectorAll("#range button").forEach((b) => {
+    b.classList.toggle("active", !win.from && win.days === parseInt(b.dataset.days, 10));
+  });
+  const custom = Boolean(win.from && win.to);
+  customBox.classList.toggle("active", custom);
+  document.querySelectorAll("#range button").forEach((b) => {
+    b.disabled = custom;
+  });
+  fromInput.value = win.from;
+  toInput.value = win.to;
+  document.getElementById("customBtn").setAttribute("aria-expanded", custom ? "true" : "false");
+  document.getElementById("customInputs").hidden = !custom;
+}
+function applyWin(next) {
+  win = next;
+  showCustomErr("");
+  syncUrl();
+  syncControls();
+  load();
+}
+
+(function initWinFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const f = p.get("from"), t = p.get("to");
+  if (f && t) {
+    win = { days: 30, from: f, to: t };
+  } else {
+    const d = parseInt(p.get("days") || "30", 10);
+    if (CHIP_DAYS.indexOf(d) >= 0) win.days = d;
+  }
+})();
+
 document.getElementById("range").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-days]");
-  if (!btn) return;
-  currentDays = parseInt(btn.dataset.days, 10);
-  document.querySelectorAll("#range button").forEach((b) => b.classList.toggle("active", b === btn));
-  load();
+  if (!btn || btn.disabled) return;
+  applyWin({ days: parseInt(btn.dataset.days, 10), from: "", to: "" });
 });
 
+document.getElementById("customBtn").addEventListener("click", () => {
+  const inputs = document.getElementById("customInputs");
+  const shown = !inputs.hidden;
+  inputs.hidden = shown;
+  document.getElementById("customBtn").setAttribute("aria-expanded", String(!shown));
+  if (!shown) { syncDateLimits(); fromInput.focus(); }
+});
+
+document.getElementById("applyBtn").addEventListener("click", () => {
+  const f = fromInput.value, t = toInput.value;
+  if (!f || !t) { showCustomErr("Choose both dates"); return; }
+  if (f > t) { showCustomErr("From must not be after To"); return; }
+  if (dataStart && f < dataStart) { showCustomErr("Earliest date is " + dataStart); return; }
+  if (t > todayStr()) { showCustomErr("To must not be in the future"); return; }
+  applyWin({ days: 30, from: f, to: t });
+});
+
+// ── Auto-refresh (paused while the tab is hidden) ────
+function startRefresh() {
+  if (!refreshTimer) refreshTimer = setInterval(load, REFRESH_MS);
+}
+function stopRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { stopRefresh(); }
+  else { load(); startRefresh(); }
+});
+
+syncControls();
 load();
-// Auto-refresh every 60 s (matches the server-side stats cache TTL).
-setInterval(load, 60000);
+startRefresh();

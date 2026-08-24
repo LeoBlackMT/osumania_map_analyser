@@ -87,12 +87,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataJSON, err := json.Marshal(whitelist(payload.Data))
+	data := whitelist(payload.Data)
+	dataJSON, err := json.Marshal(data)
 	if err != nil {
 		dataJSON = []byte("{}")
 	}
 
-	if err := h.store.RecordEvent(payload.ID, payload.Kind, payload.Version, string(dataJSON), time.Now().UnixMilli()); err != nil {
+	// The event row and every aggregate land in one transaction (see store.go).
+	if err := h.store.RecordEvent(payload.ID, payload.Kind, payload.Version, string(dataJSON), data, time.Now().UnixMilli()); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
