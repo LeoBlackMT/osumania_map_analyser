@@ -24,11 +24,43 @@ function windowLabel() {
 function syncUrl() {
   history.replaceState(null, "", location.pathname + "?" + queryString());
 }
-function fmtHourLabel(epochMs) {
-  return new Date(epochMs).toISOString().slice(5, 16); // "MM-DD HH:00" (UTC)
-}
 function todayStr() {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD" (UTC)
+}
+
+// ── Local-time helpers ───────────────────────────────
+// All stored times are UTC; the dashboard converts them to the visitor's
+// timezone for display (tooltips always carry the tz label).
+function tzLabel() {
+  const off = -new Date().getTimezoneOffset(); // minutes east of UTC
+  if (off === 0) return "UTC";
+  const sign = off > 0 ? "+" : "-";
+  const abs = Math.abs(off);
+  const h = Math.floor(abs / 60), m = abs % 60;
+  return "UTC" + sign + h + (m ? ":" + String(m).padStart(2, "0") : "");
+}
+// Local "YYYY-MM-DD HH:MM" for an epoch-ms timestamp.
+function fmtLocalTime(epochMs) {
+  const d = new Date(epochMs);
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+// Local hour-of-day (minutes since local midnight) for a UTC hour index.
+function localHourOfDay(utcIdx) {
+  const offMin = -new Date().getTimezoneOffset();
+  return (((utcIdx * 60 + offMin) % 1440) + 1440) % 1440;
+}
+// Short axis label: "14" (or "05:30" for fractional-offset zones).
+function hourLabel(utcIdx) {
+  const m = localHourOfDay(utcIdx);
+  const p = (n) => String(n).padStart(2, "0");
+  return m % 60 ? p(Math.floor(m / 60)) + ":" + p(m % 60) : p(Math.floor(m / 60));
+}
+// Tooltip time: "14:00 (UTC+8)".
+function hourTooltip(utcIdx) {
+  const m = localHourOfDay(utcIdx);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(Math.floor(m / 60)) + ":" + p(m % 60) + " (" + tzLabel() + ")";
 }
 
 // ── Theme: default to system preference, persist choice. ──
@@ -304,9 +336,9 @@ function renderLine(id, items) {
 
 function renderHourBars(id, counts) {
   const items = (counts || []).map((v, i) => ({
-    label: String(i).padStart(2, "0"),
+    label: hourLabel(i), // local hour-of-day, tz in tooltip
     count: v || 0,
-    tip: String(i).padStart(2, "0") + ":00 UTC — " + (v || 0) + " installs",
+    tip: hourTooltip(i) + " — " + (v || 0) + " installs",
   }));
   renderLine(id, items);
 }
@@ -321,8 +353,19 @@ function renderValueBars(id, buckets) {
 }
 
 // ── Smooth cubic bezier path through points ─────────────
+// points: [[x, y], ...] — returns SVG path d string. Control points are
+// clamped to the data y-range: the /6 Catmull-Rom tangents overshoot below
+// zero between sharply falling points (the dip under the axis people saw
+// between 16:00-17:00), and a bezier stays inside the convex hull of its
+// control points, so clamping removes the dip entirely.
 function smoothPath(points) {
   if (points.length < 2) return "";
+  let minY = Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p[1] < minY) minY = p[1];
+    if (p[1] > maxY) maxY = p[1];
+  }
+  const cl = (v) => Math.max(minY, Math.min(maxY, v));
   let d = "M" + points[0][0].toFixed(1) + "," + points[0][1].toFixed(1);
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[Math.max(i - 1, 0)];
@@ -330,9 +373,9 @@ function smoothPath(points) {
     const p2 = points[i + 1];
     const p3 = points[Math.min(i + 2, points.length - 1)];
     const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp1y = cl(p1[1] + (p2[1] - p0[1]) / 6);
     const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    const cp2y = cl(p2[1] - (p3[1] - p1[1]) / 6);
     d += "C" + cp1x.toFixed(1) + "," + cp1y.toFixed(1) + " " + cp2x.toFixed(1) + "," + cp2y.toFixed(1) + " " + p2[0].toFixed(1) + "," + p2[1].toFixed(1);
   }
   return d;
@@ -437,11 +480,14 @@ function renderTrendSection(s) {
   if (hours && hours.length) {
     title.textContent = "Active per hour";
     sub.textContent = "active";
-    const items = hours.map((h) => ({
-      label: fmtHourLabel(h.hour),
-      count: h.active,
-      tip: fmtHourLabel(h.hour) + " UTC — " + h.active + " active",
-    }));
+    const items = hours.map((h) => {
+      const d = new Date(h.hour);
+      return {
+        label: String(d.getHours()).padStart(2, "0"), // just the hour on the axis
+        count: h.active,
+        tip: fmtLocalTime(h.hour) + " (" + tzLabel() + ") — " + h.active + " active",
+      };
+    });
     renderLine("trend", items);
   } else {
     title.textContent = "Active per day";
@@ -512,12 +558,17 @@ function renderMetrics(s) {
   c.textContent = "";
   const wEl = document.getElementById("windowLabel");
   if (wEl) wEl.textContent = windowLabel();
-  const hour = s.peakOnlineHour != null ? " · " + String(s.peakOnlineHour).padStart(2, "0") + ":00 UTC" : "";
+  // "Avg daily" is meaningless for a single-day window — show a dash.
+  const singleDay = s.windowFrom && s.windowFrom === s.windowTo;
+  const avgDaily = singleDay ? "—" : fmtCompact(s.avgDailyActive);
+  const avgDailyRaw = singleDay ? "—" : String(s.avgDailyActive);
+  const hour = s.peakOnlineHour != null ? " · " + hourLabel(s.peakOnlineHour) : "";
+  const peakRaw = s.peakOnline ? String(s.peakOnline) + " · " + hourTooltip(s.peakOnlineHour) : "—";
   const items = [
     ["Avg ★", s.avgStar ? s.avgStar.toFixed(2) : "—", s.avgStar ? s.avgStar.toFixed(2) : "—"],
     ["Avg LN%", s.avgLnRatio ? (s.avgLnRatio * 100).toFixed(1) + "%" : "—", s.avgLnRatio ? (s.avgLnRatio * 100).toFixed(1) + "%" : "—"],
-    ["Peak online", s.peakOnline ? fmtCompact(s.peakOnline) + hour : "—", s.peakOnline ? String(s.peakOnline) + hour : "—"],
-    ["Avg daily", fmtCompact(s.avgDailyActive), String(s.avgDailyActive)],
+    ["Peak online", s.peakOnline ? fmtCompact(s.peakOnline) + hour : "—", peakRaw],
+    ["Avg daily", avgDaily, avgDailyRaw],
     ["Analyzes", fmtCompact(s.analyzeCount), String(s.analyzeCount)],
     ["Dur. avg", (s.durationStats && s.durationStats.avgMs ? s.durationStats.avgMs : 0) + " ms", (s.durationStats && s.durationStats.avgMs ? s.durationStats.avgMs : 0) + " ms"],
     ["Dur. p50", (s.durationStats ? s.durationStats.p50Ms : 0) + " ms", (s.durationStats ? s.durationStats.p50Ms : 0) + " ms"],
@@ -530,6 +581,26 @@ function renderMetrics(s) {
     chip.appendChild(cv);
     chip.appendChild(el("div", "ck", k));
     c.appendChild(chip);
+  }
+
+  // Second row: extremes (computed from aggregates, no raw data involved).
+  const cm = document.getElementById("metricsMax");
+  if (cm) {
+    cm.textContent = "";
+    const ds = s.durationStats || {};
+    const maxItems = [
+      ["Dur. max", ds.maxMs ? ds.maxMs + " ms" : "—", ds.maxMs ? String(ds.maxMs) : "—"],
+      ["Max ★", s.maxStar ? s.maxStar.toFixed(2) : "—", s.maxStar ? s.maxStar.toFixed(2) : "—"],
+      ["Max numeric", s.maxNumeric != null ? s.maxNumeric.toFixed(2) : "—", s.maxNumeric != null ? s.maxNumeric.toFixed(2) : "—"],
+    ];
+    for (const [k, v, raw] of maxItems) {
+      const chip = el("div", "chip");
+      const cv = el("div", "cv", v);
+      if (raw !== v) bindTip(cv, raw);
+      chip.appendChild(cv);
+      chip.appendChild(el("div", "ck", k));
+      cm.appendChild(chip);
+    }
   }
 }
 
@@ -544,9 +615,9 @@ function labelChart(id, text) {
 // ── Fetch + dispatch ─────────────────────────────────
 function render(s) {
   const wl = windowLabel();
-  document.getElementById("updated").textContent = "updated " + new Date().toLocaleString();
+  document.getElementById("updated").textContent = "updated " + new Date().toLocaleString() + " (" + tzLabel() + ")";
   document.getElementById("serverVer").textContent = "v" + (s.serverVersion || "?");
-  document.getElementById("hourRange").textContent = "UTC · " + wl;
+  document.getElementById("hourRange").textContent = tzLabel() + " · " + wl;
 
   renderCards(s);
   renderHourBars("onlineByHour", s.onlineByHour || []);
@@ -560,8 +631,14 @@ function render(s) {
   renderDonut("versions", s.versions || []);
   renderHBar("algorithms", s.algorithms || [], 8);
   renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
-  renderValueBars("durationHistogram", s.durationHistogram || []);
-  renderHBar("playFreq", (s.playFreq || []).filter((b) => b.count > 0));
+  // Duration histogram: show bins up to a display cap — the min of the 5s
+  // storage cap and the window's real max (floored at 1s) — so the dense
+  // sub-second range isn't crushed by a sparse tail. The true maximum lives
+  // in the "Dur. max" chip.
+  const durMax = (s.durationStats && s.durationStats.maxMs) || 0;
+  const durCapMs = Math.min(5000, Math.max(1000, Math.ceil(durMax / 1000) * 1000));
+  renderValueBars("durationHistogram", (s.durationHistogram || []).filter((b) => (b.value || 0) < durCapMs));
+  renderValueBars("playFreq", (s.playFreq || []).filter((b) => b.count > 0));
   renderMetrics(s);
 
   // Chart summaries for screen readers (values also live in tooltips/legend).
@@ -607,35 +684,57 @@ function load() {
 const fromInput = document.getElementById("fromInput");
 const toInput = document.getElementById("toInput");
 const customBox = document.getElementById("customBox");
+const customPopup = document.getElementById("customPopup");
+const customBtn = document.getElementById("customBtn");
 const customErr = document.getElementById("customErr");
 
 function showCustomErr(msg) {
   customErr.textContent = msg || "";
 }
+// Keep pickers sane: end >= start (and start <= end) while editing, plus the
+// dataStart floor and the "today" ceiling.
 function syncDateLimits() {
   const today = todayStr();
   toInput.max = today;
   if (dataStart) fromInput.min = dataStart;
+  if (fromInput.value) toInput.min = fromInput.value;
+  if (toInput.value) fromInput.max = toInput.value;
+}
+function isPopupOpen() {
+  return !customPopup.hidden;
+}
+function openPopup() {
+  showCustomErr("");
+  syncDateLimits();
+  customPopup.hidden = false;
+  void customPopup.offsetHeight; // force reflow so the enter transition plays
+  customPopup.classList.add("open");
+  customBtn.setAttribute("aria-expanded", "true");
+  fromInput.focus();
+}
+function closePopup() {
+  customPopup.classList.remove("open");
+  customBtn.setAttribute("aria-expanded", "false");
+  // Match the CSS transition duration before hiding (animation on the way out).
+  setTimeout(() => { customPopup.hidden = true; }, 180);
 }
 function syncControls() {
-  document.querySelectorAll("#range button").forEach((b) => {
-    b.classList.toggle("active", !win.from && win.days === parseInt(b.dataset.days, 10));
-  });
   const custom = Boolean(win.from && win.to);
-  customBox.classList.toggle("active", custom);
   document.querySelectorAll("#range button").forEach((b) => {
-    b.disabled = custom;
+    b.classList.toggle("active", !custom && win.days === parseInt(b.dataset.days, 10));
   });
-  fromInput.value = win.from;
-  toInput.value = win.to;
-  document.getElementById("customBtn").setAttribute("aria-expanded", custom ? "true" : "false");
-  document.getElementById("customInputs").hidden = !custom;
+  customBtn.classList.toggle("active", custom);
+  customBox.classList.toggle("active", custom);
+  fromInput.value = win.from || "";
+  toInput.value = win.to || "";
+  syncDateLimits();
 }
-function applyWin(next) {
+function applyWin(next, close) {
   win = next;
   showCustomErr("");
   syncUrl();
   syncControls();
+  if (close) closePopup();
   load();
 }
 
@@ -650,19 +749,29 @@ function applyWin(next) {
   }
 })();
 
+// Chips are always clickable: while a custom range is active they act as the
+// way back to the quick windows (no disabled state, nothing to get stuck in).
 document.getElementById("range").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-days]");
-  if (!btn || btn.disabled) return;
-  applyWin({ days: parseInt(btn.dataset.days, 10), from: "", to: "" });
+  if (!btn) return;
+  applyWin({ days: parseInt(btn.dataset.days, 10), from: "", to: "" }, true);
 });
 
-document.getElementById("customBtn").addEventListener("click", () => {
-  const inputs = document.getElementById("customInputs");
-  const shown = !inputs.hidden;
-  inputs.hidden = shown;
-  document.getElementById("customBtn").setAttribute("aria-expanded", String(!shown));
-  if (!shown) { syncDateLimits(); fromInput.focus(); }
+customBtn.addEventListener("click", () => {
+  if (isPopupOpen()) closePopup();
+  else openPopup();
 });
+// Clicking outside the popup closes it.
+document.addEventListener("click", (e) => {
+  if (isPopupOpen() && !customBox.contains(e.target)) closePopup();
+});
+// Esc closes the popup.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isPopupOpen()) closePopup();
+});
+// Live min/max linkage between the two date fields.
+fromInput.addEventListener("change", syncDateLimits);
+toInput.addEventListener("change", syncDateLimits);
 
 document.getElementById("applyBtn").addEventListener("click", () => {
   const f = fromInput.value, t = toInput.value;
@@ -670,7 +779,15 @@ document.getElementById("applyBtn").addEventListener("click", () => {
   if (f > t) { showCustomErr("From must not be after To"); return; }
   if (dataStart && f < dataStart) { showCustomErr("Earliest date is " + dataStart); return; }
   if (t > todayStr()) { showCustomErr("To must not be in the future"); return; }
-  applyWin({ days: 30, from: f, to: t });
+  applyWin({ days: 30, from: f, to: t }, true);
+});
+
+// Cancel discards the edits in the open popup (an active custom range stays
+// until a chip or a new range replaces it).
+document.getElementById("cancelBtn").addEventListener("click", () => {
+  showCustomErr("");
+  syncControls(); // restore the applied values into the fields
+  closePopup();
 });
 
 // ── Auto-refresh (paused while the tab is hidden) ────

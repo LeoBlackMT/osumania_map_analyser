@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ManiaMapAnalyser — Usage Statistics</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,13 +25,22 @@
         <button data-days="90">90d</button>
       </div>
       <div class="custom" id="customBox">
-        <button class="custom-btn" id="customBtn" type="button" aria-expanded="false" aria-controls="customInputs">Custom</button>
-        <span class="custom-inputs" id="customInputs" hidden>
-          <label>From <input type="date" id="fromInput"></label>
-          <label>To <input type="date" id="toInput"></label>
-          <button class="apply-btn" id="applyBtn" type="button">Apply</button>
-        </span>
-        <span class="custom-err" id="customErr" role="status" aria-live="polite"></span>
+        <button class="custom-btn" id="customBtn" type="button" aria-expanded="false" aria-controls="customPopup" aria-haspopup="dialog">Custom</button>
+        <div class="custom-popup" id="customPopup" role="dialog" aria-label="Custom date range" hidden>
+          <div class="custom-field">
+            <label for="fromInput">From</label>
+            <input type="date" id="fromInput">
+          </div>
+          <div class="custom-field">
+            <label for="toInput">To</label>
+            <input type="date" id="toInput">
+          </div>
+          <div class="custom-actions">
+            <button class="apply-btn" id="applyBtn" type="button">Apply</button>
+            <button class="cancel-btn" id="cancelBtn" type="button">Cancel</button>
+          </div>
+          <p class="custom-err" id="customErr" role="status" aria-live="polite"></p>
+        </div>
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -106,18 +116,21 @@
 
   <div class="grid2">
     <section class="panel">
-      <h2>Analysis duration <small>100ms bins</small></h2>
+      <h2>Analysis duration <small>20ms bins</small></h2>
       <div class="body chart-wrap"><div id="durationHistogram"></div></div>
     </section>
     <section class="panel">
       <h2>Plays per day <small>per install · analyze events</small></h2>
-      <div class="body" id="playFreq"></div>
+      <div class="body chart-wrap" id="playFreq"></div>
     </section>
   </div>
 
   <section class="panel" style="margin-bottom:14px">
     <h2>Analysis metrics <small id="windowLabel">30d</small></h2>
-    <div class="body"><div id="metrics" class="chips"></div></div>
+    <div class="body">
+      <div id="metrics" class="chips"></div>
+      <div id="metricsMax" class="chips chips-max"></div>
+    </div>
   </section>
 </main>
 <div id="tip"></div>

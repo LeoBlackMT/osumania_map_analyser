@@ -356,6 +356,10 @@ svg .hover-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
 .chip .cv { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -.01em; word-break: break-word; }
 .chip .ck { font-size: 11px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Second metrics row (extremes): three compact chips. */
+.chips-max { margin-top: 10px; grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 600px) { .chips-max { grid-template-columns: 1fr; } }
+
 /* ── Empty / error states ──────────────────────────── */
 .empty { color: var(--muted); font-size: 12.5px; padding: 24px 0; text-align: center; }
 .error { color: var(--danger); font-size: 12.5px; padding: 24px 0; text-align: center; }
@@ -384,8 +388,7 @@ footer .sep { color: var(--border-strong); }
 
 /* ── Custom date range control ─────────────────────── */
 .controls { flex-wrap: wrap; }
-.range button:disabled { opacity: .4; cursor: not-allowed; }
-.custom { display: inline-flex; align-items: center; gap: 8px; }
+.custom { position: relative; display: inline-flex; align-items: center; }
 .custom-btn {
   height: 38px; padding: 0 16px;
   background: var(--panel); color: var(--fg-dim);
@@ -396,25 +399,35 @@ footer .sep { color: var(--border-strong); }
 }
 .custom-btn:hover { color: var(--fg); border-color: var(--border-strong); }
 .custom.active .custom-btn { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-.custom-inputs {
-  display: inline-flex; align-items: center; gap: 8px;
+
+/* Popup (opens downward from the button, animated). */
+.custom-popup {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+  min-width: 280px;
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow);
+  border-radius: 10px; box-shadow: var(--shadow-strong);
+  padding: 14px;
+  opacity: 0; transform: translateY(-6px) scale(.97);
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
 }
-.custom-inputs[hidden] { display: none; }
-.custom-inputs label {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--fg-dim); font-weight: 500;
+.custom-popup.open { opacity: 1; transform: none; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .custom-popup { transition: none; } }
+.custom-field {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
 }
-.custom-inputs input[type="date"] {
+.custom-field label { font-size: 12px; color: var(--fg-dim); font-weight: 500; }
+.custom-field input[type="date"] {
   background: var(--panel-2); color: var(--fg);
   border: 1px solid var(--border); border-radius: 6px;
   padding: 5px 8px; font-size: 12.5px; font-family: var(--font-mono);
   min-height: 32px;
 }
-.custom-inputs input[type="date"]:focus {
+.custom-field input[type="date"]:focus {
   outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent;
 }
+.custom-actions { display: flex; gap: 8px; margin-top: 10px; }
 .apply-btn {
   background: var(--accent); color: #fff; border: none;
   border-radius: 6px; padding: 6px 14px; font-size: 12.5px;
@@ -422,4 +435,11 @@ footer .sep { color: var(--border-strong); }
   transition: background .15s ease;
 }
 .apply-btn:hover { background: var(--accent-2); }
-.custom-err { color: var(--danger); font-size: 12px; max-width: 240px; }
+.cancel-btn {
+  background: var(--panel-2); color: var(--fg-dim);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 14px; font-size: 12.5px; cursor: pointer; font-weight: 500;
+  min-height: 34px; transition: color .15s ease, border-color .15s ease;
+}
+.cancel-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+.custom-err { color: var(--danger); font-size: 12px; margin: 8px 0 0; }

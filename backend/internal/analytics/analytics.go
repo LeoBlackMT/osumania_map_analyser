@@ -44,6 +44,7 @@ type DurationStats struct {
 	AvgMs int64 `json:"avgMs"`
 	P50Ms int64 `json:"p50Ms"`
 	P90Ms int64 `json:"p90Ms"`
+	MaxMs int64 `json:"maxMs"`
 }
 
 type Stats struct {
@@ -81,6 +82,8 @@ type Stats struct {
 	DurationHistogram []Bucket      `json:"durationHistogram"`
 	DurationStats     DurationStats `json:"durationStats"`
 	PlayFreq          []KV          `json:"playFreq"`
+	MaxStar           float64       `json:"maxStar"`
+	MaxNumeric        float64       `json:"maxNumeric"`
 }
 
 // Compute builds the dashboard snapshot over the window [fromMs, toMs]
@@ -297,10 +300,20 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 		return f / 100, err == nil
 	})
 
-	// Duration: exact average from sum/count, percentiles from the 30s-bin
-	// CDF (error <= half a bin, deterministic, window-exact).
+	// Duration: exact average from sum/count, percentiles from the 20ms-bin
+	// CDF (error <= half a bin, deterministic, window-exact); max from
+	// max_val (window maximum without touching raw events).
 	s.DurationHistogram = durationHistogram(durRows)
 	s.DurationStats = durationStats(durRows)
+	if durMax, err := st.DailyAggMax(startDayMs, endDayMs, "dur"); err == nil {
+		s.DurationStats.MaxMs = int64(durMax)
+	}
+	if mx, err := st.DailyAggMax(startDayMs, endDayMs, "star"); err == nil {
+		s.MaxStar = mx
+	}
+	if mx, err := st.DailyAggMax(startDayMs, endDayMs, "numeric"); err == nil {
+		s.MaxNumeric = mx
+	}
 
 	// Plays per install per day (install_days.analyze_count).
 	playFreq, err := st.PlayFreqBetween(startDayMs, endDayMs)
@@ -342,11 +355,10 @@ func playFreqKV(m map[int64]int64) []KV {
 		min, max int64
 	}{
 		{"1", 1, 1},
-		{"2-3", 2, 3},
-		{"4-9", 4, 9},
+		{"2-4", 2, 4},
+		{"5-9", 5, 9},
 		{"10-19", 10, 19},
-		{"20-49", 20, 49},
-		{"50+", 50, math.MaxInt64},
+		{"20+", 20, math.MaxInt64},
 	}
 	out := make([]KV, 0, len(buckets))
 	var total int64

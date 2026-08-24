@@ -17,15 +17,16 @@ type AggInc struct {
 	Val    string
 	Count  int64
 	SumVal float64
+	MaxVal float64 // per-event value for value-carrying dims (window max via MAX)
 }
 
 // Duration binning for the analysis-duration metric (plugin sends
-// performance.now() - start, i.e. milliseconds of compute time: avg ~0.2s).
-// 100ms bins up to 5s, then an overflow bin ("5000+"); the overflow bin still
-// accumulates real durations in sum_val so the average stays exact, only
-// percentiles saturate at the overflow edge.
+// performance.now() - start, i.e. milliseconds of compute time: avg ~0.2s,
+// p50 ~0.1s). 20ms bins up to 5s, then an overflow bin ("5000+"); the
+// overflow bin still accumulates real durations in sum_val so the average
+// stays exact, only percentiles saturate at the overflow edge.
 const (
-	DurBinMs      = 100
+	DurBinMs      = 20
 	DurOverflowMs = 5000
 	DurOverflowV  = "5000+"
 )
@@ -64,7 +65,7 @@ func ParseData(dataJSON string) map[string]interface{} {
 //
 //	alg/actual/key/mod/mode  count distributions
 //	star/ln/numeric          binned histograms (count = events, sum_val = raw)
-//	dur                      duration histogram 30s bins (percentiles via CDF)
+//	dur                      duration histogram 20ms bins (percentiles via CDF)
 func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 	if data == nil {
 		return nil
@@ -72,7 +73,7 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 	day := ts / DayMs * DayMs
 	incs := make([]AggInc, 0, 12)
 	inc := func(dim, val string, sum float64) {
-		incs = append(incs, AggInc{Day: day, Dim: dim, Val: val, Count: 1, SumVal: sum})
+		incs = append(incs, AggInc{Day: day, Dim: dim, Val: val, Count: 1, SumVal: sum, MaxVal: sum})
 	}
 	num := func(k string) (float64, bool) {
 		v, ok := data[k].(float64)
@@ -116,7 +117,7 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 		bin := math.Round(num*4) / 4
 		inc("numeric", fmt.Sprintf("%.2f", bin), num)
 	}
-	// Duration: 100ms bins; count + real sum per bin (exact avg, CDF percentiles).
+	// Duration: 20ms bins; count + real sum per bin (exact avg, CDF percentiles).
 	if dur, ok := num("durationMs"); ok && dur >= 0 {
 		inc("dur", durationBin(int64(dur)), dur)
 	}
