@@ -142,7 +142,7 @@ curl -d '{"id":"00000000-0000-4000-8000-000000000000","kind":"boot","version":"1
 
 ```bash
 cd backend
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.1.1 -s -w" -o bin/telemetry-server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-X main.version=1.1.2 -s -w" -o bin/telemetry-server ./cmd/server
 ```
 
 在服务器上：

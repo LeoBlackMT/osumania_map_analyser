@@ -82,13 +82,14 @@ type Stats struct {
 	NumericHistogram  []Bucket      `json:"numericHistogram"`
 	DurationHistogram []Bucket      `json:"durationHistogram"`
 	DurationStats     DurationStats `json:"durationStats"`
-	PlayFreq          []Bucket      `json:"playFreq"`
+	AnalysesPerDay    []Bucket      `json:"analysesPerDay"`
+	CacheHitPct       float64       `json:"cacheHitPct"`
 	MinStar           float64       `json:"minStar"`
 	MaxStar           float64       `json:"maxStar"`
 	MinNumeric        float64       `json:"minNumeric"`
 	MaxNumeric        float64       `json:"maxNumeric"`
-	PlayMin           int64         `json:"playMin"`
-	PlayMax           int64         `json:"playMax"`
+	AnalysesMin       int64         `json:"analysesMin"`
+	AnalysesMax       int64         `json:"analysesMax"`
 }
 
 // Compute builds the dashboard snapshot over the window [fromMs, toMs]
@@ -310,6 +311,19 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 	// the per-row extrema (window extrema without touching raw events).
 	s.DurationHistogram = durationHistogram(durRows)
 	s.DurationStats = durationStats(durRows)
+	// Cache-hit rate: the "0" bin (durations 0-<10ms) is the plugin's
+	// result-cache-hit bucket (fetch/estimators skipped, snapshot applied) —
+	// the ratio of that bin to all analyze events.
+	var durTotal, cacheHits int64
+	for _, r := range durRows {
+		durTotal += r.Count
+		if r.Val == "0" {
+			cacheHits = r.Count
+		}
+	}
+	if durTotal > 0 {
+		s.CacheHitPct = float64(cacheHits) / float64(durTotal) * 100
+	}
 
 	// Extremes (unbounded "ext" dim): star / numeric window min & max.
 	extRows, err := st.DailyAggRows(startDayMs, endDayMs, "ext")
@@ -325,12 +339,12 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 		}
 	}
 
-	// Plays per install per day: continuous 10-count bins + window extrema.
+	// Analyses per install per day: continuous 10-count bins + extrema.
 	playFreq, err := st.PlayFreqBetween(startDayMs, endDayMs)
 	if err != nil {
 		return err
 	}
-	s.PlayFreq, s.PlayMin, s.PlayMax = playFreqHisto(playFreq)
+	s.AnalysesPerDay, s.AnalysesMin, s.AnalysesMax = playFreqHisto(playFreq)
 
 	return nil
 }

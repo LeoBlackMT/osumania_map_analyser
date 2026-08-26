@@ -66,6 +66,12 @@ function hourTooltip(utcIdx) {
   const p = (n) => String(n).padStart(2, "0");
   return p(Math.floor(m / 60)) + ":" + p(m % 60) + " (" + tzLabel() + ")";
 }
+// Peak-chip time: "14:00@UTC+8".
+function hourFullLabel(utcIdx) {
+  const m = localHourOfDay(utcIdx);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(Math.floor(m / 60)) + ":" + p(m % 60) + "@" + tzLabel();
+}
 
 // ── Theme: default to system preference, persist choice. ──
 (function initTheme() {
@@ -84,9 +90,20 @@ document.getElementById("themeBtn").addEventListener("click", () => {
 
 // ── Tooltip ─────────────────────────────────────────
 const tip = document.getElementById("tip");
+// Positions the tooltip near the cursor, clamped to the viewport so it never
+// overflows on small screens (mobile taps near chart edges).
+function positionTip(clientX, clientY) {
+  const pad = 12;
+  let left = clientX + 14, top = clientY + 14;
+  const r = tip.getBoundingClientRect();
+  if (left + r.width + pad > window.innerWidth) left = Math.max(pad, clientX - r.width - 10);
+  if (top + r.height + pad > window.innerHeight) top = Math.max(pad, clientY - r.height - 10);
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
 function bindTip(node, text) {
-  node.addEventListener("mouseenter", () => { tip.textContent = String(text); tip.style.display = "block"; });
-  node.addEventListener("mousemove", (e) => { tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px"; });
+  node.addEventListener("mouseenter", () => { tip.textContent = String(text); tip.style.display = "block"; positionTip(0, 0); });
+  node.addEventListener("mousemove", (e) => positionTip(e.clientX, e.clientY));
   node.addEventListener("mouseleave", () => { tip.style.display = "none"; });
 }
 
@@ -233,9 +250,10 @@ function renderVChart(id, items, xEvery) {
   [0, 1 / 3, 2 / 3, 1].forEach((f) => {
     const gy = (PAD + (1 - f) * plotH).toFixed(1);
     svg.appendChild(svgEl("line", { x1: ML, y1: gy, x2: W - PAD, y2: gy, class: "grid" }));
+    const val = Math.round(max * f);
     const tx = svgEl("text", { x: ML - 6, y: (parseFloat(gy) + 3).toFixed(1), "text-anchor": "end" });
-    tx.textContent = fmtCompact(Math.round(max * f));
-    bindTip(tx, String(Math.round(max * f)));
+    tx.textContent = fmtCompact(val);
+    bindTip(tx, String(val));
     svg.appendChild(tx);
   });
 
@@ -321,8 +339,7 @@ function renderLine(id, items) {
     hover.setAttribute("display", "block");
     tip.textContent = it.tip;
     tip.style.display = "block";
-    tip.style.left = (clientX + 14) + "px";
-    tip.style.top = (clientY + 14) + "px";
+    positionTip(clientX, clientY);
   }
   function hideHover() { hover.setAttribute("display", "none"); tip.style.display = "none"; }
 
@@ -347,13 +364,13 @@ function renderHourBars(id, counts) {
   renderLine(id, items);
 }
 
-function renderValueBars(id, buckets) {
+function renderValueBars(id, buckets, xEvery) {
   const items = (buckets || []).map((b) => ({
     label: b.key,
     count: b.count,
     tip: b.key + " → " + b.count,
   }));
-  renderVChart(id, items, 0);
+  renderVChart(id, items, xEvery);
 }
 
 // ── Smooth cubic bezier path through points ─────────────
@@ -459,8 +476,7 @@ function renderTrend(id, trend) {
     r2.appendChild(el("span", "v", String(d.new)));
     tip.appendChild(r2);
     tip.style.display = "block";
-    tip.style.left = (clientX + 14) + "px";
-    tip.style.top = (clientY + 14) + "px";
+    positionTip(clientX, clientY);
   }
   function hideHover() { hover.setAttribute("display", "none"); tip.style.display = "none"; }
 
@@ -566,8 +582,8 @@ function renderMetrics(s) {
   const singleDay = s.windowFrom && s.windowFrom === s.windowTo;
   const avgDaily = singleDay ? "—" : fmtCompact(s.avgDailyActive);
   const avgDailyRaw = singleDay ? "—" : String(s.avgDailyActive);
-  const hour = s.peakOnlineHour != null ? " · " + hourLabel(s.peakOnlineHour) : "";
-  const peakRaw = s.peakOnline ? String(s.peakOnline) + " · " + hourTooltip(s.peakOnlineHour) : "—";
+  const hour = s.peakOnlineHour != null ? " · " + hourFullLabel(s.peakOnlineHour) : "";
+  const peakRaw = s.peakOnline ? String(s.peakOnline) + " · " + hourFullLabel(s.peakOnlineHour) : "—";
   const items = [
     ["Avg ★", s.avgStar ? s.avgStar.toFixed(2) : "—", s.avgStar ? s.avgStar.toFixed(2) : "—"],
     ["Avg LN%", s.avgLnRatio ? (s.avgLnRatio * 100).toFixed(1) + "%" : "—", s.avgLnRatio ? (s.avgLnRatio * 100).toFixed(1) + "%" : "—"],
@@ -587,7 +603,7 @@ function renderMetrics(s) {
     c.appendChild(chip);
   }
 
-  // Second row: window extrema — four metrics × (min/max) = 8 chips.
+  // Second row: cache-hit rate + window extrema — 8 chips.
   const cm = document.getElementById("metricsMax");
   if (cm) {
     cm.textContent = "";
@@ -595,24 +611,26 @@ function renderMetrics(s) {
     const durLive = s.analyzeCount > 0;
     const starLive = !!s.maxStar;
     const numLive = s.maxNumeric != null && (s.maxNumeric !== 0 || !!s.minNumeric);
-    const playLive = !!s.playMax;
-    const pairs = [
-      ["Dur.", durLive ? ds.minMs + " ms" : "—", durLive ? String(ds.minMs) : "—", durLive ? ds.maxMs + " ms" : "—", durLive ? String(ds.maxMs) : "—"],
-      ["★", starLive ? s.minStar.toFixed(2) : "—", starLive ? s.minStar.toFixed(2) : "—", starLive ? s.maxStar.toFixed(2) : "—", starLive ? s.maxStar.toFixed(2) : "—"],
-      ["Numeric", numLive ? s.minNumeric.toFixed(2) : "—", numLive ? s.minNumeric.toFixed(2) : "—", numLive ? s.maxNumeric.toFixed(2) : "—", numLive ? s.maxNumeric.toFixed(2) : "—"],
-      ["Plays/day", playLive ? String(s.playMin) : "—", playLive ? String(s.playMin) : "—", playLive ? String(s.playMax) : "—", playLive ? String(s.playMax) : "—"],
+    const playLive = !!s.analysesMax;
+    const hitLive = durLive && s.cacheHitPct != null;
+    const sig4 = (v) => Number(v).toPrecision(4); // 4 significant digits
+    const set = [
+      ["Cache hit", hitLive ? sig4(s.cacheHitPct) + "%" : "—", hitLive ? String(s.cacheHitPct) : "—"],
+      ["Dur. max", durLive ? ds.maxMs + " ms" : "—", durLive ? String(ds.maxMs) : "—"],
+      ["Min ★", starLive ? s.minStar.toFixed(2) : "—", starLive ? s.minStar.toFixed(2) : "—"],
+      ["Max ★", starLive ? s.maxStar.toFixed(2) : "—", starLive ? s.maxStar.toFixed(2) : "—"],
+      ["Min numeric", numLive ? s.minNumeric.toFixed(2) : "—", numLive ? s.minNumeric.toFixed(2) : "—"],
+      ["Max numeric", numLive ? s.maxNumeric.toFixed(2) : "—", numLive ? s.maxNumeric.toFixed(2) : "—"],
+      ["Analyses min", playLive ? String(s.analysesMin) : "—", playLive ? String(s.analysesMin) : "—"],
+      ["Analyses max", playLive ? String(s.analysesMax) : "—", playLive ? String(s.analysesMax) : "—"],
     ];
-    for (const [name, minV, minRaw, maxV, maxRaw] of pairs) {
-      const mk = (v, raw, label) => {
-        const chip = el("div", "chip");
-        const cv = el("div", "cv", v);
-        if (raw !== v) bindTip(cv, raw);
-        chip.appendChild(cv);
-        chip.appendChild(el("div", "ck", label));
-        cm.appendChild(chip);
-      };
-      mk(minV, minRaw, name + " min");
-      mk(maxV, maxRaw, name + " max");
+    for (const [k, v, raw] of set) {
+      const chip = el("div", "chip");
+      const cv = el("div", "cv", v);
+      if (raw !== v) bindTip(cv, raw);
+      chip.appendChild(cv);
+      chip.appendChild(el("div", "ck", k));
+      cm.appendChild(chip);
     }
   }
 }
@@ -644,12 +662,13 @@ function render(s) {
   renderDonut("versions", s.versions || []);
   renderHBar("algorithms", s.algorithms || [], 8);
   renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
-  // Duration histogram: view capped at 600ms (the dense sub-second range
-  // stays readable; bins beyond it and the true max live in the chips).
-  renderValueBars("durationHistogram", (s.durationHistogram || []).filter((b) => (b.value || 0) < DUR_DISPLAY_CAP_MS));
-  // Plays per day: continuous 10-count bins, view capped at 500 (server-side
-  // binning continues past 500 — nothing is truncated).
-  renderValueBars("playFreq", (s.playFreq || []).filter((b) => (b.value || 0) <= PLAY_DISPLAY_CAP));
+  // Duration histogram: view shows 20ms bins from 10ms up to the 600ms cap;
+  // the "0" bin (<10ms) is result-cache hits and lives in the "Cache hit"
+  // chip instead (the true max sits in "Dur. max").
+  renderValueBars("durationHistogram", (s.durationHistogram || []).filter((b) => (b.value || 0) > 0 && (b.value || 0) < DUR_DISPLAY_CAP_MS));
+  // Analyses per day: continuous 10-count bins, view capped at 500
+  // (server-side binning continues past 500 — nothing is truncated).
+  renderValueBars("analysesPerDay", (s.analysesPerDay || []).filter((b) => (b.value || 0) <= PLAY_DISPLAY_CAP));
   renderMetrics(s);
 
   // Chart summaries for screen readers (values also live in tooltips/legend).
@@ -659,7 +678,7 @@ function render(s) {
   labelChart("lnRatioHistogram", "LN ratio histogram, " + wl);
   labelChart("numericHistogram", "Numeric difficulty histogram, " + wl);
   labelChart("durationHistogram", "Analysis duration histogram, " + wl);
-  labelChart("playFreq", "Plays per install per day, " + wl);
+  labelChart("analysesPerDay", "Analyses per install per day, " + wl);
 }
 
 function load() {

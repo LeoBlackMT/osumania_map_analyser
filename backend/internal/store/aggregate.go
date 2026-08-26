@@ -22,12 +22,20 @@ type AggInc struct {
 }
 
 // Duration binning for the analysis-duration metric (plugin sends
-// performance.now() - start, i.e. milliseconds of compute time: avg ~0.2s,
-// p50 ~0.1s). 20ms bins up to 5s, then an overflow bin ("5000+"); the
-// overflow bin still accumulates real durations in sum_val so the average
-// stays exact, only percentiles saturate at the overflow edge.
+// performance.now() - start, i.e. milliseconds of compute time). 20ms bins
+// up to 5s, then an overflow bin ("5000+"). The first bin is split at 10ms:
+//
+//	"0"  = 0-<10ms  — the result-cache-hit bin (plugin skips fetch/estimators
+//	                  on a cache hit, so these analyses finish in a few ms)
+//	"10" = 10-<20ms — a half-width bin so the display can hide <10ms data
+//	                  without swallowing 10-19ms (cacheHitPct = bin "0" / total)
+//	"20","40",...   — regular 20ms bins
+//
+// The overflow bin accumulates real sum/max/min values so the average and
+// the extreme chips stay exact; only percentiles saturate at the overflow.
 const (
 	DurBinMs      = 20
+	DurCacheMs    = 10 // cache-hit threshold: durations below this are hits
 	DurOverflowMs = 5000
 	DurOverflowV  = "5000+"
 )
@@ -36,6 +44,12 @@ const (
 func durationBin(durMs int64) string {
 	if durMs >= DurOverflowMs {
 		return DurOverflowV
+	}
+	if durMs < DurCacheMs {
+		return "0"
+	}
+	if durMs < DurBinMs {
+		return fmt.Sprintf("%d", DurCacheMs)
 	}
 	return fmt.Sprintf("%d", durMs/DurBinMs*DurBinMs)
 }
@@ -118,7 +132,8 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 		bin := math.Round(num*4) / 4
 		inc("numeric", fmt.Sprintf("%.2f", bin), num)
 	}
-	// Duration: 20ms bins; count + real sum per bin (exact avg, CDF percentiles).
+	// Duration: 20ms bins (0/<10ms = cache hits); count + real sum per bin
+	// (exact avg/max/min, CDF percentiles).
 	if dur, ok := num("durationMs"); ok && dur >= 0 {
 		inc("dur", durationBin(int64(dur)), dur)
 	}
