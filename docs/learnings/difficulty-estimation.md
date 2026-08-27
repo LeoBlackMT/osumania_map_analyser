@@ -75,8 +75,8 @@
 - **合规分组残差校正**（用 Roxy 自算 stats 如 chordRate/anchorRate 分箱做组残差）：无效（53.0% → 52.8~53.7%，噪声内）。之前用 benchmark subPattern 分组的「+3.2pp」不可复现且**违规**（subPattern 是标注，运行时不可得）。
 - **lambda 细扫**：见 3.2。
 - **0.25 网格 / 分段量化（≥16.5 ceil）**：0.25 网格 Exact 略低（57.9% vs 58.5%）；分段量化 ≥17 +1 张但 11~17 -3 张，净亏损。
-- **历史 15 轮调优**（`temp/roxy_tune_iterations.md`，2026-06）：ridge lambda grid、GBDT（500 树）、isotonic 标定、reference stacking、浅残差树、二阶门控残差 ridge、序列复杂度特征、chordjack 修正、特征组消融、加权 ridge 等——**全部因 full/CV gap 过大或 KPI5（Miss<2%、Close+>80%、Moderate<10%）不达标而拒绝**。唯一部分接受的是保守的 reference-gap 残差校正（`±0.10` 最终影响）。
-- **历史 GBDT 路由探针**（`temp/roxy_router_probe.py`）：500 树 GBDT、bucket 线性、isotonic、segmented 等模型对比，group-split CV 均退化——高容量模型在 ~500 样本上必然过拟合。
+- **历史 15 轮调优**（2026-06）：ridge lambda grid、GBDT（500 树）、isotonic 标定、reference stacking、浅残差树、二阶门控残差 ridge、序列复杂度特征、chordjack 修正、特征组消融、加权 ridge 等——**全部因 full/CV gap 过大或 KPI5（Miss<2%、Close+>80%、Moderate<10%）不达标而拒绝**。唯一部分接受的是保守的 reference-gap 残差校正（`±0.10` 最终影响）。
+- **历史 GBDT 路由探针**：500 树 GBDT、bucket 线性、isotonic、segmented 等模型对比，group-split CV 均退化——高容量模型在 ~500 样本上必然过拟合。
 
 ### 3.5 Azusa 相关的教训
 
@@ -117,7 +117,74 @@ Benchmark（官方 runner，4K RC）：
 
 ---
 
-## 6. 遗留问题与未来方向
+## 6. 借鉴 DanOverlay ISOR 的改进尝试（2026-08）
+
+### 6.1 背景
+
+DanOverlay 3.0.0 的 ISOR（Isotonic Strain Organic Residual）引擎在 benchmark 上略优于 Roxy（11-17 Exact 60.0% vs 59.4%）。分析其架构差异后，尝试借鉴其核心思想改进我们的三个算法组件。
+
+ISOR 的关键创新：
+1. **Choke NPS**：10 秒窗口峰值密度信号
+2. **动态权重**：根据信号质量调整 blend 权重
+3. **双频段 Ridge**：高难/低难分别训练的 98 维 meta 模型
+4. **持续密度特征**：rolling NPS 分位数
+5. **Marathon fatigue**：长地图疲劳修正
+6. **Apex cosine gate**：高难段官方段位恢复
+7. **Rate monotonicity**：三层速率单调性保证
+
+### 6.2 已尝试的方法
+
+#### Azusa（7 种方法，1 种有效）
+
+| 方法 | MAE (baseline 0.670) | Exact±0.5 (baseline 70.1%) | 结论 |
+|---|---|---|---|
+| **10s Choke NPS dynamic gate** | **0.665** | 70.0% | **MAE -0.7%，已提交** |
+| 5s Choke NPS 修正 | 0.6699 | 70.0% | 窗口太短，无提升 |
+| midSpeedBonus 范围调整 | 0.6698 | 70.1% | 校准表已覆盖 |
+| chordjackBoost 阈值降低 | 0.6712 | 69.2% | 过校正，退化 |
+| lowBase primary 权重 0.05 | 0.6614 | 69.2% | MAE↑ Exact↓ |
+| highBase primary 权重 0.10 | 0.7348 | 59.0% | 严重退化 |
+| Sustained density CV | 0.6707 | 69.8% | 修正量太小 |
+
+**成功的 Azusa 改进**：在 blend 公式中用 10s Choke NPS 与 avgNPS 的比值（burstRatio）微调 gate。当 burstRatio > 1.5 且 avgNPS > 5 时，gate 增加（更多权重给 lowBase）。
+
+#### Roxy（3 种方法，均无效）
+
+| 方法 | 结论 |
+|---|---|
+| 融合权重搜索 | 0.4 已近最优（MAE 差异仅 0.0017） |
+| burst correction（peakToSustainGap） | gate 条件未触发，无效果 |
+| structural backstop 阈值降低 | 11-12 段无改善（gap 为负不触发） |
+
+#### Mixed（1 种方法，无效）
+
+| 方法 | 结论 |
+|---|---|
+| Marathon fatigue correction | 严重退化（MAE 0.97→1.63） |
+
+### 6.3 关键发现
+
+1. **Azusa 已达架构极限**：校准表（block calibration、isotonic、residual correction）已针对当前 blend 输出高度优化。任何对 blend 或 strain 模型的修改都会改变校准表处理的值分布，导致不可预测的结果。
+
+2. **Roxy 的 11-12 段是最大瓶颈**（MAE=1.57，其他段 0.19~0.46）。ISOR 用双频段 Ridge 解决，但我们无法重新训练 meta 模型（111 维 ridge，固定维度）。
+
+3. **Roxy 融合权重已 near-optimal**：网格搜索显示 0.25~0.60 权重范围的 MAE 差异 < 0.005。
+
+4. **Mixed 路由已很成熟**：当前路由逻辑（Roxy→Azusa→Daniel→Sunny）和跨界规则已精心设计。
+
+5. **根本限制**：在不重新训练校准表/meta 模型的前提下，三个核心算法组件已接近其架构的理论上限。ISOR 的优势来自多信号三角测量、双频段 Ridge 和动态权重——这些都需要更大的架构变更。
+
+### 6.4 未来方向
+
+如果要进一步提升，需要：
+1. **重新拟合 Azusa 校准表**：允许使用 benchmark 数据重新拟合 block calibration 和 isotonic 表
+2. **重新训练 Roxy meta 模型**：添加 Choke NPS 等新特征，训练双频段 ridge
+3. **探索多信号融合**：借鉴 ISOR 的三角测量思想，将 Choke NPS 作为独立信号加入 blend
+4. **架构变更**：考虑将 Azusa 的 blend 公式改为 ISOR 风格的凸组合
+
+---
+
+## 7. 遗留问题与未来方向
 
 - **LN 段**：Mixed LN 最弱（MAE 1.228），但 LN 样本少、人工标注难、特征分析难——需要独立的数据/标注工作。
 - **≥17 段**：22 张小样本，Roxy 结构模型对部分图固有低估（structural 13~15 vs expected 17+）——标注分歧，无法可靠修复。

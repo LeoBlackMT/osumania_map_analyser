@@ -392,6 +392,8 @@ function buildDifficultyCurve(taps) {
     let chordNoteCount = 0;
     let cursor250 = 0;
     let cursor500 = 0;
+    let cursor10k = 0;
+    let maxNotesIn10k = 0;
 
     const local = [];
     const speedSeries = [];
@@ -422,6 +424,9 @@ function buildDifficultyCurve(taps) {
 
         while (cursor250 < i && t - taps[cursor250].t > 250) cursor250 += 1;
         while (cursor500 < i && t - taps[cursor500].t > 500) cursor500 += 1;
+        while (cursor10k < i && t - taps[cursor10k].t > 10000) cursor10k += 1;
+        const notesIn10k = i - cursor10k + 1;
+        if (notesIn10k > maxNotesIn10k) maxNotesIn10k = notesIn10k;
 
         const d250 = (i - cursor250 + 1) / 0.25;
         const d500 = (i - cursor500 + 1) / 0.5;
@@ -505,6 +510,7 @@ function buildDifficultyCurve(taps) {
         jackRawSeries,
         columnCounts,
         chordNoteCount,
+        chokeNPS: maxNotesIn10k / 10,
     };
 }
 
@@ -614,7 +620,12 @@ function resolveRcBlendComponents(primaryNumeric, danielNumeric, sunnyNumeric, c
     }
 
     const lowGateSource = daniel != null ? daniel : (sunny ?? primary ?? 0);
-    const lowGate = clamp((9.61 - lowGateSource) / 4.94, 0, 1);
+    let lowGate = clamp((9.61 - lowGateSource) / 4.94, 0, 1);
+    const chokeNPS = curveHints?.chokeNPS || 0;
+    const avgNPS = curveHints?.avgNPS || 0;
+    const burstRatio = chokeNPS / Math.max(avgNPS, 1);
+    const burstGateAdj = avgNPS > 5 ? clamp((burstRatio - 1.5) * 0.12, -0.08, 0.08) : 0;
+    lowGate = clamp(lowGate + burstGateAdj, 0, 1);
     const highGate = 1 - lowGate;
 
     const lowBase = (() => {
@@ -931,6 +942,8 @@ export function runAzusaEstimatorFromText(osuText, options = {}, parsed = null) 
         anchorImbalance,
         chordRate,
         jackQ95,
+        chokeNPS: curve.chokeNPS || 0,
+        avgNPS: taps.length / Math.max(1, (curve.times[curve.times.length - 1] - curve.times[0]) / 1000),
     });
     const numericDifficulty = blendDetails.value;
     const calibratedNumeric = calibrateAzusaNumeric(numericDifficulty, blendDetails.lowGate, blendDetails.highGate);
