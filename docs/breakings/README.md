@@ -18,6 +18,7 @@
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | 分析管线性能优化：worker 单次往返协议、runAnalysisPipeline 纯函数、共享模块纯度（worker 根因修复）、缓存失效收窄与命中重派生、vibro 修复披露、perf 验收口径修订（12 项） |
 | [2026-08-16-preset-system-and-settings-schema.md](2026-08-16-preset-system-and-settings-schema.md) | 2026-08-16 | pr/45（preset system） | 预设系统（相对 main 净变更）：新增 presets 模块/presets.html/内置预设、设置监听器数据化（SETTING_HANDLERS）、settings.json 预设分组与按钮、presetStorage 单一权威存储、快照系统键剥离、写回幂等化 |
+| [2026-08-30-marathon-correction-in-estimator.md](2026-08-30-marathon-correction-in-estimator.md) | 2026-08-30 | feat/marathon-correction（v2.0.2） | 马拉松时长修正架构重构：管线派生段 → 估算器内嵌（options.marathonCorrection 参数化），按需前置 Ett 复用，遵守 perf 约束（无重跑/无重复解析/复用 WASM），基准双口径显式化 |
 
 [返回 docs 索引](../README.md)
 
@@ -43,5 +44,6 @@
 | --- | --- | --- | --- |
 | [2026-08-09-perf-analysis-pipeline.md](2026-08-09-perf-analysis-pipeline.md) | 2026-08-09 | perf/analysis-pipeline-optimization | Analysis pipeline optimization: worker single-round-trip protocol, runAnalysisPipeline pure function, shared-module purity (worker root-cause fix), cache invalidation narrowing + hit re-derivation, vibro fix disclosure, perf acceptance-criteria revision (12 items) |
 | [2026-08-16-preset-system-and-settings-schema.md](2026-08-16-preset-system-and-settings-schema.md) | 2026-08-16 | pr/45 (preset system) | Preset system (net changes vs main): new presets modules/presets.html/built-in presets, data-driven settings listener (SETTING_HANDLERS), settings.json preset group & buttons, presetStorage single source of truth, snapshot system-key stripping, idempotent write-back |
+| [2026-08-30-marathon-correction-in-estimator.md](2026-08-30-marathon-correction-in-estimator.md) | 2026-08-30 | feat/marathon-correction (v2.0.2) | Marathon correction architecture refactor: pipeline patch stage → estimator-embedded (options.marathonCorrection), on-demand pre-Ett reuse, perf constraints honored (no rerun/no duplicate parse/WASM reuse), explicit two-tier benchmark semantics |
 
 [Back to docs index](../README.md)

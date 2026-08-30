@@ -365,6 +365,22 @@ This leverages the observation that Daniel and Sunny have higher discriminative 
 
 ---
 
+## 13. Marathon Duration Correction (Estimator-Embedded)
+
+Since v2.0.2, Azusa applies a **marathon duration correction** inside the estimator itself: `options.marathonCorrection = { durationS, ettValues }` (optional; absent or missing MSD skillsets → no correction, bit-identical to the legacy output). The corrected `finalNumeric` drives `numericDifficulty`, `estDiff` and `star` derivation, so the estimator output is the final difficulty value — no post-output pipeline patching. Direct calls without the option (e.g. the benchmark runner) yield the uncorrected baseline.
+
+**Mechanism and inspiration.** Inspired by the marathon correction in [Dan-Overlay](https://github.com/acarranzao1a-png/Dan-Overlay) (`pipeline.py` `_merge_primary_and_mina`, calibrated against the 6th–10th Reform Marathon Packs), which lowers the estimate of long, evenly difficult charts where accumulated stamina strain inflates the difficulty beyond the peak sections' true demand. The mechanism is ported with the correction target changed from SR/DP to Azusa's `numericDifficulty` (dan-tier numeric) and the taper moved from the SR domain to the numeric domain. See [features/marathon-correction.md](features/marathon-correction.md).
+
+**Trigger conditions** (all must hold):
+- drain duration > 300 s (last − first note start, unscaled by rate);
+- Etterna MSD skillsets available, and skillset balance holds: `max(jack, stream, stamina, tech)/total < 0.45` with `jack = max(JackSpeed, Chordjack)`, `stream = max(Stream, Jumpstream)`, `stamina = 0.7·Stamina + 0.3·Handstream`, `tech = Technical`;
+- `numericDifficulty` is a finite number (scope-out/invalid null results are never touched);
+- numeric < 16 (taper, see below).
+
+**Correction** (lower-only, never raises): `corr = min(0.50, 0.40 × ln(1 + excessMin)) × taper(numeric)`, where `excessMin = (durationS − 300)/60`. The duration penalty is **log-saturating** (sub-linear) so that adjacent dan-tier course charts never swap order (the linear penalty difference exceeded the base numeric gap on REFORM 2nd 8th/9th; verified zero new inversions across all course packs). `taper(numeric) = 1` for numeric ≤ 10, linear to 0 at numeric ≥ 16. `estDiff` is redriven from the corrected numeric via `numericToRcLabel`; the star field is untouched (already normalized to the Sunny raw star for Azusa display).
+
+**Calibration note.** Parameters were calibrated on the benchmark's `course` subset (34 maps, all RC; user-authorized) with an order-constrained grid; `scale = 0.40`, `cap = 0.50` chosen (merged MAE 0.3167, zero new inversions vs the linear 0.20/min version's 0.3225 which failed the 8th/9th order check). Validation: course MAE 0.4782 → 0.3544 (Azusa), Bias −0.424 → −0.085; see the calibration table in [features/marathon-correction.md](features/marathon-correction.md) §8.
+
 ## 12. Algorithm Complexity
 
 - **Time**: O(n) where n = number of tap notes. The main loop in `buildDifficultyCurve` processes each note once with constant work per note (4 decay windows × 5 skills = 20 exponential decays). The `summarize` step sorts 5 arrays of size n: O(n log n). Overall complexity is dominated by O(n log n).

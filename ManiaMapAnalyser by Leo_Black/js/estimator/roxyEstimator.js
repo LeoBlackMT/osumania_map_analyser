@@ -4,6 +4,7 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { evaluateRoxyMetaModel, ROXY_META_FEATURE_NAMES } from "./roxyMetaModel.generated.js";
 import { numericToRcLabel, rcLabelToNumeric } from "./rcDifficultyFormat.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
+import { computeMarathonCorrection } from "./marathonCorrection.js";
 
 const ROXY_CONFIG = Object.freeze({
     rcLnRatioLimit: 0.18,
@@ -1563,10 +1564,26 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
             ? computeAzusaHighGapLift(metaDetails.referencePredictions, unguardedNumeric)
             : 0;
         unguardedNumeric = clamp(unguardedNumeric + azusaHighGapLift, -2, ROXY_NUMERIC_OUTPUT_MAX);
-        const finalNumeric = computeAzusaFusion(
+        let finalNumeric = computeAzusaFusion(
             metaDetails.referencePredictions,
             Number(unguardedNumeric.toFixed(2)),
         );
+
+        // 马拉松时长修正（估算器内部应用）：options.marathonCorrection 注入
+        // { durationS, ettValues }（缺省/无 MSD 时不触发），只降不升、对数饱和 + numeric taper；
+        // 修正先于 scope 判定执行（贴边图修正后落入 BelowScope 由 Mixed 路由同样成立）。
+        // 参数与机制见 docs/features/marathon-correction.md。
+        const mc = options.marathonCorrection;
+        if (mc && Number.isFinite(Number(mc.durationS))) {
+            const corr = computeMarathonCorrection({
+                durationS: mc.durationS,
+                ettValues: mc.ettValues ?? null,
+                numeric: finalNumeric,
+            });
+            if (corr > 0) {
+                finalNumeric = finalNumeric - corr;
+            }
+        }
 
         // 高难聚焦：低难（< Alpha）与超高难（>= Zeta high）不输出有效 numeric，
         // 返回段位标签 + numeric null，由 Mixed 路由到 Azusa（低难）。
