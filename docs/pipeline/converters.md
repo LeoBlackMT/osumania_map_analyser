@@ -36,9 +36,11 @@ Node 需按 ESM 解析 `.js`）：
 node --experimental-detect-module tests/run-converter-tests.mjs
 ```
 
-- 合成样本由 `tests/generate-fixtures.mjs` 生成（可随时重建）；
+- 测试脚本与合成生成器**均不进仓库**（`tests/` 整体 gitignored，纯本地验证）；
+  合成样本由 `tests/generate-fixtures.mjs` 生成（可随时重建）；
 - **真实谱面样本仅本机私有**：放入 `tests/fixtures/real/`（目录 gitignored），
-  存在即自动冒烟；示例来源（本机）：`D:\Games\Etterna\Songs` 下的 `.sm`。
+  存在即自动冒烟；示例来源（本机）：`D:\Games\Etterna\Songs`、
+  `D:\Steam\steamapps\common\MalodyV\chart` 下的 `.sm`/`.mc`。
 - 仓库内唯一 golden 载体 = 本文档 + 测试脚本内联断言，**不提交任何真实谱面文件**。
 
 ### Golden 摘要（分类断言基准）

@@ -26,6 +26,7 @@
 | --- | --- | --- |
 | docs/README.md | 人类 | 本文档 |
 | [settings.md](settings.md) | 人类 | 插件设置说明文档 |
+| [shell-guide.md](shell-guide.md) | 人类 | 桌面壳使用教程（安装、窗口操作、桥接线、故障排查，中英双语） |
 | [presets-guide.md](presets-guide.md) | 人类 | 预设系统新手教程（零基础双语教学，逐按钮讲解） |
 | [azusa_algorithm.md](azusa_algorithm.md) | 人类/AI | Azusa算法说明文档(英文) |
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
@@ -39,7 +40,7 @@
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody 接入、转换器、路由决策表、败方门控、能力边界） |
-| [features/desktop-shell.md](features/desktop-shell.md) | 人类/AI | 桌面壳功能与安装文档（在线/离线模式、桥安装、平台限制、构建发布） |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v2、窗口操控、构建发布） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 | [pipeline/README.md](pipeline/README.md) | AI | 管线技术文档类别索引（分析、缓存、设置、mod） |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | 分析管线总览：tosu WebSocket -> 谱面获取 -> 解析 -> 估算 -> 显示 的完整数据流 |
@@ -84,6 +85,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | --- | --- | --- |
 | docs/README.md | Human | This document |
 | [settings.md](settings.md) | Human | Plugin settings guide |
+| [shell-guide.md](shell-guide.md) | Human | Desktop shell tutorial (install, window controls, bridges, troubleshooting; bilingual) |
 | [presets-guide.md](presets-guide.md) | Human | Presets beginner guide (bilingual tutorial, every button explained) |
 | [azusa_algorithm.md](azusa_algorithm.md) | Human/AI | Azusa algorithm document (English) |
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
@@ -97,7 +99,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna/Malody integration, converters, routing decision table, osu gate, capability boundaries) |
-| [features/desktop-shell.md](features/desktop-shell.md) | Human/AI | Desktop shell feature & install document (online/offline modes, bridge installation, platform limits, build & release) |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v2, window controls, build & release) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 | [pipeline/README.md](pipeline/README.md) | AI | Index of pipeline technical documents (analysis, cache, settings, mods) |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
