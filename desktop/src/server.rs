@@ -304,7 +304,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         Ok(bytes) => {
             let ctype = mime_for(rel);
             let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
                 ctype,
                 bytes.len()
             );

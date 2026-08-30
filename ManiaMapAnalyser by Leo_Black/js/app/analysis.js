@@ -314,6 +314,8 @@ export async function fetchBeatmapFile(reason) {
     const sourceActive = state.pendingSourceActive;
     state.pendingSourceRequestId = null;
     state.pendingSourceActive = null;
+    // 函数级错误收集（try 块内声明的 const 对 finally 不可见——result 帧 finally 汇合需要它）。
+    let errors = [];
     const genAtStart = resultCacheGeneration();
     const analysisStartedAt = performance.now();
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
@@ -430,7 +432,7 @@ export async function fetchBeatmapFile(reason) {
         // 输出 parsedSummary 供 override 与渲染使用——主线程不再二次解析。
         // 逐段顺序与旧 analysis.js 完全一致（估算 → 归一化 → SunnyWindow → 派生 → Interlude →
         // Pattern → Ett → Companella）；渲染段与缓存键/写门不变。
-        const errors = [];
+        errors = [];
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         let pipelineResult = null;
         if (!cached) {
@@ -986,9 +988,12 @@ export async function fetchBeatmapFile(reason) {
                 || state.useSvDetection
             ) && !needPatternAnalysis;
 
-            if (profileChanged && ((missingEtterna || missingPattern)
+            if (!sourceRequestId && profileChanged && ((missingEtterna || missingPattern)
                 || state.contentBar !== beforeContent
                 || state.srText !== beforeSrText)) {
+                // 外部源请求跳过二次 recompute：其自动补跑依赖 osu 的缓存兜底
+                // （identity 相同第二次命中快照）；外部源第二次会走 tosu 抓取而
+                // 失败，且会吞掉第一次请求的 result 帧（stale）。
                 scheduleRecompute("auto profile switched", false);
                 return;
             }
@@ -1143,9 +1148,8 @@ export async function fetchBeatmapFile(reason) {
             showSpinner: false,
         });
     } finally {
-        if (isStaleRequest()) return;
-        // result 帧 finally 汇合（契约 §2）：外部源触发的分析统一在此发出——
-        // 成功/失败/缓存命中/未命中四路；浏览器模式（壳未连）no-op。
+        // result 帧（契约 §2）：外部源请求即使被衍生 recompute 判定 stale 也照发——
+        // result 仅外发（壳应答/写 skin），无页面 UI 副作用，stale 守卫不适用于它。
         if (sourceRequestId && isBridgeConnected()) {
             const hasError = errors.length > 0;
             const starText = reworkStarEl && reworkStarEl.textContent
@@ -1162,6 +1166,7 @@ export async function fetchBeatmapFile(reason) {
                 updatedAt: Date.now(),
             });
         }
+        if (isStaleRequest()) return;
         reworkMetaEl.classList.remove("loading");
     }
 }
