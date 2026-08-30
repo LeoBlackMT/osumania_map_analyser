@@ -19,7 +19,7 @@
 
 - 行为：Azusa/Roxy（含 Mixed 路由命中）在 >300s 且 MSD 均衡条件下的输出降低（修正后数值化难度），`estDiff` 相应重派生；其他算法/短图/无 MSD 场景输出不变。
 - 管线段序：解析后新增按需前置 Ett（估算之前）；段 9 在 `withEtterna=true` 且已有前置结果时复用，不再二次调用 WASM。
-- 基准口径：benchmark 参考 runner 直调估算器且**不传** `marathonCorrection` → 基准保持"算法本体（无修正）"口径；插件管线注入参数 → 前端显示修正值（两级语义显式化）。
+- 基准口径：本仓库 `results/` 的 Azusa/Roxy/Mixed 数据按"插件等价调用"重跑（候选行注入 `marathonCorrection`）→ `got` 为修正后数值（course 行变化：Azusa 30/34、Roxy 13/34、Mixed 30/34）；benchmark 参考 runner 缺省不传该参数 → 算法本体（无修正）口径；两者差异即修正本身（显式双口径）。
 - 性能：>300s 的 4K 谱面在 `withEtterna=false` 场景会多一次前置 WASM 调用（修正数据源所需）；<300s 与离线场景零变化。
 
 ## 兼容策略（Compat）
@@ -31,7 +31,7 @@
 ## 验证方式（Verification）
 
 - 冒烟：`temp/smoke-marathon-estimator.mjs` 12/12 PASS——估算器参数化（with/without 参数对照、estDiff 重派生）、短图不受影响、pipeline 前置+复用（`withEtterna=false` 也生效）、Sunny 不受影响、ett 复用与独立计算逐位一致、无参回归逐位一致。
-- 基准回归：osu.csv（746 行）Azusa/Roxy/Mixed 全量重跑与仓库 HEAD 结果**逐字一致**（git diff 空）——证明估算器缺省行为未被破坏，且修正严格走参数通道。
+- 基准回归：osu.csv（746 行）Azusa/Roxy/Mixed 全量按修正口径重跑——course 行体现修正（Azusa 30/34、Roxy 13/34、Mixed 30/34，8th 9.28<9th 9.40 排序保持），非候选项与旧版逐字一致（缺省行为未被破坏，修正严格走参数通道）。
 - course 子集修正效果（参数校准记录）：Roxy MAE 0.4036→0.2250、Azusa MAE 0.4782→0.3544（Bias −0.085）；8th/9th 相邻段位排序修复（对数饱和）；全 pack 相邻段位零新增倒挂（详细见 docs/features/marathon-correction.md §8）。
 
 ---
@@ -69,5 +69,5 @@ User architecture decision: the correction belongs to the estimator, whose outpu
 ## Verification
 
 - Smoke `temp/smoke-marathon-estimator.mjs` 12/12 PASS (parameterized estimator, short-map invariance, pipeline pre-Ett + reuse, Sunny untouched, ett reuse bit-identical, no-param regression bit-identical).
-- Benchmark regression: osu.csv (746 rows) full rerun of Azusa/Roxy/Mixed is **byte-identical** to the repo HEAD results (empty git diff) — default behavior intact, correction strictly parameter-gated.
+- Benchmark regression: osu.csv (746 rows) fully rerun with correction injection — course rows moved (Azusa 30/34, Roxy 13/34, Mixed 30/34; 8th 9.28 < 9th 9.40 ordering kept), non-candidate rows byte-identical to the previous HEAD results (default behavior intact, correction strictly parameter-gated).
 - Course-subset effect (calibration record): Roxy MAE 0.4036→0.2250, Azusa 0.4782→0.3544 (Bias −0.085); 8th/9th adjacent-tier ordering fixed (log-saturation); zero new inversions across course packs (see docs/features/marathon-correction.md §8).

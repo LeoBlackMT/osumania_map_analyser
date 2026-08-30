@@ -76,7 +76,7 @@ tech    = Technical
 
 ## 6. 与估算器本体的关系
 
-修正**属于估算器本体**：`runRoxyEstimatorFromText` / `runAzusaEstimatorFromText` 通过 `options.marathonCorrection` 参数启用的内嵌环节（缺省不触发，逐位兼容旧行为）。"估算器输出的数值化难度"即最终值（含修正），前端不做输出后修正。benchmark 参考 runner 不传该参数 → 基准结果为"无修正基线"；插件管线按需注入（§4）→ 前端显示修正值。详见 [azusa_algorithm.md](../azusa_algorithm.md) §13 与 [roxy_algorithm.md](../roxy_algorithm.md) §19。
+修正**属于估算器本体**：`runRoxyEstimatorFromText` / `runAzusaEstimatorFromText` 通过 `options.marathonCorrection` 参数启用的内嵌环节（缺省不触发，逐位兼容旧行为）。"估算器输出的数值化难度"即最终值（含修正），前端不做输出后修正。**基准口径**：本仓库 `results/` 的 Azusa/Roxy/Mixed 数据已按"插件等价调用"（候选行注入 `marathonCorrection`）重跑——`got` 反映修正后数值（course 行变化：Azusa 30/34、Roxy 13/34、Mixed 30/34）；benchmark 参考 runner（`runner/benchmark-runner.mjs`）缺省不传该参数，其输出为算法本体（无修正）口径——两套口径的差异即修正本身。详见 [azusa_algorithm.md](../azusa_algorithm.md) §13 与 [roxy_algorithm.md](../roxy_algorithm.md) §19。
 
 ## 7. 验证
 
