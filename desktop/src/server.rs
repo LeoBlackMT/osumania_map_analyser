@@ -31,6 +31,8 @@ pub struct Shared {
     pub tosu_online: Mutex<bool>,
     /// 壳侧推送错误面（state.errors，页面 status 行展示）。
     pub shell_errors: Mutex<Vec<String>>,
+    /// Etterna 桥状态（poller 更新）。
+    pub etterna: Mutex<crate::etterna::EtternaStatus>,
 }
 
 pub fn now_ms() -> u64 {
@@ -52,6 +54,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         last_malody_post: Mutex::new(None),
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
+        etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
     })
 }
 
@@ -71,7 +74,7 @@ pub fn broadcast(shared: &Shared, frame_type: &str, payload: Option<serde_json::
 fn state_frame(shared: &Shared) -> serde_json::Value {
     let tosu_online = *shared.tosu_online.lock().unwrap();
     let errors = shared.shell_errors.lock().unwrap().clone();
-    // Etterna 存活/游玩位由 M3 轮询写入；此刻占位。
+    let etterna = shared.etterna.lock().unwrap().clone();
     let malody_alive = match *shared.last_malody_post.lock().unwrap() {
         Some(at) if at.elapsed() < Duration::from_secs(60) => true,
         _ => false,
@@ -80,7 +83,11 @@ fn state_frame(shared: &Shared) -> serde_json::Value {
         "tosuOnline": tosu_online,
         "errors": errors,
         "sources": {
-            "etterna": { "alive": false, "playing": false, "playingExpireAt": null },
+            "etterna": {
+                "alive": etterna.alive,
+                "playing": etterna.playing,
+                "playingExpireAt": etterna.playing_expire_at,
+            },
             "malody": { "alive": malody_alive },
         },
     })
@@ -263,9 +270,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(&mut stream, 404, r#"{"error":"cover not whitelisted"}"#);
             return;
         }
-        // 白名单条目 = 编辑插件所在目录相对路径（song_dir 已归一化）；此处按 shell-side 解析。
-        let file = shared.plugin_dir.join(&rel);
-        match fs::read(&file) {
+        match fs::read(&rel) {
             Ok(bytes) => {
                 let ctype = mime_for(&rel);
                 let head = format!(
@@ -520,6 +525,7 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     spawn_http_ws(shared.clone(), listener);
     spawn_post(shared.clone(), post_listener);
     spawn_timers(shared.clone());
+    crate::etterna::spawn_poller(shared.clone());
     shared
 }
 
