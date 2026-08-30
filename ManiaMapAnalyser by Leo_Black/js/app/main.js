@@ -13,6 +13,9 @@ import { initTriangleField } from "./triangles.js";
 // settings-stream listener) on load; it must be loaded exactly once.
 import "./presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "./telemetry.js";
+import { initBridgeClient } from "./sources/bridgeClient.js";
+import { handleSongFrame } from "./sources/externalSource.js";
+import { applyShellState } from "./sources/shellState.js";
 
 setRecomputeHandler(fetchBeatmapFile);
 
@@ -26,6 +29,10 @@ export async function initialize() {
     updateCardPlayVisibility();
     startGraphAnimationLoop();
     setupSocketListener();
+    initBridgeClient({
+        onState: applyShellState,
+        onSong: handleSongFrame,
+    });
     scheduleRecompute("initial load", false);
 }
 

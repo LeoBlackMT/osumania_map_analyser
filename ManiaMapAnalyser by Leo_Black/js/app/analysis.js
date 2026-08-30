@@ -78,6 +78,7 @@ import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro } from "./vibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
+import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -308,6 +309,11 @@ export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+    // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
+    const sourceRequestId = state.pendingSourceRequestId;
+    const sourceActive = state.pendingSourceActive;
+    state.pendingSourceRequestId = null;
+    state.pendingSourceActive = null;
     const genAtStart = resultCacheGeneration();
     const analysisStartedAt = performance.now();
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
@@ -391,6 +397,14 @@ export async function fetchBeatmapFile(reason) {
         if (cached) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
+        } else if (state.pendingSourceText) {
+            // 外部源（Etterna/Malody）：文本已由 externalSource 转换并注入，跳过 tosu 抓取。
+            rawText = state.pendingSourceText;
+            state.pendingSourceText = null;
+            if (isStaleRequest()) return;
+            if (!rawText || !rawText.trim()) {
+                throw new Error("Empty external beatmap content.");
+            }
         } else {
             const response = await fetch(getEndpoint(), {
                 method: "GET",
@@ -1129,6 +1143,18 @@ export async function fetchBeatmapFile(reason) {
         });
     } finally {
         if (isStaleRequest()) return;
+        // result 帧 finally 汇合（契约 §2）：外部源触发的分析统一在此发出——
+        // 成功/失败/缓存命中/未命中四路；浏览器模式（壳未连）no-op。
+        if (sourceRequestId && isBridgeConnected()) {
+            const hasError = errors.length > 0;
+            sendResult({
+                requestId: sourceRequestId,
+                statusHint: hasError ? "analysis-failed" : "success",
+                activeSource: sourceActive || "",
+                errors: hasError ? [...errors] : [],
+                updatedAt: Date.now(),
+            });
+        }
         reworkMetaEl.classList.remove("loading");
     }
 }
