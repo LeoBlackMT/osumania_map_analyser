@@ -1,6 +1,7 @@
 // mma-shell 桌面壳入口：
 // 在线（tosu.env 命中且存活）→ 导航到 tosu 插件页（设置/静态零适配）；
 // 离线 → 24061 本地页。窗口属性（透明/置顶/无边框）由 tauri.conf.json 配置。
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use mma_shell::{config, server};
 use tauri::Manager;
@@ -25,8 +26,9 @@ fn main() {
 
     tauri::Builder::default()
         .setup(move |app| {
-            let _shared = server::start(plugin_dir, tosu);
+            let shared = server::start(plugin_dir, tosu);
             if let Some(window) = app.get_webview_window("main") {
+                server::set_main_window(&shared, window.clone());
                 let url = url_text.parse().expect("invalid startup url");
                 let _ = window.navigate(url);
             }

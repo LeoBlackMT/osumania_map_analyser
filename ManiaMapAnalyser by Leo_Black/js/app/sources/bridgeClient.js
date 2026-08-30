@@ -7,7 +7,7 @@ import { state } from "../appContext.js";
 
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
-const CONTRACT_VERSION = 1;
+const CONTRACT_VERSION = 2;
 
 let socket = null;
 let reconnectTimer = 0;
@@ -33,12 +33,56 @@ export function sendResult(payload) {
         return;
     }
     seq += 1;
-    const frame = JSON.stringify({ v: 1, type: "result", seq, payload });
+    const frame = JSON.stringify({ v: CONTRACT_VERSION, type: "result", seq, payload });
     try {
         socket.send(frame);
     } catch {
         // 遥测式静默失败
     }
+}
+
+/** 发送窗口控制帧（契约 v2 control，仅壳模式有效）。 */
+export function sendControl(action, value) {
+    if (!bridgeOnline()) {
+        return;
+    }
+    seq += 1;
+    const frame = JSON.stringify({
+        v: CONTRACT_VERSION,
+        type: "control",
+        seq,
+        payload: { action, value },
+    });
+    try {
+        socket.send(frame);
+    } catch {
+        // 静默失败
+    }
+}
+
+// 窗口快捷键（Ctrl+Shift+T 置顶切换 / Ctrl+Q 关闭；缩放走 WebView 原生
+// Ctrl+±/滚轮，无需干预）。仅在壳模式（连接建立后）才需要注册。
+let shortcutRegistered = false;
+function registerShortcuts() {
+    if (shortcutRegistered || typeof window === "undefined") {
+        return;
+    }
+    shortcutRegistered = true;
+    let topmost = true; // 与 tauri.conf.json alwaysOnTop 初始值一致
+    window.addEventListener("keydown", (event) => {
+        if (!bridgeOnline()) {
+            return;
+        }
+        const ctrl = event.ctrlKey || event.metaKey;
+        if (ctrl && event.shiftKey && event.code === "KeyT") {
+            event.preventDefault();
+            topmost = !topmost;
+            sendControl("alwaysOnTop", topmost);
+        } else if (ctrl && event.code === "KeyQ") {
+            event.preventDefault();
+            sendControl("close", null);
+        }
+    });
 }
 
 /** 初始化壳桥（handlers: {onHello, onState, onSong, onSettings}）。 */
@@ -60,7 +104,10 @@ function connect(handlers) {
         scheduleReconnect(handlers);
         return;
     }
-    socket.addEventListener("open", syncState);
+    socket.addEventListener("open", () => {
+        syncState();
+        registerShortcuts();
+    });
     socket.addEventListener("message", (ev) => {
         let frame;
         try {

@@ -33,6 +33,13 @@ pub struct Shared {
     pub shell_errors: Mutex<Vec<String>>,
     /// Etterna 桥状态（poller 更新）。
     pub etterna: Mutex<crate::etterna::EtternaStatus>,
+    /// 主窗口控制句柄（契约 v2 control 帧；无窗口模式为 None）。
+    pub window: Mutex<Option<tauri::WebviewWindow>>,
+}
+
+/// 注入主窗口句柄（main.rs setup 调用）。
+pub fn set_main_window(shared: &Shared, window: tauri::WebviewWindow) {
+    *shared.window.lock().unwrap() = Some(window);
 }
 
 pub fn now_ms() -> u64 {
@@ -55,6 +62,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
+        window: Mutex::new(None),
     })
 }
 
@@ -371,6 +379,19 @@ fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                 continue; // 排水循环唤醒点
             }
             Ok(tungstenite::Message::Text(text)) => {
+                // control 帧（契约 v2）：页面 → 壳窗口控制。
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if value.get("type").and_then(|v| v.as_str()) == Some("control") {
+                        if let Some(payload) = value.get("payload") {
+                            if let Ok(ctrl) = serde_json::from_value::<crate::frames::ControlInbound>(
+                                payload.clone(),
+                            ) {
+                                handle_control(&shared, &ctrl);
+                            }
+                        }
+                        continue;
+                    }
+                }
                 // result 帧按 Envelope 包裹（payload 内层）；兼容裸帧两种情况。
                 if let Some(inbound) = parse_result_payload(&text) {
                     if let Some(rid) = inbound.request_id {
@@ -482,6 +503,22 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
             }
         }
         Err(_) => respond_json(&mut stream, 504, &json_error(timeout_msg())),
+    }
+}
+
+/// 契约 v2 control 帧处理（窗口操控）。
+fn handle_control(shared: &Shared, ctrl: &crate::frames::ControlInbound) {
+    let Some(window) = shared.window.lock().unwrap().clone() else { return };
+    match ctrl.action.as_str() {
+        "close" => {
+            let _ = window.close();
+        }
+        "alwaysOnTop" => {
+            let _ = window.set_always_on_top(ctrl.value.unwrap_or(true));
+        }
+        _ => {
+            // 未知动作静默忽略
+        }
     }
 }
 

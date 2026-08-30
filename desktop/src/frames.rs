@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 1;
+pub const CONTRACT_VERSION: u32 = 2;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -138,6 +138,14 @@ pub struct ResultInbound {
     pub status_hint: Option<String>,
     pub active_source: Option<String>,
     pub errors: Option<Vec<String>>,
+}
+
+// 页面 → 壳控制帧（契约 v2：窗口操控）。
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlInbound {
+    pub action: String,
+    pub value: Option<bool>,
 }
 
 // Malody 编辑器 POST 载荷。
