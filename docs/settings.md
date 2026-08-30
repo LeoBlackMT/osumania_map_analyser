@@ -86,7 +86,7 @@
         - 该选项只影响显示速度，不影响计算结果。默认启用。
     - **Vibro Detection**: 是否启用Vibro检测功能。
         - 推荐启用：启用后将检测谱面是否为Vibro谱面，并在估计难度中显示为Vibro。否则您将看到被极度拉高的难度估计。
-        - 检测使用的 Etterna MSD：4K 固定为 0.72.3 版本（判定基准不随 Global Etterna Version 设置变化）；非 4K 使用主结果（0.74.0 n-key，0.72.3 对非 4K 无有效输出）。
+        - 检测使用的 Etterna MSD：4K 固定为 0.72.3 版本；非 4K 使用 0.74.0。
     - **SV Detection**: 是否启用SV谱面检测功能。
         - 启用后当检测到变速时，将在左下角显示SV标签。
         - 注意：如果未开启显示谱面标签胶囊，SV标签将不会显示。
@@ -114,9 +114,8 @@
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
-        - 改动该设定将会影响所有依赖于Etterna计算的功能，除了Companella估计算法以外。
-        - 4K将按所选版本计算（0.75.0 为新增的可选版本，MinaCalc 内部 527）；**非 4K（5K–18K）固定使用 0.74.0**：它是首个带完整 n-key 管线的版本（内部 515），其非 4K 输出与官方 Etterna 0.74 游戏本体一致。
-        - 5K–18K 谱面可正常计算 MSD；卡片主体遵循内容设置（不按键数强制回退），难度图（estimator 星数序列）任意键数均可渲染；非 4K 的 Etterna 技能条不显示 Technical（n-key 的 Technical 仅为无意义噪音值）。
+        - 改动该设定将会影响所有依赖于Etterna计算的功能，除了Companella估计算法和Vibro检测以外。
+        - 4K将按所选版本计算；非 4K（5K–18K）固定使用 0.74.0。
         - 若当前版本不可用或不支持当前键数，将自动回退到可用版本。
     - **Companella Etterna Version**: 选择仅用于Companella估计算法的Etterna MinaCalc版本。
         - 该设定将仅影响Companella算法的计算结果，其他功能仍然使用Global Etterna Version设定的版本。
@@ -229,7 +228,7 @@
         - This option only affects display speed, not the results themselves. Enabled by default.
     - **Vibro Detection**: Whether to enable vibro detection.
         - Recommended: When enabled, the plugin will detect if a beatmap is a vibro map and display it as "Vibro" in the estimated difficulty; otherwise, you will see an extremely inflated difficulty estimate.
-        - The Etterna MSD used for detection: 4K is pinned to 0.72.3 (does not change with the Global Etterna Version setting); non-4K uses the main result (0.74.0 n-key, since 0.72.3 yields no valid non-4K output).
+        - The Etterna MSD used for detection: 4K is pinned to 0.72.3; non-4K uses 0.74.0.
     - **SV Detection**: Whether to enable SV beatmap detection.
         - When enabled, an SV tag will be displayed in the bottom-left corner when speed variation is detected.
         - Note: If the Map Tag Capsule display is not enabled, the SV tag will not be shown.
@@ -258,8 +257,7 @@
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.
         - Changing this setting will affect all features that depend on Etterna calculations, except for the Companella estimation algorithm.
-        - 4K uses the selected version directly (0.75.0 is a new selectable version, MinaCalc internal 527); all non-4K (5K–18K) are pinned to 0.74.0: the first MinaCalc with a real n-key pipeline (internal 515), whose non-4K output matches the official Etterna 0.74 game client exactly.
-        - 5K–18K beatmaps get working MSD calculations; the card body follows the content bar setting (no forced Pattern fallback), the difficulty graph (estimator star series) renders for any keycount, and the non-4K Etterna skill bars hide Technical (the n-key Technical value is meaningless noise).
+        - 4K uses the selected version directly; all non-4K (5K–18K) are pinned to 0.74.0.
         - If the current version is unavailable or does not support the current key count, it will automatically fall back to an available version.
     - **Companella Etterna Version**: Select the Etterna MinaCalc version used exclusively for the Companella estimation algorithm.
         - This setting only affects the Companella algorithm's calculations; other features will continue to use the version set in Global Etterna Version.
