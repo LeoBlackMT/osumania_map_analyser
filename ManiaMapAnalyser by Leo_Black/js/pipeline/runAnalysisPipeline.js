@@ -312,25 +312,26 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         }
     }
 
-    // 11. 马拉松时长修正（派生段）：仅 Roxy/Azusa（含 Mixed 实际命中）且设置开启时
-    //     对 numericDifficulty 应用修正并重派生 estDiff。依赖 Ett MSD skillsets
+    // 11. 马拉松时长修正（派生段）：恒定应用于 Roxy/Azusa（含 Mixed 实际命中），
+    //     对 numericDifficulty 只降不升修正并重派生 estDiff。依赖 Ett MSD skillsets
     //     （均衡性条件）；ett 不可用/非 RC 结果/时长不足 → 跳过（修正=0）。
     //     统计口径：drain 时长 = 最后 note start - 第一个 note start（未按速率缩放）。
+    //     机制与参数见 docs/features/marathon-correction.md（灵感：Dan-Overlay 马拉松修正）。
     //     star 不在此段处理（归一化已将 Azusa/Roxy/Mixed 的 star 替换为 Sunny raw，见 §4）。
-    if (options.enableMarathonCorrection === true
-        && (actualEstimatorAlgorithm === "Azusa" || actualEstimatorAlgorithm === "Roxy")
-        && ettResult && ettResult.values) {
-        try {
-            const starts = parsedData.noteStarts;
-            if (Array.isArray(starts) && starts.length >= 2) {
-                const durationS = (Math.max(...starts) - Math.min(...starts)) / 1000;
-                rework = applyMarathonCorrectionToRcResult(rework, {
-                    durationS,
-                    ettValues: ettResult.values,
-                });
+    if (actualEstimatorAlgorithm === "Azusa" || actualEstimatorAlgorithm === "Roxy") {
+        if (ettResult && ettResult.values) {
+            try {
+                const starts = parsedData.noteStarts;
+                if (Array.isArray(starts) && starts.length >= 2) {
+                    const durationS = (Math.max(...starts) - Math.min(...starts)) / 1000;
+                    rework = applyMarathonCorrectionToRcResult(rework, {
+                        durationS,
+                        ettValues: ettResult.values,
+                    });
+                }
+            } catch (err) {
+                // 修正软失败：保持原结果（与附属段语义一致，不并入 errors[]）
             }
-        } catch (err) {
-            // 修正软失败：保持原结果（与附属段语义一致，不并入 errors[]）
         }
     }
 

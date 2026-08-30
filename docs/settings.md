@@ -84,9 +84,6 @@
     - **Result Cache**: 是否启用分析结果缓存。
         - 启用后，切换到已分析过的谱面（或切换 mod 后又切回）将立即显示结果，无需重新计算。
         - 该选项只影响显示速度，不影响计算结果。默认启用。
-    - **Marathon Duration Correction**: 是否对极长且难度均衡的谱面启用时长修正。
-        - 对超过 5 分钟且各按键型难度较为均衡的谱面（常见于马拉松/课程包），略微降低 Roxy 与 Azusa 的估计难度。
-        - 推荐在游玩马拉松课程包时开启；对普通谱面无影响。默认关闭。
     - **Vibro Detection**: 是否启用Vibro检测功能。
         - 推荐启用：启用后将检测谱面是否为Vibro谱面，并在估计难度中显示为Vibro。否则您将看到被极度拉高的难度估计。
     - **SV Detection**: 是否启用SV谱面检测功能。
@@ -228,9 +225,6 @@
     - **Result Cache**: Enable caching of analysis results.
         - When enabled, revisiting an already analyzed map (or switching mods and back) shows results instantly without recomputing.
         - This option only affects display speed, not the results themselves. Enabled by default.
-    - **Marathon Duration Correction**: Whether to apply a duration correction to very long, evenly difficult beatmaps.
-        - For beatmaps longer than 5 minutes where all skillsets are estimated to be roughly even (common in marathon/course packs), slightly lowers the Roxy and Azusa difficulty estimate.
-        - Recommended when playing marathon packs; no effect on regular beatmaps. Disabled by default.
     - **Vibro Detection**: Whether to enable vibro detection.
         - Recommended: When enabled, the plugin will detect if a beatmap is a vibro map and display it as "Vibro" in the estimated difficulty; otherwise, you will see an extremely inflated difficulty estimate.
     - **SV Detection**: Whether to enable SV beatmap detection.

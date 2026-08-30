@@ -26,7 +26,7 @@ import { numericToRcLabel } from "../estimator/rcDifficultyFormat.js";
 // ── 参数 ────────────────────────────────────────────────────────────────
 
 export const MARATHON_DURATION_THRESHOLD_S = 300;
-export const MARATHON_CORRECTION_PER_MIN = 0.08; // numeric / 分钟
+export const MARATHON_CORRECTION_PER_MIN = 0.20; // numeric / 分钟（course 样本网格校准，见 docs/features/marathon-correction.md §8）
 export const MARATHON_CORRECTION_CAP = 0.65;      // numeric 上限
 export const MARATHON_BALANCE_RATIO = 0.45;       // max/total 均衡阈值
 export const MARATHON_TAPER_LO = 10;
@@ -65,10 +65,20 @@ export function aggregateSkillsets(ettValues) {
  * @param {number} input.durationS  谱面 drain 时长（秒，未按速率缩放）
  * @param {object|null} [input.ettValues]  ett values（Overall/Stream/... 大写键）
  * @param {number} [input.numeric]  修正前的 numericDifficulty（用于 taper）
+ * @param {object} [params]  可选参数覆盖（调参/校准用；缺省 = 模块常量默认）
  * @returns {number} 修正量；0 = 不修正（时长不足/技能不均衡/无 MSD/数值无效/taper 归零）
  */
-export function computeMarathonCorrection({ durationS, ettValues = null, numeric = null }) {
-    if (!(Number(durationS) > MARATHON_DURATION_THRESHOLD_S)) {
+export function computeMarathonCorrection({ durationS, ettValues = null, numeric = null }, params = null) {
+    const p = {
+        thresholdS: MARATHON_DURATION_THRESHOLD_S,
+        perMin: MARATHON_CORRECTION_PER_MIN,
+        cap: MARATHON_CORRECTION_CAP,
+        balanceRatio: MARATHON_BALANCE_RATIO,
+        taperLo: MARATHON_TAPER_LO,
+        taperHi: MARATHON_TAPER_HI,
+        ...(params || {}),
+    };
+    if (!(Number(durationS) > p.thresholdS)) {
         return 0;
     }
     // 严格数值类型判断：null/undefined/NaN 一律跳过
@@ -80,23 +90,23 @@ export function computeMarathonCorrection({ durationS, ettValues = null, numeric
 
     // 技能均衡检查（无 MSD → 缺信号不动作）
     const agg = aggregateSkillsets(ettValues);
-    if (!agg || Math.max(agg.jk, agg.st, agg.te, agg.en) / agg.total >= MARATHON_BALANCE_RATIO) {
+    if (!agg || Math.max(agg.jk, agg.st, agg.te, agg.en) / agg.total >= p.balanceRatio) {
         return 0;
     }
 
-    // 超出分钟数 → 0.08/分钟，封顶 0.65
-    const excessMin = (Number(durationS) - MARATHON_DURATION_THRESHOLD_S) / 60;
-    const raw = Math.min(MARATHON_CORRECTION_CAP, excessMin * MARATHON_CORRECTION_PER_MIN);
+    // 超出分钟数 → perMin/分钟，封顶 cap
+    const excessMin = (Number(durationS) - p.thresholdS) / 60;
+    const raw = Math.min(p.cap, excessMin * p.perMin);
     if (raw <= 0) {
         return 0;
     }
 
-    // numeric taper：<=10 全量；>=16 归零；中间线性渐减
+    // numeric taper：<= taperLo 全量；>= taperHi 归零；中间线性渐减
     let taper = 1;
-    if (num >= MARATHON_TAPER_HI) {
+    if (num >= p.taperHi) {
         taper = 0;
-    } else if (num > MARATHON_TAPER_LO) {
-        taper = (MARATHON_TAPER_HI - num) / (MARATHON_TAPER_HI - MARATHON_TAPER_LO);
+    } else if (num > p.taperLo) {
+        taper = (p.taperHi - num) / (p.taperHi - p.taperLo);
     }
     if (!(taper > 0)) {
         return 0;

@@ -348,14 +348,6 @@
 		"value": false
 	},
 	{
-		"uniqueID": "enableMarathonCorrection",
-		"type": "checkbox",
-		"title": "Marathon Duration Correction",
-		"description": "Reduce the estimated difficulty of very long and evenly difficult beatmaps (over 5 minutes) for Roxy and Azusa. Recommended for marathon packs.",
-		"options": [],
-		"value": false
-	},
-	{
 		"uniqueID": "forceSunnyWindow",
 		"type": "checkbox",
 		"title": "Improve Sunny LN Estimation",

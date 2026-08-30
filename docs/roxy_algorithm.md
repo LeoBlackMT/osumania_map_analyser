@@ -449,6 +449,22 @@ This prevents Roxy from displaying `Iota` or higher labels while still allowing 
 
 The numeric calculation uses Roxy's structural strain data. The returned `graph` field does not use Roxy's local strain series. When graph output is requested, Roxy returns the graph provided by the Azusa reference call, which currently resolves to Azusa/Sunny graph data.
 
+## 19. Marathon Duration Correction (Plugin Pipeline)
+
+Since v2.0.2, the plugin's analysis pipeline applies a **marathon duration correction** to Roxy's `numericDifficulty` as a derived post-processing stage (`runAnalysisPipeline` §11, after the Ett stage). This is **not** part of the estimator itself: `runRoxyEstimatorFromText` is unchanged, and direct calls (e.g. the benchmark runner) do not see the correction — only results displayed through the plugin pipeline do.
+
+**Mechanism and inspiration.** Inspired by the marathon correction in [Dan-Overlay](https://github.com/acarranzao1a-png/Dan-Overlay) (`pipeline.py` `_merge_primary_and_mina`, calibrated against the 6th–10th Reform Marathon Packs), which lowers the estimate of long, evenly difficult charts where accumulated stamina strain inflates the difficulty beyond the peak sections' true demand. The mechanism is ported with the correction target changed from SR/DP to Roxy's `numericDifficulty` (dan-tier numeric) and the taper moved from the SR domain to the numeric domain. See [features/marathon-correction.md](features/marathon-correction.md).
+
+**Trigger conditions** (all must hold):
+- drain duration > 300 s (last − first note start, unscaled by rate);
+- Etterna MSD skillsets available, and skillset balance holds: `max(jack, stream, stamina, tech)/total < 0.45` with `jack = max(JackSpeed, Chordjack)`, `stream = max(Stream, Jumpstream)`, `stamina = 0.7·Stamina + 0.3·Handstream`, `tech = Technical`;
+- `numericDifficulty` is a finite number (scope-out results — `< Alpha Low` / `> Emik Zeta high` with null numeric — are never touched);
+- numeric < 16 (taper, see below).
+
+**Correction** (lower-only, never raises): `corr = min(0.65, (durationS − 300)/60 × 0.20) × taper(numeric)`, with `taper(numeric) = 1` for numeric ≤ 10, linear to 0 at numeric ≥ 16. `estDiff` is redriven from the corrected numeric via `numericToRcLabel` (the `> 18.4` soft-cap label rule still applies); the star field is untouched (already normalized to the Sunny raw star for Roxy display).
+
+**Calibration note.** Parameters were calibrated on the benchmark's `course` subset (34 maps, all RC; user-authorized) with a fixed grid; `0.20/min` with cap `0.65` was chosen over the Dan-Overlay SR-unit value (which is ~1.75× smaller when converted to dan-numeric units). Validation: merged course MAE 0.4036 → 0.2957 (Roxy 14 in-scope rows), Exact 21.4% → 42.9%; see the calibration table in [features/marathon-correction.md](features/marathon-correction.md) §8.
+
 ## 18. Complexity
 
 Let `N` be the number of tap notes and `R` the number of merged rows.

@@ -376,11 +376,6 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.enableResultCache);
     }
 
-    function parseEnableMarathonCorrectionValue(settingsPayload) {
-        const value = extractSettingValue(settingsPayload, "enableMarathonCorrection");
-        return normalizeBooleanSetting(value, appConfig.defaults.enableMarathonCorrection);
-    }
-
     function parseVibroDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "VibroDetection");
         if (value !== undefined && value !== null) {
@@ -576,7 +571,6 @@ export function createSettingsParsers(appConfig) {
         parseCompanellaEtternaVersionValue,
         parseEnablePauseDetectionValue,
         parseEnableResultCacheValue,
-        parseEnableMarathonCorrectionValue,
         parseVibroDetectionValue,
         parseEnableEtternaRainbowBarsValue,
         parseEnableStatusMarqueeValue,

@@ -431,7 +431,6 @@ export async function fetchBeatmapFile(reason) {
                     classicMod: state.classicMod === true,
                     etternaVersion: state.etternaVersion,
                     companellaEtternaVersion: state.companellaEtternaVersion,
-                    enableMarathonCorrection: state.enableMarathonCorrection === true,
                 };
                 const pipelineInput = { rawText, estimatorAlgorithm, options: pipelineOptions };
                 const wp = runInWorker(pipelineInput);
