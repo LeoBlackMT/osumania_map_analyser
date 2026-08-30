@@ -214,9 +214,9 @@
 
 ## 9. 注意事项
 
-1. **非 4/6/7K 谱面主体遵循内容设置**：`js/app/appContext.js:180` `GRAPH_SUPPORTED_KEY_SET = Set([4, 6, 7])` 仅用于**图形渲染保护**——`analysis.js` 渲染入口对不支持键数直接调用 `showDiffGraphError("Unsupported Keys")`。**不再**把主体内容强制回退为 Pattern（旧行为经 `setEffectiveContentBarForMap("Pattern")` 强制覆盖，已移除；5K–18K 谱面现在可在 Etterna 等内容模式下正常显示）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
+1. **非 4/6/7K 谱面主体遵循内容设置**：卡片主体不再按键数强制回退为 Pattern（旧行为经 `setEffectiveContentBarForMap("Pattern")` 强制覆盖，已移除）。Graph 为 estimator 星数序列，任意键数均可渲染（`GRAPH_SUPPORTED_KEY_SET` 已随移除）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
 2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:798-806`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
-3. **vibro 检测的影响**：vibro 检测在 `js/app/vibro.js`——`detectVibro`（`vibro.js:16`，基于 Etterna 数值与 jack 速度比，`analysis.js:655-657`）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:824`）隐藏 Numeric Difficulty 显示。`config.js:107-108` 的 `LONGJACK_VIBRO_*` 阈值供 vibro 判定使用。**检测所用 Etterna MSD 固定为 0.72.3**（`resolveVibroMsdValues`，主结果版本非 0.72.3 时单独补算），判定基准不随用户选择的 Etterna 版本漂移。
+3. **vibro 检测的影响**：vibro 检测在 `js/app/vibro.js`——`detectVibro`（`vibro.js:16`，基于 Etterna 数值与 jack 速度比，`analysis.js:655-657`）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:824`）隐藏 Numeric Difficulty 显示。`config.js:107-108` 的 `LONGJACK_VIBRO_*` 阈值供 vibro 判定使用。**检测所用 Etterna MSD**：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
 4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
 5. **共享模块约束**：`js/patterns/` 与 `js/parser/patternOsuParser.js` 在 Node benchmark runner 中也会加载，禁止引入 `window`/`document`；新增文件 import 必须带 `.js` 扩展名（浏览器解析习惯与 Node esm-loader 的要求）。
 6. **`rate` 参数未使用**：`service.js:4` 的 `rate` 目前被忽略（`void rate`），倍速换算由调用侧（`analysis.js` 传入原始文本）或显示层 `format(rate)`（`clustering.js:122`）处理。

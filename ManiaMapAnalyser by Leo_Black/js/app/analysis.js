@@ -17,7 +17,6 @@ import {
     getEndpoint,
     getActiveContentBar,
     contentBarShows,
-    GRAPH_SUPPORTED_KEY_SET,
     mainCardEl,
     patternClustersEl,
     ppBarsEl,
@@ -194,13 +193,14 @@ function buildEtternaAnalyzeOptions(etternaVersion) {
     };
 }
 
-// Vibro 检测的 MSD 基准固定使用 0.72.3：判定不应随用户选择的 Etterna
-// 版本漂移。主 Ett 结果已是 0.72.3 时直接复用，否则单独补算一次
-// （0.72.3 对非 4K 输出全 0，非 4K 谱面的 vibro 检测因此自然关闭）。
+// Vibro 检测的 MSD 基准：4K 固定 0.72.3（判定不随用户选择的 Etterna 版本
+// 漂移）；非 4K 直接使用主结果（= 0.74.0 n-key，其 Overall/JackSpeed 才有
+// 意义；0.72.3 对非 4K 输出全 0，无法用于判定）。主结果已是 0.72.3 时复用。
 const VIBRO_MSD_VERSION = "0.72.3";
 
 async function resolveVibroMsdValues(rawText, baseEttResult) {
-    if (baseEttResult?.etternaVersion === VIBRO_MSD_VERSION) {
+    if (Number(baseEttResult?.keycount) !== 4
+        || baseEttResult?.etternaVersion === VIBRO_MSD_VERSION) {
         return baseEttResult?.values ?? null;
     }
     try {
@@ -384,8 +384,7 @@ export async function fetchBeatmapFile(reason) {
         let parsedInfo = null;
         let rawText = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
-        // （Graph 模式对非 4/6/7K 由图形块自行显示 "Unsupported Keys" 提示，
-        //   见下方 showDiffGraphError 分支；Etterna/Pattern 等主体正常渲染。）
+        // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
         const applyContentBarOverride = (columnCount) => {
             setEffectiveContentBarForMap(null);
         };
@@ -627,9 +626,9 @@ export async function fetchBeatmapFile(reason) {
             updateDiffTextVisibility();
 
             if (state.diffText === "Graph" || showsGraph) {
-                if (!GRAPH_SUPPORTED_KEY_SET.has(rework.columnCount)) {
-                    showDiffGraphError("Unsupported Keys");
-                } else {
+                // Graph 数据 = estimator 的 star 序列，对任意键数均可用
+                // （Sunny 核心为键数无关算法）；渲染失败才提示。
+                {
                     const ok = renderDiffGraph(rework.graph);
                     if (!ok) {
                         showDiffGraphError("Graph unavailable");
