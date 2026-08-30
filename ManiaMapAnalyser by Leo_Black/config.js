@@ -96,6 +96,7 @@ export const APP_CONFIG = {
         cardBgBlur: "4px",
         enableUpdateCheck: true,
         enableResultCache: true,
+        enableMarathonCorrection: false,
         reverseCardExtendDirection: false,
         useOsuFont: true,
         enableOsuTheme: true,

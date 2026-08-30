@@ -22,6 +22,7 @@ import {
     parseCustomBackgroundColorValue,
     parseEnablePauseDetectionValue,
     parseEnableResultCacheValue,
+    parseEnableMarathonCorrectionValue,
     parseEstimatorAlgorithmValue,
     parseAzusaSunnyReferenceHoValue,
     parseEtternaVersionValue,
@@ -690,6 +691,13 @@ export function applyEnableResultCacheSetting(value) {
     return changed;
 }
 
+export function applyEnableMarathonCorrectionSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableMarathonCorrection);
+    const changed = state.enableMarathonCorrection !== next;
+    state.enableMarathonCorrection = next;
+    return changed;
+}
+
 export function applyEnableTelemetrySetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableTelemetry);
     const changed = state.enableTelemetry !== next;
@@ -742,6 +750,7 @@ const SETTING_HANDLERS = [
     { key: "cardBgBlur", parse: parseCardBgBlurValue, apply: applyCardBgBlurSetting },
     { key: "enableUpdateCheck", parse: parseEnableUpdateCheckValue, apply: applyEnableUpdateCheckSetting },
     { key: "enableResultCache", parse: parseEnableResultCacheValue, apply: applyEnableResultCacheSetting },
+    { key: "enableMarathonCorrection", parse: parseEnableMarathonCorrectionValue, apply: applyEnableMarathonCorrectionSetting },
     { key: "reverseCardExtendDirection", parse: parseReverseCardExtendDirectionValue, apply: applyReverseCardExtendDirectionSetting },
     { key: "useOsuFont", parse: parseUseOsuFontValue, apply: applyUseOsuFontSetting },
     { key: "useSvDetection", parse: parseSvDetectionValue, apply: applyUseSvDetectionSetting },
@@ -766,7 +775,7 @@ export const SETTING_RECOMPUTE_KEYS = new Set([
     "enableEtternaRainbowBars", "VibroDetection", "showModeTagCapsule",
     "useSvDetection", "forceSunnyWindow", "enableLNDifficulty",
     "enableAnalyzeLN", "enableAlwaysShowLNDifficulty", "display6kLevel",
-    "extendedEstimationRange",
+    "extendedEstimationRange", "enableMarathonCorrection",
 ]);
 
 /** Keys whose change invalidates the result cache (mirrors the old clearResultCache list). */
@@ -775,7 +784,7 @@ export const SETTING_CACHE_KEYS = new Set([
     "companellaEtternaVersion", "useSvDetection", "VibroDetection",
     "wsEndpoint", "forceSunnyWindow", "enableLNDifficulty",
     "enableAnalyzeLN", "enableAlwaysShowLNDifficulty",
-    "extendedEstimationRange",
+    "extendedEstimationRange", "enableMarathonCorrection",
 ]);
 
 function extractSettingsPayloadFromCommandPacket(packet) {
@@ -922,6 +931,7 @@ export async function loadSettings() {
         applyCardBgBlurSetting(parseCardBgBlurValue(source));
         applyEnableUpdateCheckSetting(parseEnableUpdateCheckValue(source));
         applyEnableResultCacheSetting(parseEnableResultCacheValue(source));
+        applyEnableMarathonCorrectionSetting(parseEnableMarathonCorrectionValue(source));
         applyReverseCardExtendDirectionSetting(parseReverseCardExtendDirectionValue(source));
         applyUseOsuFontSetting(parseUseOsuFontValue(source));
         applyEnableOsuThemeSetting(parseEnableOsuThemeValue(source));
@@ -965,6 +975,7 @@ export async function loadSettings() {
             cardBgBlur: APP_CONFIG.defaults.cardBgBlur,
             enableUpdateCheck: APP_CONFIG.defaults.enableUpdateCheck,
             enableResultCache: APP_CONFIG.defaults.enableResultCache,
+            enableMarathonCorrection: APP_CONFIG.defaults.enableMarathonCorrection,
             reverseCardExtendDirection: APP_CONFIG.defaults.reverseCardExtendDirection,
             useOsuFont: APP_CONFIG.defaults.useOsuFont,
             enableOsuTheme: APP_CONFIG.defaults.enableOsuTheme,
