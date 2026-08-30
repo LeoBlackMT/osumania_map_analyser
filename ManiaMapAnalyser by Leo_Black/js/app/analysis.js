@@ -194,6 +194,26 @@ function buildEtternaAnalyzeOptions(etternaVersion) {
     };
 }
 
+// Vibro 检测的 MSD 基准固定使用 0.72.3：判定不应随用户选择的 Etterna
+// 版本漂移。主 Ett 结果已是 0.72.3 时直接复用，否则单独补算一次
+// （0.72.3 对非 4K 输出全 0，非 4K 谱面的 vibro 检测因此自然关闭）。
+const VIBRO_MSD_VERSION = "0.72.3";
+
+async function resolveVibroMsdValues(rawText, baseEttResult) {
+    if (baseEttResult?.etternaVersion === VIBRO_MSD_VERSION) {
+        return baseEttResult?.values ?? null;
+    }
+    try {
+        const vibroEtt = await analyzeEtternaFromText(
+            rawText,
+            buildEtternaAnalyzeOptions(VIBRO_MSD_VERSION),
+        );
+        return vibroEtt?.values ?? null;
+    } catch {
+        return baseEttResult?.values ?? null; // 补算失败回退主结果
+    }
+}
+
 const CARD_EXTEND_TRANSITION_FALLBACK_MS = 420;
 
 function waitForMainCardResizeTransition() {
@@ -363,16 +383,11 @@ export async function fetchBeatmapFile(reason) {
     try {
         let parsedInfo = null;
         let rawText = null;
-        // 谱面级内容栏 override：keycount 不受 Graph 支持时把主体降级为 Pattern（None/Full 除外）。
+        // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
+        // （Graph 模式对非 4/6/7K 由图形块自行显示 "Unsupported Keys" 提示，
+        //   见下方 showDiffGraphError 分支；Etterna/Pattern 等主体正常渲染。）
         const applyContentBarOverride = (columnCount) => {
-            const parsedKeycount = Number(columnCount) || 0;
-            // In Full mode the graph block shows its own "Unsupported Keys" notice,
-            // so don't collapse the whole body to Pattern on unsupported keycounts.
-            const shouldFallbackBodyToPattern = parsedKeycount > 0
-                && !GRAPH_SUPPORTED_KEY_SET.has(parsedKeycount)
-                && state.contentBar !== "None"
-                && state.contentBar !== "Full";
-            setEffectiveContentBarForMap(shouldFallbackBodyToPattern ? "Pattern" : null);
+            setEffectiveContentBarForMap(null);
         };
         if (cached) {
             parsedInfo = cached.parsedInfo;
@@ -734,9 +749,12 @@ export async function fetchBeatmapFile(reason) {
                 } else {
                     ettResult = pipelineResult.ettResult;
                     // 用算法自身 star 判定（pipeline 保留归一化前的 star），保持 vibro 检测既有行为不变。
-                    isVibroMap = state.vibroDetection
-                        && vibroEligible
-                        && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                    // MSD 基准固定 0.72.3（VIBRO_MSD_VERSION）。
+                    if (state.vibroDetection && vibroEligible) {
+                        const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
+                        if (isStaleRequest()) return;
+                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                    }
                 }
             } else {
                 // 回退：pipeline 估算失败或保守开关未覆盖 → 主线程直接计算（旧路径）。
@@ -747,9 +765,12 @@ export async function fetchBeatmapFile(reason) {
                     );
                     if (isStaleRequest()) return;
 
-                    isVibroMap = state.vibroDetection
-                        && vibroEligible
-                        && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                    // MSD 基准固定 0.72.3（VIBRO_MSD_VERSION）。
+                    if (state.vibroDetection && vibroEligible) {
+                        const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
+                        if (isStaleRequest()) return;
+                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                    }
                 } catch (error) {
                     ettAnalysisError = error;
                     const isKeycountError = /unsupported keycount/i.test(String(error?.message ?? ""));

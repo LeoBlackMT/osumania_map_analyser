@@ -778,10 +778,10 @@ export function renderEtternaSkillBars(values, columnCount) {
     }
 
     const safeValues = values && typeof values === "object" ? values : {};
-    // Technical is always shown: 0.74.0+ MinaCalc computes real per-skillset
-    // values for every keycount (n-key path), so hiding it for 6K/7K would
-    // drop real data. (e.g. 6K Technical is non-zero on typical charts.)
-    const hideTechnical = false;
+    // Technical is hidden for every non-4K keycount: the n-key pipeline does
+    // not produce a meaningful TechBase (values collapse to ~0.18 noise), so
+    // showing it would mislead. 4K keeps the real 8-skill bar set.
+    const hideTechnical = columnCount !== 4;
     state.etternaTechnicalHidden = hideTechnical;
     mainCardEl.classList.toggle("bars-etterna-compact", hideTechnical);
 

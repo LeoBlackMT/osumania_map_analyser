@@ -149,7 +149,7 @@ worker 端处理（compute.worker.js:23-37）：
 **vibro 顺序约束（关键）**：
 
 1. **pipeline 内 vibro 判定用归一化前 star**（runAnalysisPipeline.js:169-175）：`vibroStar = Number(selectedRework?.star)`，`eligible = Number.isFinite(vibroStar) && vibroStar > 5.0`，与旧 analysis.js `selectedRework?.star` 顺序一致（算法自身 star，非归一化后口径）。
-2. **实际 isVibroMap 判定留在主线程**（analysis.js:664-667）：`isVibroMap = state.vibroDetection && vibroEligible && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)`。`detectVibro`（js/app/vibro.js:16）是浏览器专属（`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。
+2. **实际 isVibroMap 判定留在主线程**（analysis.js:664-667）：`isVibroMap = state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD)`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）。`detectVibro`（js/app/vibro.js:16）是浏览器专属（`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。
 
 **归一化星数复用决策**（runAnalysisPipeline.js:109-127，仅性能优化，不改数值）：
 
