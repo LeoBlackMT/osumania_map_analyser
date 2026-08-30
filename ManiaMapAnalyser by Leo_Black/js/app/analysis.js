@@ -1147,11 +1147,17 @@ export async function fetchBeatmapFile(reason) {
         // 成功/失败/缓存命中/未命中四路；浏览器模式（壳未连）no-op。
         if (sourceRequestId && isBridgeConnected()) {
             const hasError = errors.length > 0;
+            const starText = reworkStarEl && reworkStarEl.textContent
+                ? String(reworkStarEl.textContent)
+                : "";
+            const starMatch = starText.match(/-?\d+(\.\d+)?/);
             sendResult({
                 requestId: sourceRequestId,
                 statusHint: hasError ? "analysis-failed" : "success",
                 activeSource: sourceActive || "",
                 errors: hasError ? [...errors] : [],
+                star: starMatch ? Number(starMatch[0]) : null,
+                pattern: state.currentModeTag || null,
                 updatedAt: Date.now(),
             });
         }

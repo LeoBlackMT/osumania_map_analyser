@@ -463,6 +463,8 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     match rx.recv_timeout(POST_TIMEOUT) {
         Ok(result_text) => {
             if let Some(inbound) = parse_result_payload(&result_text) {
+                // mma_state 写入：仅 activeSource=malody 且 errors 为空（契约 §9）。
+                write_mma_state(&shared, &result_text);
                 let hint = inbound.status_hint.unwrap_or_default();
                 let errors = inbound.errors.unwrap_or_default();
                 match hint.as_str() {
@@ -495,6 +497,92 @@ fn parse_result_payload(text: &str) -> Option<ResultInbound> {
 
 fn json_error(text: &str) -> String {
     serde_json::json!({ "error": text }).to_string()
+}
+
+// ---- skin 状态文件（契约 §9：maody 源 + 哨兵定位 + 原子写）----
+
+/// Malody 根：MMA_MALODY_ROOT 覆盖 → 设置（malodyRoot）。
+pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
+    if let Ok(over) = std::env::var("MMA_MALODY_ROOT") {
+        if !over.is_empty() {
+            return Some(PathBuf::from(over));
+        }
+    }
+    let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
+        shared
+            .tosu
+            .as_ref()
+            .map(|info| config::read_tosu_settings(info).get("malodyRoot").cloned())
+            .flatten()
+    } else {
+        shared
+            .offline_settings
+            .lock()
+            .unwrap()
+            .get("malodyRoot")
+            .cloned()
+    };
+    value
+        .as_ref()
+        .and_then(|v| v.as_str())
+        .map(|s| PathBuf::from(s))
+}
+
+/// 扫描 {malodyRoot}/skin/ 下含哨兵 mma.txt 的皮肤目录（命中多个全部写入，幂等）。
+fn skin_targets(shared: &Shared) -> Vec<PathBuf> {
+    let Some(root) = malody_root(shared) else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(root.join("skin")) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if dir.is_dir() && dir.join("mma.txt").exists() {
+            out.push(dir.join("mma_state.txt"));
+        }
+    }
+    out
+}
+
+/// result 帧 → mma_state.txt（KV 文本；tmp+rename 原子写）。
+fn write_mma_state(shared: &Shared, result_text: &str) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(result_text) else {
+        return;
+    };
+    let payload = value
+        .get("payload")
+        .cloned()
+        .unwrap_or(value);
+    if payload.get("activeSource").and_then(|v| v.as_str()) != Some("malody") {
+        return;
+    }
+    let errors = payload.get("errors").and_then(|v| v.as_array());
+    if errors.map(|arr| !arr.is_empty()).unwrap_or(true) {
+        return;
+    }
+    let kv = |key: &str| -> String {
+        payload
+            .get(key)
+            .map(|v| match v.as_str() {
+                Some(s) => s.to_string(),
+                None => v.to_string(),
+            })
+            .unwrap_or_default()
+    };
+    let content = format!(
+        "star={}\npattern={}\nmsd={}\ngraph={}\nclient=malody\nupdatedAt={}\n",
+        kv("star"),
+        kv("pattern"),
+        kv("msd"),
+        kv("graph"),
+        kv("updatedAt"),
+    );
+    for target in skin_targets(shared) {
+        let tmp = target.with_extension("state.tmp");
+        if fs::write(&tmp, &content).is_ok() {
+            let _ = fs::rename(&tmp, &target);
+        }
+    }
 }
 
 // ---- 周期器（tosu 重探测 30s + ping 15s）----
