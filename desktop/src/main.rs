@@ -1,25 +1,37 @@
-// mma-shell 无窗口版入口（开发冒烟；窗口 wrapper 后续接管）。默认不 push。
+// mma-shell 桌面壳入口：
+// 在线（tosu.env 命中且存活）→ 导航到 tosu 插件页（设置/静态零适配）；
+// 离线 → 24061 本地页。窗口属性（透明/置顶/无边框）由 tauri.conf.json 配置。
 
 use mma_shell::{config, server};
-use std::time::Duration;
+use tauri::Manager;
+
+fn startup_url(tosu: &Option<config::TosuInfo>) -> String {
+    let Some(info) = tosu else {
+        return "http://127.0.0.1:24061/".to_string();
+    };
+    if !config::tosu_online(info) {
+        return "http://127.0.0.1:24061/".to_string();
+    }
+    let encoded = config::PLUGIN_FOLDER.replace(' ', "%20");
+    format!("{}/{}/", info.base_url(), encoded)
+}
 
 fn main() {
     let plugin_dir = config::plugin_dir();
     let tosu = config::probe_tosu_env();
-    match &tosu {
-        Some(info) => println!(
-            "tosu: {}:{} (online={})",
-            info.ip,
-            info.port,
-            config::tosu_online(info)
-        ),
-        None => println!("tosu: not found — offline mode (24061 serves plugin page)"),
-    }
+    let url_text = startup_url(&tosu);
     println!("plugin dir: {}", plugin_dir.display());
-    let _shared = server::start(plugin_dir, tosu);
-    println!("bridge listening: 24060 (malody POST) / 24061 (static + /ws + /settings + /cover)");
-    println!("press Ctrl+C to exit");
-    loop {
-        std::thread::sleep(Duration::from_secs(3600));
-    }
+    println!("startup url: {}", url_text);
+
+    tauri::Builder::default()
+        .setup(move |app| {
+            let _shared = server::start(plugin_dir, tosu);
+            if let Some(window) = app.get_webview_window("main") {
+                let url = url_text.parse().expect("invalid startup url");
+                let _ = window.navigate(url);
+            }
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
