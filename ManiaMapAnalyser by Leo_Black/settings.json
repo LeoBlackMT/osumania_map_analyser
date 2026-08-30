@@ -379,6 +379,35 @@
 		"value": "Mixed"
 	},
 	{
+		"uniqueID": "gameClient",
+		"type": "options",
+		"title": "Game Client",
+		"description": "Which game client the card should follow. Auto picks the live source (playing state, then activity, then osu!>Etterna>Malody); the others lock to that client. Requires the desktop shell for Etterna/Malody.",
+		"options": [
+			"Auto",
+			"Osu!",
+			"Etterna",
+			"Malody"
+		],
+		"value": "Auto"
+	},
+	{
+		"uniqueID": "etternaRoot",
+		"type": "text",
+		"title": "Etterna Folder",
+		"description": "Path to the Etterna installation folder (only needed when the shell cannot detect it automatically).",
+		"options": [],
+		"value": ""
+	},
+	{
+		"uniqueID": "malodyRoot",
+		"type": "text",
+		"title": "Malody V Folder",
+		"description": "Path to the Malody V installation folder (only needed when the shell cannot detect it automatically).",
+		"options": [],
+		"value": ""
+	},
+	{
 		"uniqueID": "etternaVersion",
 		"type": "options",
 		"title": "Global Etterna Version",

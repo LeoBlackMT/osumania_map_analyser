@@ -1108,6 +1108,7 @@ export async function fetchBeatmapFile(reason) {
             const payload = {
                 algorithm: state.estimatorAlgorithm,
                 actualAlgorithm: state.actualEstimatorAlgorithm,
+                client: state.activeSource || "osu",
                 keycount: Number(rework.columnCount),
                 mods: state.modCodes || [],
                 speedRate: Number(state.speedRate) || 1,

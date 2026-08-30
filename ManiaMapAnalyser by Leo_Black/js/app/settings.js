@@ -43,6 +43,9 @@ import {
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
     parseEnableTelemetryValue,
+    parseGameClientValue,
+    parseEtternaRootValue,
+    parseMalodyRootValue,
     patternClustersEl,
     ppBarsEl,
     reworkStarEl,
@@ -353,6 +356,28 @@ export function applyExtendedEstimationRangeSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.extendedEstimationRange);
     const changed = state.extendedEstimationRange !== next;
     state.extendedEstimationRange = next;
+    return changed;
+}
+
+export function applyGameClientSetting(value) {
+    // 输入已由 parseGameClientValue 归一化（Auto/Osu!/Etterna/Malody）。
+    const next = value || "Auto";
+    const changed = state.gameClient !== next;
+    state.gameClient = next;
+    return changed;
+}
+
+export function applyEtternaRootSetting(value) {
+    const next = typeof value === "string" ? value.trim() : "";
+    const changed = state.etternaRoot !== next;
+    state.etternaRoot = next;
+    return changed;
+}
+
+export function applyMalodyRootSetting(value) {
+    const next = typeof value === "string" ? value.trim() : "";
+    const changed = state.malodyRoot !== next;
+    state.malodyRoot = next;
     return changed;
 }
 
@@ -756,6 +781,9 @@ const SETTING_HANDLERS = [
     { key: "enableFloatingTriangles", parse: parseEnableFloatingTrianglesValue, apply: applyEnableFloatingTrianglesSetting },
     { key: "enableCoverArt", parse: parseEnableCoverArtValue, apply: applyEnableCoverArtSetting },
     { key: "customBackgroundColor", parse: parseCustomBackgroundColorValue, apply: applyCustomBackgroundColorSetting },
+    { key: "gameClient", parse: parseGameClientValue, apply: applyGameClientSetting },
+    { key: "etternaRoot", parse: parseEtternaRootValue, apply: applyEtternaRootSetting },
+    { key: "malodyRoot", parse: parseMalodyRootValue, apply: applyMalodyRootSetting },
 ];
 
 /** Keys whose change requires a recompute (mirrors the old recomputeNeeded list). */
@@ -775,7 +803,7 @@ export const SETTING_CACHE_KEYS = new Set([
     "companellaEtternaVersion", "useSvDetection", "VibroDetection",
     "wsEndpoint", "forceSunnyWindow", "enableLNDifficulty",
     "enableAnalyzeLN", "enableAlwaysShowLNDifficulty",
-    "extendedEstimationRange",
+    "extendedEstimationRange", "gameClient",
 ]);
 
 function extractSettingsPayloadFromCommandPacket(packet) {

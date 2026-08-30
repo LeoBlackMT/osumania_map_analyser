@@ -52,6 +52,19 @@ export function normalizeEstimatorAlgorithmValue(value) {
     return null;
 }
 
+export function normalizeGameClientValue(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const lowered = value.trim().toLowerCase();
+    if (lowered === "auto") return "Auto";
+    if (lowered === "osu!" || lowered === "osu") return "Osu!";
+    if (lowered === "etterna") return "Etterna";
+    if (lowered === "malody") return "Malody";
+    return null;
+}
+
 export function normalizeEtternaVersionValue(value) {
     if (typeof value !== "string") {
         return null;
@@ -366,6 +379,28 @@ export function createSettingsParsers(appConfig) {
         return appConfig.defaults.companellaEtternaVersion;
     }
 
+    function parseGameClientValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "gameClient");
+        const normalized = normalizeGameClientValue(value);
+        return normalized || appConfig.defaults.gameClient || "Auto";
+    }
+
+    function parseEtternaRootValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "etternaRoot");
+        if (typeof value === "string" && value.trim() !== "") {
+            return value.trim();
+        }
+        return appConfig.defaults.etternaRoot || "";
+    }
+
+    function parseMalodyRootValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "malodyRoot");
+        if (typeof value === "string" && value.trim() !== "") {
+            return value.trim();
+        }
+        return appConfig.defaults.malodyRoot || "";
+    }
+
     function parseEnablePauseDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "enablePauseDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.pauseDetectionEnabled);
@@ -596,5 +631,8 @@ export function createSettingsParsers(appConfig) {
         parseEnableAnalyzeLNValue,
         parseEnableAlwaysShowLNDifficultyValue,
         parseEnableTelemetryValue,
+        parseGameClientValue,
+        parseEtternaRootValue,
+        parseMalodyRootValue,
     };
 }

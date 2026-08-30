@@ -9,6 +9,7 @@ import { scheduleRecompute } from "../scheduler.js";
 import { convertSmSscToOsuText } from "../../parser/smSscToOsuConverter.js";
 import { convertMcToOsuText } from "../../parser/mcToOsuConverter.js";
 import { sendResult } from "./bridgeClient.js";
+import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 
 function looksLikeOsu(text) {
     return typeof text === "string"
@@ -39,8 +40,8 @@ export function handleSongFrame(payload) {
         }
     };
 
-    if (locked && locked !== source) {
-        fail([`路由不可用：当前活跃源为 ${locked}`]);
+    if (!routeAllowsExternal(source)) {
+        fail([`路由不可用：当前活跃源为 ${locked || "osu"}`]);
         return;
     }
 
@@ -83,6 +84,7 @@ export function handleSongFrame(payload) {
     // 外部源 modSignature 直构（不走 modData 派生、与 client 无关）
     state.modSignature = `${state.speedRate.toFixed(5)}|${state.odFlag}|${state.cvtFlag}|${mod.classic || 0}`;
     state.externalSourceActive = source;
+    notifySourceEvent(source);
 
     scheduleRecompute("external source song", false);
 }

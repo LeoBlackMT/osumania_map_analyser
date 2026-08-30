@@ -4,6 +4,7 @@
 // sources 存活位：供 Auto 决策（M5 sourceManager）与后续 UI（圆点源状态）。
 
 import { state } from "../appContext.js";
+import { reEvaluate } from "./sourceManager.js";
 
 /**
  * 应用壳 state 帧（shell → 页）。
@@ -17,4 +18,5 @@ export function applyShellState(payload) {
     state.etternaPlaying = Boolean(sources.etterna && sources.etterna.playing);
     state.etternaPlayingExpireAt = sources.etterna ? sources.etterna.playingExpireAt : null;
     state.malodyAlive = Boolean(sources.malody && sources.malody.alive);
+    reEvaluate();
 }

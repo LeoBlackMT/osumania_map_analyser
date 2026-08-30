@@ -111,6 +111,9 @@ export const APP_CONFIG = {
         enableAnalyzeLN: false,
         enableAlwaysShowLNDifficulty: false,
         enableTelemetry: true,
+        gameClient: "Auto",
+        etternaRoot: "",
+        malodyRoot: "",
     },
 
     mods: {

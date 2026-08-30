@@ -29,6 +29,8 @@ import { applyCoverThemeForBeatmap } from "./coverTheme.js";
 import { updateLivePp } from "./livePp.js";
 import { buildSongKey, resolveChangeKind } from "./changeKind.js";
 import { noteTelemetryActivity } from "./telemetry.js";
+import { isOsuSuppressed } from "./sources/sourceManager.js";
+import { notifySourceEvent } from "./sources/sourceManager.js";
 
 
 function getModData(data) {
@@ -130,9 +132,9 @@ function updateSongTimeState(data) {
     }
 }
 
-export function setupSocketListener() {
-    socket.api_v2((data) => {
-        noteTelemetryActivity();
+/** 信号段：游玩态/songTime/livePP（败方门控豁免照读，供 Auto 路由回 osu）。 */
+export function applySignalState(data) {
+    noteTelemetryActivity();
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;
@@ -166,7 +168,10 @@ export function setupSocketListener() {
         // 每消息实时 PP：内部自带 early-return 守卫（成本极低），必须在
         // beatmap 守卫之前，保证 play/resultScreen 状态变化也走此路径。
         updateLivePp(data);
+}
 
+/** 状态段：谱面身份 / mod 应用与换图触发（败方门控挂起的部分）。 */
+export function applyBeatmapState(data) {
         const beatmap = data?.beatmap;
         if (!beatmap) return;
 
@@ -255,6 +260,7 @@ export function setupSocketListener() {
         const hasStateMismatch = nextBeatmapIdentity !== previousBeatmapIdentity
             || nextModSignature !== previousModSignature;
         if (!hasStateMismatch) return;
+        notifySourceEvent("osu");
 
         if (shouldApplyModState) {
             state.speedRate = modData.speedRate;
@@ -290,5 +296,30 @@ export function setupSocketListener() {
         socket.sendCommand("getSettings", getCounterPathForCommand());
 
         scheduleRecompute("beatmap/mod changed", true);
+}
+
+// ── 败方门控（sourceManager 咨询）+ 缓冲回放 ──
+
+let bufferedTosuData = null;
+
+/** 切回 osu 时回放挂起期间最后一条 tosu 状态（缓存键对齐，命中即无额外分析）。 */
+export function resumeBufferedOsuState() {
+    if (bufferedTosuData) {
+        applyBeatmapState(bufferedTosuData);
+        bufferedTosuData = null;
+    }
+}
+
+export function setupSocketListener() {
+    socket.api_v2((data) => {
+        applySignalState(data);
+        if (isOsuSuppressed()) {
+            bufferedTosuData = data;
+            return;
+        }
+        applyBeatmapState(data);
+        if (bufferedTosuData) {
+            bufferedTosuData = null;
+        }
     });
 }
