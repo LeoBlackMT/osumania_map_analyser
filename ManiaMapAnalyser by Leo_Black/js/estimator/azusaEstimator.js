@@ -2,6 +2,7 @@ import { OsuFileParser } from "../parser/osuFileParser.js";
 import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
+import { computeMarathonCorrection } from "./marathonCorrection.js";
 
 const AZUSA_CONFIG = Object.freeze({
     rcLnRatioLimit: 0.18,
@@ -945,7 +946,24 @@ export function runAzusaEstimatorFromText(osuText, options = {}, parsed = null) 
     const preOutputNumeric = clamp(Number(calibratedNumeric) + curveGapResidual, -2, 20);
     const outputNumeric = calibrateAzusaOutputNumeric(preOutputNumeric);
     const refCorrection = computeReferenceCorrection(outputNumeric, danielNumericForBlend, sunnyNumeric);
-    const finalNumeric = clamp(Number(outputNumeric) + refCorrection, -2, 20);
+    let finalNumeric = clamp(Number(outputNumeric) + refCorrection, -2, 20);
+
+    // 马拉松时长修正（估算器内部应用）：options.marathonCorrection 注入
+    // { durationS, ettValues }（缺省/无 MSD 时不触发），只降不升、对数饱和 + numeric taper；
+    // 应用后 estDiff/star/numericDifficulty 统一由修正后的 finalNumeric 派生，保证输出自洽。
+    // 参数与机制见 docs/features/marathon-correction.md。
+    const mc = options.marathonCorrection;
+    if (mc && Number.isFinite(Number(mc.durationS))) {
+        const corr = computeMarathonCorrection({
+            durationS: mc.durationS,
+            ettValues: mc.ettValues ?? null,
+            numeric: finalNumeric,
+        });
+        if (corr > 0) {
+            finalNumeric = finalNumeric - corr;
+        }
+    }
+
     const estDiff = numericToRcLabel(finalNumeric);
 
     const result = {

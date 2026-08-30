@@ -202,6 +202,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | 步骤 | 内容 |
 | --- | --- |
 | 1 解析一次 | `OsuFileParser` `process()` → 估算器/归一化/SunnyWindow/Interlude 共享同一实例（任务 9/10 已验证 parsed 路径逐位一致），输出 `parsedSummary {metadata, lnRatio, columnCount}` |
+| 1b 马拉松前置 Ett（按需） | `durationS > 300`（noteStarts 首尾差，未缩放）且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时，先算一次 Ett：注入 `options.marathonCorrection = {durationS, ettValues}` 供估算器内嵌修正，并复用于段 9/10（零重复 WASM）；其他情况零开销 |
 | 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`（白名单与回退语义同 compute.worker.js:17-54） |
 | 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0}` |
 | 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文） |
@@ -212,7 +213,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | 9 Ett | `withEtterna` 时 `analyzeEtternaFromText(rawText, {musicRate, scoreGoal, cvtFlag, etternaVersion})`（calc.js 现有 loader；worker 内 import.meta.url 按模块文件解析、同源 fetch 实例化 WASM，Node 侧 fs preload 不变），输出 `ettResult {values, keycount, ...}` |
 | 10 Companella 二次 Ett | Companella/Mixed && columnCount===4 && `companellaEtternaVersion ≠ etternaVersion` 时在同一 pipeline 内完成第二次 Ett（一次往返），输出 `companellaEttResult` |
 | 11 ppMetrics | `options.withPpMetrics === true` 时输出 `ppMetrics {star, variety, accScalar, totalNotes, spikiness, switches}`：Sunny/Companella 从 `selectedRework.ppMetrics` 提取；Azusa/Roxy/Mixed 从归一化用的 sunnyResult 对象提取（保留引用，同一次 Sunny 结果）；**Daniel 在 pipeline 内跑专用 Sunny pass**（`runSunnyEstimatorFromText(rawText, {...options, withPpMetrics: true}, parser)`，同 options 保证一致性，worker 内执行）；失败 → `ppMetrics: null`（软失败，不进 errors[]） |
-| 12 马拉松修正 | **恒定应用**（无设置开关）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy}` 且 `ettResult.values` 可用时，对 `rework.numericDifficulty` 只降不升修正并重派生 `estDiff`（`numericToRcLabel`）：`durationS = (max−min of noteStarts)/1000`，>300s 且 MSD 技能均衡（`max(4 聚合技能)/total < 0.45`）时修正 `min(0.50, 0.40×ln(1+excessMin))`（对数饱和，防相邻段位课程倒挂）、numeric taper `10~16` 线性渐减。star 不动（归一化已覆盖）。软失败保持原结果。详见 [features/marathon-correction.md](../features/marathon-correction.md) |
+| 12 马拉松修正 | **估算器内嵌**（无管线派生段）：`options.marathonCorrection = { durationS, ettValues }` 由前置段注入（见 §7.4 前置 Ett）——仅 `durationS > 300` 且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时提前计算一次 Ett 并复用于段 9/10；估算器内部对 `numericDifficulty` 只降不升修正（对数饱和 `min(0.50, 0.40×ln(1+excessMin))` + numeric taper `10~16`），`estDiff`/`star` 由修正后值派生。缺省不触发（逐位兼容旧行为）。详见 [features/marathon-correction.md](../features/marathon-correction.md) |
 
 - **附属段开关**：`withPattern/withEtterna/withInterlude` 取自 needComputed（fetch 前的保守值，与缓存覆盖检查同源，analysis.js:365-368）。默认 false——仅请求需要的段，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界：主线程消费段有回退分支，见下）。
 - **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。

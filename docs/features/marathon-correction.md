@@ -53,16 +53,17 @@ stamina = 0.7 * Stamina + 0.3 * Handstream
 tech    = Technical
 ```
 
-## 4. 接入点
+## 4. 接入点（估算器内嵌，无管线派生段）
 
-- 核心模块：`js/estimator/marathonCorrection.js`（共享 DOM-free，浏览器/Node 一致；位于 estimator 分类下，与 RC 标签格式同域）。
-  - `computeMarathonCorrection({durationS, ettValues, numeric}, params?)` → 修正量（0 = 不修正）；`params` 为可选参数覆盖（默认模块常量），供校准/测试使用；
-  - `applyMarathonCorrectionToRcResult(result, {durationS, ettValues})` → 新结果对象（`numericDifficulty` 修正 + `estDiff` 经 `numericToRcLabel` 重派生）。
-- 管线：`js/pipeline/runAnalysisPipeline.js` §11（派生段，Ett 段之后、返回之前）：**恒定应用**——`actualEstimatorAlgorithm ∈ {Azusa, Roxy}` 且 `ettResult.values` 可用且 `noteStarts` 长度 ≥ 2 时执行。
-  - `durationS` = `(max(noteStarts) - min(noteStarts)) / 1000`（未按速率缩放）。
-  - star 不在此段处理：Azusa/Roxy/Mixed 的 star 已在 §4 归一化为 Sunny raw，修正不影响星数胶囊。
-  - 修正软失败（异常）→ 保持原结果，不并入 `errors[]`（与附属段语义一致）。
-- 设置链路：**无设置项**（恒定应用，用户不可关闭；结果恒包含修正，缓存键语义稳定、无需失效列表）。
+**架构原则（用户决策）**：修正本身作为**估算器本体的参数化环节**——`runRoxyEstimatorFromText` / `runAzusaEstimatorFromText` 内部在 finalNumeric 之后应用修正，`estDiff`/`star`/`numericDifficulty` 统一由修正后的值派生（输出自洽）。管线不做"输出后修正"。
+
+- 估算器入口：`options.marathonCorrection = { durationS, ettValues }`（可选；缺省或无 MSD 时不触发，行为与旧版逐位一致——benchmark 参考 runner 不传该参数，基准保持"算法本体"口径）。
+  - `durationS`：谱面 drain 时长（秒，未按速率缩放；首个到最后一个 note start 之差）；
+  - `ettValues`：Ett WASM skillsets（均衡条件数据源；缺失则不修正）。
+  - 修正公式与参数（§3）由 `computeMarathonCorrection`（`js/estimator/marathonCorrection.js`）提供。
+- 管线（`runAnalysisPipeline`）：**按需前置 Ett**——仅当 `durationS > 300` 且 `columnCount === 4` 且算法 ∈ {Azusa, Roxy, Mixed} 时提前计算一次 Ett（供估算器注入），并**复用于段 9/10**（不重复 WASM 调用；`withEtterna` 关闭时也前置——修正是恒定语义，不依赖展示开关）。短图/非 4K/其他算法零额外开销。
+- 性能约束遵守（详见 `docs/breakings/2026-08-30-marathon-correction-in-estimator.md`）：解析仍共享一次（13→1-2 不变）、无估算器重跑（修正发生在首次估算内部）、前置 Ett 仅命中长图候选且复用给既有 ett 段。
+- 设置链路：**无设置项**（恒定应用，用户不可关闭）。
 - 展示：无新增 UI；变更体现在难度数值与 RC 标签上。
 
 ## 5. 设计约束与安全性
@@ -75,7 +76,7 @@ tech    = Technical
 
 ## 6. 与估算器本体的关系
 
-修正不改变 `runRoxyEstimatorFromText` / `runAzusaEstimatorFromText` 的输出（算法本体未经修改，benchmark runner 直接调用估算器时不含此修正）；修正位于插件分析管线（`runAnalysisPipeline`）的派生段，属于**插件展示语义层**的时长校正。详见 [azusa_algorithm.md](../azusa_algorithm.md) 与 [roxy_algorithm.md](../roxy_algorithm.md) 的「马拉松时长修正」小节。
+修正**属于估算器本体**：`runRoxyEstimatorFromText` / `runAzusaEstimatorFromText` 通过 `options.marathonCorrection` 参数启用的内嵌环节（缺省不触发，逐位兼容旧行为）。"估算器输出的数值化难度"即最终值（含修正），前端不做输出后修正。benchmark 参考 runner 不传该参数 → 基准结果为"无修正基线"；插件管线按需注入（§4）→ 前端显示修正值。详见 [azusa_algorithm.md](../azusa_algorithm.md) §13 与 [roxy_algorithm.md](../roxy_algorithm.md) §19。
 
 ## 7. 验证
 

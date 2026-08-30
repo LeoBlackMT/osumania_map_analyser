@@ -24,7 +24,6 @@ import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
-import { applyMarathonCorrectionToRcResult } from "../estimator/marathonCorrection.js";
 
 const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed"]);
 
@@ -108,6 +107,43 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         lnRatio: Number(parsedData.lnRatio) || 0,
         columnCount: Number(parsedData.columnCount) || 0,
     };
+
+    // ── 马拉松时长修正：估算器内嵌前置（按需）──────────────────────────
+    // 修正由 Azusa/Roxy 估算器本体应用（options.marathonCorrection 注入
+    // { durationS, ettValues }）。durationS 恒可同步计算（noteStarts 首尾差，
+    // 未按速率缩放）；ettValues 需 WASM（异步）→ 仅在可能触发修正的候选上
+    // （>300s 且 4K 且算法 ∈ {Azusa, Roxy, Mixed}）提前计算一次 Ett，并复用于
+    // 段 9/10（不重复计算，perf 约束见 docs/breakings/2026-08-09-perf-analysis-pipeline.md）。
+    const marathonDurationS = (() => {
+        const starts = parsedData.noteStarts;
+        if (!Array.isArray(starts) || starts.length < 2) return 0;
+        return (Math.max(...starts) - Math.min(...starts)) / 1000;
+    })();
+    const isMarathonRcCandidate = estimatorAlgorithm === "Azusa"
+        || estimatorAlgorithm === "Roxy"
+        || estimatorAlgorithm === "Mixed";
+    let marathonEttReuse = null; // { result?: object, error?: string }
+    if (isMarathonRcCandidate && parsedSummary.columnCount === 4 && marathonDurationS > 300) {
+        try {
+            marathonEttReuse = { result: await analyzeEtternaFromText(rawText, {
+                musicRate: options.speedRate ?? 1,
+                scoreGoal: ETT_DEFAULT_SCORE_GOAL,
+                cvtFlag: options.cvtFlag,
+                etternaVersion: options.etternaVersion,
+            }) };
+        } catch (err) {
+            marathonEttReuse = { error: String(err?.message || err) };
+        }
+        if (marathonEttReuse.result) {
+            options = {
+                ...options,
+                marathonCorrection: {
+                    durationS: marathonDurationS,
+                    ettValues: marathonEttReuse.result.values,
+                },
+            };
+        }
+    }
 
     // 归一化星数复用决策（决策表见 .omo/evidence/task-11-pipeline.txt）：
     // 仅当算法内部 Sunny 与归一化调用（runSunnyEstimatorFromText(rawText, options)）
@@ -274,18 +310,27 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     }
 
     // 9. Ett（WASM，worker 内用 calc.js 现有 loader；import.meta.url 按模块文件解析，worker 同源可 fetch）。
+    //    若马拉松前置已算过（>300s 的 4K RC 候选），直接复用其结果，避免二次 WASM 计算（perf 约束）。
     let ettResult = null;
     let ettError = null;
     if (options.withEtterna) {
-        try {
-            ettResult = await analyzeEtternaFromText(rawText, {
-                musicRate: options.speedRate ?? 1,
-                scoreGoal: ETT_DEFAULT_SCORE_GOAL,
-                cvtFlag: options.cvtFlag,
-                etternaVersion: options.etternaVersion,
-            });
-        } catch (err) {
-            ettError = String(err?.message || err);
+        if (marathonEttReuse) {
+            if (marathonEttReuse.result) {
+                ettResult = marathonEttReuse.result;
+            } else {
+                ettError = marathonEttReuse.error;
+            }
+        } else {
+            try {
+                ettResult = await analyzeEtternaFromText(rawText, {
+                    musicRate: options.speedRate ?? 1,
+                    scoreGoal: ETT_DEFAULT_SCORE_GOAL,
+                    cvtFlag: options.cvtFlag,
+                    etternaVersion: options.etternaVersion,
+                });
+            } catch (err) {
+                ettError = String(err?.message || err);
+            }
         }
     }
 
@@ -312,28 +357,8 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         }
     }
 
-    // 11. 马拉松时长修正（派生段）：恒定应用于 Roxy/Azusa（含 Mixed 实际命中），
-    //     对 numericDifficulty 只降不升修正并重派生 estDiff。依赖 Ett MSD skillsets
-    //     （均衡性条件）；ett 不可用/非 RC 结果/时长不足 → 跳过（修正=0）。
-    //     统计口径：drain 时长 = 最后 note start - 第一个 note start（未按速率缩放）。
-    //     机制与参数见 docs/features/marathon-correction.md（灵感：Dan-Overlay 马拉松修正）。
-    //     star 不在此段处理（归一化已将 Azusa/Roxy/Mixed 的 star 替换为 Sunny raw，见 §4）。
-    if (actualEstimatorAlgorithm === "Azusa" || actualEstimatorAlgorithm === "Roxy") {
-        if (ettResult && ettResult.values) {
-            try {
-                const starts = parsedData.noteStarts;
-                if (Array.isArray(starts) && starts.length >= 2) {
-                    const durationS = (Math.max(...starts) - Math.min(...starts)) / 1000;
-                    rework = applyMarathonCorrectionToRcResult(rework, {
-                        durationS,
-                        ettValues: ettResult.values,
-                    });
-                }
-            } catch (err) {
-                // 修正软失败：保持原结果（与附属段语义一致，不并入 errors[]）
-            }
-        }
-    }
+    // 11. 马拉松时长修正由估算器本体完成（见前置段：options.marathonCorrection 注入）。
+    //     此处无派生段——修正后的数值化难度即估算器输出（语义层即算法层）。
 
     return {
         rework,

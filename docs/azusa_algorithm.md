@@ -365,9 +365,9 @@ This leverages the observation that Daniel and Sunny have higher discriminative 
 
 ---
 
-## 13. Marathon Duration Correction (Plugin Pipeline)
+## 13. Marathon Duration Correction (Estimator-Embedded)
 
-Since v2.0.2, the plugin's analysis pipeline applies a **marathon duration correction** to Azusa's `numericDifficulty` as a derived post-processing stage (`runAnalysisPipeline` §11, after the Ett stage). This is **not** part of the estimator itself: `runAzusaEstimatorFromText` is unchanged, and direct calls (e.g. the benchmark runner) do not see the correction — only results displayed through the plugin pipeline do.
+Since v2.0.2, Azusa applies a **marathon duration correction** inside the estimator itself: `options.marathonCorrection = { durationS, ettValues }` (optional; absent or missing MSD skillsets → no correction, bit-identical to the legacy output). The corrected `finalNumeric` drives `numericDifficulty`, `estDiff` and `star` derivation, so the estimator output is the final difficulty value — no post-output pipeline patching. Direct calls without the option (e.g. the benchmark runner) yield the uncorrected baseline.
 
 **Mechanism and inspiration.** Inspired by the marathon correction in [Dan-Overlay](https://github.com/acarranzao1a-png/Dan-Overlay) (`pipeline.py` `_merge_primary_and_mina`, calibrated against the 6th–10th Reform Marathon Packs), which lowers the estimate of long, evenly difficult charts where accumulated stamina strain inflates the difficulty beyond the peak sections' true demand. The mechanism is ported with the correction target changed from SR/DP to Azusa's `numericDifficulty` (dan-tier numeric) and the taper moved from the SR domain to the numeric domain. See [features/marathon-correction.md](features/marathon-correction.md).
 
