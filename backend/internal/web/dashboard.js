@@ -659,6 +659,7 @@ function render(s) {
   renderHBar("keycounts", s.keycounts || []);
   renderDonut("modes", s.modes || []);
   renderDonut("mods", s.mods || []);
+  renderDonut("clients", s.clients || []);
   renderDonut("versions", s.versions || []);
   renderHBar("algorithms", s.algorithms || [], 8);
   renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
