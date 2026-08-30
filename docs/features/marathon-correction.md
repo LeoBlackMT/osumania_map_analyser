@@ -24,15 +24,25 @@
   - taper 从 SR 域（6.5~7.0）改为 **numeric 域（10~16）**：numeric ≤ 10 全量修正、10~16 线性渐减至 0、≥ 16 不修正。理由：低段位（Reform 1~10 马拉松课程包）时长虚高最严重；高段位（Zeta 16+）校准稳定。
   - 均衡条件依赖 Etterna MSD skillsets（ett values）；无 MSD（ett 不可用）→ 不修正（缺信号不动作）。
 
-## 3. 参数（v2.0.2 校准后）
+## 3. 参数（v2.0.2 校准后，对数饱和版）
 
 | 参数 | 值 | 说明 |
 |---|---|---|
 | `MARATHON_DURATION_THRESHOLD_S` | 300 | drain 时长门槛（秒，未按速率缩放） |
-| `MARATHON_CORRECTION_PER_MIN` | **0.20** | 每超出 1 分钟的修正量（numeric 单位；course 样本网格校准，见 §8） |
-| `MARATHON_CORRECTION_CAP` | 0.65 | 修正量封顶 |
+| `MARATHON_CORRECTION_SCALE` | **0.40** | 对数域系数（course 样本排序约束校准，见 §8） |
+| `MARATHON_CORRECTION_CAP` | **0.50** | 修正量封顶（排序约束校准） |
 | `MARATHON_BALANCE_RATIO` | 0.45 | 技能均衡阈值：`max(4 技能)/总和 < 0.45` 才触发 |
 | `MARATHON_TAPER_LO / HI` | 10 / 16 | numeric taper 区间 |
+
+修正式（对数饱和，次线性）：
+
+```
+excessMin = (durationS − 300) / 60          # 超出分钟数
+raw       = min(CAP, SCALE × ln(1 + excessMin))
+corr      = raw × taper(numeric)
+```
+
+**为何对数饱和**：线性惩罚（perMin × excessMin）随时长增长，会导致**修正差超过相邻段位课程的估算差而翻转相对顺序**（验收实测：REFORM 2nd Pack 8th 修正后 9.28 > 9th 9.25，base 本为 9.78 < 9.90）。对数在长端收敛修正差（8th/9th 修正差从 0.157 降到 ~0.07），让排序重新由估算器 base 差支配；全 pack 内相邻段位对修正后零新增倒挂（§8）。
 
 技能聚合（ett values 键名首字母大写，见 `js/ett/calc.js` `OFFICIAL_OUTPUT_ORDER`）：
 
@@ -45,7 +55,7 @@ tech    = Technical
 
 ## 4. 接入点
 
-- 核心模块：`js/rework/marathonCorrection.js`（共享 DOM-free，浏览器/Node 一致）。
+- 核心模块：`js/estimator/marathonCorrection.js`（共享 DOM-free，浏览器/Node 一致；位于 estimator 分类下，与 RC 标签格式同域）。
   - `computeMarathonCorrection({durationS, ettValues, numeric}, params?)` → 修正量（0 = 不修正）；`params` 为可选参数覆盖（默认模块常量），供校准/测试使用；
   - `applyMarathonCorrectionToRcResult(result, {durationS, ettValues})` → 新结果对象（`numericDifficulty` 修正 + `estDiff` 经 `numericToRcLabel` 重派生）。
 - 管线：`js/pipeline/runAnalysisPipeline.js` §11（派生段，Ett 段之后、返回之前）：**恒定应用**——`actualEstimatorAlgorithm ∈ {Azusa, Roxy}` 且 `ettResult.values` 可用且 `noteStarts` 长度 ≥ 2 时执行。
@@ -61,6 +71,7 @@ tech    = Technical
 - **无效结果保护**：`numericDifficulty === null`（Roxy scope 外 `< Alpha Low`/`> Emik Zeta high`、Azusa 错误结果）严格类型判断，不修正（`Number(null)=0` 陷阱已规避）。
 - **无 MSD 不动作**：缺均衡条件信号时不修正，避免误伤单一技能高压长图（如马拉松 jack 图）。
 - **高段位保护**：numeric ≥ 16 不修正（校准数据中 ≥16 的课程图本就准确，见 §8 逐行验证）。
+- **排序保护（对数饱和）**：修正式次线性（`ln(1+excessMin)`），相邻段位课程的修正差被压缩到小于估算器 base 差，避免"9th 因时长更长被扣更多而低于 8th"类倒挂（验收项，逐行复现验证见 §8）。
 
 ## 6. 与估算器本体的关系
 
@@ -72,28 +83,41 @@ tech    = Technical
 - Benchmark（只读基准仓库）：`temp/bench-marathon-course.mjs`——
   - 样本：`samples/data.csv` 中 `pattern == "course"` 的行（34 张，RC 天然；用户指定 course 分类 + RC 筛选）；
   - 口径与 benchmark runner 对齐（got 优先 `numericDifficulty`；estDiff 含 `<`/`>` 的行不参与统计）；
-  - baseline vs corrected 对比 MAE/RMSE/Bias/Exact/Close 与修正触发行数。
+  - baseline vs corrected 对比 MAE/RMSE/Bias/Exact/Close 与修正触发行数；
+  - 排序检查：同一 pack 内按 expected 升序的相邻有效对，修正后 got 必须非降且不得新增倒挂（pack 按 name 的 ` [` 前缀分组，跨 pack 体系不可比不计入）。
+- 倒挂复现：`temp/repro-8th-9th.mjs`（REFORM 2nd 8th/9th 专项：base 9.78/9.90 → 修复后 9.28/9.32，顺序保持）。
 
 ## 8. 参数校准记录（用户授权使用 course 样本校准，2026-08）
 
-网格：perMin ∈ {0.08, 0.12, 0.16, 0.20, 0.24} × cap ∈ {0.65, 0.90, 1.20, 1.50}（threshold=300、balance=0.45、taper=10~16 固定：taper 高段位保护在逐行验证中成立——≥16 的课程图本就准确，不可调低）。
+### 8.1 第一轮（线性修正，未通过验收）
 
-合并口径（Roxy 有效 14 行 + Azusa 有效 34 行 = 48 行；course 子集）：
+网格：perMin ∈ {0.08~0.24} × cap ∈ {0.65~1.50}（threshold=300、balance=0.45、taper=10~16 固定）。合并口径（Roxy 有效 14 行 + Azusa 有效 34 行 = 48 行）：
 
-| perMin | cap | MAE | RMSE | Bias | Exact% | Close% |
+| perMin | cap | 合并 MAE | Bias | Exact% | Close% |
+|---|---|---|---|---|---|
+| 0.20 | 0.65 | 0.3225 | −0.053 | 45.8 | 79.2 |
+| 0.08（Dan-Overlay SR 单位移植） | 0.65 | 0.3845 | −0.258 | 29.2 | 79.2 |
+
+结论：0.08 是 Dan-Overlay 的 **SR 单位**值（其 SR≈DP×1.75），搬 numeric 后偏小 ~2.5 倍；选 0.20/0.65 时 MAE 0.3225。**验收失败**：REFORM 2nd 8th（449s）修正后 9.28 **>** 9th（496s）9.25——线性惩罚差（47s×0.20/60≈0.157）超过两图 base 差（0.12），相邻段位顺序被翻转。单图公式（段位内位置保护）对本例无效（两图同处 9.x 段位）。
+
+### 8.2 第二轮（对数饱和，发布版）
+
+改用次线性修正式 `scale × ln(1 + excessMin)`。网格：scale ∈ {0.30, 0.35, 0.40, 0.45} × cap ∈ {0.50, 0.65, 0.90}，**新增排序约束**（pack 内相邻 expected 对 got 非降；base 基线违规数 = 0）：
+
+| scale | cap | 合并 MAE | Bias | Exact% | Close% | newViolations |
 |---|---|---|---|---|---|---|
-| **0.20** | **0.65** | **0.3225** | 0.4307 | −0.053 | **45.8** | 79.2 |
-| 0.24 | 0.65 | 0.3196 | 0.4261 | −0.029 | 43.8 | 79.2 |
-| 0.16 | 0.65 | 0.3367 | 0.4460 | −0.106 | 43.8 | 79.2 |
-| 0.08（初始移植值） | 0.65 | 0.3845 | 0.4823 | −0.258 | 29.2 | 79.2 |
+| 0.45 | 0.50 | 0.3159 | −0.111 | 43.8 | 83.3 | 0 |
+| 0.40 | 0.50 | 0.3167 | −0.112 | 43.8 | 83.3 | 0 |
+| 0.35 | 0.65 | 0.3290 | −0.110 | 43.8 | 79.2 | 0 |
+| 0.30 | 0.65 | 0.3347 | −0.154 | 37.5 | 83.3 | 0 |
 
-结论与选择：
-- 原 `0.08` 是 Dan-Overlay 的 **SR 单位**值（其 SR≈DP×1.75，即 0.08 SR ≈ 0.14 DP），直接搬到 numeric（段位单位）系统性偏小约 2.5 倍；网格校准将其修正为 **0.20/分钟**（cap 0.65 在 0.20 时优于更大 cap：部分超长图 raw 修正量 2.0+ 会被 0.65 截断，反而更准，说明大修正量会过修）。
-- 最终选择 **perMin=0.20, cap=0.65**：MAE 与最优（0.24）几乎持平（差 0.003），但 Exact 最高（45.8%）且 Bias 更保守（−0.053，不会反转成低估），对 34 张校准集留有余量，降低过拟合风险。
-- 校准后 course 指标（v2.0.2 发布值）：合并 MAE 0.3845 → 0.3225（−16%）；Exact 29.2% → 45.8%；Bias −0.258 → −0.053（近乎无偏）；Close 79.2% 持平。
+- 全部组合零新增倒挂；**选定 scale=0.40, cap=0.50**（与最优差 0.0008，留余量防 34 张过拟合）。
+- 修复后 REFORM 2nd 8th = 9.28 < 9th = 9.32（base 差 0.12 恢复主导）✅；8th/9th 修正差 0.08（对数收敛）。
+- 发布数字（course 子集）：Roxy MAE 0.4036 → 0.2250（−44%，Exact 21.4%→50.0%，Close 92.9%）；Azusa MAE 0.4782 → 0.3544（−26%，Exact 26.5%→41.2%，Close 79.4%，Bias −0.424→−0.085）。
 
 ## 9. 已知限制
 
 - 仅 4K RC（Roxy/Azusa 的既有 scope）；Sunny/Daniel/Companella 不适用（用户指定 Roxy+Azusa）。
 - 分析管线中 `withEtterna` 关闭（contentBar 不含 Etterna）时修正不生效——依赖 MSD 均衡条件的固有代价。
-- 校准基于 34 张 course 样本（有效合并 48 行），perMin=0.20 已留余量；若后续更大的语料显示需要调整，须重新走留出法校验（用户决策）。
+- 校准基于 34 张 course 样本（有效合并 48 行），scale=0.40 已留余量；若后续更大的语料显示需要调整，须重新走留出法校验（用户决策）。
+- 对数饱和修正的次线性特性：超长图（>15 分钟）的修正量增速趋缓（`ln` 饱和），长端虚高可能修正不足——当前语料（最长 901s）无此样本，为已知边界。

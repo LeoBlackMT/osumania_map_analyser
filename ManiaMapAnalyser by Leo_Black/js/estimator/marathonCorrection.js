@@ -1,33 +1,37 @@
-// js/rework/marathonCorrection.js
+// js/estimator/marathonCorrection.js
 // 马拉松时长修正（Marathon Duration Correction）—— 共享 DOM-free 纯函数模块。
 //
-// 机制来源：Dan-Overlay pipeline.py `_merge_primary_and_mina` 的马拉松时长修正
-// （>300s + 技能均衡 → 每超出 1 分钟扣 0.08、封顶 0.65、高难度 taper 渐减，
-// 且只降不升）。本模块将修正对象从 SR/DP 改为本项目的 `numericDifficulty`
-// （段位数值，Roxy/Azusa 的语义输出），taper 从 SR 域改为 numeric 域。
+// 灵感来源：Dan-Overlay pipeline.py `_merge_primary_and_mina` 的马拉松时长修正
+// （>300s + 技能均衡 → 时长修正、高难度 taper 渐减、只降不升）。
+// 本模块将修正对象从 SR/DP 改为本项目的 `numericDifficulty`（段位数值，
+// Roxy/Azusa 的语义输出），taper 从 SR 域改为 numeric 域，
+// 修正式采用对数饱和（次线性）以保持相邻段位课程的相对顺序（reform 8th/9th 验收项）。
 //
-// 设计决策（机制性，非 benchmark 数据拟合）：
-// - 修正对象：numericDifficulty。estDiff / star 由调用方同步重派生
-//   （estDiff = numericToRcLabel(newNumeric)；star 在本插件展示统一为 Sunny raw，
-//   归一化会覆盖，无需在这里重算）。
+// 设计决策：
+// - 修正对象：numericDifficulty。estDiff 由调用方同步重派生
+//   （estDiff = numericToRcLabel(newNumeric)）；star 在本插件展示统一为 Sunny raw，
+//   归一化会覆盖，无需在这里重算。
+// - 时长惩罚对数饱和：corr = scale * ln(1 + excessMin)。线性随时长增长的惩罚
+//   会翻转相邻段位课程的相对顺序（修正差 > base 差距）；对数在长端收敛修正差，
+//   让排序由估算器 base 差支配。参数经 course 样本网格校准（见
+//   docs/features/marathon-correction.md §8）。
 // - taper：numeric <= 10 全量修正；10 ~ 16 线性降至 0；>= 16 不修正。
 //   理由：低段位（Reform 1~10 马拉松课程包）时长虚高最严重，高段位校准稳定
 //   （与 Dan-Overlay "SR>=7 不修"的机制意图一致，只是换到 numeric 域）。
 // - 均衡条件：MSD skillsets 聚合出 4 个技能（jack/stream/stamina/tech），
 //   max/total < 0.45 才触发——防止"真 marathon-jack 图"被时长误伤。
 //   无 MSD 输入（ett 不可用）→ 返回 0，缺信号不动作。
-// - 修正量：每超出 1 分钟 0.08（numeric 单位，量纲 = 段位），封顶 0.65。
 // - 只降不升：应用后数值严格不高于原值。
 //
 // 两端（浏览器 worker / Node benchmark）同一实现，禁止 DOM/state 依赖。
 
-import { numericToRcLabel } from "../estimator/rcDifficultyFormat.js";
+import { numericToRcLabel } from "./rcDifficultyFormat.js";
 
 // ── 参数 ────────────────────────────────────────────────────────────────
 
 export const MARATHON_DURATION_THRESHOLD_S = 300;
-export const MARATHON_CORRECTION_PER_MIN = 0.20; // numeric / 分钟（course 样本网格校准，见 docs/features/marathon-correction.md §8）
-export const MARATHON_CORRECTION_CAP = 0.65;      // numeric 上限
+export const MARATHON_CORRECTION_SCALE = 0.40;   // 对数域系数（v2.0.2 排序约束校准，见 docs/features/marathon-correction.md §8）
+export const MARATHON_CORRECTION_CAP = 0.50;      // numeric 上限（排序约束校准）
 export const MARATHON_BALANCE_RATIO = 0.45;       // max/total 均衡阈值
 export const MARATHON_TAPER_LO = 10;
 export const MARATHON_TAPER_HI = 16;
@@ -71,7 +75,7 @@ export function aggregateSkillsets(ettValues) {
 export function computeMarathonCorrection({ durationS, ettValues = null, numeric = null }, params = null) {
     const p = {
         thresholdS: MARATHON_DURATION_THRESHOLD_S,
-        perMin: MARATHON_CORRECTION_PER_MIN,
+        scale: MARATHON_CORRECTION_SCALE,
         cap: MARATHON_CORRECTION_CAP,
         balanceRatio: MARATHON_BALANCE_RATIO,
         taperLo: MARATHON_TAPER_LO,
@@ -94,9 +98,11 @@ export function computeMarathonCorrection({ durationS, ettValues = null, numeric
         return 0;
     }
 
-    // 超出分钟数 → perMin/分钟，封顶 cap
+    // 超出分钟数 → 对数饱和修正（次线性）：corr = scale * ln(1 + excessMin)。
+    // 线性随时长增长会翻转相邻段位课程的相对顺序（修正差 > base 差距，reform 8th/9th 验收项），
+    // 对数在长端收敛修正差，让排序由估算器 base 差支配。封顶 cap。
     const excessMin = (Number(durationS) - p.thresholdS) / 60;
-    const raw = Math.min(p.cap, excessMin * p.perMin);
+    const raw = Math.min(p.cap, p.scale * Math.log(1 + excessMin));
     if (raw <= 0) {
         return 0;
     }

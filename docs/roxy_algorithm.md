@@ -461,9 +461,9 @@ Since v2.0.2, the plugin's analysis pipeline applies a **marathon duration corre
 - `numericDifficulty` is a finite number (scope-out results — `< Alpha Low` / `> Emik Zeta high` with null numeric — are never touched);
 - numeric < 16 (taper, see below).
 
-**Correction** (lower-only, never raises): `corr = min(0.65, (durationS − 300)/60 × 0.20) × taper(numeric)`, with `taper(numeric) = 1` for numeric ≤ 10, linear to 0 at numeric ≥ 16. `estDiff` is redriven from the corrected numeric via `numericToRcLabel` (the `> 18.4` soft-cap label rule still applies); the star field is untouched (already normalized to the Sunny raw star for Roxy display).
+**Correction** (lower-only, never raises): `corr = min(0.50, 0.40 × ln(1 + excessMin)) × taper(numeric)`, where `excessMin = (durationS − 300)/60`. The duration penalty is **log-saturating** (sub-linear) so that adjacent dan-tier course charts never swap order (the linear penalty difference exceeded the base numeric gap on REFORM 2nd 8th/9th; verified zero new inversions across all course packs). `taper(numeric) = 1` for numeric ≤ 10, linear to 0 at numeric ≥ 16. `estDiff` is redriven from the corrected numeric via `numericToRcLabel` (the `> 18.4` soft-cap label rule still applies); the star field is untouched (already normalized to the Sunny raw star for Roxy display).
 
-**Calibration note.** Parameters were calibrated on the benchmark's `course` subset (34 maps, all RC; user-authorized) with a fixed grid; `0.20/min` with cap `0.65` was chosen over the Dan-Overlay SR-unit value (which is ~1.75× smaller when converted to dan-numeric units). Validation: merged course MAE 0.4036 → 0.2957 (Roxy 14 in-scope rows), Exact 21.4% → 42.9%; see the calibration table in [features/marathon-correction.md](features/marathon-correction.md) §8.
+**Calibration note.** Parameters were calibrated on the benchmark's `course` subset (34 maps, all RC; user-authorized) with an order-constrained grid; `scale = 0.40`, `cap = 0.50` chosen (merged MAE 0.3167, zero new inversions vs the linear 0.20/min version's 0.3225 which failed the 8th/9th order check). Validation: course MAE 0.4036 → 0.2250 (Roxy 14 in-scope rows), Exact 21.4% → 50.0%; see the calibration table in [features/marathon-correction.md](features/marathon-correction.md) §8.
 
 ## 18. Complexity
 

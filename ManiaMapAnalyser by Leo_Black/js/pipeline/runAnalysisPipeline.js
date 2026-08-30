@@ -24,7 +24,7 @@ import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
-import { applyMarathonCorrectionToRcResult } from "../rework/marathonCorrection.js";
+import { applyMarathonCorrectionToRcResult } from "../estimator/marathonCorrection.js";
 
 const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed"]);
 
