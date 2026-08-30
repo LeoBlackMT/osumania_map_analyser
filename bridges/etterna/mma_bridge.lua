@@ -6,7 +6,7 @@
 -- 安装：把本文件复制到
 --   Themes/<你的主题>/BGAnimations/ScreenSelectMusic decorations/
 -- 并在同目录 default.lua 的 return t 前插入：
---   t[#t + 1] = LoadActor("leos_mma_bridge.lua")
+--   t[#t + 1] = LoadActor("mma_bridge.lua")
 
 local FILE = "Save/LeosMmaBridge.txt"
 local WRITE_INTERVAL = 0.5

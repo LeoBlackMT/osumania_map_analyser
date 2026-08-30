@@ -10,7 +10,7 @@
 -- 安装：把本文件复制到
 --   Themes/<你的主题>/BGAnimations/ScreenGameplay overlay/
 -- 并在同目录 default.lua 的 return t 前插入：
---   t[#t + 1] = LoadActor("leos_mma_gameplay.lua")
+--   t[#t + 1] = LoadActor("mma_gameplay.lua")
 
 local FILE = "Save/LeosMmaGameplay.txt"
 

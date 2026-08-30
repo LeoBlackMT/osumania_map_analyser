@@ -36,8 +36,8 @@
 - Etterna：安装 `bridges/etterna/` 两个 Lua 到主题目录（`ScreenSelectMusic
   decorations/` 与 `ScreenGameplay overlay/` 的 `default.lua` 引用 `LoadActor`），
   **主题更新后需重装**；壳自动/设置 `etternaRoot` 探测 Etterna 根目录。
-- Malody：`bridges/malody/leos_mma_editor.lua` 放 `MalodyV/Editor/`（目录不存在
-  则创建），编辑器「更多」菜单触发分析；`bridges/malody/leos_mma_skin.lua` 放入
+- Malody：`bridges/malody/mma_editor.lua` 放 `MalodyV/Editor/`（目录不存在
+  则创建），编辑器「更多」菜单触发分析；`bridges/malody/mma_skin.lua` 放入
   皮肤目录并在皮肤 Composer 添加名为 `mma_result` 的 Text 模块、目录内创建空
   哨兵文件 `mma.txt`（壳识别写入目标）。
 - 设置：`gameClient`（Auto/Osu!/Etterna/Malody）+ `etternaRoot`/`malodyRoot`
