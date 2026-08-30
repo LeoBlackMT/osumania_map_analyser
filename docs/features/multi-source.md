@@ -1,6 +1,6 @@
 # 多数据源：Etterna / Malody 接入
 
-> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/features/desktop-shell.md` 与 `bridges/` 下的安装说明。
+> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/shell-guide.md` 与 `bridges/` 下的安装说明。
 
 ## 功能说明
 
@@ -18,13 +18,13 @@ Malody（编辑器插件 POST 24060 → song 帧；皮肤目录 mma_state.txt �
 ```
 
 - 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版在线（tosu 存活）双活数据面。
-- 契约：`desktop/docs/CONTRACT.md`（版本 1，九领域：帧六型/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/mma_state/state 周期/contract 终态）。
+- 契约：`desktop/docs/CONTRACT.md`（版本 2，九领域：帧七型/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/mma_state/state 周期/contract 终态）。
 
 ## 转换器
 
 - `js/parser/smSscToOsuConverter.js`：vendor simfile-parser（MIT，见 `js/parser/vendor/simfile-parser/NOTICE.md`，含列宽补丁）→ STOPS/DELAYS 烘焙、WARPS 折叠、键数行宽推导、LN 尾冲突修复；OD9/HP8/AR5。
 - `js/parser/mcToOsuConverter.js`：移植 mc_to_osu.py（SV 负红线、type128、尾微调）。
-- 测试与 golden 摘要：`docs/pipeline/converters.md`（真实样本仅本机私有，仓库只存摘要与断言）。
+- 测试与 golden 摘要：`docs/pipeline/converters.md`（真实样本仅本机私有，仓库只存摘要与断言；测试脚本本地私有）。
 
 ## 多源路由（sourceManager）
 
@@ -64,14 +64,14 @@ analyze 事件新增 `client` 字段（osu/etterna/malody）；后端 daily_agg 
 
 # Multi-source: Etterna / Malody
 
-Technical document for AI readers. Human installation guides: `docs/features/desktop-shell.md` and per-bridge READMEs.
+Technical document for AI readers. Human installation guides: `docs/shell-guide.md` and per-bridge READMEs.
 
 Adds Etterna and Malody V as live data sources beside osu!mania/tosu, with automatic follow on game switch. **Zero algorithm-layer changes**: `.sm/.ssc/.mc` are converted to `.osu` text and enter the existing pipeline.
 
-- Converters: `js/parser/{smSscToOsuConverter,mcToOsuConverter}.js` (vendor simfile-parser MIT, STOPS/DELAYS baked, key-count from row width, LN tail fix; OD9/HP8/AR5).
+- Converters: `js/parser/{smSscToOsuConverter,mcToOsuConverter}.js` (vendor simfile-parser MIT, STOPS/DELAYS baked, key-count from row width, LN tail fix; OD9/HP8/AR5; real samples and test scripts stay local-only).
 - Router: `js/app/sources/sourceManager.js` decision table L1–L4+L3' (play-state > 60s fresh-event window with hold/preempt > priority reselect > tosu-alive re-entry > none); forced `gameClient`; source dot colors match telemetry pie.
 - osu gate: beatmap-state handler suspended while another source routes (signals exempt, buffered replay on return).
-- Bridge contract: `desktop/docs/CONTRACT.md` (v1).
+- Bridge contract: `desktop/docs/CONTRACT.md` (v2).
 - Telemetry: analyze `client` field, dashboard Client pie with Version on its own row.
 - Boundaries documented: Malody play-time skin shows last written result only; rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu.
 - Known gaps: offline page settings wiring, external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta/skin writability), browser end-to-end pending environment.

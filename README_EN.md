@@ -25,6 +25,8 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
 - **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
 - **SV Detection**: Detects whether a beatmap is an SV (speed variation) map.
+- **Multi-source Following**: Besides osu!mania, the card can follow Etterna and Malody V (desktop shell required); Auto mode switches sources by play state, with a status-dot indicator (osu! blue / Etterna green / Malody orange).
+- **Desktop Shell (optional)**: A standalone always-on-top/transparent/borderless mini window (Windows/Linux) that keeps Etterna/Malody sources working even when tosu is not running; tutorial: [docs/shell-guide.md](docs/shell-guide.md).
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 
 ## Usage
@@ -33,6 +35,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 3. Place the entire folder in the `static` directory of tosu if you haven't modified the `Counters Directory` setting.
 4. Launch tosu, go to the dashboard, and you will find the "ManiaMapAnalyser" plugin. Click the `Settings` button on the right to configure it.
 5. For instructions on using the in-game interface and OBS, please refer to the relevant tosu documentation.
+6. (Optional) Desktop shell: download `mma-shell` from the Release page (or GitHub Actions artifacts), place it next to the plugin folder (`ManiaMapAnalyser by Leo_Black`) and double-click; full tutorial: [docs/shell-guide.md](docs/shell-guide.md).
 
 ## Estimator Algorithm Benchmark
 - The benchmark has been migrated to the separate repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and the results can be viewed [here](https://benchmark.leoblack.top/). The tests cover the performance of multiple algorithms across different types of beatmaps, helping players choose the one that suits them best.
