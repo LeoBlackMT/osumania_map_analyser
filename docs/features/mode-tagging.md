@@ -119,16 +119,19 @@ let resolvedModeTag = (activeContentBar === "None")
 ```js
 const reworkStarValue = Number(rework?.star);
 const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
+// MSD 基准：4K 固定 0.72.3，非 4K 用主结果（0.74.0 n-key）
+// resolveVibroMsdValues 在 4K 且主结果版本 != 0.72.3 时补算
+const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
 isVibroMap = state.vibroDetection
     && vibroEligible
-    && detectVibro(ettResult?.values, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+    && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
 ```
 
 三个条件缺一不可：
 
 1. `analysis.js:655` — 设置开关 `state.vibroDetection`（对应 settings.json 的 `VibroDetection`）。
 2. `analysis.js:654` — rework 星数必须 `> 5.0`（vibro 谱面通常是高密度高星谱，低星谱不做检测）。
-3. `analysis.js:657` — `detectVibro(ettResult.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)` 命中。
+3. `analysis.js:657` — `detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD)` 命中。`vibroValues` 来源（`resolveVibroMsdValues`）：**4K 固定 0.72.3**（主结果已是 0.72.3 直接复用，否则 0.72.3 补算，失败回退主结果）；**非 4K 直接用主结果**（= 0.74.0 n-key，0.72.3 对非 4K 输出全 0 无法判定）。
 
 阈值来源链：`ManiaMapAnalyser by Leo_Black/config.js:49 vibroJackspeedRatioThreshold: 0.95`（小驼峰命名）→ `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:157 VIBRO_JACKSPEED_RATIO_THRESHOLD = APP_CONFIG.etterna.vibroJackspeedRatioThreshold` → `analysis.js:657` 使用。
 

@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-插件提供 **6 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
+插件提供 **6 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
 
 估算器内部依赖以下共享模块（这些模块同时被 Node benchmark runner 使用，不含任何浏览器 API）：
 
@@ -108,9 +108,10 @@ export const DAN_INDEX = {
 - 每个表是 `[lower, upper, name]` 三元组数组，由 `reworkEstimatorUtils.js:88 intervalLookup` 按 SR 区间查找；超出上下界返回 `< xxx` / `> xxx` 前缀标签（`reworkEstimatorUtils.js:92-93`）。
 - 表文件：`4k-rc.js`、`4k-rc-ext.js`、`4k-ln.js`、`4k-ln-ext.js`、`6k-rc.js`、`6k-ln.js`、`7k-rc.js`、`7k-rc-ext.js`、`7k-ln.js`、`10k-rc.js`。
 - **ext 扩展表仅存在于 4K RC/LN 与 7K RC**（`4k-rc-ext.js`、`4k-ln-ext.js`、`7k-rc-ext.js`）。
-- **6K/7K-LN 静默回退默认表**：`estDiff` 中 `keys.LN[useExtended ? "extended" : "default"] ?? keys.LN.default` 的 `??` 兜底（`reworkEstimatorUtils.js:105`），RC 同理（`reworkEstimatorUtils.js:101`）。
+- **6K/7K-LN 静默回退默认表**：`estDiff` 中 `keys.LN[useExtended ? "extended" : "default"] ?? keys.LN?.default` 的 `??` 兜底（`reworkEstimatorUtils.js:105`），RC 同理（`reworkEstimatorUtils.js:101`）。
+- **LN 表缺失回退**（如 10K 仅有 RC 表）：`keys.LN` 可选链守卫——LN 表不存在时 `estDiff`/`estDiff2` 直接返回 RC 难度，不再访问 undefined 崩溃（`reworkEstimatorUtils.js:106-107` / `:119-120`）。
 - **注意事项：`7k-wild.js` 被导入但未接入 `DAN_INDEX`**——`js/estimator/intervals/index.js:11` 导入了 `wild7K`，但 `DAN_INDEX` 中 7K 只有 `rc7K`/`rcExt7K`/`ln7K`，该表实际不可达。修改时不要误以为它生效。
-- 10K 仅存 RC 默认表（`js/estimator/intervals/index.js:26-28`）。
+- 10K 仅存 RC 默认表（`js/estimator/intervals/index.js:26-28`）；**5K/8K 等无表键数的星数仍正常计算**（Sunny 核心键数无关），仅难度标签显示 "Unknown difficulty"。
 
 ## 6. extendedEstimationRange 作用域
 

@@ -778,7 +778,10 @@ export function renderEtternaSkillBars(values, columnCount) {
     }
 
     const safeValues = values && typeof values === "object" ? values : {};
-    const hideTechnical = columnCount === 6 || columnCount === 7;
+    // Technical is hidden for every non-4K keycount: the n-key pipeline does
+    // not produce a meaningful TechBase (values collapse to ~0.18 noise), so
+    // showing it would mislead. 4K keeps the real 8-skill bar set.
+    const hideTechnical = columnCount !== 4;
     state.etternaTechnicalHidden = hideTechnical;
     mainCardEl.classList.toggle("bars-etterna-compact", hideTechnical);
 

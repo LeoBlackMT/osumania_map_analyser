@@ -16,7 +16,7 @@
 | body（主体图） | `body-graph` 系列元素 | `state.contentBar`（或 `effectiveContentBar`）包含 Graph | 卡片主体 |
 
 - `state.diffText`（右上角内容）与 `state.contentBar`（主体内容）的设置语义见 [settings.md](../settings.md) 的 "Graph: 显示难度变化图"（`settings.md:13`）与右上角 Graph 选项说明（`settings.md:24`）。
-- **非 4/6/7K 谱面图表不可用**：`ManiaMapAnalyser by Leo_Black/js/app/appContext.js:180 GRAPH_SUPPORTED_KEY_SET`（`new Set([4, 6, 7])`）。分析管线在 `analysis.js:328` / `analysis.js:354` 用其判断是否需要把主体回退为 Pattern；渲染入口 `analysis.js:567` 对不支持键数直接调用 `showDiffGraphError("Unsupported Keys")`。
+- **任意键数均可渲染**：Graph 数据是 estimator 的星数序列（Sunny 核心为键数无关算法），历史上的 `GRAPH_SUPPORTED_KEY_SET = Set([4, 6, 7])` 键数限制已移除；渲染失败统一走 `showDiffGraphError("Graph unavailable")`。
 
 ## 2. DOM 引用与视图定义（GRAPH_VIEW_DEFS）
 

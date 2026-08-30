@@ -52,6 +52,7 @@ const WASM_FILE_NAME_BY_VERSION = Object.freeze({
     "0.72.0": "minaclac-72.0.wasm",
     "0.72.3": "minaclac-72.3.wasm",
     "0.74.0": "minaclac-74.0.wasm",
+    "0.75.0": "minaclac-75.0.wasm",
 });
 
 const WASM_FILE_BY_VERSION = Object.freeze(Object.fromEntries(

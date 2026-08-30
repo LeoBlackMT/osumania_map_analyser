@@ -179,7 +179,9 @@ export const SETTINGS_COMMAND_TIMEOUT_MS = APP_CONFIG.timing.settingsCommandTime
 
 export const socket = new WebSocketManager(getSocketHost());
 
-export const GRAPH_SUPPORTED_KEY_SET = new Set([4, 6, 7]);
+// 注意：GRAPH_SUPPORTED_KEY_SET 已移除——Graph 数据 = estimator 的 star 序列
+// （Sunny 核心为键数无关算法），任意键数均可渲染；渲染失败由
+// showDiffGraphError("Graph unavailable") 兜底。
 
 const KNOWN_MOD_CODES = APP_CONFIG.mods.knownCodes;
 const MOD_BIT_FLAGS = APP_CONFIG.mods.bitFlags;
