@@ -38,6 +38,8 @@
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
+| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody 接入、转换器、路由决策表、败方门控、能力边界） |
+| [features/desktop-shell.md](features/desktop-shell.md) | 人类/AI | 桌面壳功能与安装文档（在线/离线模式、桥安装、平台限制、构建发布） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 | [pipeline/README.md](pipeline/README.md) | AI | 管线技术文档类别索引（分析、缓存、设置、mod） |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | 分析管线总览：tosu WebSocket -> 谱面获取 -> 解析 -> 估算 -> 显示 的完整数据流 |
@@ -45,6 +47,7 @@
 | [pipeline/result-cache.md](pipeline/result-cache.md) | AI | 结果缓存（LRU）机制：缓存键、命中覆盖检查、写入门槛与失效时机 |
 | [pipeline/settings-pipeline.md](pipeline/settings-pipeline.md) | AI | 设置管线：settings.json -> 解析 -> 状态注入 -> 缓存失效与重算触发 |
 | [pipeline/mod-handling.md](pipeline/mod-handling.md) | AI | mod 处理：mod 代码解析、倍速/OD 影响、modSignature 的构成与作用 |
+| [pipeline/converters.md](pipeline/converters.md) | AI | 谱面转换器（sm/ssc/mc → osu）：时间轴烘焙语义、键数推导、测试与 golden 摘要 |
 | [guides/README.md](guides/README.md) | AI | 指南文档类别索引（新增设置、缓存失效等） |
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | 新增设置项的完整流程指南（settings.json -> 解析器 -> state -> 缓存失效） |
 | [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | 新增估算器/管线阶段到 worker 的完整流程指南（入口纯化 -> 注册 -> 消费接线 -> golden 扩展） |
@@ -54,6 +57,7 @@
 | [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | 人类/AI | 难度估计算法调优知识与教训（量化/序数校准/路由规则经验、历史探针结论、方法论） |
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明（管线派生段 → 估算器内嵌、按需前置 Ett 复用、perf 约束遵守、基准双口径） |
+| [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | 人类/AI | 多数据源与桌面壳破坏性说明（外部文本入口、缓存身份/速率签名、设置管线、遥测 client 维度、fetch 语义） |
 
 # English
 
@@ -92,6 +96,8 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
+| [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna/Malody integration, converters, routing decision table, osu gate, capability boundaries) |
+| [features/desktop-shell.md](features/desktop-shell.md) | Human/AI | Desktop shell feature & install document (online/offline modes, bridge installation, platform limits, build & release) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 | [pipeline/README.md](pipeline/README.md) | AI | Index of pipeline technical documents (analysis, cache, settings, mods) |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
@@ -99,6 +105,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [pipeline/result-cache.md](pipeline/result-cache.md) | AI | Result cache (LRU) mechanism: cache key, hit coverage check, write gate, invalidation timing |
 | [pipeline/settings-pipeline.md](pipeline/settings-pipeline.md) | AI | Settings pipeline: settings.json -> parse -> state injection -> cache invalidation and recompute trigger |
 | [pipeline/mod-handling.md](pipeline/mod-handling.md) | AI | Mod handling: mod code parsing, speed/OD effects, modSignature composition and purpose |
+| [pipeline/converters.md](pipeline/converters.md) | AI | Chart converters (sm/ssc/mc → osu): timing baking semantics, key-count derivation, tests and golden summary |
 | [guides/README.md](guides/README.md) | AI | Index of guide documents (adding a setting, cache invalidation, etc.) |
 | [guides/adding-a-setting.md](guides/adding-a-setting.md) | AI | Complete guide for adding a setting (settings.json -> parser -> state -> cache invalidation) |
 | [guides/adding-to-worker.md](guides/adding-to-worker.md) | AI | Complete guide for adding an estimator/pipeline stage to the worker (entry purification -> registration -> consumer wiring -> golden extension) |
@@ -108,3 +115,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | Human/AI | Difficulty estimation tuning knowledge & lessons (quantization/ordinal-calibration/routing-rule experiences, historical probe conclusions, methodology) |
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | Human/AI | Marathon correction architecture refactor breaking note (pipeline patch → estimator-embedded, on-demand pre-Ett reuse, perf constraints honored, two-tier benchmark semantics) |
+| [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | Human/AI | Multi-source & desktop shell breaking note (external text entry, cache identity/rate signature, settings pipeline, telemetry client dim, fetch semantics) |

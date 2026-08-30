@@ -204,3 +204,11 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - **meta 降级谱面缓存不生效**（§8）：性能上可接受，正确性上必须——标题键无法保证唯一。
 - **generation 是失效探测器**：`clearResultCache()`（代数 +1）是唯一让写门 `genAtStart === resultCacheGeneration()` 失败的路径（§7）；调 `clear()` 手动重置场景等同理。
 - **Node 环境**：`resultCache.js` 无 import，benchmark runner 的 `smoke-result-cache.mjs` 直接 `import` 它跑 8 个冒烟用例，修改本模块后建议跑一遍该用例保持 Node 侧兼容。
+## 多数据源（外部源）补充
+
+外部源（`ett:`/`mdy:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
+
+- identity 含**内容摘要 md5**（壳对谱面原文计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
+- modSignature 由 externalSource **直构**（`speedRate|none|none|0`，speedRate 段 = 桥 rate 派生）——同图不同 rate 缓存独立；额外部源不走 modData 派生、与 client 无关。
+- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot`/`malodyRoot` 不影响键值。
+- meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。

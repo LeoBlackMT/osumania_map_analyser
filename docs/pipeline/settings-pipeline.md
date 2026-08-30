@@ -109,3 +109,14 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - **settingsCommandTimeoutMs = 1500**：定义于 `config.js:71 APP_CONFIG.timing.settingsCommandTimeoutMs`，经 `appContext.js:176 SETTINGS_COMMAND_TIMEOUT_MS` 导出，由 `waitForInitialSettingsFromCommand`（settings.js:871-889）用作超时（超时 reject "getSettings timeout"）。
 - **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:904-940，启动基线，手工逐行）与 `SETTING_HANDLERS` 表（settings.js:723-759，运行时，数据驱动）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。注意：**只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
 - **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:833-850）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
+## 多数据源（外部源）补充
+
+设置管线新增三项（见 [../features/multi-source.md](../features/multi-source.md)）：
+
+- `gameClient`（options，Auto 默认；其变更入 `SETTING_CACHE_KEYS` 与 `SETTING_RECOMPUTE_KEYS` 之外的缓存侧）
+- `etternaRoot` / `malodyRoot`（text；仅壳侧消费，变更不影响缓存键）
+- 解析函数：`parseGameClientValue` / `parseEtternaRootValue` / `parseMalodyRootValue`
+  （settingsParser.js `createSettingsParsers` 返回对象注册）
+
+已知待办：离线模式（壳 24061）的页面侧设置初始拉取与变更持久化（壳 `/settings`
+GET/POST 双向已实现，页面 `applySettingsPayload` 接线未完成）。

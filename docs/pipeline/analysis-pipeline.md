@@ -316,3 +316,9 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导（analysis.js:284-286 注释），仅供覆盖检查；实际 shows*/need* 在 override 后重算（:362-365）——修改 needComputed 推导时注意保持两处一致。
 - **changeKind 只消费一次**：`analysis.js:262` 取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理（:258-261），避免换歌动画重复播放。
 - **身份为空的包直接丢弃**：`socketHandlers.js:253` 空 identity return——tosu 在谱面信息未就绪时发的包不会触发分析（mod 变化也进不来，此时 mod 状态保留旧值）。
+## 多数据源（外部源）补充
+
+多数据源场景（Etterna/Malody，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
+
+- 外部文本入口：`state.pendingSourceText` 存在时跳过 tosu HTTP 抓取（`analysis.js` fetch 分支；缓存命中短路在前，转换器只在 miss 路径执行——转换由 `js/app/sources/externalSource.js` 主线程完成）。
+- result 帧 finally 汇合：外部源触发的分析在 `finally`（非 stale 守卫）统一发 result 帧（成功/失败/缓存命中/未命中四路；浏览器无壳 no-op）。requestId 在函数开头快照（沿用请求序号本地快照模式）。

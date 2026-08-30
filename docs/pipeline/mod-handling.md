@@ -183,3 +183,15 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **速率优先级**：lazer 自定义倍速 > NC/DT > HT/DC > 1.0（modData.js:182-188）。NC/DT 与 HT/DC 不可能同时出现，若同时命中先判加速后判减速。
 - **签名精度**：速率保留 5 位小数（modData.js:225），lazer 自定义速率如 1.05/0.9 等非整数值也能稳定区分；`1.00000|none|none|0` 为无 mod 且非 Classic 的基准签名。
 - **新增计算相关 mod 代码**：需同时加入 `knownCodes`（config.js:118）与（若需 stable bitflag）`bitFlags`（config.js:119-125）；`SORTED_KNOWN_MOD_CODES`/`MOD_BIT_FLAG_ENTRIES` 是派生导出，无需手动改。若新代码参与计算（速率/OD/cvt），必须在 `getModData` 的判定分支（modData.js:182-204）与签名构建处同步处理，否则签名不反映其影响（缓存会按旧语义命中）。
+## 多数据源（外部源）补充
+
+外部源（Etterna/Malody）**不使用 modData 派生**：`externalSource.js` 直构
+
+```
+{ speedRate: rate.toFixed(5), odFlag: "none", cvtFlag: "none", classic: 0 }
+```
+
+写入 `state.modSignature`（4 段格式与 osu 一致，classic 位即 0，与 client 值无关），
+保证跨在线/离线模式签名稳定、缓存键不抖。Etterna 的 rate（如 1.5x）进入
+speedRate 段并联接 `state.speedRate`（分析消耗点 analysis.js `musicRate`/
+estimator `speedRate`），同图不同 rate 输出值不同且缓存独立。

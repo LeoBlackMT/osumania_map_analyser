@@ -19,6 +19,8 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [marathon-correction.md](marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [telemetry.md](telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
+| [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna/Malody 接入、转换器、路由决策表、败方门控、能力边界） |
+| [desktop-shell.md](desktop-shell.md) | 人类/AI | 桌面壳功能与安装文档（在线/离线模式、桥安装、平台限制、构建发布） |
 
 [返回 docs 索引](../README.md)
 
@@ -43,5 +45,7 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [marathon-correction.md](marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [telemetry.md](telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
+| [multi-source.md](multi-source.md) | AI | Multi-source document (Etterna/Malody integration, converters, routing decision table, osu gate, capability boundaries) |
+| [desktop-shell.md](desktop-shell.md) | Human/AI | Desktop shell feature & install document (online/offline modes, bridge installation, platform limits, build & release) |
 
 [Back to docs index](../README.md)
