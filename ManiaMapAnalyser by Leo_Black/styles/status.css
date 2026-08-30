@@ -133,6 +133,7 @@
     min-width: 8px;
     border-radius: 50%;
     flex: 0 0 8px;
+    margin-left: 8px;
     border: 1px solid rgba(255, 255, 255, 0.45);
 }
 .mma-source-dot.off {
