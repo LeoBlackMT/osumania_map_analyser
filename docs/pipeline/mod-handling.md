@@ -139,30 +139,32 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 ## 6. Etterna 版本回退
 
-版本注册表 `js/ett/versions/index.js`（5 个 WASM 版本，见 `ETTERNA_VERSION_REGISTRY` index.js:10-36）：
+版本注册表 `js/ett/versions/index.js`（6 个 WASM 版本，见 `ETTERNA_VERSION_REGISTRY` index.js:10-36）：
 
 | 常量/函数 | 位置 | 说明 |
 | --- | --- | --- |
 | `DEFAULT_ETTERNA_VERSION` | index.js:38 | `"0.72.3"`，首选版本未命中注册表时的兜底 |
-| `NON_4K_ETTERNA_FALLBACK_VERSION` | index.js:8 | `"0.74.0"`，6K/7K 的稳定性回退版本 |
+| `NON_4K_ETTERNA_FALLBACK_VERSION` | index.js:8 | `"0.74.0"`，**所有非 4K**（5K–18K）的固定版本：0.74.0 是首个带真 n-key 管线的 MinaCalc（内部 515），更早构建的 FFI 只放行 4/6/7 且 4K 算法拒收更宽掩码 |
 | `normalizeEtternaVersion` | index.js:73-80 | 归一化（`"0.68.0"` → `"0.68.0-Unofficial"`），非法值回 DEFAULT |
 | `resolveEtternaVersionLoader(value)` | index.js:82-107 | 版本 → loader；不可用则回退到注册表第一个可用版本并带 `fallbackReason` |
-| `supportsEtternaKeycount(version, keycount)` | index.js:59-71 | 版本是否支持某键数（注册表每项 `supportedKeycounts` 均为 `[4, 6, 7]`，index.js:7） |
+| `supportsEtternaKeycount(version, keycount)` | index.js:59-71 | 版本是否支持某键数（注册表每项 `supportedKeycounts` 均为 `[4, 5, ..., 18]`，来自 `SUPPORTED_KEYS`，index.js:7；0.74.0/0.75.0 的 WASM 亦在 FFI 层放行 4..18） |
 | `resolveEtternaVersionLoaderForKeycount(value, keycount)` | index.js:109-156 | 最终入口：先 `resolveEtternaVersionLoader`，再按键数回退 |
 
 回退链（`resolveEtternaVersionLoaderForKeycount`）：
 
 1. 解析用户所选版本（index.js:110）。
-2. **6K/7K 偏好**：`parsedKeycount === 6 || 7` 且当前版本不是 0.74.0 时，直接改用 `NON_4K_ETTERNA_FALLBACK_VERSION`（index.js:113-127），原因记为 `Using 0.74.0 for non-4K stability`。
+2. **非 4K 偏好**：`parsedKeycount !== 4` 且当前版本不是 0.74.0 时，直接改用 `NON_4K_ETTERNA_FALLBACK_VERSION`（index.js:113-127），原因记为 `Using 0.74.0 for non-4K stability`。
 3. 当前版本支持该键数 → 原样返回（index.js:129-131）。
 4. 不支持 → 优先 0.74.0，再遍历注册表找第一个支持的版本；都没有则原样返回（index.js:133-155）。
+
+**0.75.0 说明**：MinaCalc 内部 527（0.74.0 的后续调参版），作为 4K 可选版本加入设置；非 4K 恒定走 0.74.0（0.75.0 的 n-key 同为实验质量，锁定 0.74.0 保证一致性）。
 
 **调用方**：`js/ett/calc.js:147`（`js/ett/calc.js:4` 导入）。WASM 内部机制见 [../features/difficulty-estimation.md](../features/difficulty-estimation.md)，不在本文范围。
 
 **版本设置**（独立两路）：
 
-- `state.etternaVersion`（appContext.js:91，默认 `config.js:82` 的 `"0.72.3"`）→ settings.json:353 `etternaVersion`，驱动普通 Etterna 计算。
-- `state.companellaEtternaVersion`（appContext.js:92，默认 `config.js:83` 的 `"0.74.0"`）→ settings.json:367 `companellaEtternaVersion`，**Companella 估算器专用**，与主版本互不影响。
+- `state.etternaVersion`（appContext.js:91，默认 `config.js:82` 的 `"0.72.3"`）→ settings.json:382 `etternaVersion`，驱动普通 Etterna 计算。
+- `state.companellaEtternaVersion`（appContext.js:92，默认 `config.js:83` 的 `"0.74.0"`）→ settings.json:397 `companellaEtternaVersion`，**Companella 估算器专用**，与主版本互不影响。
 
 ## 7. modSignature 在缓存键中的作用
 

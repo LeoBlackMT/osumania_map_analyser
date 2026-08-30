@@ -114,7 +114,8 @@
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
         - 改动该设定将会影响所有依赖于Etterna计算的功能，除了Companella估计算法以外。
-        - 4K将按所选版本计算；6K/7K为保证稳定性会优先使用0.74.0。
+        - 4K将按所选版本计算（0.75.0 为新增的可选版本，MinaCalc 内部 527）；**非 4K（5K–18K）固定使用 0.74.0**：它是首个带完整 n-key 管线的版本（内部 515），其非 4K 输出与官方 Etterna 0.74 游戏本体一致。
+        - 5K–18K 谱面可正常计算 MSD；其他显示（难度图、内容主体）仍按 4/6/7K 支持范围处理（非 4/6/7K 主体回退 Pattern）。
         - 若当前版本不可用或不支持当前键数，将自动回退到可用版本。
     - **Companella Etterna Version**: 选择仅用于Companella估计算法的Etterna MinaCalc版本。
         - 该设定将仅影响Companella算法的计算结果，其他功能仍然使用Global Etterna Version设定的版本。
@@ -255,7 +256,8 @@
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.
         - Changing this setting will affect all features that depend on Etterna calculations, except for the Companella estimation algorithm.
-        - 4K uses the selected version directly; 6K/7K prioritize 0.74.0 for stability.
+        - 4K uses the selected version directly (0.75.0 is a new selectable version, MinaCalc internal 527); all non-4K (5K–18K) are pinned to 0.74.0: the first MinaCalc with a real n-key pipeline (internal 515), whose non-4K output matches the official Etterna 0.74 game client exactly.
+        - 5K–18K beatmaps get working MSD calculations; other displays (difficulty graph, card body) remain limited to the 4/6/7K support scope (non-4/6/7K bodies fall back to Pattern).
         - If the current version is unavailable or does not support the current key count, it will automatically fall back to an available version.
     - **Companella Etterna Version**: Select the Etterna MinaCalc version used exclusively for the Companella estimation algorithm.
         - This setting only affects the Companella algorithm's calculations; other features will continue to use the version set in Global Etterna Version.
