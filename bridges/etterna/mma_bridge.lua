@@ -13,9 +13,9 @@
 -- 优先——Etterna 0.7x 支持；不存在则 SetUpdateRate 兜底）+ 全套选歌消息钩子
 -- 即时重检。任何 API 异常都 pcall 隔离且不得中断后续注册与循环。
 
-local FILE = "Save/LeosMmaBridge.txt"
-local LOADED_FILE = "Save/LeosMmaBridgeLoaded.txt"
-local ERROR_FILE = "Save/LeosMmaBridgeError.txt"
+local FILE = "Save/MmaBridge.txt"
+local LOADED_FILE = "Save/MmaBridgeLoaded.txt"
+local ERROR_FILE = "Save/MmaBridgeError.txt"
 local CHECK_INTERVAL = 0.5
 local lastKey = ""
 
@@ -58,6 +58,14 @@ local function safeGet(fn, fallback)
     return fallback
 end
 
+local function baseName(path)
+    local base = path:match("[^/\\]+$")
+    if base then
+        return base
+    end
+    return path
+end
+
 local function writeState(song, steps)
     local title = safeGet(function() return song:GetDisplayMainTitle() end, "") or ""
     local artist = safeGet(function() return song:GetDisplayArtist() end, "") or ""
@@ -77,7 +85,7 @@ local function writeState(song, steps)
         "title=" .. title,
         "artist=" .. artist,
         "song_dir=" .. safeGet(function() return song:GetSongDir() end, "") or "",
-        "step_file=" .. safeGet(function() return steps:GetFilename() end, "") or "",
+        "step_file=" .. baseName(safeGet(function() return steps:GetFilename() end, "") or ""),
         "difficulty=" .. tostring(safeGet(function() return steps:GetDifficulty() end, "") or ""),
         "meter=" .. tostring(safeGet(function() return steps:GetMeter() end, 0) or 0),
         "rate=" .. tostring(rate),
@@ -122,7 +130,7 @@ local function checkAndUpdate()
                 end
             end
         end
-        local key = (song:GetDisplayMainTitle() or "") .. "::" .. (steps:GetFilename() or "")
+        local key = (song:GetDisplayMainTitle() or "") .. "::" .. baseName(steps:GetFilename() or "")
             .. "::" .. tostring(safeGet(function() return steps:GetDifficulty() end, "") or "")
             .. "::" .. tostring(safeGet(function() return steps:GetMeter() end, 0) or 0)
             .. "::" .. tostring(currentRate())

@@ -45,7 +45,7 @@
 
 ### Malody V（编辑器内分析一次触发；游玩皮肤显示最近结果）
 
-1. 编辑场景：把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/Editor/`（目录不存在就新建）。打开谱面编辑器 → 「更多」菜单 → **LeosMma Analyser** → 卡片显示本谱分析。
+1. 编辑场景：把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/Editor/`（目录不存在就新建）。打开谱面编辑器 → 「更多」菜单 → **MMA Analyze** → 卡片显示本谱分析。
 2. 游玩场景（独立皮肤，推荐）：在 `skin/` 下新建**独立皮肤目录**（如 `skin/MMA-Result/`），把 `bridges/malody/z_mma_skin.lua` 复制进去（文件名可任意）；在皮肤 Composer 里添加一个 **Text 模块，命名 `mma_result`**；在该皮肤目录里新建空文件 `mma.txt`（壳靠它找到写入目标）。游玩时选择 **MMA-Result** 作为皮肤（Base 皮肤不变）。**不要放进已有皮肤目录**（`UpdateSharedData` 等全局钩子会互相覆盖）。
 3. 设置里填 `Malody V Folder`（通常是 `D:\Steam\steamapps\common\MalodyV`）。
 

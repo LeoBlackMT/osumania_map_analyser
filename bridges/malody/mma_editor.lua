@@ -56,11 +56,14 @@ local function postAndRender(meta, chartText)
         .. ',"level":' .. jsonQuote(meta.level)
         .. ',"keys":' .. tostring(meta.keys or 0)
         .. '},"chartText":' .. jsonQuote(chartText) .. '}'
-    pcall(function()
+    local ok, err = pcall(function()
         Editor:DoRequest(ENDPOINT, 'POST', payload, function(response)
             note(trim(response, 2000))
         end)
     end)
+    if not ok then
+        note('DoRequest 调用失败（请反馈此信息）：' .. tostring(err))
+    end
 end
 
 local function tryRead(name)
@@ -136,7 +139,7 @@ function Run()
     local dispatched = false
     local payload = '{"action":"resolve","title":' .. jsonQuote(meta.title)
         .. ',"artist":' .. jsonQuote(meta.artist) .. '}'
-    pcall(function()
+    local ok, err = pcall(function()
         Editor:DoRequest(ENDPOINT, 'POST', payload, function(response)
             dispatched = true
             if looksLikeChart(response) then
@@ -146,6 +149,10 @@ function Run()
             end
         end)
     end)
+    if not ok then
+        note('DoRequest 调用失败（请反馈此信息）：' .. tostring(err))
+        manualInput(meta)
+    end
     if not dispatched then
         manualInput(meta)
     end

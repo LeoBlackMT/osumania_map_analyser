@@ -17,7 +17,7 @@
 -- 写入的结果；精确跟随仅编辑器场景（web post）可用。
 
 local MODULE_NAME = 'mma_result'
-local lastRead = ''
+local lastRead = nil -- nil 哨兵：首帧必更新（即使为空也显示空态提示）
 
 function UpdateSharedData()
     local text = ''

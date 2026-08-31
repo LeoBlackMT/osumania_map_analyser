@@ -12,7 +12,7 @@
 -- 并在同目录 default.lua 的 return t 前插入：
 --   t[#t + 1] = LoadActor("mma_gameplay.lua")
 
-local FILE = "Save/LeosMmaGameplay.txt"
+local FILE = "Save/MmaGameplay.txt"
 
 local function currentRate()
     local rate = 1.0

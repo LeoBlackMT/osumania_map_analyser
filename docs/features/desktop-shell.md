@@ -12,7 +12,7 @@
    - `24061` HTTP——插件页静态服务（离线模式）、`/settings`（离线设置）、`/cover/`（封面白名单）；
    - `24061/ws` WS——帧通道（hello/state/song/settings/result/control + ping），页面与壳双向；
    - Malody skin 状态文件写入（`mma_state.txt`，契约 §9）。
-3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/LeosMmaBridge.txt` / `Save/LeosMmaGameplay.txt`），解析后广播 song/state 帧。
+3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 
 模块：`desktop/src/{main,server,config,frames,etterna}.rs`；契约 `desktop/docs/CONTRACT.md`（v2）。
 

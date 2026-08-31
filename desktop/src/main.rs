@@ -15,6 +15,7 @@ use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 use std::sync::Mutex;
+use std::thread;
 
 // 窗口状态内存缓存（位置/尺寸由窗口事件维护；标志位由快捷键切换）。
 static WINDOW_STATE: Mutex<config::WindowState> = Mutex::new(config::WindowState {
@@ -133,6 +134,30 @@ fn main() {
                     }
                 },
             );
+            // 窗口状态兜底：主线程每 5s 查询一次位置/尺寸并写盘（部分透明窗口
+            // Moved/Resized 事件可能不触发；查询必须经 run_on_main_thread）。
+            {
+                let handle = app.handle().clone();
+                thread::spawn(move || loop {
+                    thread::sleep(std::time::Duration::from_secs(5));
+                    let handle2 = handle.clone();
+                    let _ = handle.run_on_main_thread(move || {
+                        let Some(window) = handle2.get_webview_window("main") else {
+                            return;
+                        };
+                        if let Ok(position) = window.outer_position() {
+                            WINDOW_STATE.lock().unwrap().x = position.x;
+                            WINDOW_STATE.lock().unwrap().y = position.y;
+                        }
+                        if let Ok(size) = window.outer_size() {
+                            WINDOW_STATE.lock().unwrap().w = size.width;
+                            WINDOW_STATE.lock().unwrap().h = size.height;
+                        }
+                        persist_window_state();
+                    });
+                });
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {

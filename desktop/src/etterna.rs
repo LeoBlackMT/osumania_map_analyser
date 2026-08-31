@@ -1,4 +1,4 @@
-// Etterna 桥轮询（M3）：2Hz 读 Save/LeosMmaBridge.txt / LeosMmaGameplay.txt。
+// Etterna 桥轮询（M3）：2Hz 读 Save/MmaBridge.txt / MmaGameplay.txt。
 //
 // - bridge 变化（换歌/改 rate 的 key 门控写入）→ 组装 song 帧推送
 //   （identity = ett:{stem}:{difficulty}:{meter}:{contentMd5}；modData.speedRate
@@ -92,8 +92,8 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
             thread::sleep(POLL_INTERVAL);
             let Some(root) = etterna_root(&shared) else { continue };
             let save = root.join("Save");
-            let bridge_path = save.join("LeosMmaBridge.txt");
-            let gameplay_path = save.join("LeosMmaGameplay.txt");
+            let bridge_path = save.join("MmaBridge.txt");
+            let gameplay_path = save.join("MmaGameplay.txt");
 
             // ── gameplay：playing 外推 ──
             if let (Some(mt), Ok(text)) = (
@@ -173,9 +173,15 @@ fn build_song_frame(
     let kv = read_kv(text);
     let step_file = kv.get("step_file")?;
     let song_dir = kv.get("song_dir").cloned().unwrap_or_default();
-    // 谱面绝对路径：Etterna 的 song_dir 以 "Songs/.../" 形式返回。
-    let chart_path = root.join(song_dir).join(step_file);
-    let raw_text = fs::read_to_string(&chart_path).ok()?;
+    // 谱面绝对路径：Etterna 的 song_dir 以 "Songs/.../" 形式、step_file 可能
+    // 带 "Songs/..." 前缀——三级候选兜底（song_dir+step_file / step_file / 原样）。
+    let candidates = [
+        root.join(&song_dir).join(step_file),
+        root.join(step_file),
+        std::path::PathBuf::from(step_file),
+    ];
+    let chart_path = candidates.iter().find(|c| c.is_file())?;
+    let raw_text = fs::read_to_string(chart_path).ok()?;
     if raw_text.len() > MAX_PAYLOAD_BYTES {
         shared.shell_errors.lock().unwrap().push(format!(
             "Etterna 谱面过大被跳过：{}（>5MB 字节）",

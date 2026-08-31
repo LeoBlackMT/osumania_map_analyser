@@ -9,7 +9,7 @@
 ## 架构
 
 ```
-Etterna（主题 Lua 桥写 Save/LeosMmaBridge.txt + LeosMmaGameplay.txt）
+Etterna（主题 Lua 桥写 Save/MmaBridge.txt + MmaGameplay.txt）
   → 壳（desktop，2Hz 轮询 → song 帧）
 Malody（编辑器插件 POST 24060 → song 帧；皮肤目录 mma_state.txt 由壳写入）
   → 壳 WS/HTTP → 页面 sources/（bridgeClient → externalSource → state 注入）
