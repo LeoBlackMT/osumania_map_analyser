@@ -165,6 +165,21 @@ pub fn write_shell_config(value: &serde_json::Value) -> bool {
     ok
 }
 
+/// 启动时确保 mma-shell.json 存在（无 tosu 用户可发现并直接编辑）。
+pub fn ensure_shell_config() {
+    let Some(dir) = exe_dir() else {
+        return;
+    };
+    let path = dir.join("mma-shell.json");
+    if path.exists() {
+        return;
+    }
+    let _ = fs::write(
+        &path,
+        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\"\n}\n",
+    );
+}
+
 fn exe_dir() -> Option<PathBuf> {
     env::current_exe()
         .ok()
