@@ -128,7 +128,6 @@ local function tryRead(name)
 end
 
 local function manualInput(meta)
-    note('未自动读到谱面，请手动输入 .mc 文件名')
     local ok, picked = pcall(function()
         return Editor:ReadFileSelect()
     end)
@@ -145,27 +144,39 @@ local function manualInput(meta)
     local syncOk = pcall(function()
         got = Editor:GetUserInput('chart 目录内 .mc 文件名（如 0/xxx.mc 或 chart.mc）', '')
     end)
-    if syncOk and type(got) == 'string' and got ~= '' then
-        local chartText = tryRead(got)
-        if chartText then
-            postAnalyze(meta, chartText)
-        else
-            note('未读到谱面：' .. got)
-        end
+    if not (syncOk and type(got) == 'string' and got ~= '') then
+        pcall(function()
+            Editor:GetUserInput('chart 目录内 .mc 文件名', '', function(name)
+                if name and name ~= '' then
+                    got = name
+                end
+            end)
+        end)
+    end
+    if not (got and got ~= '') then
+        note('未输入文件名')
         return
     end
-    pcall(function()
-        Editor:GetUserInput('chart 目录内 .mc 文件名（如 0/xxx.mc 或 chart.mc）', '', function(name)
-            if name and name ~= '' then
-                local chartText = tryRead(name)
-                if chartText then
-                    postAnalyze(meta, chartText)
-                else
-                    note('未读到谱面：' .. name)
-                end
-            end
+    -- 候选矩阵：全名 / 0/名 / chart/名 / 去扩展名 / chart.mc——每项结果都显示，供真机定位。
+    local noExt = (got:gsub('%.mc$', ''))
+    local candidates = { got, '0/' .. got, 'chart/' .. got, noExt, 'chart.mc' }
+    local report = {}
+    for _, name in ipairs(candidates) do
+        local chartText = nil
+        pcall(function()
+            chartText = Editor:ReadFile(name)
         end)
-    end)
+        if looksLikeChart(chartText) then
+            report[#report + 1] = name .. '=[OK ' .. #chartText .. 'b]'
+            picked = chartText
+        else
+            report[#report + 1] = name .. '=[x]'
+        end
+    end
+    note('ReadFile 尝试：' .. table.concat(report, ' '))
+    if picked then
+        postAnalyze(meta, picked)
+    end
 end
 
 function Run()

@@ -414,6 +414,11 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty external beatmap content.");
             }
         } else {
+            // 壳离线（无 tosu 数据面）时任何 osu 抓取都守卫：Waiting 而非报错。
+            if (state.externalBridgeAvailable && !state.shellTosuOnline && !state.pendingSourceText) {
+                setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+                return;
+            }
             const response = await fetch(getEndpoint(), {
                 method: "GET",
                 cache: "no-store",
