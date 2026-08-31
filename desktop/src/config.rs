@@ -1,5 +1,6 @@
 // 路径与 tosu 探测（契约 §6/§8）。
 
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::net::TcpStream;
@@ -130,4 +131,82 @@ pub fn read_tosu_settings(info: &TosuInfo) -> serde_json::Value {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(serde_json::Value::Null)
+}
+
+// ---- 独立配置（mma-shell.json，exe 旁）：无 tosu 用户也能配置游戏路径 ----
+
+/// 读取 exe 所在目录下的 mma-shell.json（不存在/损坏 → 空对象）。
+pub fn read_shell_config() -> serde_json::Value {
+    let Some(dir) = exe_dir() else {
+        return serde_json::Value::Null;
+    };
+    let path = dir.join("mma-shell.json");
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// /settings POST 时落盘（仅保存已知键，丢弃其余）。
+pub fn write_shell_config(value: &serde_json::Value) -> bool {
+    let Some(dir) = exe_dir() else {
+        return false;
+    };
+    let mut out = serde_json::Map::new();
+    for key in ["gameClient", "etternaRoot", "malodyRoot"] {
+        if let Some(v) = value.get(key) {
+            out.insert(key.to_string(), v.clone());
+        }
+    }
+    let path = dir.join("mma-shell.json");
+    let tmp = path.with_extension("json.tmp");
+    let ok = fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap_or_default()).is_ok()
+        && fs::rename(&tmp, &path).is_ok();
+    ok
+}
+
+fn exe_dir() -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+}
+
+// ---- 窗口状态记忆（mma-shell-state.json，exe 旁）----
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct WindowState {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    pub topmost: bool,
+    pub click_through: bool,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        Self { x: i32::MIN, y: 0, w: 520, h: 680, topmost: true, click_through: false }
+    }
+}
+
+pub fn read_window_state() -> WindowState {
+    let Some(dir) = exe_dir() else {
+        return WindowState::default();
+    };
+    let path = dir.join("mma-shell-state.json");
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn write_window_state(state: &WindowState) {
+    let Some(dir) = exe_dir() else {
+        return;
+    };
+    let path = dir.join("mma-shell-state.json");
+    let tmp = path.with_extension("state.tmp");
+    if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
 }

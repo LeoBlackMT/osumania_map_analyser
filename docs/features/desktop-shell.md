@@ -32,7 +32,7 @@ window.navigate(url)
 
 - **插件目录**：`MMA_PLUGIN_DIR` 环境变量 > exe 目录逐级上溯 0–3 层，每层拼 `ManiaMapAnalyser by Leo_Black` 并校验 `index.html` 存在；都不中则用相对路径。发布形态（exe 与插件目录同层）上溯 0 层即命中；开发形态（target/debug）上溯 2 层命中仓库根。
 - **tosu.env**：从 exe 所在目录开始向上（含当前层）最多 3 层；解析 `SERVER_PORT`（默认 24050）与 `SERVER_IP`（默认 127.0.0.1）；根目录 = tosu.env 所在目录（用于 `settings/{插件名}.json` 只读读取）。
-- **Etterna/Malody 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > 设置项（在线= tosu 设置文件只读 `etternaRoot`/`malodyRoot`；离线= 壳 JSON `/settings` 的对应项）。
+- **Etterna/Malody 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > **独立配置 `mma-shell.json`**（exe 旁，`{gameClient, etternaRoot, malodyRoot}`，可经 `/settings` POST 写入或直接编辑，30s 周期检测变化后重载并推送 settings 帧）> tosu 在线只读。无 tosu 用户无需下载 tosu 即可配置游戏路径。
 
 ## 3. 契约 v2 帧
 
@@ -43,12 +43,14 @@ window.navigate(url)
 | song | 壳→页 | requestId/source/identity/modData{rate,...}/cover/rawText |
 | settings | 双向 | 离线设置 JSON（在线只读不推） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
-| control | 页→壳 | `{action: alwaysOnTop\|close, value: bool}`（窗口操控） |
+| control | 页→壳 | `{action: alwaysOnTop\|close\|clickThrough, value: bool}`（窗口操控；快捷键已全局化，此帧供未来 UI） |
 | ping | 双向 | 15s keepalive |
 
 ## 4. 窗口操控（v2 起）
 
-无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`——**拖拽边缘改窗口尺寸**。WebView 原生缩放：`Ctrl+滚轮`（页面缩放）与 `Ctrl+=` / `Ctrl+-`；关闭：`Alt+F4`。快捷键（页面 → 壳 control 帧，需壳连接建立）：`Ctrl+Shift+T` 切换置顶开关（默认置顶）；`Ctrl+Q` 关闭窗口。Windows `set_ignore_cursor_events` 点击穿透为尽力项（失败退回置顶形态）；Linux 无点击穿透；Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
+无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`——**拖拽边缘改窗口尺寸**；**整窗移动**用页面顶部 `data-tauri-drag-region` 拖动把手（22px 发光条，中间 `⋮⋮` 提示）；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
+
+**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：`Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
 
 ## 5. 构建与发布
 
@@ -58,4 +60,4 @@ window.navigate(url)
 
 ## 6. 已知限制与待办
 
-离线设置持久化（页面→壳 `/settings` 接线）为已知待办；在线模式设置以 tosu 为准（只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器 DoRequest 签名、PlayMeta 字段、皮肤目录可写性；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。
+离线设置持久化已实现（`mma-shell.json` + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器 DoRequest 签名与自动化读谱（当前 ReadFile 需输入 chart 目录内文件名）、PlayMeta 字段、皮肤目录可写性；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。

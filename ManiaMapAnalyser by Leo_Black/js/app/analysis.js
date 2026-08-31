@@ -308,6 +308,12 @@ export function resetReworkDisplay() {
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    // 离线圈模式守卫：无 tosu 数据面时不做 osu 抓取（避免 "Failed to fetch" 噪声），
+    // 等待外部源 song 帧触发分析。
+    if (reason === "initial load" && state.externalBridgeAvailable && !state.shellTosuOnline) {
+        setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+        return;
+    }
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
     // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
     const sourceRequestId = state.pendingSourceRequestId;

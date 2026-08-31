@@ -6,7 +6,7 @@ import {
     updatePauseCountVisibility,
 } from "./hud.js";
 import { setRecomputeHandler, scheduleRecompute } from "./scheduler.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, applySettingsPayload } from "./settings.js";
 import { initTriangleField } from "./triangles.js";
 // Side-effect import: presets module self-initializes (registers the preset
 // settings-stream listener) on load; it must be loaded exactly once.
@@ -41,8 +41,22 @@ export async function initialize() {
     initBridgeClient({
         onState: applyShellState,
         onSong: handleSongFrame,
+        onSettings: applySettingsPayload,
+        onHello: () => {
+            // 离线配置（mma-shell.json）拉取：无 tosu 用户可直接编辑该文件，
+            // 壳启动时已加载；此处兜底同步一次。
+            fetch("http://127.0.0.1:24061/settings")
+                .then((r) => (r.ok ? r.json() : null))
+                .then((payload) => {
+                    if (payload) {
+                        applySettingsPayload(payload);
+                    }
+                })
+                .catch(() => {});
+        },
     });
-    scheduleRecompute("initial load", false);
+    // 延迟初始加载：先等壳桥探测/hello（离线模式避免 "Failed to fetch" 噪声）。
+    setTimeout(() => scheduleRecompute("initial load", false), 1200);
 }
 
 

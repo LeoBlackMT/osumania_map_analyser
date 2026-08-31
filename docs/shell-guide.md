@@ -8,7 +8,7 @@
 
 桌面壳（mma-shell）是一个可选的小窗口程序，用来：把分析卡片显示在**独立的置顶小窗口**里（可以盖在游戏/浏览器上）；在**不启动 tosu** 的情况下，让卡片跟随 **Etterna** 或 **Malody V**（无需 osu! / tosu 也在线）。浏览器旧用法（tosu 插件页）不受影响，可以继续用。
 
-系统要求：Windows（推荐）或带合成器的 Linux；Etterna/Malody 数据源需要对应游戏的桥文件（见下文「安装桥」）。
+系统要求：Windows（推荐）或带合成器的 Linux；Etterna/Malody 数据源需要对应游戏的桥文件（见下文「安装桥」）。最低游戏版本：**Etterna 0.70+**（桥使用的 RageFileUtil/LoadActor 等 API 长期稳定，更低版本大概率可用但未验证）；**Malody V 6.6.43+**（编辑器插件的 `Editor:DoRequest` 自该版本起可用，更低版本只能走文件输入兜底）。
 
 ## 一、获取与安装
 
@@ -25,13 +25,14 @@
 
 | 操作 | 方法 |
 | --- | --- |
+| 拖动整个窗口 | 按住窗口**顶部拖动条**（顶端发光细条，中间有 `⋮⋮` 标志）拖动 |
 | 改变窗口大小 | 拖动窗口边缘（无边框，四周可拖） |
 | 页面缩放 | 按住 `Ctrl` 滚动鼠标滚轮；或 `Ctrl +` / `Ctrl -`；`Ctrl 0` 复位 |
-| 开关置顶（默认置顶） | 点击窗口后按 `Ctrl + Shift + T` |
-| 关闭窗口 | `Alt+F4` 或 `Ctrl+Q`（退出壳进程） |
-| 拖动位置 | 按住窗口任意位置拖动（无边框窗口整窗可拖） |
+| 开关置顶（默认置顶） | 任意时刻按 `Ctrl + Shift + T`（全局快捷键，不点窗口也有效） |
+| 开关点击穿透（默认关） | 任意时刻按 `Ctrl + Shift + C`；穿透时鼠标可穿过窗口操作下层，再按一次切回 |
+| 关闭窗口 | `Alt+F4` 或 `Ctrl+Q`（全局快捷键） |
 
-> 置顶/透明在 Windows 与 Linux（合成器）可用；Windows 的「点击穿透」（鼠标穿过窗口点到下层）为尽力支持，若不可用窗口保持置顶形态。
+> 窗口位置/大小/置顶/穿透状态会自动记忆，下次启动恢复。全局快捷键在窗口失焦或点击穿透时依然生效（穿透时没有鼠标事件，但快捷键仍在）。置顶/透明在 Windows 与 Linux（合成器）可用。
 
 ## 四、安装桥（Etterna / Malody 数据源）
 
@@ -77,13 +78,14 @@ mma-shell is an optional desktop window that shows the analysis card in an alway
 
 | Action | How |
 | --- | --- |
+| Move the whole window | drag the **top drag bar** (glow strip with `⋮⋮` hint at the window top) |
 | Resize | drag any window edge |
 | Zoom | `Ctrl` + mouse wheel, or `Ctrl +` / `Ctrl -`; `Ctrl 0` resets |
-| Always-on-top toggle (default on) | click the window, then `Ctrl + Shift + T` |
-| Close | `Alt+F4` or `Ctrl+Q` |
-| Move | drag anywhere on the window |
+| Always-on-top toggle (default on) | `Ctrl + Shift + T` (global shortcut, works even when the window is unfocused) |
+| Click-through toggle (default off) | `Ctrl + Shift + C`; while enabled the mouse passes through to windows below, press again to restore |
+| Close | `Alt+F4` or `Ctrl+Q` (global) |
 
-Click-through on Windows is best-effort; when unavailable the window stays always-on-top.
+Window position/size/topmost/click-through are remembered across launches. Global shortcuts keep working while the window is unfocused or click-through is active. Always-on-top/transparency work on Windows and Linux (compositor).
 
 ## Bridges
 

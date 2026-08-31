@@ -144,6 +144,31 @@
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.35);
 }
 
+/* 壳窗口拖动把手（data-tauri-drag-region；拖顶部条移动整窗） */
+.mma-drag-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 22px;
+    cursor: move;
+    z-index: 9999;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.mma-drag-bar:hover {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0));
+}
+.mma-drag-hint {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 10px;
+    letter-spacing: 4px;
+    user-select: none;
+    pointer-events: none;
+}
+
 .status {
     font-size: 15px;
     color: var(--text-soft);

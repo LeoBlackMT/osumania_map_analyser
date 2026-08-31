@@ -122,7 +122,8 @@ export function convertMcToOsuText(mcText) {
     const converted = [];
     const startCounter = new Map();
     for (const n of note) {
-        if (n.type !== 0) {
+        // 真实 .mc note 常缺省 type（= tap）；仅显式非 0 类型（LN 头等）才跳过。
+        if (n.type != null && n.type !== 0) {
             continue;
         }
         const column = Number(n.column);

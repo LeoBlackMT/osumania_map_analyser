@@ -57,7 +57,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         sinks: Mutex::new(Vec::new()),
         pending: Mutex::new(HashMap::new()),
         cover_whitelist: Mutex::new(std::collections::HashSet::new()),
-        offline_settings: Mutex::new(serde_json::json!({})),
+        offline_settings: Mutex::new(config::read_shell_config()),
         last_malody_post: Mutex::new(None),
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
@@ -248,7 +248,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         }
         let body = body.to_string();
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
-            *shared.offline_settings.lock().unwrap() = value;
+            *shared.offline_settings.lock().unwrap() = value.clone();
+            // 落盘 mma-shell.json（无 tosu 用户也可直接编辑该文件）。
+            config::write_shell_config(&value);
             respond_json(&mut stream, 200, "{}");
         } else {
             respond_json(&mut stream, 400, r#"{"error":"invalid settings json"}"#);
@@ -465,7 +467,7 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
         "requestId": request_id,
         "source": "malody",
         "identity": identity,
-        "modData": { "speedRate": "1.0", "odFlag": "none", "cvtFlag": "none", "classic": 0 },
+        "modData": { "speedRate": "1.0" },
         "meta": {
             "title": post.meta.title,
             "artist": post.meta.artist,
@@ -516,6 +518,9 @@ fn handle_control(shared: &Shared, ctrl: &crate::frames::ControlInbound) {
         "alwaysOnTop" => {
             let _ = window.set_always_on_top(ctrl.value.unwrap_or(true));
         }
+        "clickThrough" => {
+            let _ = window.set_ignore_cursor_events(ctrl.value.unwrap_or(true));
+        }
         _ => {
             // 未知动作静默忽略
         }
@@ -538,11 +543,22 @@ fn json_error(text: &str) -> String {
 
 // ---- skin 状态文件（契约 §9：maody 源 + 哨兵定位 + 原子写）----
 
-/// Malody 根：MMA_MALODY_ROOT 覆盖 → 设置（malodyRoot）。
+/// Malody 根：MMA_MALODY_ROOT 覆盖 → mma-shell.json/离线设置（malodyRoot）→ tosu 在线只读。
 pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
     if let Ok(over) = std::env::var("MMA_MALODY_ROOT") {
         if !over.is_empty() {
             return Some(PathBuf::from(over));
+        }
+    }
+    let offline = shared
+        .offline_settings
+        .lock()
+        .unwrap()
+        .get("malodyRoot")
+        .cloned();
+    if let Some(v) = offline.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return Some(PathBuf::from(v));
         }
     }
     let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
@@ -552,12 +568,7 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
             .map(|info| config::read_tosu_settings(info).get("malodyRoot").cloned())
             .flatten()
     } else {
-        shared
-            .offline_settings
-            .lock()
-            .unwrap()
-            .get("malodyRoot")
-            .cloned()
+        None
     };
     value
         .as_ref()
@@ -630,6 +641,20 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             thread::sleep(PING_INTERVAL);
             let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);
             *shared.tosu_online.lock().unwrap() = online;
+            // mma-shell.json 变化检测：用户直接编辑文件 → 重载并推送 settings 帧。
+            let file_cfg = config::read_shell_config();
+            let changed = {
+                let mut mem = shared.offline_settings.lock().unwrap();
+                if *mem != file_cfg {
+                    *mem = file_cfg.clone();
+                    true
+                } else {
+                    false
+                }
+            };
+            if changed {
+                broadcast(&shared, "settings", Some(file_cfg));
+            }
             broadcast(&shared, "state", Some(state_frame(&shared)));
             broadcast(&shared, "ping", None);
             thread::sleep(TOSU_PROBE_INTERVAL - PING_INTERVAL);

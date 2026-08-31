@@ -73,16 +73,18 @@ export function handleSongFrame(payload) {
     }
 
     const mod = payload.modData || {};
-    // state 注入（与 socketHandlers 写字段同形）
+    // state 注入（与 socketHandlers 写字段同形）：无 OD/cvt 修改时用 null
+    // （与基线一致；"none" 字符串会被估算器 parseFloat 成 NaN）。
     state.lastBeatmapIdentity = String(payload.identity || "");
     state.pendingSourceText = osuText;
     state.pendingSourceRequestId = requestId;
     state.pendingSourceActive = source;
     state.speedRate = Number(mod.speedRate) || 1;
-    state.odFlag = String(mod.odFlag || "none");
-    state.cvtFlag = String(mod.cvtFlag || "none");
-    // 外部源 modSignature 直构（不走 modData 派生、与 client 无关）
-    state.modSignature = `${state.speedRate.toFixed(5)}|${state.odFlag}|${state.cvtFlag}|${mod.classic || 0}`;
+    state.odFlag = mod.odFlag || null;
+    state.cvtFlag = mod.cvtFlag || null;
+    // 外部源 modSignature 直构（不走 modData 派生、与 client 无关）；
+    // 签名文本保持 "none" 稳定（缓存键用，与 state 数值语义分离）。
+    state.modSignature = `${state.speedRate.toFixed(5)}|${mod.odFlag || "none"}|${mod.cvtFlag || "none"}|${mod.classic || 0}`;
     state.externalSourceActive = source;
     notifySourceEvent(source);
 

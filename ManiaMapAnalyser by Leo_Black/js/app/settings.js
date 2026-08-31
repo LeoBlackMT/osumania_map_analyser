@@ -830,65 +830,71 @@ export function setupSettingsCommandListener() {
         if (!payload) {
             return;
         }
-
-        // Only apply a setting if it's actually present in the payload.
-        // Otherwise the parser's config.js default would overwrite the
-        // settings.json baseline for settings tosu didn't send.
-        const hasKey = (key) => {
-            if (Array.isArray(payload)) {
-                return payload.some((entry) => entry?.uniqueID === key);
-            }
-            return Object.prototype.hasOwnProperty.call(payload, key);
-        };
-        const applyIf = (key, applyFn, parseResult) =>
-            hasKey(key) ? applyFn(parseResult) : false;
-
-        state.settingsReceivedFromCommand = true;
-        const changedMap = {};
-        for (const handler of SETTING_HANDLERS) {
-            changedMap[handler.key] = applyIf(handler.key, handler.apply, handler.parse(payload));
-        }
-
-        const legacyAutoMode = parseAutoModeValue(payload);
-        if (legacyAutoMode && !isAutoDisplayEnabled()) {
-            state.userSrText = "Auto";
-            state.userContentBar = "Auto";
-            refreshAutoDisplayProfile();
-        }
-
-        const changed = SETTING_HANDLERS.some((handler) => changedMap[handler.key]);
-        const recomputeNeeded = SETTING_HANDLERS.some(
-            (handler) => SETTING_RECOMPUTE_KEYS.has(handler.key) && changedMap[handler.key],
-        );
-
-        // Invalidate cached results when any computation-affecting setting changed.
-        // wsEndpoint is listed explicitly: it lives in `changed` only (not recomputeNeeded).
-        // debugUseAmount + display6kLevel are display-only (toggle-diff proved zero
-        // output-contract diffs): they stay in recomputeNeeded so the cache HIT path
-        // re-derives without clearing the cache or re-fetching.
-        // enableAlwaysShowLNDifficulty stays here — toggle-diff showed real estDiff diffs.
-        if (SETTING_HANDLERS.some(
-            (handler) => SETTING_CACHE_KEYS.has(handler.key) && changedMap[handler.key],
-        )) {
-            clearResultCache();
-        }
-
-        if (typeof state.initialSettingsResolver === "function") {
-            const resolve = state.initialSettingsResolver;
-            state.initialSettingsResolver = null;
-            resolve();
-        }
-
-        if (recomputeNeeded) {
-            scheduleRecompute("settings changed", true);
-        } else if (changed) {
-            // Caption-only changes (like numeric display toggle) are applied immediately.
-        }
+        applySettingsPayload(payload);
     });
 
     if (!state.settingsRequested) {
         state.settingsRequested = true;
         socket.sendCommand("getSettings", getCounterPathForCommand());
+    }
+}
+
+/**
+ * 应用设置载荷（tosu getSettings 命令 / 壳 settings 帧 / 离线 /settings GET 共用）。
+ * 仅应用载荷中实际存在的键，避免 config.js 默认值覆盖 settings.json 基线。
+ */
+export function applySettingsPayload(payload) {
+    if (!payload) {
+        return;
+    }
+
+    const hasKey = (key) => {
+        if (Array.isArray(payload)) {
+            return payload.some((entry) => entry?.uniqueID === key);
+        }
+        return Object.prototype.hasOwnProperty.call(payload, key);
+    };
+    const applyIf = (key, applyFn, parseResult) =>
+        hasKey(key) ? applyFn(parseResult) : false;
+
+    state.settingsReceivedFromCommand = true;
+    const changedMap = {};
+    for (const handler of SETTING_HANDLERS) {
+        changedMap[handler.key] = applyIf(handler.key, handler.apply, handler.parse(payload));
+    }
+
+    const legacyAutoMode = parseAutoModeValue(payload);
+    if (legacyAutoMode && !isAutoDisplayEnabled()) {
+        state.userSrText = "Auto";
+        state.userContentBar = "Auto";
+        refreshAutoDisplayProfile();
+    }
+
+    const changed = SETTING_HANDLERS.some((handler) => changedMap[handler.key]);
+    const recomputeNeeded = SETTING_HANDLERS.some(
+        (handler) => SETTING_RECOMPUTE_KEYS.has(handler.key) && changedMap[handler.key],
+    );
+
+    // Invalidate cached results when any computation-affecting setting changed.
+    // wsEndpoint is listed explicitly: it lives in `changed` only (not recomputeNeeded).
+    // debugUseAmount + display6kLevel are display-only (toggle-diff proved zero
+    // output-contract diffs): they stay in recomputeNeeded so the cache HIT path
+    // re-derives without clearing the cache or re-fetching.
+    // enableAlwaysShowLNDifficulty stays here — toggle-diff showed real estDiff diffs.
+    if (SETTING_HANDLERS.some(
+        (handler) => SETTING_CACHE_KEYS.has(handler.key) && changedMap[handler.key],
+    )) {
+        clearResultCache();
+    }
+
+    if (typeof state.initialSettingsResolver === "function") {
+        const resolve = state.initialSettingsResolver;
+        state.initialSettingsResolver = null;
+        resolve();
+    }
+
+    if (recomputeNeeded) {
+        scheduleRecompute("settings changed", true);
     }
 }
 

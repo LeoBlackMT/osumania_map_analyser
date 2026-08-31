@@ -23,11 +23,22 @@ pub struct EtternaStatus {
     pub playing_expire_at: Option<u64>,
 }
 
-/// Etterna 根目录：env 覆盖 → 设置（在线壳只读 tosu 设置文件 / 离线壳 JSON）。
+/// Etterna 根目录：env 覆盖 → offline_settings（=mma-shell.json，可直接编辑）→ tosu 在线只读。
 pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
     if let Ok(over) = std::env::var("MMA_ETTERNA_ROOT") {
         if !over.is_empty() {
             return Some(PathBuf::from(over));
+        }
+    }
+    let offline = shared
+        .offline_settings
+        .lock()
+        .unwrap()
+        .get("etternaRoot")
+        .cloned();
+    if let Some(v) = offline.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return Some(PathBuf::from(v));
         }
     }
     let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
@@ -37,12 +48,7 @@ pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
             .map(|info| config::read_tosu_settings(info).get("etternaRoot").cloned())
             .flatten()
     } else {
-        shared
-            .offline_settings
-            .lock()
-            .unwrap()
-            .get("etternaRoot")
-            .cloned()
+        None
     };
     value
         .as_ref()

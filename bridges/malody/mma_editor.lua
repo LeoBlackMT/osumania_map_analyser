@@ -1,6 +1,6 @@
--- LeosMma 编辑器插件（MalodyV，触发类 PluginType=0）。
+-- MMA Analyze 编辑器插件（MalodyV，触发类 PluginType=0）。
 --
--- 用法：打开谱面编辑器 → 「更多」菜单点击本插件 → 读取当前谱面并
+-- 用法：打开谱面编辑器 → 「更多」菜单点击 Analyze → 读取当前谱面并
 -- POST 到本地壳（127.0.0.1:24060）→ 分析结果以短消息与 AddText 卡片
 -- 渲染在编辑区。
 --
@@ -11,7 +11,7 @@
 -- 验证项）；本脚本对二者均以 pcall 包裹，失败走 GetUserInput+ReadFile
 -- 兜底，不会阻断编辑器。
 
-PluginName = 'LeosMma Analyser'
+PluginName = 'MMA Analyze'
 PluginMode = 0
 PluginType = 0
 PluginRequire = '5.0.1'
@@ -34,7 +34,7 @@ end
 
 local function postAndRender(meta, chartText)
     if not chartText or chartText == '' then
-        Editor:ShowMessage('LeosMma: 未能读取谱面文件')
+        Editor:ShowMessage('MMA: 未能读取谱面文件，请检查文件名（chart/<曲目目录>/ 内的 .mc，通常为数字名）')
         return
     end
     local payload = '{"meta":{"title":' .. jsonQuote(meta.title)
@@ -76,7 +76,7 @@ function Run()
         return
     end
     pcall(function()
-        Editor:GetUserInput('谱面文件名（chart 文件夹内）', '', function(name)
+        Editor:GetUserInput('chart 目录内的 .mc 文件名（通常为数字，如 1706936678.mc）', '', function(name)
             if name and name ~= '' then
                 local chartText = nil
                 pcall(function()

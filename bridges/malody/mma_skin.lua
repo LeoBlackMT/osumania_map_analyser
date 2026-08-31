@@ -34,8 +34,14 @@ function Update()
         lastRead = text
         local t = Module:Find(MODULE_NAME)
         if t then
-            t.Text = text
-            t.Alpha = 100
+            if text == '' then
+                -- 空态提示：尚未有任何分析写入（在编辑器触发 Analyze 后更新）。
+                t.Text = 'MMA: 尚未分析（请在编辑器触发 Analyze）'
+                t.Alpha = 60
+            else
+                t.Text = text
+                t.Alpha = 100
+            end
         end
     end
     -- 皮肤侧自有元信息补充（标题行前置）
