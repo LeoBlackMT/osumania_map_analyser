@@ -426,6 +426,20 @@ fn spawn_post(shared: Arc<Shared>, listener: TcpListener) {
     });
 }
 
+/// 诊断日志（exe 旁 mma-shell.log，追加）。
+fn log_line(msg: &str) {
+    use std::io::Write;
+    let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    else {
+        return;
+    };
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(dir.join("mma-shell.log")) {
+        let _ = writeln!(f, "{}", msg);
+    }
+}
+
 fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     let Some((_head, body)) = read_request(&mut stream) else { return };
     // 编辑器 resolve 通道（自动读谱）：按 ChartInfo title/artist 扫 chart 目录，
@@ -434,9 +448,22 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
         if value.get("action").and_then(|v| v.as_str()) == Some("resolve") {
             let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("");
             let artist = value.get("artist").and_then(|v| v.as_str()).unwrap_or("");
+            let root = malody_root(&shared);
+            log_line(&format!(
+                "resolve title={} artist={} malodyRoot={:?}",
+                title,
+                artist,
+                root
+            ));
             match resolve_malody_chart(&shared, title, artist) {
-                Some(text) => write_response(&mut stream, 200, "application/json", text.as_bytes()),
-                None => respond_json(&mut stream, 404, r#"{"error":"chart not found in malody chart dir"}"#),
+                Some(text) => {
+                    log_line("resolve HIT (chart text returned)");
+                    write_response(&mut stream, 200, "application/json", text.as_bytes())
+                }
+                None => {
+                    log_line("resolve MISS");
+                    respond_json(&mut stream, 404, r#"{"error":"chart not found in malody chart dir"}"#);
+                }
             }
             return;
         }

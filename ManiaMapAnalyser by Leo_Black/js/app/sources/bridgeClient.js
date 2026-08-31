@@ -26,6 +26,10 @@ export function bridgeOnline() {
 function syncState() {
     state.externalBridgeAvailable = bridgeOnline();
     state.shellContractMismatch = bridgeOnline() === false && stopped;
+    // 壳模式 class：贴边布局等仅壳窗口生效（浏览器模式不变）。
+    if (typeof document !== "undefined" && document.documentElement) {
+        document.documentElement.classList.toggle("shell-mode", bridgeOnline());
+    }
 }
 
 export function sendResult(payload) {
