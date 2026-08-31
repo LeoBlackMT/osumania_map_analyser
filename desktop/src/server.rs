@@ -428,6 +428,19 @@ fn spawn_post(shared: Arc<Shared>, listener: TcpListener) {
 
 fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     let Some((_head, body)) = read_request(&mut stream) else { return };
+    // 编辑器 resolve 通道（自动读谱）：按 ChartInfo title/artist 扫 chart 目录，
+    // 命中即把 .mc 原文作为响应返回（纯文本，插件直接 POST 分析）。
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
+        if value.get("action").and_then(|v| v.as_str()) == Some("resolve") {
+            let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let artist = value.get("artist").and_then(|v| v.as_str()).unwrap_or("");
+            match resolve_malody_chart(&shared, title, artist) {
+                Some(text) => write_response(&mut stream, 200, "application/json", text.as_bytes()),
+                None => respond_json(&mut stream, 404, r#"{"error":"chart not found in malody chart dir"}"#),
+            }
+            return;
+        }
+    }
     let Ok(post) = serde_json::from_str::<MalodyPost>(&body) else {
         respond_json(&mut stream, 400, r#"{"error":"bad payload: missing meta or chartText"}"#);
         return;
@@ -521,10 +534,61 @@ fn handle_control(shared: &Shared, ctrl: &crate::frames::ControlInbound) {
         "clickThrough" => {
             let _ = window.set_ignore_cursor_events(ctrl.value.unwrap_or(true));
         }
+        "dragStart" => {
+            // 顶部把手拖动（HTML drag region 在透明窗口部分环境不工作，改走该确定性路径）。
+            let window2 = window.clone();
+            let _ = window2.start_dragging();
+        }
         _ => {
             // 未知动作静默忽略
         }
     }
+}
+
+/// 按 title/artist 在 {malodyRoot}/chart/ 下递归匹配 .mc（来自编辑器 ChartInfo）。
+fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str) -> Option<String> {
+    let root = malody_root(shared)?;
+    let title_norm = title.trim().to_lowercase();
+    let artist_norm = artist.trim().to_lowercase();
+    let mut walk = vec![root.join("chart")];
+    while let Some(dir) = walk.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("mc") {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let t = v
+                .pointer("/meta/song/title")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let a = v
+                .pointer("/meta/song/artist")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let title_hit = title_norm.is_empty()
+                || (!t.is_empty() && (t.contains(&title_norm) || title_norm.contains(&t)));
+            let artist_hit = artist_norm.is_empty() || a.contains(&artist_norm);
+            if title_hit && artist_hit {
+                return Some(text);
+            }
+        }
+    }
+    None
 }
 
 /// 从 result 帧（Envelope 包裹或裸帧）提取 ResultInbound（契约 §2 payload 载体）。
@@ -570,10 +634,12 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
     } else {
         None
     };
-    value
-        .as_ref()
-        .and_then(|v| v.as_str())
-        .map(|s| PathBuf::from(s))
+    if let Some(v) = value.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return Some(PathBuf::from(v));
+        }
+    }
+    config::detect_malody_root()
 }
 
 /// 扫描 {malodyRoot}/skin/ 下含哨兵 mma.txt 的皮肤目录（命中多个全部写入，幂等）。
@@ -670,7 +736,13 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);
         *shared.tosu_online.lock().unwrap() = online;
     }
-    let listener = TcpListener::bind("127.0.0.1:24061").unwrap();
+    let listener = match TcpListener::bind("127.0.0.1:24061") {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("mma-shell: cannot bind 24061 ({e}) — another instance already running?");
+            std::process::exit(2);
+        }
+    };
     let post_listener = TcpListener::bind("127.0.0.1:24060").unwrap();
     spawn_http_ws(shared.clone(), listener);
     spawn_post(shared.clone(), post_listener);

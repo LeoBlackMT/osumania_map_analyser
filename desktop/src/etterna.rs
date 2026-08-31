@@ -50,10 +50,12 @@ pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
     } else {
         None
     };
-    value
-        .as_ref()
-        .and_then(|v| v.as_str())
-        .map(|s| PathBuf::from(s))
+    if let Some(v) = value.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return Some(PathBuf::from(v));
+        }
+    }
+    config::detect_etterna_root()
 }
 
 fn read_kv(text: &str) -> std::collections::HashMap<String, String> {

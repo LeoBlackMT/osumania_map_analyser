@@ -186,6 +186,42 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
 }
 
+// ---- 常见路径启发探测（显式配置缺失时的兜底）----
+
+/// Etterna：候选常见安装位置（存在 Save 目录判定）。
+pub fn detect_etterna_root() -> Option<PathBuf> {
+    let candidates = [
+        "D:/Games/Etterna",
+        "C:/Games/Etterna",
+        "D:/Etterna",
+        "C:/Etterna",
+    ];
+    for c in candidates {
+        let dir = PathBuf::from(c);
+        if dir.join("Save").is_dir() {
+            return Some(dir);
+        }
+    }
+    None
+}
+
+/// MalodyV：候选常见 Steam 路径（存在 chart 与 skin 目录判定）。
+pub fn detect_malody_root() -> Option<PathBuf> {
+    let candidates = [
+        "D:/Steam/steamapps/common/MalodyV",
+        "D:/SteamLibrary/steamapps/common/MalodyV",
+        "C:/Program Files (x86)/Steam/steamapps/common/MalodyV",
+        "C:/SteamLibrary/steamapps/common/MalodyV",
+    ];
+    for c in candidates {
+        let dir = PathBuf::from(c);
+        if dir.join("chart").is_dir() && dir.join("skin").is_dir() {
+            return Some(dir);
+        }
+    }
+    None
+}
+
 // ---- 窗口状态记忆（mma-shell-state.json，exe 旁）----
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
