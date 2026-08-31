@@ -776,6 +776,7 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     spawn_post(shared.clone(), post_listener);
     spawn_timers(shared.clone());
     crate::etterna::spawn_poller(shared.clone());
+    crate::malody::spawn_malody_poller(shared.clone());
     shared
 }
 

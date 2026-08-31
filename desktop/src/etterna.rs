@@ -173,10 +173,11 @@ fn build_song_frame(
     let kv = read_kv(text);
     let step_file = kv.get("step_file")?;
     let song_dir = kv.get("song_dir").cloned().unwrap_or_default();
-    // 谱面绝对路径：Etterna 的 song_dir 以 "Songs/.../" 形式、step_file 可能
-    // 带 "Songs/..." 前缀——三级候选兜底（song_dir+step_file / step_file / 原样）。
+    // Etterna 的 song_dir 形如 "/Songs/.../"（前导斜杠）——join 遇绝对子段会
+    // 丢弃 root，必须先剥离前导分隔符；step_file 为纯文件名（桥已 basename）。
+    let song_dir_rel = song_dir.trim_start_matches(['/', '\\']);
     let candidates = [
-        root.join(&song_dir).join(step_file),
+        root.join(song_dir_rel).join(step_file),
         root.join(step_file),
         std::path::PathBuf::from(step_file),
     ];
