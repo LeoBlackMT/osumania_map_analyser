@@ -3,6 +3,7 @@
 .playwright-mcp/
 /temp
 /backup
+release/
 backend/docs/
 backend/bin/
 backend/.env
