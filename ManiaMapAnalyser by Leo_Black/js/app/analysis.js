@@ -480,6 +480,18 @@ export async function fetchBeatmapFile(reason) {
                 applyContentBarOverride(parsedInfo.columnCount);
             } catch (error) {
                 if (isStaleRequest()) return;
+                // 临时诊断：外部源失败时把关键输入特征打进错误（识别 NaN 差异）。
+                try {
+                    if (sourceRequestId && rawText) {
+                        errors.push(
+                            `Rework failed: ${error.message} [diag src=${sourceActive} rawLen=${rawText.length} est=${estimatorAlgorithm} rate=${state.speedRate} od=${state.odFlag} cvt=${state.cvtFlag} graph=${needComputed.graph} sunnyWin=${state.forceSunnyWindow} classic=${state.classicMod}]`,
+                        );
+                    } else {
+                        errors.push(`Rework failed: ${error.message}`);
+                    }
+                } catch {
+                    errors.push(`Rework failed: ${error.message}`);
+                }
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || contentBarShows("Graph")) {
                     showDiffGraphError("Graph unavailable");

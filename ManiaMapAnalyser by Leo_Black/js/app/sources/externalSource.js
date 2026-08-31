@@ -22,6 +22,20 @@ function sniffSmFormat(text) {
 }
 
 /**
+ * Etterna 谱面可能是 .sm/.ssc 容器内嵌 osu 文本（[HitObjects] 直通）。
+ * 统一入口：osu 直通，否则按格式转换。
+ */
+function convertEtternaText(rawText) {
+    if (looksLikeOsu(rawText)) {
+        return rawText;
+    }
+    return convertSmSscToOsuText({
+        text: rawText,
+        format: sniffSmFormat(rawText),
+    }).osuText;
+}
+
+/**
  * 处理壳 song 帧。路由预检（M5 的 sourceManager 接管前：仅强制锁定校验）。
  * @param {object} payload song 帧 payload
  */
@@ -45,20 +59,15 @@ export function handleSongFrame(payload) {
         return;
     }
 
-    // 转换接线（主线程；.osu 直通）
+    // 转换接线（主线程；osu 直通）
     let osuText = payload.rawText;
     try {
-        if (!looksLikeOsu(osuText)) {
-            if (source === "etterna") {
-                osuText = convertSmSscToOsuText({
-                    text: osuText,
-                    format: sniffSmFormat(osuText),
-                }).osuText;
-            } else if (source === "malody") {
-                osuText = convertMcToOsuText(osuText).osuText;
-            } else {
-                throw new Error(`未知数据源：${source}`);
-            }
+        if (source === "etterna") {
+            osuText = convertEtternaText(osuText);
+        } else if (source === "malody") {
+            osuText = looksLikeOsu(osuText) ? osuText : convertMcToOsuText(osuText).osuText;
+        } else {
+            throw new Error(`未知数据源：${source}`);
         }
     } catch (e) {
         if (requestId) {
