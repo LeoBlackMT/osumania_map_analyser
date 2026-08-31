@@ -427,7 +427,7 @@ fn spawn_post(shared: Arc<Shared>, listener: TcpListener) {
 }
 
 /// 诊断日志（exe 旁 mma-shell.log，追加）。
-fn log_line(msg: &str) {
+pub fn log_line(msg: &str) {
     use std::io::Write;
     let Some(dir) = std::env::current_exe()
         .ok()
@@ -442,6 +442,7 @@ fn log_line(msg: &str) {
 
 fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     let Some((_head, body)) = read_request(&mut stream) else { return };
+    log_line(&format!("POST len={}", body.len()));
     // 编辑器 resolve 通道（自动读谱）：按 ChartInfo title/artist 扫 chart 目录，
     // 命中即把 .mc 原文作为响应返回（纯文本，插件直接 POST 分析）。
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {

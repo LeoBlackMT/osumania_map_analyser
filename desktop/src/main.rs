@@ -141,10 +141,12 @@ fn main() {
                 tauri::WindowEvent::Moved(position) => {
                     WINDOW_STATE.lock().unwrap().x = position.x;
                     WINDOW_STATE.lock().unwrap().y = position.y;
+                    persist_window_state();
                 }
                 tauri::WindowEvent::Resized(size) => {
                     WINDOW_STATE.lock().unwrap().w = size.width;
                     WINDOW_STATE.lock().unwrap().h = size.height;
+                    persist_window_state();
                 }
                 tauri::WindowEvent::CloseRequested { .. } => {
                     persist_window_state();

@@ -142,8 +142,16 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                 bridge_sig = Some(sig);
                 bridge_seen = true;
                 if changed {
+                    crate::server::log_line(&format!(
+                        "etterna bridge changed (root={}, {} bytes)",
+                        root.display(),
+                        text.len()
+                    ));
                     if let Some(song) = build_song_frame(&shared, &root, &text) {
                         broadcast(&shared, "song", Some(song));
+                        crate::server::log_line("etterna song frame broadcast");
+                    } else {
+                        crate::server::log_line("etterna bridge parse FAILED (no song frame)");
                     }
                 }
             }

@@ -75,6 +75,7 @@ local function tryRead(name)
 end
 
 local function manualInput(meta)
+    note('未自动读到谱面：若自动扫描不可用（需壳新版/6.6.43+），请手动输入 .mc 文件名')
     -- 1) 文件选择器（签名未证实 → pcall）
     local ok, picked = pcall(function()
         return Editor:ReadFileSelect()
