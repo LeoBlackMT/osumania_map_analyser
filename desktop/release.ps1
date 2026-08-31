@@ -26,12 +26,13 @@ New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 $zip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version-with-shell.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 
-# 打包：插件目录 + exe（exe 放插件目录内，壳按相对路径解析 tosu.env 与插件页）。
+# 打包：插件目录 + exe + bridges（桥安装素材）。
 $stage = Join-Path $env:TEMP "mma-release-stage-$PID"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Copy-Item -Recurse $pluginDir $stage
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
-Compress-Archive -Path $stage -DestinationPath $zip -Force
+Copy-Item -Recurse (Join-Path $root "bridges") (Join-Path $stage "bridges")
+Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Remove-Item -Recurse -Force $stage
 
 Write-Host "released: $zip"

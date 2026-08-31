@@ -67,7 +67,7 @@ function Run()
         meta.keys = tonumber(Editor:ChartInfo('key')) or 0
     end)
 
-    -- 优先文件选择器（签名未证实 → pcall），失败退回文件名输入。
+    -- 尝试自动读取：1) 文件选择器（签名未证实 → pcall）；2) 旧版默认名 chart.mc。
     local ok, picked = pcall(function()
         return Editor:ReadFileSelect()
     end)
@@ -75,8 +75,22 @@ function Run()
         postAndRender(meta, picked)
         return
     end
+
+    local candidates = { 'chart.mc' }
+    for _, name in ipairs(candidates) do
+        local chartText = nil
+        pcall(function()
+            chartText = Editor:ReadFile(name)
+        end)
+        if chartText and chartText ~= '' then
+            postAndRender(meta, chartText)
+            return
+        end
+    end
+
+    -- 兜底：手动输入。路径 = chart/<曲目目录>/<文件名>.mc（如 0/Various Artists - xxx.mc 或纯文件名）。
     pcall(function()
-        Editor:GetUserInput('chart 目录内的 .mc 文件名（通常为数字，如 1706936678.mc）', '', function(name)
+        Editor:GetUserInput('chart 目录内的 .mc 文件名（若自动读取失败，请输入如 0/xxxx.mc 或 chart.mc）', '', function(name)
             if name and name ~= '' then
                 local chartText = nil
                 pcall(function()

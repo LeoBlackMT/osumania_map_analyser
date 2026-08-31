@@ -9,6 +9,7 @@
 --   t[#t + 1] = LoadActor("mma_bridge.lua")
 
 local FILE = "Save/LeosMmaBridge.txt"
+local LOADED_FILE = "Save/LeosMmaBridgeLoaded.txt"
 local WRITE_INTERVAL = 0.5
 local lastKey = ""
 local updateTimer = 0
@@ -21,6 +22,17 @@ local function currentRate()
         end
     end)
     return rate
+end
+
+local function writeLoadedFlag()
+    pcall(function()
+        local f = RageFileUtil.CreateRageFile()
+        if f:Open(LOADED_FILE, 2) then
+            f:Write("1")
+            f:Close()
+        end
+        f:destroy()
+    end)
 end
 
 local function write()
@@ -79,14 +91,15 @@ end
 
 return Def.ActorFrame {
     BeginCommand = function(self)
+        -- 加载哨兵：脚本被主题加载即写（诊断桥是否生效）。
+        writeLoadedFlag()
         write()
-        self:SetUpdateFunction(function(actor, delta)
-            updateTimer = updateTimer + delta
-            if updateTimer >= WRITE_INTERVAL then
-                updateTimer = 0
-                write()
-            end
-        end)
+        -- Etterna/StepMania 标准每帧回调：SetUpdateRate + UpdateCommand
+        -- （SetUpdateFunction 是 NotITG 专有 API，在 Etterna 会抛错）。
+        self:SetUpdateRate(WRITE_INTERVAL)
+    end,
+    UpdateCommand = function(self)
+        write()
     end,
     CurrentSongChangedMessageCommand = function(self)
         lastKey = ""
@@ -96,12 +109,5 @@ return Def.ActorFrame {
     end,
     CurrentRateChangedMessageCommand = function(self)
         lastKey = ""
-    end,
-    CurrentBeatMessageCommand = function(self)
-        -- 保持 key 门控可响应（部分主题切歌无 SongChanged 广播）
-        if updateTimer >= WRITE_INTERVAL then
-            updateTimer = 0
-            write()
-        end
     end,
 }
