@@ -148,8 +148,11 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         text.len()
                     ));
                     if let Some(song) = build_song_frame(&shared, &root, &text) {
+                        crate::server::log_line(&format!(
+                            "etterna song frame broadcast identity={}",
+                            song.get("identity").and_then(|v| v.as_str()).unwrap_or("?")
+                        ));
                         broadcast(&shared, "song", Some(song));
-                        crate::server::log_line("etterna song frame broadcast");
                     } else {
                         crate::server::log_line("etterna bridge parse FAILED (no song frame)");
                     }

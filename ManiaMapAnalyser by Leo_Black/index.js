@@ -19,6 +19,54 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
+// 页面缩放（壳窗口持久化；浏览器模式同样生效但仅会话内）：
+// Ctrl+滚轮 / Ctrl+加号减号 / Ctrl+0 复位，缩放值存 localStorage 启动恢复。
+function applyZoom(factor) {
+    const clamped = Math.min(2.0, Math.max(0.6, factor));
+    document.documentElement.style.zoom = String(clamped);
+    try {
+        localStorage.setItem("mma.zoom", String(clamped));
+    } catch {
+        // 存储失败静默
+    }
+}
+
+function currentZoom() {
+    const raw = document.documentElement.style.zoom;
+    return raw ? Number.parseFloat(raw) || 1 : 1;
+}
+
+(function initZoom() {
+    let saved = 1;
+    try {
+        saved = Number.parseFloat(localStorage.getItem("mma.zoom")) || 1;
+    } catch {
+        saved = 1;
+    }
+    applyZoom(saved);
+    document.addEventListener("wheel", (event) => {
+        if (event.ctrlKey) {
+            event.preventDefault();
+            applyZoom(currentZoom() + (event.deltaY < 0 ? 0.1 : -0.1));
+        }
+    }, { passive: false });
+    document.addEventListener("keydown", (event) => {
+        if (!(event.ctrlKey || event.metaKey)) {
+            return;
+        }
+        if (event.code === "Equal" || event.code === "NumpadAdd") {
+            event.preventDefault();
+            applyZoom(currentZoom() + 0.1);
+        } else if (event.code === "Minus" || event.code === "NumpadSubtract") {
+            event.preventDefault();
+            applyZoom(currentZoom() - 0.1);
+        } else if (event.code === "Digit0" || event.code === "Numpad0") {
+            event.preventDefault();
+            applyZoom(1);
+        }
+    });
+})();
+
 if (typeof window !== "undefined") {
 	window.__MMA_VERSION = _VERSION;
 	window.__MMA_TELEMETRY_ENDPOINT = TELEMETRY_ENDPOINT;

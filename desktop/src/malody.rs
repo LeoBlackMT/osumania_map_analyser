@@ -10,13 +10,13 @@
 // 后展示；游玩中实时不可能（无游戏内写通道）。皮肤/编辑器插件为可选通道。
 
 use crate::server::{broadcast, log_line, Shared};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(1);
+const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 fn md5_hex(input: &str) -> String {
     use md5::{Digest, Md5};
@@ -49,37 +49,40 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
         // chart 内容 md5 索引（path -> hash）与 mtime 缓存（增量维护）
         let mut index: HashMap<PathBuf, String> = HashMap::new();
         let mut index_mtime: HashMap<PathBuf, SystemTime> = HashMap::new();
-        let mut replay_seen: HashSet<String> = HashSet::new();
         let mut last_chart: Option<(PathBuf, SystemTime)> = None;
         let mut seq = 0u64;
+        let mut tick = 0u64;
 
         loop {
             thread::sleep(POLL_INTERVAL);
+            tick += 1;
             let Some(root) = crate::server::malody_root(&shared) else {
                 continue;
             };
 
-            // ── 索引维护：chart/**/*.mc 增量重算 md5 ──
-            let mut walk = vec![root.join("chart")];
-            while let Some(dir) = walk.pop() {
-                let Ok(entries) = fs::read_dir(&dir) else {
-                    continue;
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        walk.push(path);
+            // ── 索引维护（降频：每 15 轮 ≈30s 全量增量）──
+            if tick % 15 == 0 {
+                let mut walk = vec![root.join("chart")];
+                while let Some(dir) = walk.pop() {
+                    let Ok(entries) = fs::read_dir(&dir) else {
                         continue;
-                    }
-                    if path.extension().and_then(|e| e.to_str()) != Some("mc") {
-                        continue;
-                    }
-                    if let Ok(meta) = fs::metadata(&path) {
-                        if let Ok(mt) = meta.modified() {
-                            if index_mtime.get(&path).copied() != Some(mt) {
-                                if let Ok(text) = fs::read_to_string(&path) {
-                                    index.insert(path.clone(), md5_hex(&text));
-                                    index_mtime.insert(path.clone(), mt);
+                    };
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            walk.push(path);
+                            continue;
+                        }
+                        if path.extension().and_then(|e| e.to_str()) != Some("mc") {
+                            continue;
+                        }
+                        if let Ok(meta) = fs::metadata(&path) {
+                            if let Ok(mt) = meta.modified() {
+                                if index_mtime.get(&path).copied() != Some(mt) {
+                                    if let Ok(text) = fs::read_to_string(&path) {
+                                        index.insert(path.clone(), md5_hex(&text));
+                                        index_mtime.insert(path.clone(), mt);
+                                    }
                                 }
                             }
                         }
@@ -87,61 +90,8 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                 }
             }
 
-            // ── replay 触发（游戏内游玩结束）──
-            if let Ok(entries) = fs::read_dir(root.join("replay")) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if !name.ends_with(".mrv") {
-                        continue;
-                    }
-                    let Some(hash) = name
-                        .rsplit('_')
-                        .next()
-                        .map(|s| s.trim_end_matches(".mrv").to_lowercase())
-                    else {
-                        continue;
-                    };
-                    if hash.len() != 32 || replay_seen.contains(&hash) {
-                        continue;
-                    }
-                    replay_seen.insert(hash.clone());
-                    let found = index
-                        .iter()
-                        .find(|(_, v)| *v == &hash)
-                        .map(|(p, _)| p.clone());
-                    match found {
-                        Some(path) => {
-                            if let Ok(text) = fs::read_to_string(&path) {
-                                let (title, keys) = chart_meta(&text);
-                                seq += 1;
-                                let identity = format!("mdy:play:{}:{}:{}", title, keys, hash);
-                                log_line(&format!(
-                                    "malody replay -> song frame: {} (md5 {}, identity {})",
-                                    path.display(),
-                                    hash,
-                                    identity
-                                ));
-                                let song = serde_json::json!({
-                                    "requestId": format!("p{}", seq),
-                                    "source": "malody",
-                                    "identity": identity,
-                                    "modData": { "speedRate": "1.0" },
-                                    "meta": { "title": title, "keys": keys },
-                                    "cover": null,
-                                    "rawText": text,
-                                });
-                                broadcast(&shared, "song", Some(song));
-                            }
-                        }
-                        None => log_line(&format!(
-                            "malody replay md5 {} 未在 chart 索引命中（谱面可能已删除）",
-                            hash
-                        )),
-                    }
-                }
-            }
-
             // ── chart mtime（编辑器保存 / 启动捕获）──
+            // replay 通道已按用户否决移除（游玩结束回放触发不满足「游玩前得知」）。
             let mut best: Option<(PathBuf, SystemTime)> = None;
             let mut walk2 = vec![root.join("chart")];
             while let Some(dir) = walk2.pop() {

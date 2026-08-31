@@ -22,7 +22,7 @@
         "shadow": false,
         "skipTaskbar": false,
         "visible": true,
-        "zoomHotkeysEnabled": true
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {
