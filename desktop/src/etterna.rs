@@ -148,9 +148,21 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         text.len()
                     ));
                     if let Some(song) = build_song_frame(&shared, &root, &text) {
+                        // 诊断：rawText 的 md5（应与 identity 内 content_md5 一致，也
+                        // 应等于磁盘谱面文件 md5）——三值对拍定位「转换/传输不一致」。
+                        let raw = song.get("rawText").and_then(|v| v.as_str()).unwrap_or("");
+                        let raw_md5 = if raw.is_empty() {
+                            "?".to_string()
+                        } else {
+                            md5_hex(raw)
+                        };
                         crate::server::log_line(&format!(
-                            "etterna song frame broadcast identity={}",
-                            song.get("identity").and_then(|v| v.as_str()).unwrap_or("?")
+                            "etterna song frame broadcast identity={} rawTextMd5={} rawLen={}",
+                            song.get("identity")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?"),
+                            raw_md5,
+                            raw.len()
                         ));
                         broadcast(&shared, "song", Some(song));
                     } else {
