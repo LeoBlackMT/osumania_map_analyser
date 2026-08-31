@@ -79,6 +79,14 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
+            server::log_line(&format!(
+                "mma-shell start (crate v{}, plugin v2.1.0, ts={})",
+                env!("CARGO_PKG_VERSION"),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            ));
             // 启动时生成 mma-shell.json 骨架（无 tosu 用户可发现并编辑）。
             config::ensure_shell_config();
 
