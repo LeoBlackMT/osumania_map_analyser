@@ -17,6 +17,7 @@
 - 当认为可以记录经验和教训时，请编写对应的知识与教训文档，记录在开发、调优与基准验证过程中积累的经验、失败记录与方法论。该文档主要给人类和AI阅读，因此需要双语。文档请按内容命名并放在 docs/learnings 目录下。
 - 当做出重大破坏性更改时，请编写文档说明，标注修改内容和修改原因，以便后续进行代码审查和测试。该文档主要给人类和AI阅读，因此需要双语。文档请按时间戳和修改内容命名并放在 docs/breakings 目录下。
 - 新增/删除文档需要在docs/README.md中添加/删除对应的索引条目。
+- 正文段落不得手动换行（让编辑器软换行）
 
 ## 文档索引
 
@@ -76,6 +77,7 @@
 - When you think it is appropriate to record experience and lessons learned, write a corresponding knowledge & lessons-learned document, recording the experience, failed attempts, and methodology accumulated during development, tuning, and benchmarking. The document is mainly for humans and AI to read, so it needs to be bilingual. Name the document according to its content and place it in the docs/learnings directory.
 - When making major breaking changes, write a document explaining the changes, marking what was changed and why, to facilitate future code review and testing. The document should be named with a timestamp and the change description, and placed in the docs/breakings directory.
 - When adding or removing documents, add or remove the corresponding index entries in docs/README.md.
+- Do not manually insert line breaks in the main text paragraphs (let the editor soft wrap).
 
 ## Document Index
 
