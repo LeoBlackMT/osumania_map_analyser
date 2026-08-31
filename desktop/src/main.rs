@@ -86,12 +86,15 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 server::set_main_window(&shared, window.clone());
                 // 恢复记忆的窗口状态（位置/尺寸/置顶/穿透）——setup 内同步调用安全。
+                // 注意：存取均为 physical 坐标（outer_position/outer_size），
+                // 恢复必须用 Physical* 构造，否则与 logical 混用会在高 DPI
+                // 下逐次漂移放大。
                 let saved = config::read_window_state();
                 *WINDOW_STATE.lock().unwrap() = saved;
                 if saved.x != i32::MIN {
-                    let _ = window.set_position(tauri::LogicalPosition::new(saved.x, saved.y));
+                    let _ = window.set_position(tauri::PhysicalPosition::new(saved.x, saved.y));
                 }
-                let _ = window.set_size(tauri::LogicalSize::new(saved.w, saved.h));
+                let _ = window.set_size(tauri::PhysicalSize::new(saved.w, saved.h));
                 let _ = window.set_always_on_top(saved.topmost);
                 if saved.click_through {
                     let _ = window.set_ignore_cursor_events(true);

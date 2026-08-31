@@ -3,16 +3,15 @@
 -- 用法：打开谱面编辑器 → 「更多」菜单点击 Analyze → 自动读取当前谱面并
 -- POST 到本地壳（127.0.0.1:24060）→ 分析结果以 AddText 卡片渲染在编辑区。
 --
--- 自动读谱：优先走壳的 resolve 通道（POST {"action":"resolve", title, artist}，
--- 壳按 ChartInfo 标题扫描 {malodyRoot}/chart/ 下的 .mc）；失败再尝试
--- ReadFileSelect / chart.mc / 手动输入。所有反馈经 AddText 输出，不弹模态
--- 消息（避免阻塞编辑器交互）。
+-- 响应机制（官方 changelog 6.6.42+ 证实）：Editor:DoRequest 发起请求，
+-- **响应经插件全局函数 OnResponse 回调**（不是 DoRequest 的第四参；Lua 对
+-- 多余参数静默丢弃 → 之前的 callback 形参被忽略）。本脚本：
+--   * 定义 OnResponse(...)，按 url 区分 resolve（…/resolve）与 analyze（…/）；
+--   * DoRequest 用 3 参（url, method, body）发起；pcall 失败再试 4 参兼容；
+--   * 发起后短等待响应，超时进入手动输入兜底（不阻塞编辑器交互，全部
+--     反馈经 AddText 非模态输出）。
 --
--- 安装：把本文件放到 MalodyV/Editor/ 目录（目录不存在则创建），
--- 客户端重启或插件面板重载后即可在菜单见到。
---
--- 注：Editor:DoRequest / ReadFileSelect 的精确签名无官方文档（真机验证项）；
--- 本脚本对二者均以 pcall 包裹，失败走输入兜底，不会阻断编辑器。
+-- 安装：把本文件放到 MalodyV/Editor/（或 editor/）目录（目录不存在则创建）。
 
 PluginName = 'MMA Analyze'
 PluginMode = 0
@@ -20,6 +19,9 @@ PluginType = 0
 PluginRequire = '5.0.1'
 
 local ENDPOINT = 'http://127.0.0.1:24060/'
+local RESOLVE_ENDPOINT = 'http://127.0.0.1:24060/resolve'
+
+local PENDING = {}
 
 local function jsonQuote(s)
     s = tostring(s or '')
@@ -36,7 +38,6 @@ local function trim(s, n)
 end
 
 local function note(text)
-    -- 非模态反馈：写入编辑区文本卡片；不弹窗。
     pcall(function()
         Editor:AddText('mma_result', 'MMA: ' .. text)
     end)
@@ -46,23 +47,72 @@ local function looksLikeChart(text)
     return text and text ~= '' and text:find('"song"', 1, true) ~= nil
 end
 
-local function postAndRender(meta, chartText)
-    if not looksLikeChart(chartText) then
-        note('未读到谱面（resolve 未命中；可手动输入文件名重试）')
-        return
+local function shortWait(seconds)
+    local slept = pcall(function()
+        os.sleep(seconds)
+    end)
+    if not slept then
+        local ok, t0 = pcall(function()
+            return os.time()
+        end)
+        if ok then
+            while os.time() - t0 < seconds * 1000 do
+                -- 忙等兜底（os.sleep 不可用时）
+            end
+        end
     end
+end
+
+local function postAnalyze(meta, chartText)
     local payload = '{"meta":{"title":' .. jsonQuote(meta.title)
         .. ',"artist":' .. jsonQuote(meta.artist)
         .. ',"level":' .. jsonQuote(meta.level)
         .. ',"keys":' .. tostring(meta.keys or 0)
         .. '},"chartText":' .. jsonQuote(chartText) .. '}'
-    local ok, err = pcall(function()
-        Editor:DoRequest(ENDPOINT, 'POST', payload, function(response)
-            note(trim(response, 2000))
-        end)
+    PENDING.mode = 'analyze'
+    local okA, errA = pcall(function()
+        Editor:DoRequest(ENDPOINT, 'POST', payload)
     end)
-    if not ok then
-        note('DoRequest 调用失败（请反馈此信息）：' .. tostring(err))
+    if not okA then
+        pcall(function()
+            Editor:DoRequest(ENDPOINT, 'POST', payload, function(response)
+                note(trim(response, 2000))
+            end)
+        end)
+        note('DoRequest 调用失败：' .. tostring(errA))
+    end
+end
+
+function OnResponse(...)
+    local a1, a2, a3 = ...
+    local url
+    local status
+    local body
+    if type(a1) == 'string' and string.find(a1, '24060', 1, true) then
+        url = a1
+        status = a2
+        body = a3
+    elseif type(a1) == 'number' then
+        status = a1
+        body = a2
+    else
+        body = a1
+    end
+    if not body or body == '' then
+        return
+    end
+    if url and string.find(url, 'resolve', 1, true) then
+        -- resolve 响应：拿到 .mc 原文 → 继续分析
+        PENDING.resolved = true
+        if looksLikeChart(body) then
+            postAnalyze(PENDING.meta or {}, body)
+        else
+            note('未在 chart 目录找到该谱面文件')
+            PENDING.miss = true
+        end
+    else
+        note(trim(body, 2000))
+        PENDING.done = true
     end
 end
 
@@ -78,22 +128,19 @@ local function tryRead(name)
 end
 
 local function manualInput(meta)
-    note('未自动读到谱面：若自动扫描不可用（需壳新版/6.6.43+），请手动输入 .mc 文件名')
-    -- 1) 文件选择器（签名未证实 → pcall）
+    note('未自动读到谱面，请手动输入 .mc 文件名')
     local ok, picked = pcall(function()
         return Editor:ReadFileSelect()
     end)
     if ok and looksLikeChart(picked) then
-        postAndRender(meta, picked)
+        postAnalyze(meta, picked)
         return
     end
-    -- 2) 旧版默认名 / 常见相对路径
     local cand = tryRead('chart.mc')
     if cand then
-        postAndRender(meta, cand)
+        postAnalyze(meta, cand)
         return
     end
-    -- 3) 手动输入（双轨：同步返回值或回调式；输入框由引擎管理，ESC 可取消）
     local got = nil
     local syncOk = pcall(function()
         got = Editor:GetUserInput('chart 目录内 .mc 文件名（如 0/xxx.mc 或 chart.mc）', '')
@@ -101,7 +148,7 @@ local function manualInput(meta)
     if syncOk and type(got) == 'string' and got ~= '' then
         local chartText = tryRead(got)
         if chartText then
-            postAndRender(meta, chartText)
+            postAnalyze(meta, chartText)
         else
             note('未读到谱面：' .. got)
         end
@@ -112,7 +159,7 @@ local function manualInput(meta)
             if name and name ~= '' then
                 local chartText = tryRead(name)
                 if chartText then
-                    postAndRender(meta, chartText)
+                    postAnalyze(meta, chartText)
                 else
                     note('未读到谱面：' .. name)
                 end
@@ -122,12 +169,14 @@ local function manualInput(meta)
 end
 
 function Run()
-    local meta = {
-        title = '',
-        artist = '',
-        level = '',
-        keys = 0,
+    PENDING = {
+        meta = {},
+        mode = nil,
+        resolved = false,
+        miss = false,
+        done = false,
     }
+    local meta = PENDING.meta
     pcall(function()
         meta.title = Editor:ChartInfo('title') or ''
         meta.artist = Editor:ChartInfo('artist') or ''
@@ -135,25 +184,24 @@ function Run()
         meta.keys = tonumber(Editor:ChartInfo('key')) or 0
     end)
 
-    -- 自动读谱：resolve 通道（壳按标题扫 chart 目录）。
-    local dispatched = false
+    -- 自动读谱：resolve 通道（壳按标题扫 chart 目录）→ OnResponse 收响应。
     local payload = '{"action":"resolve","title":' .. jsonQuote(meta.title)
         .. ',"artist":' .. jsonQuote(meta.artist) .. '}'
     local ok, err = pcall(function()
-        Editor:DoRequest(ENDPOINT, 'POST', payload, function(response)
-            dispatched = true
-            if looksLikeChart(response) then
-                postAndRender(meta, response)
-            else
-                manualInput(meta)
-            end
-        end)
+        Editor:DoRequest(RESOLVE_ENDPOINT, 'POST', payload)
     end)
     if not ok then
         note('DoRequest 调用失败（请反馈此信息）：' .. tostring(err))
         manualInput(meta)
+        return
     end
-    if not dispatched then
+    -- 等待响应（约 2s）；超时 → 手动输入兜底。
+    local waited = 0
+    while waited < 40 and not PENDING.resolved and not PENDING.done and not PENDING.miss do
+        shortWait(0.05)
+        waited = waited + 1
+    end
+    if not PENDING.resolved and not PENDING.done then
         manualInput(meta)
     end
 end

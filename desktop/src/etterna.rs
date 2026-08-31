@@ -180,7 +180,21 @@ fn build_song_frame(
         root.join(step_file),
         std::path::PathBuf::from(step_file),
     ];
-    let chart_path = candidates.iter().find(|c| c.is_file())?;
+    let chart_path = candidates.iter().find(|c| c.is_file());
+    if chart_path.is_none() {
+        crate::server::log_line(&format!(
+            "etterna chart not found: song_dir={:?} step_file={} candidates=[{}]",
+            song_dir,
+            step_file,
+            candidates
+                .iter()
+                .map(|c| format!("{} ({}exists)", c.display(), if c.exists() { "+" } else { "-" }))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+        return None;
+    }
+    let chart_path = chart_path.unwrap();
     let raw_text = fs::read_to_string(chart_path).ok()?;
     if raw_text.len() > MAX_PAYLOAD_BYTES {
         shared.shell_errors.lock().unwrap().push(format!(
