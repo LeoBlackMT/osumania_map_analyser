@@ -100,8 +100,6 @@ function lastRoute() {
     if (state.lastSourceRoute && inPriority(state.lastSourceRoute)) {
         return state.lastSourceRoute;
     }
-    // 未应用过：以外部源/单源猜测
-    if (state.externalSourceActive) return state.externalSourceActive;
     return "osu";
 }
 
@@ -140,11 +138,14 @@ export function routeAllowsExternal(source) {
 
 // ── osu 门控咨询 ──
 
-/** osu 的 beatmap 状态应用是否应挂起（败方门控）。 */
+/** osu 的 beatmap 状态应用是否应挂起（败方门控）。
+ * 仅当「壳桥在线且 tosu 离线」时 osu 才可能被外部源压制——浏览器模式
+ * （无壳）或壳在线模式（tosu 存活）下 osu 恒为主数据面，绝不挂起。 */
 export function isOsuSuppressed() {
-    return (state.externalBridgeAvailable || state.externalSourceActive)
-        && currentRoute() !== null
-        && currentRoute() !== "osu";
+    if (!state.externalBridgeAvailable || state.shellTosuOnline) {
+        return false;
+    }
+    return currentRoute() !== null && currentRoute() !== "osu";
 }
 
 // ── 圆点 ──
