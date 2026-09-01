@@ -50,14 +50,20 @@ window.navigate(url)
 
 无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`——**拖拽边缘改窗口尺寸**；**整窗移动**用页面顶部 `data-tauri-drag-region` 拖动把手（22px 发光条，中间 `⋮⋮` 提示）；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
 
-**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：`Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
+**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
+
+## 4b. 配置、日志与路径容错
+
+- **mma-shell.json**（exe 旁，首启自动生成骨架）：`gameClient`/`etternaRoot`/`malodyRoot`/`hotkeys`/`logLevel`；损坏或非法字段自动回落默认并警告（不崩溃）。
+- **路径容错**：根路径字段经 `normalize_path` 归一化——`\` 与 `/` 混用、尾部斜杠均处理（用户写 `D:\Games\Etterna` 或 `D:/Games/Etterna` 均可；JSON 内单反斜杠是非法转义，文档已提示用 `/` 或 `\\`）。
+- **日志**：`mma-shell-{日序号}.log`（exe 旁）按日轮转、保留 7 个，每行 `[unix秒] [级别] 消息`；`log_level()` 按 `mma-shell.json logLevel` 过滤（debug/info/warn/error/off）。
 
 ## 5. 构建与发布
 
 - 开发：`cargo build`（debug 保留控制台输出）。
 - 发布：`cargo build --release`；`desktop/release.ps1` 将 exe 拷入插件目录并打 zip；**release 为 Windows GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
-- CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 Linux（ubuntu，含 webkit2gtk-4.1 等系统依赖）+ Windows（windows-latest）release 产物并上传 artifact；`workflow_dispatch` 可手动触发。
+- CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows**（release 产物上传 artifact）；`workflow_dispatch` 可手动触发。**Linux 构建已移除**：Etterna 无官方 Linux 版、Malody V 无 Linux 版，无对应受众。
 
 ## 6. 已知限制与待办
 
-离线设置持久化已实现（`mma-shell.json` + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器 DoRequest 签名与自动化读谱（当前 ReadFile 需输入 chart 目录内文件名）、PlayMeta 字段、皮肤目录可写性；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。
+离线设置持久化已实现（`mma-shell.json` + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器 DoRequest 签名与自动化读谱（resolve 通道按标题扫 chart 目录；DoRequest 真机签名待验）、PlayMeta 字段、皮肤目录可写性；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。来源指示器：空心=无源；osu! 蓝 / Etterna 绿 / Malody 橙实心。

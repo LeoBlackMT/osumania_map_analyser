@@ -49,12 +49,30 @@
 2. 游玩场景（独立皮肤，推荐）：在 `skin/` 下新建**独立皮肤目录**（如 `skin/MMA-Result/`），把 `bridges/malody/z_mma_skin.lua` 复制进去（文件名可任意）；在皮肤 Composer 里添加一个 **Text 模块，命名 `mma_result`**；在该皮肤目录里新建空文件 `mma.txt`（壳靠它找到写入目标）。游玩时选择 **MMA-Result** 作为皮肤（Base 皮肤不变）。**不要放进已有皮肤目录**（`UpdateSharedData` 等全局钩子会互相覆盖）。
 3. 设置里填 `Malody V Folder`（通常是 `D:\Steam\steamapps\common\MalodyV`）。
 
-## 五、设置（tosu 设置页 → Functional 组）
+## 五、配置（mma-shell.json，exe 旁）
 
-- **Game Client**：`Auto`（推荐）——按 游玩中 > 近期活动 > osu!>Etterna>Malody 自动跟随；也可以强制锁定某一个游戏。
-- **Etterna Folder / Malody V Folder**：壳自动探测失败时才填。
+壳的独立配置在 **exe 旁的 `mma-shell.json`**（首次启动自动生成骨架），与 tosu 设置无关（tosu 侧只服务 osu! 来源）。字段：
 
-数据源指示：卡片右上状态行末尾的小圆点——蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源。悬停可看说明。
+```json
+{
+  "gameClient": "Auto",
+  "etternaRoot": "",
+  "malodyRoot": "",
+  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
+  "logLevel": "info"
+}
+```
+
+- **gameClient**：`Auto`（推荐，按游玩中 > 近期活动 > osu!>Etterna>Malody 自动跟随）或锁定某来源。
+- **etternaRoot / malodyRoot**：游戏安装路径。**路径可写正斜杠或双反斜杠**（如 `D:/Games/Etterna` 或 `D:\\Games\\Etterna`——单反斜杠 `D:\Games` 在 JSON 里是非法转义，请用 `/` 或 `\\`）；壳也会按常见位置自动探测，找不到才需手填。
+- **hotkeys**：窗口快捷键（可选）。默认 `Ctrl+Shift+T` 置顶 / `Ctrl+Shift+C` 穿透 / `Ctrl+Q` 关闭；若与系统冲突可改（支持 Ctrl/Shift/Alt/Win + A–Z 单键）。改动后重启壳生效。
+- **logLevel**：`debug` / `info` / `warn` / `error` / `off`（默认 info）。
+
+配置填错/JSON 损坏不会崩溃——自动回落默认并警告。数据源指示：卡片右上状态行末尾的小圆点——**蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源**。悬停可看说明。
+
+## 六、日志
+
+壳运行日志写在 **exe 旁的 `mma-shell-YYYYMMDD.log`**（按日轮转，保留 7 天），每行带时间戳与级别。排查问题（来源没反应、分析失败）时把最新日志内容发给我们即可。`logLevel` 设为 `debug` 会输出更详细诊断。
 
 ## 六、常见问题
 
@@ -94,10 +112,29 @@ Window position/size/topmost/click-through are remembered across launches. Globa
 
 ## Settings
 
-Functional group: **Game Client** (Auto recommended; or lock to one game), **Etterna Folder** / **Malody V Folder** (only when auto-detection fails).
+The shell's own config lives in **`mma-shell.json` next to the exe** (auto-created on first run), independent of tosu settings (the tosu side only serves the osu! source). Fields:
 
-The status-row dot at the top right of the card: blue = osu!, green = Etterna, orange = Malody, hollow grey = no source.
+```json
+{
+  "gameClient": "Auto",
+  "etternaRoot": "",
+  "malodyRoot": "",
+  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
+  "logLevel": "info"
+}
+```
+
+- `gameClient`: `Auto` (recommended; play state > recent activity > osu!>Etterna>Malody) or a locked source.
+- `etternaRoot` / `malodyRoot`: install paths. Use forward slashes or double backslashes (`D:/Games/Etterna` or `D:\\Games\\Etterna` — a single `\` is invalid JSON escaping); auto-detection covers common locations, fill only when detection fails.
+- `hotkeys`: optional window shortcuts; defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Q` close. Change if they conflict with your system (Ctrl/Shift/Alt/Win + single letter). Restart the shell after editing.
+- `logLevel`: `debug` / `info` / `warn` / `error` / `off` (default `info`).
+
+A malformed config falls back to defaults with a warning (never crashes). The status-row dot at the top right of the card: **blue = osu!, green = Etterna, orange = Malody, hollow grey = no source**; hover for details.
+
+## Logs
+
+Shell logs go to **`mma-shell-YYYYMMDD.log` next to the exe** (rotated daily, 7 kept), each line timestamped with a level. When something misbehaves (no source reaction, failed analysis), send us the latest log. Set `logLevel` to `debug` for more detail.
 
 ## Troubleshooting
 
-Hollow grey dot / frozen card: game bridge not installed, game closed, or shell not running. Malody editor timing out: restart the shell and wait a few seconds before triggering. White flash on open is a known cosmetic quirk.
+Hollow grey dot / frozen card: game bridge not installed, game closed, or shell not running. Malody editor timing out: restart the shell and wait a few seconds before triggering. White flash on open is a known cosmetic quirk. Shortcuts not working: check `mma-shell-*.log` for `shortcut FAILED` (conflict) and adjust `hotkeys` in `mma-shell.json`.
