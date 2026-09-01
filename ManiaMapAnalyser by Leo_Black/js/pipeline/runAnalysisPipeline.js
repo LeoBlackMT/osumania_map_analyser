@@ -262,13 +262,20 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     }
 
     // 5. SunnyWindow（forceSunnyWindow）：calculateSunny + calculateLN（带 parsed + enableAnalyzeLN）。
+    //    try/catch 软失败（与其他附属段一致）：对个别谱面（如转换文本边界）抛错时
+    //    不应拖垮整个 pipeline——否则卡片偶发 No data（用户：切走再切回才恢复）。
     let sunnyWindow = null;
+    let sunnyWindowError = null;
     if (options.forceSunnyWindow) {
-        sunnyWindow = runSunnyWindowEstimatorFromText(
-            rawText,
-            { ...options, enableAnalyzeLN: options.enableAnalyzeLN === true },
-            parser,
-        );
+        try {
+            sunnyWindow = runSunnyWindowEstimatorFromText(
+                rawText,
+                { ...options, enableAnalyzeLN: options.enableAnalyzeLN === true },
+                parser,
+            );
+        } catch (err) {
+            sunnyWindowError = String(err?.message || err);
+        }
     }
 
     // 6. 6K 定数：display6kLevel && 6K 时按归一化后 star（6K 下恒为 Sunny sr）换算，2 位小数。
