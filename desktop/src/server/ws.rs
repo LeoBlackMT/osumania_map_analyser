@@ -2,7 +2,7 @@
 // 逻辑从原 server.rs 拆分。
 
 use crate::frames::{ControlInbound, ResultInbound};
-use crate::server::{hello_frame, log::log_at, next_seq, Shared};
+use crate::server::{hello_frame, log::log_at, log::log_line, next_seq, Shared};
 use std::net::TcpStream;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -123,20 +123,31 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                 }
                 // result 帧按 Envelope 包裹（payload 内层）；兼容裸帧两种情况。
                 if let Some(inbound) = parse_result_payload(&text) {
-                    log_at("debug", &format!(
-                        "page result: req={} hint={} active={} errors={}",
-                        inbound.request_id.as_deref().unwrap_or(""),
-                        inbound.status_hint.as_deref().unwrap_or(""),
-                        inbound.active_source.as_deref().unwrap_or(""),
-                        inbound
-                            .errors
-                            .as_ref()
-                            .map(|e| e.join(";"))
-                            .unwrap_or_default()
-                            .chars()
-                            .take(160)
-                            .collect::<String>(),
-                    ));
+                    // result 帧提到 info：分析失败时用户无需开 debug 即可看到
+                    // 具体错误文本（页面 No data 的排障入口）。
+                    let errs = inbound
+                        .errors
+                        .as_ref()
+                        .map(|e| e.join(";"))
+                        .unwrap_or_default();
+                    let hint = inbound.status_hint.as_deref().unwrap_or("");
+                    if hint == "analysis-failed" || !errs.is_empty() {
+                        log_line(&format!(
+                            "page result: req={} hint={} active={} errors={}",
+                            inbound.request_id.as_deref().unwrap_or(""),
+                            hint,
+                            inbound.active_source.as_deref().unwrap_or(""),
+                            errs.chars().take(400).collect::<String>(),
+                        ));
+                    } else {
+                        log_at("debug", &format!(
+                            "page result: req={} hint={} active={} errors={}",
+                            inbound.request_id.as_deref().unwrap_or(""),
+                            hint,
+                            inbound.active_source.as_deref().unwrap_or(""),
+                            errs.chars().take(160).collect::<String>(),
+                        ));
+                    }
                     if let Some(rid) = inbound.request_id {
                         if let Some(tx) = shared.pending.lock().unwrap().remove(&rid) {
                             let _ = tx.send(text);

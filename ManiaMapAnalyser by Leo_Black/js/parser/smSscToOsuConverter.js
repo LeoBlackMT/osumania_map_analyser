@@ -145,12 +145,70 @@ function extractNotes(chart) {
 // ── 入口 ───────────────────────────────────────────────
 
 /**
+ * 预处理：把 `#TAG:value` 中跨行的值合并（Etterna 允许 BPM/STOPS 等 tag 值
+ * 换行续写，如 `#BPMS:0.000=576.923\n,4.000=276.000`）。vendor 按行解析 tag，
+ * 跨行值会被截断成只有第一行 → 后续 BPM 全丢 → 时间轴塌缩、星数严重偏高
+ * （Kami Teki Souzou 实测 5 段 BPM 只剩 1 段，>Theta High 的根因）。
+ *
+ * 只处理「值未以分号结束的行」：把该行与后续以逗号/分号继续的行连接，
+ * 直到遇到分号或下一个 `#TAG`。`#NOTES` 块（含 `#NOTES:` 行）保持原样。
+ */
+function normalizeMultilineTags(text) {
+    const lines = text.split(/\r?\n/);
+    const out = [];
+    let inNotes = false;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        if (trimmed.startsWith("#NOTES")) {
+            inNotes = true;
+            out.push(line);
+            continue;
+        }
+        if (inNotes) {
+            out.push(line);
+            // #NOTES 块以行首分号结束（vendor 的 concludesANoteTag）。
+            if (trimmed === ";") {
+                inNotes = false;
+            }
+            continue;
+        }
+        // 非 #NOTES：若行含 tag 且值未闭合（无分号），往后合并续行。
+        const tagMatch = /^#([A-Za-z]+)\s*:\s*(.*)$/.exec(trimmed);
+        if (tagMatch && !line.includes(";")) {
+            let merged = line;
+            let j = i + 1;
+            while (j < lines.length) {
+                const next = lines[j];
+                const nextTrimmed = next.trim();
+                // 下一个 #TAG 或 #NOTES 开头 → 停止（本 tag 缺分号，保原样）。
+                if (/^#/.test(nextTrimmed)) {
+                    break;
+                }
+                merged += next;
+                if (next.includes(";")) {
+                    j += 1;
+                    break;
+                }
+                j += 1;
+            }
+            out.push(merged);
+            i = j - 1;
+            continue;
+        }
+        out.push(line);
+    }
+    return out.join("\n");
+}
+
+/**
  * 把 .sm/.ssc 文本转为 .osu v14 文本。
  * @param {{text: string, format: "sm"|"ssc", difficulty?: string|null}} input
  * @returns {{osuText: string, meta: {title, artist, version, keys, noteCount, holdCount, bpmPoints}}}
  */
 export function convertSmSscToOsuText({ text, format, difficulty = null } = {}) {
-    const parsed = format === "ssc" ? parseSsc(text) : parseSm(text);
+    const normalized = normalizeMultilineTags(text);
+    const parsed = format === "ssc" ? parseSsc(normalized) : parseSm(normalized);
     let info = parsed.availableTypes[0];
     if (difficulty) {
         const wanted = normalizeDifficulty(difficulty);
@@ -225,7 +283,15 @@ export function convertSmSscToOsuText({ text, format, difficulty = null } = {}) 
     const title = parsed.title || "Unknown Title";
     const artist = parsed.artist || "Unknown Artist";
     const version = `${info.difficulty} ${info.feet}`;
-    const osuText = renderOsu(title, artist, version, keys, bpmTable, stopTable, objects);
+    // #OFFSET（秒）→ 时间轴整体偏移（ms）。Etterna 谱面常用负偏移对齐音频；
+    // 不处理会让所有 note 时间偏差 offset 秒（Kami Teki 等谱面星数偏高）。
+    const offsetMs = (() => {
+        const m = /^#OFFSET\s*:\s*(-?[\d.]+)/m.exec(normalized);
+        if (!m) return 0;
+        const sec = Number(m[1]);
+        return Number.isFinite(sec) ? Math.round(sec * 1000) : 0;
+    })();
+    const osuText = renderOsu(title, artist, version, keys, bpmTable, stopTable, objects, offsetMs);
     return {
         osuText,
         meta: {
@@ -240,7 +306,7 @@ export function convertSmSscToOsuText({ text, format, difficulty = null } = {}) 
     };
 }
 
-function renderOsu(title, artist, version, keys, bpmTable, stopTable, objects) {
+function renderOsu(title, artist, version, keys, bpmTable, stopTable, objects, offsetMs = 0) {
     const lines = [];
     lines.push("osu file format v14", "");
     lines.push("[General]", "AudioFilename: audio.mp3", "AudioLeadIn: 0", "PreviewTime: -1",
@@ -263,17 +329,19 @@ function renderOsu(title, artist, version, keys, bpmTable, stopTable, objects) {
     for (const seg of bpmTable) {
         if (Number.isFinite(seg.start)) {
             const beatLength = 60000 / seg.bpm;
-            lines.push(`${Math.round(bakeToMs(seg.start, bpmTable, stopTable))},${beatLength.toFixed(2)},4,1,0,0,1,0`);
+            lines.push(`${Math.round(bakeToMs(seg.start, bpmTable, stopTable)) + offsetMs},${beatLength.toFixed(2)},4,1,0,0,1,0`);
         }
     }
     lines.push("");
     lines.push("[HitObjects]");
     for (const obj of objects) {
         const x = columnToX(obj.col, keys);
+        const start = Math.round(obj.startMs) + offsetMs;
         if (obj.endMs == null) {
-            lines.push(`${x},192,${Math.round(obj.startMs)},1,0,0:0:0:0:`);
+            lines.push(`${x},192,${start},1,0,0:0:0:0:`);
         } else {
-            lines.push(`${x},192,${Math.round(obj.startMs)},128,0,${Math.round(obj.endMs)}:0:0:0:0:`);
+            const end = Math.max(Math.round(obj.endMs) + offsetMs, start + 1);
+            lines.push(`${x},192,${start},128,0,${end}:0:0:0:0:`);
         }
     }
     return lines.join("\n");

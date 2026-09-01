@@ -1,17 +1,13 @@
 -- MMA Analyze 编辑器插件（MalodyV，触发类 PluginType=0）。
 --
--- 用法：打开谱面编辑器 → 「更多」菜单点击 Analyze → 自动读取当前谱面并
--- POST 到本地壳（127.0.0.1:24060）→ 分析结果以 AddText 卡片渲染在编辑区。
+-- 用法：打开谱面编辑器 → 「更多」菜单点击 Analyze → 自动请求分析当前谱面，
+-- 分析结果以 AddText 卡片渲染在编辑区。
 --
--- 流程（零输入框、零 ReadFile——不依赖不可靠的输入回调）：
---   1. Editor:ChartInfo 取 title/artist/level/key
---   2. Editor:DoRequest → 壳 /resolve（壳按标题扫 {malodyRoot}/chart/** 返回 .mc 原文）
---   3. OnResponse 收到 .mc → DoRequest POST 壳 / 分析
---   4. OnResponse 收到分析结果 → AddText 显示
--- 每步 note() 打点，便于定位卡点；DoRequest 失败/无响应时提示检查壳是否运行。
+-- 通道：Editor:DoRequest（6.6.43+ 新增，官方文档未记载签名）。本插件内置
+-- 「签名自探测」：依次尝试 4 种参数形态，OnResponse 收到非 invalid-url 的
+-- 响应即视为成功。任何形态收到壳的正常响应（.mc 原文或 404 JSON）即完成。
 --
--- 响应机制（官方 changelog 6.6.42+）：Editor:DoRequest 发起，响应经插件全局
--- 函数 OnResponse 回调（不是 DoRequest 的第四参）。本脚本兼容多参形态。
+-- 每步 note() 打点，便于定位卡点。
 --
 -- 安装：把本文件放到 MalodyV/Editor/（或 editor/）目录（目录不存在则创建）。
 
@@ -25,6 +21,7 @@ local RESOLVE_ENDPOINT = 'http://127.0.0.1:24060/resolve'
 
 local PENDING = {
     meta = {},
+    try = 0,
     resolved = false,
     miss = false,
     done = false,
@@ -54,23 +51,21 @@ local function looksLikeChart(text)
     return text and text ~= '' and text:find('"song"', 1, true) ~= nil
 end
 
-local function postAnalyze(meta, chartText)
-    local payload = '{"meta":{"title":' .. jsonQuote(meta.title)
-        .. ',"artist":' .. jsonQuote(meta.artist)
-        .. ',"level":' .. jsonQuote(meta.level)
-        .. ',"keys":' .. tostring(meta.keys or 0)
-        .. '},"chartText":' .. jsonQuote(chartText) .. '}'
-    PENDING.mode = 'analyze'
-    local okA, errA = pcall(function()
-        -- 签名探测结论（用户实测两轮）：
-        --   (url,'POST',body) → 报 invalid url: POST
-        --   ('POST',url,body) → OnResponse 收到 "POST"（'POST' 被当 url 回显）
-        -- 两者都证明第一个参数是 url → 用 2 参形态 (url, body)（默认 POST 方法）。
-        Editor:DoRequest(ENDPOINT, payload)
+-- 四种候选签名（XLua 绑定 + 冒号 self 的排列组合）。
+-- 返回 (ok, err)——ok=false 表示 pcall 抛错（签名立即失败）。
+local function tryDoRequest(tryIdx, url, payload)
+    local ok, err = pcall(function()
+        if tryIdx == 1 then
+            Editor:DoRequest(url, payload)             -- (url, body)
+        elseif tryIdx == 2 then
+            Editor:DoRequest(url, 'POST', payload)      -- (url, method, body)
+        elseif tryIdx == 3 then
+            Editor:DoRequest('POST', url, payload)      -- (method, url, body)
+        elseif tryIdx == 4 then
+            Editor:DoRequest({ url = url, method = 'POST', body = payload })  -- 表参数
+        end
     end)
-    if not okA then
-        note('分析请求失败：' .. tostring(errA) .. '（请确认壳 mma-shell 已运行）')
-    end
+    return ok, err
 end
 
 function OnResponse(...)
@@ -99,25 +94,18 @@ function OnResponse(...)
             note('已找到谱面，分析中…（' .. #body .. ' 字节）')
             postAnalyze(PENDING.meta, body)
         else
-            -- 诊断：显示壳返回的原文（404 error JSON），便于定位是匹配问题
-            -- 还是通道问题；同时附上请求的 title/artist 供对拍。
             local diag = trim(body, 300)
             if diag == '' then
                 diag = '(空响应)'
-            end
-            -- invalid url 说明 DoRequest 签名不匹配（客户端版本差异）：
-            -- 明确提示，避免误以为壳的问题。
-            if string.find(diag, 'invalid url', 1, true) then
-                note('DoRequest 签名不兼容（invalid url）。请确认 MalodyV ≥6.6.43，'
-                    .. '并把 mma_editor.lua 更新到最新版。')
-                PENDING.miss = true
-                return
             end
             note('壳未找到谱面：' .. diag .. '（请求 title=' .. (PENDING.meta.title or '')
                 .. ' artist=' .. (PENDING.meta.artist or '')
                 .. ' level=' .. (PENDING.meta.level or '') .. '）')
             PENDING.miss = true
         end
+    elseif string.find(tostring(body), 'invalid url', 1, true) then
+        -- 该签名无效：不设任何标志，让 Run() 继续尝试下一个签名。
+        PENDING.badSignature = true
     else
         -- 分析响应：显示结果
         PENDING.done = true
@@ -125,9 +113,52 @@ function OnResponse(...)
     end
 end
 
+local function postAnalyze(meta, chartText)
+    local payload = '{"meta":{"title":' .. jsonQuote(meta.title)
+        .. ',"artist":' .. jsonQuote(meta.artist)
+        .. ',"level":' .. jsonQuote(meta.level)
+        .. ',"keys":' .. tostring(meta.keys or 0)
+        .. '},"chartText":' .. jsonQuote(chartText) .. '}'
+    PENDING.mode = 'analyze'
+    local okA, errA = pcall(function()
+        -- 分析请求也走签名探测（同一 DoRequest 绑定）。
+        for t = 1, 4 do
+            PENDING.try = t
+            PENDING.badSignature = false
+            tryDoRequest(t, ENDPOINT, payload)
+            -- 等 OnResponse（约 1.5s）；badSignature 则换下一个。
+            local waited = 0
+            while waited < 30 do
+                if os.sleep then
+                    pcall(function()
+                        os.sleep(0.05)
+                    end)
+                end
+                waited = waited + 1
+                if PENDING.done then
+                    return
+                end
+                if PENDING.badSignature then
+                    break
+                end
+            end
+            if PENDING.done then
+                return
+            end
+        end
+        if not PENDING.done then
+            note('分析请求失败（4 种签名均无效）。请检查 mma-shell 是否运行。')
+        end
+    end)
+    if not okA then
+        note('分析请求异常：' .. tostring(errA))
+    end
+end
+
 function Run()
     PENDING = {
         meta = {},
+        try = 0,
         resolved = false,
         miss = false,
         done = false,
@@ -138,35 +169,41 @@ function Run()
         meta.artist = Editor:ChartInfo('artist') or ''
         meta.level = Editor:ChartInfo('level') or ''
         meta.keys = tonumber(Editor:ChartInfo('key')) or 0
-        -- 尝试拿当前谱面文件路径（不同版本 key 名可能不同；拿不到就空）
-        meta.path = Editor:ChartInfo('path') or Editor:ChartInfo('file') or Editor:ChartInfo('filename') or ''
     end)
     note('正在按标题查找谱面：' .. (meta.title or '') .. '…')
 
     local payload = '{"action":"resolve","title":' .. jsonQuote(meta.title)
         .. ',"artist":' .. jsonQuote(meta.artist)
         .. ',"level":' .. jsonQuote(meta.level)
-        .. ',"keys":' .. tostring(meta.keys or 0)
-        .. ',"path":' .. jsonQuote(meta.path) .. '}'
-    local ok, err = pcall(function()
-        -- 2 参形态 (url, body)：默认 POST（见 postAnalyze 的签名探测说明）。
-        Editor:DoRequest(RESOLVE_ENDPOINT, payload)
-    end)
-    if not ok then
-        note('DoRequest 调用失败：' .. tostring(err) .. '（请确认壳已运行、MalodyV 6.6.43+）')
-        return
-    end
-    -- 等待响应（约 3s）；超时提示检查壳。
-    local waited = 0
-    while waited < 60 and not PENDING.resolved and not PENDING.done and not PENDING.miss do
-        if os.sleep then
-            pcall(function()
-                os.sleep(0.05)
-            end)
+        .. ',"keys":' .. tostring(meta.keys or 0) .. '}'
+    -- 签名探测：依次尝试 4 种，成功（resolved/miss/done）即停。
+    for t = 1, 4 do
+        PENDING.try = t
+        PENDING.badSignature = false
+        local ok, err = tryDoRequest(t, RESOLVE_ENDPOINT, payload)
+        if not ok then
+            note('DoRequest 调用失败：' .. tostring(err))
+            return
         end
-        waited = waited + 1
+        local waited = 0
+        while waited < 30 do
+            if os.sleep then
+                pcall(function()
+                    os.sleep(0.05)
+                end)
+            end
+            waited = waited + 1
+            if PENDING.resolved or PENDING.miss or PENDING.done then
+                return
+            end
+            if PENDING.badSignature then
+                break
+            end
+        end
+        if PENDING.resolved or PENDING.miss or PENDING.done then
+            return
+        end
     end
-    if not PENDING.resolved and not PENDING.done then
-        note('未收到壳响应（3s 超时）。请确认 mma-shell 正在运行（exe 旁应有 mma-shell.log）。')
-    end
+    note('未收到壳响应（4 种签名均无有效回执，约 6s）。请确认 mma-shell 正在运行，'
+        .. '并检查 MalodyV 日志。')
 end

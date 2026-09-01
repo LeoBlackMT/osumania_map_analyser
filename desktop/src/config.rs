@@ -316,10 +316,81 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
 }
 
-// ---- 常见路径启发探测（显式配置缺失时的兜底）----
+// ---- Steam 库发现（注册表 + libraryfolders.vdf）+ 常见路径启发探测 ----
 
-/// Etterna：候选常见安装位置（存在 Save 目录判定）。
+/// 读 Windows 注册表拿 Steam 安装路径（SteamPath/InstallPath），并解析
+/// libraryfolders.vdf 收集全部 Steam 库根（含 Steam 自身库与其他库）。
+/// 非 Windows 平台：仅靠硬编码候选（壳目前 Windows-only，Linux 构建时跳过注册表）。
+fn steam_library_roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    fn push_unique(roots: &mut Vec<PathBuf>, p: &str) {
+        let p = p.trim();
+        if !p.is_empty() && !roots.iter().any(|r| r.to_string_lossy().eq_ignore_ascii_case(p)) {
+            roots.push(PathBuf::from(p));
+        }
+    }
+    // 1. 注册表：HKCU SteamPath、HKLM InstallPath（32/64 位视图）。
+    #[cfg(windows)]
+    {
+        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+            .open_subkey("Software\\Valve\\Steam")
+            .ok();
+        if let Some(key) = hkcu {
+            if let Ok(p) = key.get_value::<String, _>("SteamPath") {
+                push_unique(&mut roots, &p);
+            }
+        }
+        for sub in ["SOFTWARE\\WOW6432Node\\Valve\\Steam", "SOFTWARE\\Valve\\Steam"] {
+            let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+                .open_subkey(sub)
+                .ok();
+            if let Some(key) = hklm {
+                if let Ok(p) = key.get_value::<String, _>("InstallPath") {
+                    push_unique(&mut roots, &p);
+                }
+            }
+        }
+    }
+    // 2. 每个 Steam 根的 libraryfolders.vdf 里的全部库路径。
+    let initial = roots.clone();
+    for root in initial {
+        let vdf = root.join("steamapps").join("libraryfolders.vdf");
+        if let Ok(text) = fs::read_to_string(&vdf) {
+            // vdf 形态：`"path"		"C:\\Program Files (x86)\\Steam"`——按行找 path 键。
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(idx) = line.find("\"path\"") {
+                    let rest = &line[idx + "\"path\"".len()..];
+                    if let Some(vq) = rest.find('"') {
+                        let after = &rest[vq + 1..];
+                        if let Some(end) = after.find('"') {
+                            let raw = &after[..end];
+                            // vdf 用 \\ 表示字面反斜杠（KeyValues 转义）。
+                            let decoded = raw.replace("\\\\", "\\").replace("\\/", "/");
+                            push_unique(&mut roots, &decoded);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    roots
+}
+
+/// Etterna：Steam 库（appid 607810 的 common/Etterna）→ 常见路径 → env。
 pub fn detect_etterna_root() -> Option<PathBuf> {
+    if let Ok(over) = env::var("MMA_ETTERNA_ROOT") {
+        let p = PathBuf::from(normalize_path(&over));
+        if p.join("Save").is_dir() {
+            return Some(p);
+        }
+    }
+    for lib in steam_library_roots() {
+        let dir = lib.join("steamapps").join("common").join("Etterna");
+        if dir.join("Save").is_dir() {
+            return Some(dir);
+        }
+    }
     let candidates = [
         "D:/Games/Etterna",
         "C:/Games/Etterna",
@@ -335,8 +406,20 @@ pub fn detect_etterna_root() -> Option<PathBuf> {
     None
 }
 
-/// MalodyV：候选常见 Steam 路径（存在 chart 与 skin 目录判定）。
+/// MalodyV：Steam 库（common/MalodyV）→ 常见路径 → env。
 pub fn detect_malody_root() -> Option<PathBuf> {
+    if let Ok(over) = env::var("MMA_MALODY_ROOT") {
+        let p = PathBuf::from(normalize_path(&over));
+        if p.join("chart").is_dir() && p.join("skin").is_dir() {
+            return Some(p);
+        }
+    }
+    for lib in steam_library_roots() {
+        let dir = lib.join("steamapps").join("common").join("MalodyV");
+        if dir.join("chart").is_dir() && dir.join("skin").is_dir() {
+            return Some(dir);
+        }
+    }
     let candidates = [
         "D:/Steam/steamapps/common/MalodyV",
         "D:/SteamLibrary/steamapps/common/MalodyV",
