@@ -8,7 +8,7 @@ import { state } from "../appContext.js";
 import { scheduleRecompute } from "../scheduler.js";
 import { convertSmSscToOsuText } from "../../parser/smSscToOsuConverter.js";
 import { convertMcToOsuText } from "../../parser/mcToOsuConverter.js";
-import { sendResult } from "./bridgeClient.js";
+import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 
 function looksLikeOsu(text) {
@@ -42,6 +42,12 @@ function convertEtternaText(rawText) {
 export function handleSongFrame(payload) {
     const requestId = payload.requestId || null;
     const source = payload.source;
+    // 诊断：页面收到 song 帧即向壳回日志（确认 WS 双向通）。
+    try {
+        sendDiag(`page got song: source=${source} req=${requestId} rawLen=${(payload.rawText || "").length}`);
+    } catch {
+        // 诊断失败静默
+    }
     const locked = state.externalSourceLocked;
     const fail = (errors) => {
         if (requestId) {

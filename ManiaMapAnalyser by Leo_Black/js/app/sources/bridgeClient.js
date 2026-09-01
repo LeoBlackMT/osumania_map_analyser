@@ -64,6 +64,25 @@ export function sendControl(action, value) {
     }
 }
 
+/** 诊断通道：页面 → 壳（打日志，不参与协议）。 */
+export function sendDiag(message) {
+    if (!bridgeOnline()) {
+        return;
+    }
+    seq += 1;
+    const frame = JSON.stringify({
+        v: CONTRACT_VERSION,
+        type: "diag",
+        seq,
+        payload: { message },
+    });
+    try {
+        socket.send(frame);
+    } catch {
+        // 静默失败
+    }
+}
+
 /** 初始化壳桥（handlers: {onHello, onState, onSong, onSettings}）。 */
 export function initBridgeClient(handlers = {}) {
     if (typeof WebSocket === "undefined") {

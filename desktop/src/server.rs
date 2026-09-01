@@ -381,6 +381,15 @@ fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                 continue; // 排水循环唤醒点
             }
             Ok(tungstenite::Message::Text(text)) => {
+                // diag 帧（页面诊断回传）
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if value.get("type").and_then(|v| v.as_str()) == Some("diag") {
+                        if let Some(msg) = value.get("payload").and_then(|p| p.get("message")).and_then(|m| m.as_str()) {
+                            log_line(&format!("page diag: {}", msg));
+                        }
+                        continue;
+                    }
+                }
                 // control 帧（契约 v2）：页面 → 壳窗口控制。
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     if value.get("type").and_then(|v| v.as_str()) == Some("control") {

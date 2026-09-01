@@ -479,24 +479,17 @@ export async function fetchBeatmapFile(reason) {
                 parsedInfo = pipelineResult.parsedSummary;
                 applyContentBarOverride(parsedInfo.columnCount);
             } catch (error) {
+                // 诊断字段无条件记录（stale 也要留痕）：外部源失败时把关键输入
+                // 特征打进错误，用于定位「同一文件本地 OK、页面 NaN」的差异。
+                const diagSuffix = sourceRequestId
+                    ? ` [diag src=${sourceActive} rawLen=${rawText ? rawText.length : "-"} est=${estimatorAlgorithm} rate=${state.speedRate} od=${state.odFlag} cvt=${state.cvtFlag} graph=${needComputed.graph} sunnyWin=${state.forceSunnyWindow} classic=${state.classicMod}]`
+                    : "";
+                errors.push(`Rework failed: ${error.message}${diagSuffix}`);
                 if (isStaleRequest()) return;
-                // 临时诊断：外部源失败时把关键输入特征打进错误（识别 NaN 差异）。
-                try {
-                    if (sourceRequestId && rawText) {
-                        errors.push(
-                            `Rework failed: ${error.message} [diag src=${sourceActive} rawLen=${rawText.length} est=${estimatorAlgorithm} rate=${state.speedRate} od=${state.odFlag} cvt=${state.cvtFlag} graph=${needComputed.graph} sunnyWin=${state.forceSunnyWindow} classic=${state.classicMod}]`,
-                        );
-                    } else {
-                        errors.push(`Rework failed: ${error.message}`);
-                    }
-                } catch {
-                    errors.push(`Rework failed: ${error.message}`);
-                }
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || contentBarShows("Graph")) {
                     showDiffGraphError("Graph unavailable");
                 }
-                errors.push(`Rework failed: ${error.message}`);
                 // 失败路径回退：pipeline 抛错（估算器失败）未返回 parsedSummary——用最小元信息解析补齐，
                 // 与旧代码 parseMetadataFromBeatmap 行为一致（正常路径保持 parse-once，不在此解析）。
                 try {
