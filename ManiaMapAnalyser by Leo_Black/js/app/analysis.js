@@ -373,7 +373,11 @@ export async function fetchBeatmapFile(reason) {
             || state.srText === "MSD"
             || state.diffText === "MSD"
             || state.vibroDetection
-            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed")),
+            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"))
+            // ⚠️ externalSourceOsuLike（Etterna 容器内 osu 谱）：仅关 Etterna 展示栏；
+            // Companella/Mixed 算法仍需 Ett 输入（classifyCompanellaDifficulty 依赖 MSD），
+            // 否则 Companella 无 MSD 输入 → 输出严重偏离 + 主体 No data。
+            || ((currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed")),
         graph: state.diffText === "Graph" || contentBarShows("Graph"),
         interlude: state.srText === "InterludeSR"
             || state.diffText === "InterludeSR"
@@ -382,7 +386,8 @@ export async function fetchBeatmapFile(reason) {
         pp: contentBarShows("ReworkPP") || state.srText === "ReworkPP",
     };
     // 缓存键加版本段：star 口径统一为 Sunny 原始 sr 后，旧快照（存的是 Azusa/Roxy 映射 star）必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2";
+    // star-v3：Companella LN 门控 + 12K star fallback 使 estDiff 语义变化 → 旧快照全部失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v3";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -403,7 +408,13 @@ export async function fetchBeatmapFile(reason) {
         let rawText = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
         // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
+        // 唯一例外：Etterna 容器内的 osu 谱（externalSourceOsuLike）没有 Etterna
+        // MSD 语义，强制降级为 Pattern 主体，避免 Etterna 栏空态 No data。
         const applyContentBarOverride = (columnCount) => {
+            if (state.externalSourceOsuLike) {
+                setEffectiveContentBarForMap("Pattern");
+                return;
+            }
             setEffectiveContentBarForMap(null);
         };
         if (cached) {
@@ -845,6 +856,16 @@ export async function fetchBeatmapFile(reason) {
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
 
             if (shouldRunCompanella && !cached) {
+                // Companella 是 RC 模型：高 LN 谱面（>18%，同 Azusa/Roxy 门控）不适用，
+                // 跳过 Companella 直接使用 pipeline 已归一化的 Sunny 基线（避免严重偏离）。
+                const companellaLnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio);
+                if (companellaLnRatio > 0.18) {
+                    pendingCompanellaEstimate = false;
+                    pendingMixedCompanellaContext = null;
+                    if (state.actualEstimatorAlgorithm === "Companella") {
+                        state.actualEstimatorAlgorithm = "Sunny";
+                    }
+                } else {
                 let companellaMsdValues = ettResult?.values;
                 const companellaEtternaVersion = String(
                     state.companellaEtternaVersion || state.etternaVersion,
@@ -902,6 +923,16 @@ export async function fetchBeatmapFile(reason) {
                     }
                 } catch (error) {
                     console.warn(`Companella estimate failed: ${error.message}`);
+                    // Companella 失败 → 回退 pipeline 已归一化的 Sunny 基线（与
+                    // Azusa/Roxy 的 fallback 语义一致）：保持已算出的 star/estDiff，
+                    // 不产生 No data。若 pipeline 也失败（resolvedEstDiff null），
+                    // 走主错误路径（errors 已含 Rework failed）。
+                    if (pendingCompanellaEstimate) {
+                        state.actualEstimatorAlgorithm = "Sunny";
+                    }
+                    pendingCompanellaEstimate = false;
+                    pendingMixedCompanellaContext = null;
+                }
                 }
             }
 

@@ -3,7 +3,7 @@
 
 use crate::frames::{MalodyPost, MAX_PAYLOAD_BYTES};
 use crate::server::{
-    broadcast, json_error, log::log_line, md5_hex, malody_root, next_seq, percent_decode, write_mma_state, Shared,
+    broadcast, json_error, log::log_at, md5_hex, malody_root, next_seq, percent_decode, write_mma_state, Shared,
     http,
 };
 use std::fs;
@@ -37,14 +37,21 @@ fn source_not_active(active: &str) -> String {
     format!("source not active: {}", active)
 }
 
-/// 按 title/artist 在 {malodyRoot}/chart/ 下递归匹配 .mc（来自编辑器 ChartInfo）。
-/// 先精确标题匹配，再含子串；全部匹配项返回（resolve 可返回多结果提示）。
-fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str) -> Option<String> {
+/// 按 title/artist/level/keys 在 {malodyRoot}/chart/ 下递归匹配 .mc（来自编辑器 ChartInfo）。
+/// 匹配优先级（防止多难度同标题取错谱）：
+///   1. 精确 title+artist（+level/keys 若提供）
+///   2. 精确 title + 文件名含 level/keys（难度标签常只在文件名）
+///   3. 精确 title（无 level 时取第一个）
+///   4. title 含子串 / 文件名含 title（fallback）
+fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str, level: &str, keys: u64) -> Option<String> {
     let root = malody_root(shared)?;
     let title_norm = title.trim().to_lowercase();
     let artist_norm = artist.trim().to_lowercase();
+    let level_norm = level.trim().to_lowercase();
     let mut walk = vec![root.join("chart")];
     let mut exact: Option<String> = None;
+    let mut exact_level: Option<String> = None;
+    let mut file_level: Option<String> = None;
     let mut sub: Option<String> = None;
     while let Some(dir) = walk.pop() {
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -75,13 +82,36 @@ fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str) -> Option<St
                 .and_then(|x| x.as_str())
                 .unwrap_or("")
                 .to_lowercase();
-            // 精确标题 + 艺术家（或 artist 为空）
-            if !title_norm.is_empty() && t == title_norm && (artist_norm.is_empty() || a == artist_norm) {
+            let fname = path.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let is_exact_title = !title_norm.is_empty() && t == title_norm;
+            let is_exact = is_exact_title && (artist_norm.is_empty() || a == artist_norm);
+            // 精确 title+artist（+level/keys 若提供）
+            if is_exact {
                 if exact.is_none() {
                     exact = Some(text.clone());
                 }
+                // level 精化：ChartInfo level 或文件名难度匹配
+                let file_has_level = !level_norm.is_empty()
+                    && (fname.contains(&level_norm) || path.to_string_lossy().to_lowercase().contains(&level_norm));
+                let keys_ok = keys == 0
+                    || v.pointer("/meta/mode_ext/column")
+                        .and_then(|x| x.as_u64())
+                        .map(|c| c == keys)
+                        .unwrap_or(true);
+                if file_has_level && keys_ok && exact_level.is_none() {
+                    exact_level = Some(text.clone());
+                }
             }
-            // 标题含子串
+            // 文件名含 title（ChartInfo title 可能为空/不准时的兜底）
+            if exact.is_none()
+                && !title_norm.is_empty()
+                && fname.contains(&title_norm)
+            {
+                if file_level.is_none() {
+                    file_level = Some(text.clone());
+                }
+            }
+            // title 含子串（最后 fallback）
             if exact.is_none()
                 && !title_norm.is_empty()
                 && !t.is_empty()
@@ -93,31 +123,35 @@ fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str) -> Option<St
             }
         }
     }
-    exact.or(sub)
+    exact_level.or(exact).or(file_level).or(sub)
 }
 
 fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     let Some((_head, body)) = http::read_request(&mut stream) else { return };
-    log_line(&format!("POST len={}", body.len()));
+    log_at("debug", &format!("POST len={}", body.len()));
     // 编辑器 resolve 通道（自动读谱）：按 ChartInfo title/artist 扫 chart 目录。
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
         if value.get("action").and_then(|v| v.as_str()) == Some("resolve") {
             let title = value.get("title").and_then(|v| v.as_str()).unwrap_or("");
             let artist = value.get("artist").and_then(|v| v.as_str()).unwrap_or("");
+            let level = value.get("level").and_then(|v| v.as_str()).unwrap_or("");
+            let keys = value.get("keys").and_then(|v| v.as_u64()).unwrap_or(0);
             let root = malody_root(&shared);
-            log_line(&format!(
-                "resolve title={} artist={} malodyRoot={:?}",
+            log_at("debug", &format!(
+                "resolve title={} artist={} level={} keys={} malodyRoot={:?}",
                 title,
                 artist,
+                level,
+                keys,
                 root
             ));
-            match resolve_malody_chart(&shared, title, artist) {
+            match resolve_malody_chart(&shared, title, artist, level, keys) {
                 Some(text) => {
-                    log_line("resolve HIT (chart text returned)");
+                    log_at("debug", "resolve HIT (chart text returned)");
                     http::write_response(&mut stream, 200, "application/json", text.as_bytes());
                 }
                 None => {
-                    log_line("resolve MISS");
+                    log_at("debug", "resolve MISS");
                     http::respond_json(&mut stream, 404, r#"{"error":"chart not found in malody chart dir"}"#);
                 }
             }

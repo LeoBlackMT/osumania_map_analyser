@@ -2,7 +2,7 @@
 // 逻辑从原 server.rs 拆分。
 
 use crate::frames::{ControlInbound, ResultInbound};
-use crate::server::{hello_frame, log::log_line, next_seq, Shared};
+use crate::server::{hello_frame, log::log_at, next_seq, Shared};
 use std::net::TcpStream;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -105,7 +105,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                             .and_then(|p| p.get("message"))
                             .and_then(|m| m.as_str())
                         {
-                            log_line(&format!("page diag: {}", msg));
+                            log_at("debug", &format!("page diag: {}", msg));
                         }
                         continue;
                     }
@@ -123,7 +123,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                 }
                 // result 帧按 Envelope 包裹（payload 内层）；兼容裸帧两种情况。
                 if let Some(inbound) = parse_result_payload(&text) {
-                    log_line(&format!(
+                    log_at("debug", &format!(
                         "page result: req={} hint={} active={} errors={}",
                         inbound.request_id.as_deref().unwrap_or(""),
                         inbound.status_hint.as_deref().unwrap_or(""),

@@ -77,7 +77,8 @@
 ## 6. settings
 
 - 在线（tosu.env 存在且存活）：**设置权威 = tosu**——壳**只读** `{tosuRoot}/settings/{插件目录名}.json`（mtime 变化重读，30s 周期内生效，**绝不写**）；页面经 tosu getSettings/sendCommand 读写。
-- 离线：**壳自有 JSON 存储 = `mma-shell.json`**（exe 旁；无 tosu 用户可直接编辑）——`/settings` GET（页面拉初始设置种子）+ POST（页面收变更并**落盘**）；壳 30s 周期检测文件变化（直接编辑）→ 重载并推送 settings 帧；页面经 `applySettingsPayload` 注入。
+- 离线：**优先级链** = tosu 设置文件（离线也读）> **`mma-settings.json`**（exe 旁，全量插件设置；无 tosu 用户可直接编辑，重启生效；不存在则按插件 `settings.json` 生成默认骨架）——`/settings` GET 按链返回 + POST（页面收变更并**落盘 mma-settings.json**）；壳 30s 周期检测 `mma-settings.json` 与 `mma-shell-config.json` 变化 → 重载并推送 settings 帧；页面经 `applySettingsPayload` 注入。
+- **壳配置 `mma-shell-config.json`**（exe 旁）：`gameClient`/`etternaRoot`/`malodyRoot`/`hotkeys`/`logLevel`——仅壳使用（源路径/快捷键/日志），与插件设置分离。
 - settings.json（插件）始终是唯一 schema。
 
 ## 7. 封面白名单

@@ -121,7 +121,7 @@
         - 该设定将仅影响Companella算法的计算结果，其他功能仍然使用Global Etterna Version设定的版本。
         - 默认值为0.74.0。推荐将该设定保持在0.74.0，因为Companella是基于Etterna 0.74.0的MinaCalc进行开发和调校的。
         - 你可以切换其他版本来观察不同版本的Etterna在Companella算法下的表现，但请注意可能会出现不准确的情况。
-    - **来源配置（Game Client / Etterna Folder / Malody V Folder）已移至桌面壳**：tosu 侧只服务 osu! 来源；多来源跟随与游戏路径配置见 [shell-guide.md](shell-guide.md) 的「配置（mma-shell.json）」。
+    - **来源配置（Game Client / Etterna Folder / Malody V Folder）已移至桌面壳**：tosu 侧只服务 osu! 来源；多来源跟随与游戏路径配置见 [shell-guide.md](shell-guide.md) 的「配置（mma-shell-config.json）」。无 tosu 用户的卡片全量设置见 `mma-settings.json`（离线模式，tosu 设置文件不可用时生效）。
     - **源圆点（Source Dot）**：卡片右上状态行显示一个小圆点：实心色=当前数据源（osu! 蓝 / Etterna 绿 / Malody 橙），灰色空心=当前无任何数据源；悬停可见数据源与跟随状态说明。
 - **网络配置**:
     - **WebSocket Endpoint**: 配置WebSocket服务器的地址和端口。
@@ -265,7 +265,7 @@
         - This setting only affects the Companella algorithm's calculations; other features will continue to use the version set in Global Etterna Version.
         - The default value is 0.74.0. It is recommended to keep this setting at 0.74.0, as Companella was developed and calibrated based on Etterna 0.74.0's MinaCalc.
         - You can switch to other versions to observe their performance with the Companella algorithm, but please be aware that results may be inaccurate.
-    - **Source config (Game Client / Etterna Folder / Malody V Folder) moved to the desktop shell**: the tosu side only serves the osu! source; multi-source follow and game paths live in `mma-shell.json` (see [shell-guide.md](shell-guide.md)).
+    - **Source config (Game Client / Etterna Folder / Malody V Folder) moved to the desktop shell**: the tosu side only serves the osu! source; multi-source follow and game paths live in `mma-shell-config.json` (see [shell-guide.md](shell-guide.md)). No-tosu users' full card settings live in `mma-settings.json` (offline mode, active when no tosu settings file exists).
     - **Source Dot**: small dot at the end of the status row — solid color = current data source (osu! blue / Etterna green / Malody orange), hollow grey = no source; tooltip shows source and follow state.
 - **Network Configuration**:
     - **WebSocket Endpoint**: Configure the address and port of the WebSocket server.

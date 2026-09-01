@@ -140,10 +140,19 @@ export function routeAllowsExternal(source) {
 
 /** osu 的 beatmap 状态应用是否应挂起（败方门控）。
  * 仅当「壳桥在线且 tosu 离线」时 osu 才可能被外部源压制——浏览器模式
- * （无壳）或壳在线模式（tosu 存活）下 osu 恒为主数据面，绝不挂起。 */
+ * （无壳）或壳在线模式（tosu 存活）下 osu 恒为主数据面，绝不挂起。
+ * ⚠️ 端口守卫：必须限定在壳离线页（24061）。用户打开正常 tosu 浏览器页
+ * （24050）时壳也可能在跑（externalBridgeAvailable=true、tosu 未运行），
+ * 此时 osu 是页面唯一数据面，绝不能挂起——否则换图/mod 全部被缓冲吞掉。 */
 export function isOsuSuppressed() {
     if (!state.externalBridgeAvailable || state.shellTosuOnline) {
         return false;
+    }
+    if (typeof window === "undefined" || !window.location) {
+        return false;
+    }
+    if (String(window.location.port) !== "24061") {
+        return false; // 浏览器 tosu 页：osu 恒为主数据面
     }
     return currentRoute() !== null && currentRoute() !== "osu";
 }

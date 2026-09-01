@@ -49,9 +49,11 @@
 2. 游玩场景（独立皮肤，推荐）：在 `skin/` 下新建**独立皮肤目录**（如 `skin/MMA-Result/`），把 `bridges/malody/z_mma_skin.lua` 复制进去（文件名可任意）；在皮肤 Composer 里添加一个 **Text 模块，命名 `mma_result`**；在该皮肤目录里新建空文件 `mma.txt`（壳靠它找到写入目标）。游玩时选择 **MMA-Result** 作为皮肤（Base 皮肤不变）。**不要放进已有皮肤目录**（`UpdateSharedData` 等全局钩子会互相覆盖）。
 3. 设置里填 `Malody V Folder`（通常是 `D:\Steam\steamapps\common\MalodyV`）。
 
-## 五、配置（mma-shell.json，exe 旁）
+## 五、配置（exe 旁：mma-shell-config.json + mma-settings.json）
 
-壳的独立配置在 **exe 旁的 `mma-shell.json`**（首次启动自动生成骨架），与 tosu 设置无关（tosu 侧只服务 osu! 来源）。字段：
+壳有两份独立配置，都在 **exe 旁**（首次启动自动生成骨架），与 tosu 设置无关（tosu 侧只服务 osu! 来源）：
+
+**① 壳配置 `mma-shell-config.json`**（仅壳使用）：源路径 + 快捷键 + 日志级别。
 
 ```json
 {
@@ -67,6 +69,12 @@
 - **etternaRoot / malodyRoot**：游戏安装路径。**路径可写正斜杠或双反斜杠**（如 `D:/Games/Etterna` 或 `D:\\Games\\Etterna`——单反斜杠 `D:\Games` 在 JSON 里是非法转义，请用 `/` 或 `\\`）；壳也会按常见位置自动探测，找不到才需手填。
 - **hotkeys**：窗口快捷键（可选）。默认 `Ctrl+Shift+T` 置顶 / `Ctrl+Shift+C` 穿透 / `Ctrl+Q` 关闭；若与系统冲突可改（支持 Ctrl/Shift/Alt/Win + A–Z 单键）。改动后重启壳生效。
 - **logLevel**：`debug` / `info` / `warn` / `error` / `off`（默认 info）。
+
+**② 全量插件设置 `mma-settings.json`**（离线模式的卡片设置；无 tosu 用户手动编辑，重启后生效）：
+
+- **tosu 设置文件可用**（tosu 安装目录的 `settings/ManiaMapAnalyser by Leo_Black.json`）时，壳**优先使用它**（在线只读 / 离线读文件），不生成也不使用 mma-settings.json。
+- **找不到 tosu 设置文件**时进入本地模式：存在 `mma-settings.json` 则直接使用；不存在则由壳按插件的 `settings.json` 生成默认骨架（全部条目），用户手动编辑后重启壳生效。
+- 设置键与 tosu 设置界面完全一致（估计算法、内容栏、显示等全部条目）；只改 `gameClient/etternaRoot/malodyRoot` 的用户**不需要碰它**（这三个在 mma-shell-config.json）。
 
 配置填错/JSON 损坏不会崩溃——自动回落默认并警告。数据源指示：卡片右上状态行末尾的小圆点——**蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源**。悬停可看说明。
 
@@ -112,7 +120,9 @@ Window position/size/topmost/click-through are remembered across launches. Globa
 
 ## Settings
 
-The shell's own config lives in **`mma-shell.json` next to the exe** (auto-created on first run), independent of tosu settings (the tosu side only serves the osu! source). Fields:
+The shell has two independent config files, both **next to the exe** (auto-created on first run), independent of tosu settings (the tosu side only serves the osu! source):
+
+**① Shell config `mma-shell-config.json`** (shell-only): source paths + shortcuts + log level.
 
 ```json
 {
@@ -129,6 +139,12 @@ The shell's own config lives in **`mma-shell.json` next to the exe** (auto-creat
 - `hotkeys`: optional window shortcuts; defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Q` close. Change if they conflict with your system (Ctrl/Shift/Alt/Win + single letter). Restart the shell after editing.
 - `logLevel`: `debug` / `info` / `warn` / `error` / `off` (default `info`).
 
+**② Full plugin settings `mma-settings.json`** (offline-mode card settings; no-tosu users edit it manually, effective after restart):
+
+- When the **tosu settings file** (`settings/ManiaMapAnalyser by Leo_Black.json` inside the tosu install) is available, the shell **prefers it** (read-only online / read file offline) and never creates or uses `mma-settings.json`.
+- Without a tosu settings file, local mode kicks in: existing `mma-settings.json` is used as-is; otherwise the shell generates a default skeleton from the plugin's `settings.json` (all entries), which you edit manually and restart the shell to apply.
+- Keys match the tosu settings UI exactly (estimator, content bar, display, ...). Users who only need `gameClient/etternaRoot/malodyRoot` never touch this file (those live in `mma-shell-config.json`).
+
 A malformed config falls back to defaults with a warning (never crashes). The status-row dot at the top right of the card: **blue = osu!, green = Etterna, orange = Malody, hollow grey = no source**; hover for details.
 
 ## Logs
@@ -137,4 +153,4 @@ Shell logs go to **`mma-shell-YYYYMMDD.log` next to the exe** (rotated daily, 7 
 
 ## Troubleshooting
 
-Hollow grey dot / frozen card: game bridge not installed, game closed, or shell not running. Malody editor timing out: restart the shell and wait a few seconds before triggering. White flash on open is a known cosmetic quirk. Shortcuts not working: check `mma-shell-*.log` for `shortcut FAILED` (conflict) and adjust `hotkeys` in `mma-shell.json`.
+Hollow grey dot / frozen card: game bridge not installed, game closed, or shell not running. Malody editor timing out: restart the shell and wait a few seconds before triggering. White flash on open is a known cosmetic quirk. Shortcuts not working: check `mma-shell-*.log` for `shortcut FAILED` (conflict) and adjust `hotkeys` in `mma-shell-config.json`.

@@ -133,19 +133,33 @@ pub fn read_tosu_settings(info: &TosuInfo) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
-// ---- 独立配置（mma-shell.json，exe 旁）：无 tosu 用户也能配置游戏路径 ----
+// ---- 独立配置：壳配置（mma-shell-config.json，exe 旁）----
+// 壳配置 = 仅壳使用：gameClient/etternaRoot/malodyRoot（源路径）+ hotkeys + logLevel。
+// 插件全量设置另存 mma-settings.json（见 read_plugin_settings / write_plugin_settings）。
 
-/// 读取 exe 所在目录下的 mma-shell.json（不存在/损坏 → 空对象；损坏时记录警告到日志）。
+const SHELL_CONFIG_FILE: &str = "mma-shell-config.json";
+const PLUGIN_SETTINGS_FILE: &str = "mma-settings.json";
+
+/// 读取 exe 所在目录下的 mma-shell-config.json（不存在/损坏 → 空对象；损坏时记录警告到日志）。
 pub fn read_shell_config() -> serde_json::Value {
+    read_exe_json(SHELL_CONFIG_FILE, "mma-shell-config.json")
+}
+
+/// 读取 exe 旁 mma-settings.json（全量插件设置；无 tosu 用户手动编辑）。
+pub fn read_plugin_settings() -> serde_json::Value {
+    read_exe_json(PLUGIN_SETTINGS_FILE, "mma-settings.json")
+}
+
+fn read_exe_json(file: &str, display: &str) -> serde_json::Value {
     let Some(dir) = exe_dir() else {
         return serde_json::Value::Null;
     };
-    let path = dir.join("mma-shell.json");
+    let path = dir.join(file);
     match fs::read_to_string(&path) {
         Ok(s) => match serde_json::from_str(&s) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("mma-shell.json 解析失败（使用默认配置）：{}", e);
+                eprintln!("{} 解析失败（使用默认配置）：{}", display, e);
                 serde_json::Value::Null
             }
         },
@@ -153,7 +167,7 @@ pub fn read_shell_config() -> serde_json::Value {
     }
 }
 
-/// 日志级别（mma-shell.json 的 logLevel；默认 info）。
+/// 日志级别（mma-shell-config.json 的 logLevel；默认 info）。
 pub fn log_level() -> String {
     read_shell_config()
         .get("logLevel")
@@ -180,37 +194,89 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
     }
 }
 
-/// /settings POST 时落盘（仅保存已知键，丢弃其余）。
-pub fn write_shell_config(value: &serde_json::Value) -> bool {
-    let Some(dir) = exe_dir() else {
-        return false;
-    };
-    let mut out = serde_json::Map::new();
-    for key in ["gameClient", "etternaRoot", "malodyRoot"] {
-        if let Some(v) = value.get(key) {
-            out.insert(key.to_string(), v.clone());
-        }
-    }
-    let path = dir.join("mma-shell.json");
-    let tmp = path.with_extension("json.tmp");
-    let ok = fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap_or_default()).is_ok()
-        && fs::rename(&tmp, &path).is_ok();
-    ok
-}
-
-/// 启动时确保 mma-shell.json 存在（无 tosu 用户可发现并直接编辑）。
+/// 启动时确保 mma-shell-config.json 存在（无 tosu 用户可发现并直接编辑）。
+/// 骨架含 hotkeys 与 logLevel（用户验收项 1：骨架必须完整可编辑）。
 pub fn ensure_shell_config() {
     let Some(dir) = exe_dir() else {
         return;
     };
-    let path = dir.join("mma-shell.json");
+    let path = dir.join(SHELL_CONFIG_FILE);
     if path.exists() {
         return;
     }
     let _ = fs::write(
         &path,
-        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\"\n}\n",
+        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\"\n  },\n  \"logLevel\": \"info\"\n}\n",
     );
+}
+
+fn write_exe_json(dir: PathBuf, file: &str, value: &serde_json::Value) -> bool {
+    let path = dir.join(file);
+    let tmp = path.with_extension("json.tmp");
+    let ok = fs::write(&tmp, serde_json::to_string_pretty(value).unwrap_or_default()).is_ok()
+        && fs::rename(&tmp, &path).is_ok();
+    ok
+}
+
+/// 全量插件设置解析（优先级链）：
+///   1. tosu 在线（壳探测到 tosu 存活）→ tosu 设置文件（只读）
+///   2. tosu 设置文件存在（即使 tosu 未运行）→ 读文件
+///   3. exe 旁 mma-settings.json 存在 → 读它
+///   4. 都没有 → 用插件 settings.json 的默认值生成 mma-settings.json 骨架
+///      （用户手动编辑后重启生效），返回该默认。
+/// 在线时绝不落盘 mma-settings.json（tosu 权威）。
+pub fn resolve_plugin_settings(shared: &crate::server::Shared) -> serde_json::Value {
+    // 1. tosu 在线：tosu 设置文件权威（若可读）。
+    if let Some(info) = shared.tosu.as_ref() {
+        let from_tosu = read_tosu_settings(info);
+        if from_tosu.is_object() && !from_tosu.as_object().map(|m| m.is_empty()).unwrap_or(true) {
+            return from_tosu;
+        }
+    }
+    // 2. tosu 设置文件存在（离线也读）。
+    if let Some(info) = shared.tosu.as_ref() {
+        if tosu_settings_path(info).exists() {
+            let from_tosu = read_tosu_settings(info);
+            if from_tosu.is_object() {
+                return from_tosu;
+            }
+        }
+    }
+    // 3. mma-settings.json。
+    let local = read_plugin_settings();
+    if local.is_object() {
+        return local;
+    }
+    // 4. 生成默认（从插件 settings.json 的 value 字段）。
+    generate_default_plugin_settings()
+}
+
+/// 从插件 settings.json 生成默认设置骨架（所有条目 value 字段 → 顶层键）。
+/// 返回 {uniqueID: value} 形式；无 settings.json 时返回空对象。
+pub fn generate_default_plugin_settings() -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let path = plugin_dir().join("settings.json");
+    if let Ok(text) = fs::read_to_string(&path) {
+        if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+            for entry in entries {
+                if let (Some(id), Some(val)) = (
+                    entry.get("uniqueID").and_then(|v| v.as_str()),
+                    entry.get("value").cloned(),
+                ) {
+                    out.insert(id.to_string(), val);
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
+/// 离线 /settings POST 落盘：写入 mma-settings.json（全量插件设置）。
+pub fn write_plugin_settings(value: &serde_json::Value) -> bool {
+    let Some(dir) = exe_dir() else {
+        return false;
+    };
+    write_exe_json(dir, PLUGIN_SETTINGS_FILE, value)
 }
 
 fn exe_dir() -> Option<PathBuf> {

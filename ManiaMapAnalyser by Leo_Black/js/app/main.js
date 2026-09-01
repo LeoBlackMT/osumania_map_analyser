@@ -43,8 +43,8 @@ export async function initialize() {
         onSong: handleSongFrame,
         onSettings: applySettingsPayload,
         onHello: () => {
-            // 离线配置（mma-shell.json）拉取：无 tosu 用户可直接编辑该文件，
-            // 壳启动时已加载；此处兜底同步一次。
+            // 离线配置拉取：壳按优先级链（tosu 设置文件 > mma-settings.json > 默认）
+            // 返回 /settings；无 tosu 用户可直接编辑 mma-settings.json 后重启。
             fetch("http://127.0.0.1:24061/settings")
                 .then((r) => (r.ok ? r.json() : null))
                 .then((payload) => {

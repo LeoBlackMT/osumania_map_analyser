@@ -122,7 +122,9 @@ function Run()
     note('正在按标题查找谱面：' .. (meta.title or '') .. '…')
 
     local payload = '{"action":"resolve","title":' .. jsonQuote(meta.title)
-        .. ',"artist":' .. jsonQuote(meta.artist) .. '}'
+        .. ',"artist":' .. jsonQuote(meta.artist)
+        .. ',"level":' .. jsonQuote(meta.level)
+        .. ',"keys":' .. tostring(meta.keys or 0) .. '}'
     local ok, err = pcall(function()
         Editor:DoRequest(RESOLVE_ENDPOINT, 'POST', payload)
     end)

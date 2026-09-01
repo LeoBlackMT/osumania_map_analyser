@@ -1,5 +1,5 @@
 // 日志：exe 旁 logs/ 目录，按日轮转（mma-shell-YYYYMMDD.log，保留 7），
-// 每行可读时间戳 + 级别；mma-shell.json 的 logLevel 控制（debug/info/warn/error/off）。
+// 每行可读时间戳 + 级别；mma-shell-config.json 的 logLevel 控制（debug/info/warn/error/off）。
 
 use std::fs;
 use std::io::Write;

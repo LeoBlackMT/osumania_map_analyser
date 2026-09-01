@@ -11,6 +11,7 @@
 ## 转换语义（时间轴）
 
 - **单位**：simfile-parser 的 offset 均为 measure；`1 measure = 4 beats`。
+- **BPM 段 gap 处理（2.1.1 修复）**：vendor `mergeSimilarBpmRanges` 会把 BPM 差值 <1 的相邻段合并，导致合并段只保留首段 start 与末段 end，**中间实际存在的 BPM 变化点丢失**——若直接按合并段换算，中间所有 measure 会塌缩到同一时间（Vospi 谱面 545 对象 → 12，LN 比例/星数严重错误）。转换器在 `buildBpmTable` 里把相邻分段补齐为连续区间（gap 用前一段 BPM 填充），保证时间单调。
 - **STOPS/DELAYS 烘焙**：事件先按 BPM 分段换算毫秒，再把位于该拍（含同拍）之前所有 stop 的时长累加后移（stop 时长按该拍 BPM 换算）。osu 无 stop 概念，此为 Etterna TimingData 语义的社区惯例。
 - **WARPS**：罕见，按折叠处理（忽略其时间影响，近似标注）。
 - **键数**：从 note 行宽推导（vendor 已打列宽补丁，支持 6K/7K 变宽行）；`CircleSize = 键数`。

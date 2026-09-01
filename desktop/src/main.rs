@@ -80,14 +80,14 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
             server::log::log_line(&format!(
-                "mma-shell start (crate v{}, plugin v2.1.0, ts={})",
+                "mma-shell start (crate v{}, plugin v2.1.1, ts={})",
                 env!("CARGO_PKG_VERSION"),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
                     .unwrap_or(0)
             ));
-            // 启动时生成 mma-shell.json 骨架（无 tosu 用户可发现并编辑）。
+            // 启动时生成 mma-shell-config.json 骨架（无 tosu 用户可发现并编辑）。
             config::ensure_shell_config();
 
             let shared = server::start(plugin_dir, tosu);
@@ -114,7 +114,7 @@ fn main() {
             // 全局快捷键（页面焦点/点击穿透无关）。回调只改内存+异步应用窗口 API，
             // 绝不在回调内同步调用窗口方法（自死锁见文件头注）。
             // 默认键位：Ctrl+Shift+T 置顶 / Ctrl+Shift+C 穿透 / Ctrl+Q 关闭；
-            // 可在 mma-shell.json 的 hotkeys 配置（"Ctrl+Shift+T" 等字符串）。
+            // 可在 mma-shell-config.json 的 hotkeys 配置（"Ctrl+Shift+T" 等字符串）。
             // 解析配置键位（失败回落默认）。
             let cfg = config::read_shell_config();
             let hot = |k: &str, def: &str| {

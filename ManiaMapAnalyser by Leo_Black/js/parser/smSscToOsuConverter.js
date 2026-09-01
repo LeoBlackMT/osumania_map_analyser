@@ -28,15 +28,27 @@ function normalizeDifficulty(name) {
 // ── 时间轴 ─────────────────────────────────────────────
 
 // bpms: [{startOffset(measure), endOffset(null 表示末尾), bpm}] → 分段前缀表。
+// 注意：vendor mergeSimilarBpmRanges 会把 BPM 差值 <1 的相邻段合并，导致合并段
+// 的 endOffset 是「最后一段的末尾」，中间实际存在的 BPM 变化点丢失——若直接按
+// 合并段计算，中间所有 measure 会塌缩到同一时间（Vospi 谱面 545 对象 → 12）。
+// 因此这里把相邻分段补齐成连续区间（gap 用前一段 BPM 填充），保证时间单调。
 function buildBpmTable(bpms) {
     const segs = [...bpms].sort((a, b) => a.startOffset - b.startOffset);
     const table = [];
     let acc = 0;
-    for (const seg of segs) {
-        const end = seg.endOffset == null ? Infinity : seg.endOffset;
-        table.push({ start: seg.startOffset, end, bpm: seg.bpm, baseMs: acc });
+    for (let i = 0; i < segs.length; i += 1) {
+        const seg = segs[i];
+        const next = segs[i + 1];
+        const start = seg.startOffset;
+        // 本段结尾：下一段的开始（vendor 合并后可能跳过中间 BPM 点，但
+        // 「时间连续」的正确做法是段与段之间无缝衔接——用 next.start）。
+        const end = next ? next.startOffset : Infinity;
+        if (start == null || !Number.isFinite(start)) {
+            continue;
+        }
+        table.push({ start, end, bpm: seg.bpm, baseMs: acc });
         if (Number.isFinite(end)) {
-            acc += (end - seg.startOffset) * 4 * 60000 / seg.bpm;
+            acc += (end - start) * 4 * 60000 / seg.bpm;
         }
     }
     return table;

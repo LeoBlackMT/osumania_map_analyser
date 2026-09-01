@@ -121,14 +121,20 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     let path = url.split('?').next().unwrap_or("").to_string();
 
     if method == "POST" && path == "/settings" {
+        // 在线（tosu 存活）→ 只读拒绝；离线 → 全量写 mma-settings.json。
         if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
             respond_json(&mut stream, 403, r#"{"error":"tosu online: settings are read-only"}"#);
             return;
         }
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
-            *shared.offline_settings.lock().unwrap() = value.clone();
-            config::write_shell_config(&value);
-            respond_json(&mut stream, 200, "{}");
+            if value.is_object() {
+                // 页面设置变更 → 落盘 mma-settings.json（插件设置全量；壳配置键
+                // etternaRoot 等不属于此文件——用户在 mma-shell-config.json 手改）。
+                let _ = config::write_plugin_settings(&value);
+                respond_json(&mut stream, 200, "{}");
+            } else {
+                respond_json(&mut stream, 400, r#"{"error":"settings must be an object"}"#);
+            }
         } else {
             respond_json(&mut stream, 400, r#"{"error":"invalid settings json"}"#);
         }
@@ -136,15 +142,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     }
 
     if path == "/settings" {
-        let settings = if shared.tosu.is_some() {
-            shared
-                .tosu
-                .as_ref()
-                .map(config::read_tosu_settings)
-                .unwrap_or(serde_json::Value::Null)
-        } else {
-            shared.offline_settings.lock().unwrap().clone()
-        };
+        // 优先级：tosu 在线设置文件 > tosu 设置文件（离线）> mma-settings.json >
+        // settings.json 生成默认。见 config::resolve_plugin_settings。
+        let settings = config::resolve_plugin_settings(&shared);
         let body = serde_json::to_string(&settings).unwrap_or_default();
         write_response(&mut stream, 200, "application/json", body.as_bytes());
         return;

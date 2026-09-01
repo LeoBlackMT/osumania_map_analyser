@@ -30,6 +30,8 @@ pub struct Shared {
     pub cover_whitelist: Mutex<std::collections::HashSet<String>>,
     /// 离线设置存储（在线时全部走 tosu 只读）。
     pub offline_settings: Mutex<serde_json::Value>,
+    /// 离线全量插件设置（mma-settings.json）缓存（timers 检测变化推送）。
+    pub plugin_settings: Mutex<serde_json::Value>,
     /// Malody 最近 POST 时间（60s 存活窗口）。
     pub last_malody_post: Mutex<Option<Instant>>,
     pub tosu_online: Mutex<bool>,
@@ -62,6 +64,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         pending: Mutex::new(HashMap::new()),
         cover_whitelist: Mutex::new(std::collections::HashSet::new()),
         offline_settings: Mutex::new(config::read_shell_config()),
+        plugin_settings: Mutex::new(config::read_plugin_settings()),
         last_malody_post: Mutex::new(None),
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
@@ -285,7 +288,7 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             thread::sleep(PING_INTERVAL);
             let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);
             *shared.tosu_online.lock().unwrap() = online;
-            // mma-shell.json 变化检测：用户直接编辑文件 → 重载并推送 settings 帧。
+            // 壳配置（mma-shell-config.json）变化检测：用户直接编辑文件 → 重载并推送 settings 帧。
             let file_cfg = config::read_shell_config();
             let changed = {
                 let mut mem = shared.offline_settings.lock().unwrap();
@@ -298,6 +301,12 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             };
             if changed {
                 broadcast(&shared, "settings", Some(file_cfg));
+            }
+            // mma-settings.json（全量插件设置）变化检测：用户手改 → 推送 settings 帧。
+            let plugin_cfg = config::read_plugin_settings();
+            if plugin_cfg.is_object() && plugin_cfg != *shared.plugin_settings.lock().unwrap() {
+                *shared.plugin_settings.lock().unwrap() = plugin_cfg.clone();
+                broadcast(&shared, "settings", Some(plugin_cfg));
             }
             broadcast(&shared, "state", Some(state_frame(&shared)));
             broadcast(&shared, "ping", None);
