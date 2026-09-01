@@ -95,7 +95,15 @@ function OnResponse(...)
             note('已找到谱面，分析中…（' .. #body .. ' 字节）')
             postAnalyze(PENDING.meta, body)
         else
-            note('壳未在 chart 目录找到该谱面（标题：' .. (PENDING.meta.title or '') .. '）')
+            -- 诊断：显示壳返回的原文（404 error JSON），便于定位是匹配问题
+            -- 还是通道问题；同时附上请求的 title/artist 供对拍。
+            local diag = trim(body, 300)
+            if diag == '' then
+                diag = '(空响应)'
+            end
+            note('壳未找到谱面：' .. diag .. '（请求 title=' .. (PENDING.meta.title or '')
+                .. ' artist=' .. (PENDING.meta.artist or '')
+                .. ' level=' .. (PENDING.meta.level or '') .. '）')
             PENDING.miss = true
         end
     else
@@ -118,13 +126,16 @@ function Run()
         meta.artist = Editor:ChartInfo('artist') or ''
         meta.level = Editor:ChartInfo('level') or ''
         meta.keys = tonumber(Editor:ChartInfo('key')) or 0
+        -- 尝试拿当前谱面文件路径（不同版本 key 名可能不同；拿不到就空）
+        meta.path = Editor:ChartInfo('path') or Editor:ChartInfo('file') or Editor:ChartInfo('filename') or ''
     end)
     note('正在按标题查找谱面：' .. (meta.title or '') .. '…')
 
     local payload = '{"action":"resolve","title":' .. jsonQuote(meta.title)
         .. ',"artist":' .. jsonQuote(meta.artist)
         .. ',"level":' .. jsonQuote(meta.level)
-        .. ',"keys":' .. tostring(meta.keys or 0) .. '}'
+        .. ',"keys":' .. tostring(meta.keys or 0)
+        .. ',"path":' .. jsonQuote(meta.path) .. '}'
     local ok, err = pcall(function()
         Editor:DoRequest(RESOLVE_ENDPOINT, 'POST', payload)
     end)

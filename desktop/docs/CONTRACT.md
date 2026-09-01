@@ -44,8 +44,8 @@
 - `statusHint`：**页面可发三值** `success | analysis-failed | routing-reject`；
   `payload-too-large` / `timeout` **永不进页面帧**（壳在 HTTP 层直接 504 + 常量文本）。
 - 发出点：**fetchBeatmapFile 的 finally 汇合**（非 stale 守卫；成功/失败/缓存命中/未命中四路统一；catch 路径汇入；浏览器模式无壳连接时 no-op）。
-- `errors[]`：非空 = 失败（转换/解析/分析错误并入）；失败时壳回 500，且不写 mma_state.txt。
-- 写门：`{malodyRoot}/skin/` 状态文件**仅当帧内 `activeSource === "malody"` 且 errors 为空**时写入（与 requestId 无关）。
+- `errors[]`：非空 = 失败（转换/解析/分析错误并入）；失败时壳回 500。
+- 写门：无（皮肤状态文件已废弃；result 帧只用于 24060 POST 应答）。
 
 ## 3. HTTP 应答两种来源（24060 POST）
 
@@ -97,11 +97,9 @@
 - `errors[]`：壳侧推送错误面（如 payload 超限被丢弃提示），页面 status 行展示。
 - tosu 探测：`GET {ip}:{port}/` 健康探测，30s 周期重探测并推 state。
 
-## 9. 皮肤状态文件（mma_state）与哨兵
+## 9. 皮肤状态文件（已废弃）
 
-- 哨兵：皮肤目录内存在 `mma.txt`（用户按安装文档在 skin_script.lua 旁创建）；壳扫描 `{malodyRoot}/skin/` 下含哨兵的目录，命中多个全部写入（幂等）。
-- 写入：壳收到 result 帧（activeSource=malody 且 errors 空）后原子写（tmp+rename）到 `{malodyRoot}/skin/{皮肤名}/mma_state.txt`。
-- schema：KV 文本——`star` / `pattern` / `msd` / `graph` / `client` / `updatedAt`。
+皮肤内显示方案（skin_script.lua + mma_state.txt 写入）已按用户拍板**移除**（2026-09 验收轮）：壳不再扫描 `{malodyRoot}/skin/`、不再写任何状态文件。Malody 结果只经编辑器插件（AddText）与页面卡片展示。
 
 ## 10. 变更流程
 

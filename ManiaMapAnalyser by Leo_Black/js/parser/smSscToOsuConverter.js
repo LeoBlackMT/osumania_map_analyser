@@ -117,16 +117,22 @@ function extractNotes(chart) {
     const holds = [];
     let keys = 0;
     for (const arrow of chart.arrows || []) {
-        const row = arrow.direction;
-        keys = Math.max(keys, row.length);
-        for (let col = 0; col < row.length; col += 1) {
-            if (row[col] === "1") {
+        const row = String(arrow.direction || "");
+        // vendor 会把注释行（"// measure 1"）也放进 arrows——跳过，避免
+        // 把注释长度当列数（Tori 等 4K 谱 keys 被撑到 12 的根因）。
+        if (row.startsWith("//") || !/^[0123MKL]+$/.test(row.trim())) {
+            continue;
+        }
+        const cols = row.trim();
+        keys = Math.max(keys, cols.length);
+        for (let col = 0; col < cols.length; col += 1) {
+            if (cols[col] === "1") {
                 taps.push({ col, measure: arrow.offset });
             }
         }
     }
     for (const freeze of chart.freezes || []) {
-        keys = Math.max(keys, freeze.direction + 1);
+        keys = Math.max(keys, Number(freeze.direction) + 1);
         holds.push({
             col: freeze.direction,
             startMeasure: freeze.startOffset,

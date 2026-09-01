@@ -80,7 +80,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
             server::log::log_line(&format!(
-                "mma-shell start (crate v{}, plugin v2.1.1, ts={})",
+                "mma-shell start (crate v{}, plugin v2.1.0, ts={})",
                 env!("CARGO_PKG_VERSION"),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -89,6 +89,8 @@ fn main() {
             ));
             // 启动时生成 mma-shell-config.json 骨架（无 tosu 用户可发现并编辑）。
             config::ensure_shell_config();
+            // 无 tosu 设置文件时生成 mma-settings.json 骨架（全量插件设置）。
+            config::ensure_plugin_settings(&tosu);
 
             let shared = server::start(plugin_dir, tosu);
             if let Some(window) = app.get_webview_window("main") {

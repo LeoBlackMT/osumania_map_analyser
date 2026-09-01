@@ -172,6 +172,11 @@ export function applySignalState(data) {
 
 /** 状态段：谱面身份 / mod 应用与换图触发（败方门控挂起的部分）。 */
 export function applyBeatmapState(data) {
+        // ⚠️ 必须在此重取 modData：拆分 setupSocketListener 时该 const 留在
+        // applySignalState 段，函数作用域隔离——此处直接引用会抛
+        // ReferenceError: modData is not defined，换图/换 mod 的 recompute
+        // 永远执行不到（socket.js try/catch 吞掉，仅控制台 MESSAGE_ERROR）。
+        const modData = getModData(data);
         const beatmap = data?.beatmap;
         if (!beatmap) return;
 

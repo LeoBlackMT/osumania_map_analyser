@@ -141,9 +141,13 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
             ) {
                 let sig = (mt, text.clone());
                 let changed = bridge_sig.as_ref() != Some(&sig);
+                let first_seen = bridge_sig.is_none();
                 bridge_sig = Some(sig);
                 bridge_seen = true;
-                if changed {
+                // 首次读到桥文件只建基线（不推送）——否则壳一启动就把 Etterna
+                // 上次选的谱面推给页面（用户：打开壳直接展示 Vospi，什么都没做）。
+                // 只有后续变化（换歌/改 rate）才广播 song 帧。
+                if changed && !first_seen {
                     crate::server::log::log_at("debug", &format!(
                         "etterna bridge changed (root={}, {} bytes)",
                         root.display(),

@@ -11,14 +11,14 @@
 ```
 Etterna（主题 Lua 桥写 Save/MmaBridge.txt + MmaGameplay.txt）
   → 壳（desktop，2Hz 轮询 → song 帧）
-Malody（编辑器插件 POST 24060 → song 帧；皮肤目录 mma_state.txt 由壳写入）
+Malody（编辑器插件 POST 24060 → song 帧；皮肤目录显示方案已废弃移除）
   → 壳 WS/HTTP → 页面 sources/（bridgeClient → externalSource → state 注入）
   → fetchBeatmapFile（外部文本绕过 tosu 抓取）→ 既有管线
-  → result 帧（finally 汇合，四路）→ 壳应答 POST / 写 skin 状态
+  → result 帧（finally 汇合，四路）→ 壳应答 POST
 ```
 
 - 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版在线（tosu 存活）双活数据面。
-- 契约：`desktop/docs/CONTRACT.md`（版本 2，九领域：帧七型/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/mma_state/state 周期/contract 终态）。
+- 契约：`desktop/docs/CONTRACT.md`（版本 2，九领域：帧七型/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/state 周期/contract 终态；皮肤状态文件章节已标注废弃）。
 
 ## 转换器
 
@@ -45,7 +45,7 @@ Malody（编辑器插件 POST 24060 → song 帧；皮肤目录 mma_state.txt �
 
 | 能力 | Etterna | Malody |
 |---|---|---|
-| 谱面跟随 | 精确（选歌桥 key 门控写一次） | 编辑器场景精确（web post）；游玩场景=皮肤仅显示壳最近写入的结果（无上行情报） |
+| 谱面跟随 | 精确（选歌桥 key 门控写一次） | 编辑器场景精确（web post，resolve 按标题/路径） |
 | rate | speedRate=rate.toFixed(5) 入签名（同图不同 rate 缓存独立） | 无 rate 概念按 1.0 |
 | mod | 无（桥不提供） | 无（PlayMeta 字段未证实；真机验证项） |
 | 原生 MSD | 桥 msd×8（meta.devMsd8，**仅开发对照**，页面显示为 MinaCalc 自算） | 无 |
@@ -59,7 +59,7 @@ analyze 事件新增 `client` 字段（osu/etterna/malody）；后端 daily_agg 
 
 - 离线模式页面侧设置拉取与持久化（壳 `/settings` 双向已实现，页面接线待办）；
 - 外部源封面（壳 cover 帧已下发 URL，页面 coverTheme 消费待办）；
-- 真机验证项：Etterna 主题桥写文件与消息在真实游戏运行；Malody DoRequest 签名/URL 限制、ReadFileSelect、PlayMeta 字段、皮肤目录可写性；
+- 真机验证项：Etterna 主题桥写文件与消息在真实游戏运行；Malody DoRequest 签名/URL 限制、PlayMeta 字段（皮肤显示方案已废弃，不再涉及皮肤目录）；
 - 浏览器端到端（壳+页面）验证需 tosu/MalodyV 运行环境。
 
 # Multi-source: Etterna / Malody
@@ -73,5 +73,5 @@ Adds Etterna and Malody V as live data sources beside osu!mania/tosu, with autom
 - osu gate: beatmap-state handler suspended while another source routes (signals exempt, buffered replay on return).
 - Bridge contract: `desktop/docs/CONTRACT.md` (v2).
 - Telemetry: analyze `client` field, dashboard Client pie with Version on its own row.
-- Boundaries documented: Malody play-time skin shows last written result only; rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu.
-- Known gaps: offline page settings wiring, external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta/skin writability), browser end-to-end pending environment.
+- Boundaries documented: Malody results only via editor POST (resolve by title/path); rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu. Skin display removed (2026-09).
+- Known gaps: offline page settings wiring, external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta), browser end-to-end pending environment.

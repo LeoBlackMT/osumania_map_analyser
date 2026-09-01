@@ -1,13 +1,15 @@
 // 24060 POST：Malody 编辑器分析入口 + resolve 通道（按 title/artist 扫 chart）。
 // 逻辑从原 server.rs 拆分。
 
+use crate::config;
 use crate::frames::{MalodyPost, MAX_PAYLOAD_BYTES};
 use crate::server::{
-    broadcast, json_error, log::log_at, md5_hex, malody_root, next_seq, percent_decode, write_mma_state, Shared,
+    broadcast, json_error, log::log_at, md5_hex, malody_root, next_seq, percent_decode, Shared,
     http,
 };
 use std::fs;
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Instant;
@@ -136,22 +138,36 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
             let artist = value.get("artist").and_then(|v| v.as_str()).unwrap_or("");
             let level = value.get("level").and_then(|v| v.as_str()).unwrap_or("");
             let keys = value.get("keys").and_then(|v| v.as_u64()).unwrap_or(0);
+            let chart_path = value.get("path").and_then(|v| v.as_str()).unwrap_or("");
             let root = malody_root(&shared);
-            log_at("debug", &format!(
-                "resolve title={} artist={} level={} keys={} malodyRoot={:?}",
+            // resolve 请求提到 info：用户排障 Malody 编辑器失败时无需开 debug 就能看到。
+            crate::server::log::log_line(&format!(
+                "resolve title={} artist={} level={} keys={} path={} malodyRoot={:?}",
                 title,
                 artist,
                 level,
                 keys,
+                chart_path,
                 root
             ));
+            // 编辑器给了绝对路径：直接读文件（绕开标题扫描，最可靠）。
+            if !chart_path.is_empty() {
+                let p = PathBuf::from(config::normalize_path(chart_path));
+                if p.is_file() {
+                    if let Ok(text) = fs::read_to_string(&p) {
+                        log_at("debug", "resolve by path HIT");
+                        http::write_response(&mut stream, 200, "application/json", text.as_bytes());
+                        return;
+                    }
+                }
+            }
             match resolve_malody_chart(&shared, title, artist, level, keys) {
                 Some(text) => {
                     log_at("debug", "resolve HIT (chart text returned)");
                     http::write_response(&mut stream, 200, "application/json", text.as_bytes());
                 }
                 None => {
-                    log_at("debug", "resolve MISS");
+                    crate::server::log::log_line("resolve MISS (chart not found)");
                     http::respond_json(&mut stream, 404, r#"{"error":"chart not found in malody chart dir"}"#);
                 }
             }
@@ -215,7 +231,6 @@ fn handle_post(shared: Arc<Shared>, mut stream: TcpStream) {
     match rx.recv_timeout(POST_TIMEOUT) {
         Ok(result_text) => {
             if let Some(inbound) = crate::server::ws::parse_result_payload(&result_text) {
-                write_mma_state(&shared, &result_text);
                 let hint = inbound.status_hint.unwrap_or_default();
                 let errors = inbound.errors.unwrap_or_default();
                 match hint.as_str() {

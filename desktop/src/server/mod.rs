@@ -10,7 +10,6 @@ pub mod ws;
 use crate::config::{self, TosuInfo};
 use crate::frames::*;
 use std::collections::HashMap;
-use std::fs;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -223,60 +222,6 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
         }
     }
     config::detect_malody_root()
-}
-
-/// 扫描 {malodyRoot}/skin/ 下含哨兵 mma.txt 的皮肤目录（命中多个全部写入，幂等）。
-fn skin_targets(shared: &Shared) -> Vec<PathBuf> {
-    let Some(root) = malody_root(shared) else { return Vec::new() };
-    let Ok(entries) = fs::read_dir(root.join("skin")) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if dir.is_dir() && dir.join("mma.txt").exists() {
-            out.push(dir.join("mma_state.txt"));
-        }
-    }
-    out
-}
-
-/// result 帧 → mma_state.txt（KV 文本；tmp+rename 原子写）。
-pub fn write_mma_state(shared: &Shared, result_text: &str) {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(result_text) else {
-        return;
-    };
-    let payload = value.get("payload").cloned().unwrap_or(value);
-    if payload.get("activeSource").and_then(|v| v.as_str()) != Some("malody") {
-        return;
-    }
-    let errors = payload.get("errors").and_then(|v| v.as_array());
-    if errors.map(|arr| !arr.is_empty()).unwrap_or(true) {
-        return;
-    }
-    let kv = |key: &str| -> String {
-        payload
-            .get(key)
-            .map(|v| match v.as_str() {
-                Some(s) => s.to_string(),
-                None => v.to_string(),
-            })
-            .unwrap_or_default()
-    };
-    let content = format!(
-        "star={}\npattern={}\nmsd={}\ngraph={}\nclient=malody\nupdatedAt={}\n",
-        kv("star"),
-        kv("pattern"),
-        kv("msd"),
-        kv("graph"),
-        kv("updatedAt"),
-    );
-    for target in skin_targets(shared) {
-        let tmp = target.with_extension("state.tmp");
-        if fs::write(&tmp, &content).is_ok() {
-            let _ = fs::rename(&tmp, &target);
-        }
-    }
 }
 
 const PING_INTERVAL: Duration = Duration::from_secs(15);

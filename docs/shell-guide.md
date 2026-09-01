@@ -43,11 +43,12 @@
 3. **主题更新后必须重装这两个文件**（主题包覆盖会删掉它们）。
 4. 设置里填 `Etterna Folder`（壳找不对时才需要；通常是 `D:\Games\Etterna`）。
 
-### Malody V（编辑器内分析一次触发；游玩皮肤显示最近结果）
+### Malody V（编辑器内分析一次触发）
 
 1. 编辑场景：把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/Editor/`（目录不存在就新建）。打开谱面编辑器 → 「更多」菜单 → **MMA Analyze** → 卡片显示本谱分析。
-2. 游玩场景（独立皮肤，推荐）：在 `skin/` 下新建**独立皮肤目录**（如 `skin/MMA-Result/`），把 `bridges/malody/z_mma_skin.lua` 复制进去（文件名可任意）；在皮肤 Composer 里添加一个 **Text 模块，命名 `mma_result`**；在该皮肤目录里新建空文件 `mma.txt`（壳靠它找到写入目标）。游玩时选择 **MMA-Result** 作为皮肤（Base 皮肤不变）。**不要放进已有皮肤目录**（`UpdateSharedData` 等全局钩子会互相覆盖）。
-3. 设置里填 `Malody V Folder`（通常是 `D:\Steam\steamapps\common\MalodyV`）。
+2. 设置里填 `Malody V Folder`（通常是 `D:\Steam\steamapps\common\MalodyV`）。
+
+> 皮肤内显示方案（skin_script + mma_state.txt）已废弃移除（2026-09）；Malody 结果只在编辑器插件（AddText）与桌面卡片展示。
 
 ## 五、配置（exe 旁：mma-shell-config.json + mma-settings.json）
 
@@ -116,7 +117,7 @@ Window position/size/topmost/click-through are remembered across launches. Globa
 ## Bridges
 
 - **Etterna**: copy `bridges/etterna/mma_bridge.lua` into `Themes/<theme>/BGAnimations/ScreenSelectMusic decorations/` and add `t[#t + 1] = LoadActor("mma_bridge.lua")` before `return t` in its `default.lua`; do the same with `mma_gameplay.lua` in the `ScreenGameplay overlay/` folder. Re-install after every theme update.
-- **Malody**: editor — put `bridges/malody/mma_editor.lua` into `MalodyV/Editor/` (create it), then trigger via the More menu in the editor (auto-reads the chart via the shell's resolve scan). Optional in-game display — create a **standalone skin dir** (e.g. `skin/MMA-Result/`), copy `bridges/malody/z_mma_skin.lua` there, add a Text module named `mma_result` in the skin Composer, create an empty `mma.txt` sentinel, and select that skin when playing (do not drop it into an existing skin — global hooks like `UpdateSharedData` would conflict).
+- **Malody**: editor — put `bridges/malody/mma_editor.lua` into `MalodyV/Editor/` (create it), then trigger via the More menu in the editor (auto-reads the chart via the shell's resolve scan). The in-game skin display was removed (2026-09); results show in the editor AddText card and the desktop card.
 
 ## Settings
 

@@ -1,7 +1,7 @@
 import { initialize } from "./js/app/main.js";
 import { sendControl } from "./js/app/sources/bridgeClient.js";
 
-const _VERSION = "2.1.1";
+const _VERSION = "2.1.0";
 
 const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top";
 

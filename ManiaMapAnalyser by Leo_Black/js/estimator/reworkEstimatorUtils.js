@@ -97,9 +97,7 @@ function intervalLookup(sr, table, fallbackLabel) {
 // Callers (analysis.js etc.) pass the resolved state value explicitly.
 export function estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false) {
     const keys = DAN_INDEX[columnCount];
-    // 无段位表的键数（如 Etterna 12K / 10K 非 RC）：返回通用 star 标签，
-    // 而不是 "Unknown difficulty"（对 Etterna 源大量 12K 谱面不友好）。
-    if (!keys) return formatStarFallback(sr);
+    if (!keys) return "Unknown difficulty";
 
     const rcTable = keys.RC[useExtended ? "extended" : "default"] ?? keys.RC.default;
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
@@ -114,7 +112,7 @@ export function estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlw
 
 export function estDiff2(sr, srLN, columnCount, useExtended = false) {
     const keys = DAN_INDEX[columnCount];
-    if (!keys) return formatStarFallback(sr);
+    if (!keys) return "Unknown difficulty";
 
     const rcTable = keys.RC[useExtended ? "extended" : "default"] ?? keys.RC.default;
     const rcDiff = intervalLookup(sr, rcTable, "Unknown RC difficulty");
@@ -125,13 +123,6 @@ export function estDiff2(sr, srLN, columnCount, useExtended = false) {
     if (!lnTable) return rcDiff;
     const lnDiff = intervalLookup(srLN, lnTable, "Unknown LN difficulty");
     return `${rcDiff} || ${lnDiff}`;
-}
-
-/** 无段位表键数的通用难度标签：`★ 3.22` 形式（star 数值两位小数）。 */
-function formatStarFallback(sr) {
-    const num = Number(sr);
-    if (!Number.isFinite(num)) return "Unknown difficulty";
-    return `★ ${num.toFixed(2)}`;
 }
 
 export function normalizeReworkResult(result) {

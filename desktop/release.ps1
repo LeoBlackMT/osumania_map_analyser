@@ -8,7 +8,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
 $outDir = Join-Path $root "release"
-$version = "2.1.1"
+$version = "2.1.0"
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"

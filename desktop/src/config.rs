@@ -247,8 +247,31 @@ pub fn resolve_plugin_settings(shared: &crate::server::Shared) -> serde_json::Va
     if local.is_object() {
         return local;
     }
-    // 4. 生成默认（从插件 settings.json 的 value 字段）。
-    generate_default_plugin_settings()
+    // 4. 生成默认（从插件 settings.json 的 value 字段）并落盘 mma-settings.json
+    //    （用户手动编辑后重启生效；壳只在「无 tosu 设置文件」时才生成）。
+    let defaults = generate_default_plugin_settings();
+    if defaults.is_object() {
+        let _ = write_plugin_settings(&defaults);
+    }
+    defaults
+}
+
+/// 启动时确保 mma-settings.json 存在：无 tosu 设置文件时生成默认骨架
+/// （用户手动编辑后重启生效；与 resolve_plugin_settings 第 4 级同源）。
+pub fn ensure_plugin_settings(tosu: &Option<TosuInfo>) {
+    // tosu 设置文件存在（在线或离线）→ 不生成（tosu 权威）。
+    if let Some(info) = tosu {
+        if tosu_settings_path(info).exists() {
+            return;
+        }
+    }
+    if read_plugin_settings().is_object() {
+        return; // 已有本地设置
+    }
+    let defaults = generate_default_plugin_settings();
+    if defaults.is_object() {
+        let _ = write_plugin_settings(&defaults);
+    }
 }
 
 /// 从插件 settings.json 生成默认设置骨架（所有条目 value 字段 → 顶层键）。
