@@ -121,12 +121,7 @@
         - 该设定将仅影响Companella算法的计算结果，其他功能仍然使用Global Etterna Version设定的版本。
         - 默认值为0.74.0。推荐将该设定保持在0.74.0，因为Companella是基于Etterna 0.74.0的MinaCalc进行开发和调校的。
         - 你可以切换其他版本来观察不同版本的Etterna在Companella算法下的表现，但请注意可能会出现不准确的情况。
-    - **Game Client**: 选择分析卡跟随的游戏客户端。
-        - Auto（默认）: 自动选择「当前有信号」的客户端——游玩态 > 60 秒内的活动（换谱/换 mod/改速率/桥写入）> 固定优先级 osu! > Etterna > Malody > 全离线（圆点灰空心）。
-        - Osu! / Etterna / Malody: 强制锁定该客户端。
-        - 需要桌面壳（desktop shell）才能使用 Etterna/Malody 数据源；浏览器模式下请保持 Auto（等价 osu! 单源）。
-    - **Etterna Folder**: Etterna 安装目录路径（壳自动探测失败时才需手动填写）。
-    - **Malody V Folder**: Malody V 安装目录路径（同上）。
+    - **来源配置（Game Client / Etterna Folder / Malody V Folder）已移至桌面壳**：tosu 侧只服务 osu! 来源；多来源跟随与游戏路径配置见 [shell-guide.md](shell-guide.md) 的「配置（mma-shell.json）」。
     - **源圆点（Source Dot）**：卡片右上状态行显示一个小圆点：实心色=当前数据源（osu! 蓝 / Etterna 绿 / Malody 橙），灰色空心=当前无任何数据源；悬停可见数据源与跟随状态说明。
 - **网络配置**:
     - **WebSocket Endpoint**: 配置WebSocket服务器的地址和端口。
@@ -270,12 +265,7 @@
         - This setting only affects the Companella algorithm's calculations; other features will continue to use the version set in Global Etterna Version.
         - The default value is 0.74.0. It is recommended to keep this setting at 0.74.0, as Companella was developed and calibrated based on Etterna 0.74.0's MinaCalc.
         - You can switch to other versions to observe their performance with the Companella algorithm, but please be aware that results may be inaccurate.
-    - **Game Client**: Select the game client the card follows.
-        - Auto (default): picks the live client — play state > activity within 60s (song/mod/rate change, bridge writes) > fixed priority osu! > Etterna > Malody > none (hollow grey dot).
-        - Osu! / Etterna / Malody: lock to that client.
-        - Etterna/Malody require the desktop shell; in browser mode keep Auto (equivalent to osu! single source).
-    - **Etterna Folder**: Path to the Etterna installation folder (only when the shell cannot detect it automatically).
-    - **Malody V Folder**: Path to the Malody V installation folder (same as above).
+    - **Source config (Game Client / Etterna Folder / Malody V Folder) moved to the desktop shell**: the tosu side only serves the osu! source; multi-source follow and game paths live in `mma-shell.json` (see [shell-guide.md](shell-guide.md)).
     - **Source Dot**: small dot at the end of the status row — solid color = current data source (osu! blue / Etterna green / Malody orange), hollow grey = no source; tooltip shows source and follow state.
 - **Network Configuration**:
     - **WebSocket Endpoint**: Configure the address and port of the WebSocket server.
