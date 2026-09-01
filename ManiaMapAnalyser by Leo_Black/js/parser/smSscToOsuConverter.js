@@ -307,6 +307,16 @@ export function convertSmSscToOsuText({ text, format, difficulty = null } = {}) 
 }
 
 function renderOsu(title, artist, version, keys, bpmTable, stopTable, objects, offsetMs = 0) {
+    // 负时间保护：OFFSET 平移后最早对象可能为负（Sunny 等估算器对负时间
+    // 崩溃 → star NaN → 卡片 No data/Etterna Analyze Failed）。整体再平移
+    // 使最早对象落在 0，时间间隔不变（星数不受影响）。
+    let minMs = Infinity;
+    for (const obj of objects) {
+        const start = Math.round(obj.startMs) + offsetMs;
+        if (start < minMs) minMs = start;
+    }
+    const extraShift = Number.isFinite(minMs) && minMs < 0 ? -minMs : 0;
+
     const lines = [];
     lines.push("osu file format v14", "");
     lines.push("[General]", "AudioFilename: audio.mp3", "AudioLeadIn: 0", "PreviewTime: -1",
@@ -329,18 +339,18 @@ function renderOsu(title, artist, version, keys, bpmTable, stopTable, objects, o
     for (const seg of bpmTable) {
         if (Number.isFinite(seg.start)) {
             const beatLength = 60000 / seg.bpm;
-            lines.push(`${Math.round(bakeToMs(seg.start, bpmTable, stopTable)) + offsetMs},${beatLength.toFixed(2)},4,1,0,0,1,0`);
+            lines.push(`${Math.round(bakeToMs(seg.start, bpmTable, stopTable)) + offsetMs + extraShift},${beatLength.toFixed(2)},4,1,0,0,1,0`);
         }
     }
     lines.push("");
     lines.push("[HitObjects]");
     for (const obj of objects) {
         const x = columnToX(obj.col, keys);
-        const start = Math.round(obj.startMs) + offsetMs;
+        const start = Math.round(obj.startMs) + offsetMs + extraShift;
         if (obj.endMs == null) {
             lines.push(`${x},192,${start},1,0,0:0:0:0:`);
         } else {
-            const end = Math.max(Math.round(obj.endMs) + offsetMs, start + 1);
+            const end = Math.max(Math.round(obj.endMs) + offsetMs + extraShift, start + 1);
             lines.push(`${x},192,${start},128,0,${end}:0:0:0:0:`);
         }
     }

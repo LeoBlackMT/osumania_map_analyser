@@ -51,16 +51,18 @@ local function looksLikeChart(text)
     return text and text ~= '' and text:find('"song"', 1, true) ~= nil
 end
 
--- 四种候选签名（XLua 绑定 + 冒号 self 的排列组合）。
--- 返回 (ok, err)——ok=false 表示 pcall 抛错（签名立即失败）。
+-- 候选签名。用户实测三轮错误证明「第二个参数被当 url」：
+--   (url,'POST',body) → invalid url: POST
+--   (url, body)      → invalid url: {payload}
+-- 即签名 = (method, url, body)——method 在前。放第一位，其余作兜底。
 local function tryDoRequest(tryIdx, url, payload)
     local ok, err = pcall(function()
         if tryIdx == 1 then
-            Editor:DoRequest(url, payload)             -- (url, body)
+            Editor:DoRequest('POST', url, payload)      -- (method, url, body) ★ 实测吻合
         elseif tryIdx == 2 then
-            Editor:DoRequest(url, 'POST', payload)      -- (url, method, body)
+            Editor:DoRequest(url, payload)             -- (url, body)
         elseif tryIdx == 3 then
-            Editor:DoRequest('POST', url, payload)      -- (method, url, body)
+            Editor:DoRequest(url, 'POST', payload)      -- (url, method, body)
         elseif tryIdx == 4 then
             Editor:DoRequest({ url = url, method = 'POST', body = payload })  -- 表参数
         end

@@ -10,7 +10,7 @@ use std::time::Duration;
 pub const PLUGIN_FOLDER: &str = "ManiaMapAnalyser by Leo_Black";
 
 /// 插件目录解析：MMA_PLUGIN_DIR 覆盖 → exe 所在目录（exe 直接放插件目录内，
-/// 如用户自定义目录名 "ManiaMapAnalyser-PR1"）→ 按 PLUGIN_FOLDER 向上探测。
+/// 如用户自定义目录名 "ManiaMapAnalyser-PR"）→ 按 PLUGIN_FOLDER 向上探测。
 pub fn plugin_dir() -> PathBuf {
     if let Ok(over) = env::var("MMA_PLUGIN_DIR") {
         if !over.is_empty() {

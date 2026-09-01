@@ -24,14 +24,17 @@ function sniffSmFormat(text) {
 /**
  * Etterna 谱面可能是 .sm/.ssc 容器内嵌 osu 文本（[HitObjects] 直通）。
  * 统一入口：osu 直通，否则按格式转换。
+ * @param {string} rawText 源谱面原文
+ * @param {string|null} difficulty 桥上报的难度名（同图多难度时选对应块）
  */
-function convertEtternaText(rawText) {
+function convertEtternaText(rawText, difficulty = null) {
     if (looksLikeOsu(rawText)) {
         return rawText;
     }
     return convertSmSscToOsuText({
         text: rawText,
         format: sniffSmFormat(rawText),
+        difficulty: difficulty || null,
     }).osuText;
 }
 
@@ -65,11 +68,12 @@ export function handleSongFrame(payload) {
         return;
     }
 
-    // 转换接线（主线程；osu 直通）
+    // 转换接线（主线程；osu 直通）。同图多难度：用桥上报的 difficulty 选对应块。
     let osuText = payload.rawText;
     try {
         if (source === "etterna") {
-            osuText = convertEtternaText(osuText);
+            const diff = payload.meta && payload.meta.difficulty ? String(payload.meta.difficulty) : null;
+            osuText = convertEtternaText(osuText, diff);
         } else if (source === "malody") {
             osuText = looksLikeOsu(osuText) ? osuText : convertMcToOsuText(osuText).osuText;
         } else {

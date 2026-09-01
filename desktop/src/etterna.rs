@@ -268,6 +268,7 @@ fn build_song_frame(
             "title": kv.get("title").cloned().unwrap_or_default(),
             "artist": kv.get("artist").cloned().unwrap_or_default(),
             "version": format!("{} {}", difficulty, meter),
+            "difficulty": difficulty,
             "keys": 0,
             "devMsd8": dev_msd8,
         },
