@@ -9,16 +9,22 @@ use std::time::Duration;
 
 pub const PLUGIN_FOLDER: &str = "ManiaMapAnalyser by Leo_Black";
 
-/// 插件目录解析：MMA_PLUGIN_DIR 覆盖 → exe 相对路径探测。
+/// 插件目录解析：MMA_PLUGIN_DIR 覆盖 → exe 所在目录（exe 直接放插件目录内，
+/// 如用户自定义目录名 "ManiaMapAnalyser-PR1"）→ 按 PLUGIN_FOLDER 向上探测。
 pub fn plugin_dir() -> PathBuf {
     if let Ok(over) = env::var("MMA_PLUGIN_DIR") {
         if !over.is_empty() {
             return PathBuf::from(over);
         }
     }
-    // 生产：exe 与插件目录同层；开发：target/debug 上两级。
     if let Ok(exe) = env::current_exe() {
         let exe_dir = exe.parent().unwrap_or(Path::new("."));
+        // 1. exe 所在目录本身就是插件目录（index.html 在旁）：用户把壳 exe
+        //    直接放进（可能自定义名字的）插件目录时，服务该目录而非硬编码名。
+        if exe_dir.join("index.html").exists() {
+            return exe_dir.to_path_buf();
+        }
+        // 2. 兼容：exe 与插件目录同层（"ManiaMapAnalyser by Leo_Black" 默认名）。
         for up in 0..=3 {
             let mut dir = exe_dir.to_path_buf();
             for _ in 0..up {
@@ -28,10 +34,6 @@ pub fn plugin_dir() -> PathBuf {
             if candidate.join("index.html").exists() {
                 return candidate;
             }
-        }
-        let direct = exe_dir.join(PLUGIN_FOLDER);
-        if direct.join("index.html").exists() {
-            return direct;
         }
     }
     PathBuf::from(PLUGIN_FOLDER)
@@ -118,11 +120,17 @@ pub fn tosu_online(info: &TosuInfo) -> bool {
     }
 }
 
-/// tosu 设置文件（只读）：{tosuRoot}/settings/{插件目录名}.json
+/// tosu 设置文件（只读）：{tosuRoot}/settings/{插件目录名}.values.json
+/// （tosu 的设置文件名 = 插件目录名 + ".values.json"；目录名取实际解析出的
+/// plugin_dir 的目录名——用户可能用自定义目录名如 "ManiaMapAnalyser-PR1"）。
 pub fn tosu_settings_path(info: &TosuInfo) -> PathBuf {
+    let folder = plugin_dir()
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| PLUGIN_FOLDER.to_string());
     info.root
         .join("settings")
-        .join(format!("{}.json", PLUGIN_FOLDER))
+        .join(format!("{}.values.json", folder))
 }
 
 pub fn read_tosu_settings(info: &TosuInfo) -> serde_json::Value {

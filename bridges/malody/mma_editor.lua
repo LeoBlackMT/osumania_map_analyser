@@ -62,7 +62,9 @@ local function postAnalyze(meta, chartText)
         .. '},"chartText":' .. jsonQuote(chartText) .. '}'
     PENDING.mode = 'analyze'
     local okA, errA = pcall(function()
-        Editor:DoRequest(ENDPOINT, 'POST', payload)
+        -- 签名实测为 DoRequest(method, url, body)：参数顺序是 method 在前
+        -- （错误 "invalid url: POST" 即旧写法 (url,'POST',body) 把 'POST' 当 url）。
+        Editor:DoRequest('POST', ENDPOINT, payload)
     end)
     if not okA then
         note('分析请求失败：' .. tostring(errA) .. '（请确认壳 mma-shell 已运行）')
@@ -101,6 +103,14 @@ function OnResponse(...)
             if diag == '' then
                 diag = '(空响应)'
             end
+            -- invalid url 说明 DoRequest 签名不匹配（客户端版本差异）：
+            -- 明确提示，避免误以为壳的问题。
+            if string.find(diag, 'invalid url', 1, true) then
+                note('DoRequest 签名不兼容（invalid url）。请确认 MalodyV ≥6.6.43，'
+                    .. '并把 mma_editor.lua 更新到最新版。')
+                PENDING.miss = true
+                return
+            end
             note('壳未找到谱面：' .. diag .. '（请求 title=' .. (PENDING.meta.title or '')
                 .. ' artist=' .. (PENDING.meta.artist or '')
                 .. ' level=' .. (PENDING.meta.level or '') .. '）')
@@ -137,7 +147,7 @@ function Run()
         .. ',"keys":' .. tostring(meta.keys or 0)
         .. ',"path":' .. jsonQuote(meta.path) .. '}'
     local ok, err = pcall(function()
-        Editor:DoRequest(RESOLVE_ENDPOINT, 'POST', payload)
+        Editor:DoRequest('POST', RESOLVE_ENDPOINT, payload)
     end)
     if not ok then
         note('DoRequest 调用失败：' .. tostring(err) .. '（请确认壳已运行、MalodyV 6.6.43+）')

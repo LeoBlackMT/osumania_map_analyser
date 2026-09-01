@@ -34,7 +34,12 @@ fn startup_url(tosu: &Option<config::TosuInfo>) -> String {
     if !config::tosu_online(info) {
         return "http://127.0.0.1:24061/".to_string();
     }
-    let encoded = config::PLUGIN_FOLDER.replace(' ', "%20");
+    // 用实际插件目录名（用户可能自定义如 "ManiaMapAnalyser-PR1"）。
+    let folder = config::plugin_dir()
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| config::PLUGIN_FOLDER.to_string());
+    let encoded = folder.replace(' ', "%20");
     format!("{}/{}/", info.base_url(), encoded)
 }
 
