@@ -79,7 +79,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
-            server::log_line(&format!(
+            server::log::log_line(&format!(
                 "mma-shell start (crate v{}, plugin v2.1.0, ts={})",
                 env!("CARGO_PKG_VERSION"),
                 std::time::SystemTime::now()
@@ -182,8 +182,8 @@ fn main() {
                         }
                     },
                 ) {
-                    Ok(_) => server::log_line(&format!("shortcut registered: topmost={}", h_top)),
-                    Err(e) => server::log_line(&format!("shortcut FAILED topmost={}: {}", h_top, e)),
+                    Ok(_) => server::log::log_line(&format!("shortcut registered: topmost={}", h_top)),
+                    Err(e) => server::log::log_line(&format!("shortcut FAILED topmost={}: {}", h_top, e)),
                 }
             }
             if let Some(sc) = parse_hot(&h_click) {
@@ -196,8 +196,8 @@ fn main() {
                         }
                     },
                 ) {
-                    Ok(_) => server::log_line(&format!("shortcut registered: clickThrough={}", h_click)),
-                    Err(e) => server::log_line(&format!("shortcut FAILED clickThrough={}: {}", h_click, e)),
+                    Ok(_) => server::log::log_line(&format!("shortcut registered: clickThrough={}", h_click)),
+                    Err(e) => server::log::log_line(&format!("shortcut FAILED clickThrough={}: {}", h_click, e)),
                 }
             }
             if let Some(sc) = parse_hot(&h_close) {
@@ -215,8 +215,8 @@ fn main() {
                         }
                     },
                 ) {
-                    Ok(_) => server::log_line(&format!("shortcut registered: close={}", h_close)),
-                    Err(e) => server::log_line(&format!("shortcut FAILED close={}: {}", h_close, e)),
+                    Ok(_) => server::log::log_line(&format!("shortcut registered: close={}", h_close)),
+                    Err(e) => server::log::log_line(&format!("shortcut FAILED close={}: {}", h_close, e)),
                 }
             }
             // 窗口状态兜底：主线程每 5s 查询一次位置/尺寸并写盘（部分透明窗口
@@ -245,7 +245,7 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, event| {
             // 事件回调在主线程：只更新内存缓存（数字），不调用任何窗口 API。
             match event {
                 tauri::WindowEvent::Moved(position) => {

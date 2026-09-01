@@ -9,7 +9,8 @@
 // 边界（如实标注）：游玩中 Malody 不写谱面文件 → 结果在游玩结束（回放落盘）
 // 后展示；游玩中实时不可能（无游戏内写通道）。皮肤/编辑器插件为可选通道。
 
-use crate::server::{broadcast, log_line, Shared};
+use crate::server::{broadcast, Shared};
+use crate::server::log::log_line;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;

@@ -124,12 +124,12 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                     } else {
                         None
                     };
-                    let current = shared.etterna.lock().unwrap().clone();
+                    let _current = shared.etterna.lock().unwrap().clone();
                     *shared.etterna.lock().unwrap() = EtternaStatus {
                         playing,
                         playing_expire_at: expire,
                         alive: bridge_seen || bridge_path.exists(),
-                        ..current
+                        .._current
                     };
                 }
             }
@@ -144,7 +144,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                 bridge_sig = Some(sig);
                 bridge_seen = true;
                 if changed {
-                    crate::server::log_line(&format!(
+                    crate::server::log::log_line(&format!(
                         "etterna bridge changed (root={}, {} bytes)",
                         root.display(),
                         text.len()
@@ -159,7 +159,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         } else {
                             md5_hex(raw)
                         };
-                        crate::server::log_line(&format!(
+                        crate::server::log::log_line(&format!(
                             "etterna song frame broadcast identity={} rawTextMd5={} rawLen={}",
                             song.get("identity")
                                 .and_then(|v| v.as_str())
@@ -169,7 +169,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         ));
                         broadcast(&shared, "song", Some(song));
                     } else {
-                        crate::server::log_line("etterna bridge parse FAILED (no song frame)");
+                        crate::server::log::log_line("etterna bridge parse FAILED (no song frame)");
                     }
                 }
             }
@@ -202,7 +202,7 @@ fn build_song_frame(
     ];
     let chart_path = candidates.iter().find(|c| c.is_file());
     if chart_path.is_none() {
-        crate::server::log_line(&format!(
+        crate::server::log::log_line(&format!(
             "etterna chart not found: song_dir={:?} step_file={} candidates=[{}]",
             song_dir,
             step_file,
