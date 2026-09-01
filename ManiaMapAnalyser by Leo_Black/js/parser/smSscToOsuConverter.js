@@ -156,15 +156,29 @@ export function convertSmSscToOsuText({ text, format, difficulty = null } = {}) 
     const stopTable = buildStopTable(chart.stops || [], bpmTable);
 
     const objects = [];
-    for (const tap of taps) {
-        objects.push({ col: tap.col, startMs: bakeToMs(tap.measure, bpmTable, stopTable), endMs: null });
+    const seenMs = new Set();
+    // 先收集 hold 头占位（hold 优先于同拍 tap；osu 同列同 ms 只允许一个对象）。
+    const holdEntries = holds.map((hold) => ({
+        col: hold.col,
+        startMs: bakeToMs(hold.startMeasure, bpmTable, stopTable),
+        endMs: bakeToMs(hold.endMeasure, bpmTable, stopTable),
+    }));
+    for (const h of holdEntries) {
+        const key = `${h.col}:${h.startMs}`;
+        if (seenMs.has(key)) {
+            continue; // 同列同 ms 重复 hold 头（罕见，osu 非法）去重
+        }
+        seenMs.add(key);
+        objects.push(h);
     }
-    for (const hold of holds) {
-        objects.push({
-            col: hold.col,
-            startMs: bakeToMs(hold.startMeasure, bpmTable, stopTable),
-            endMs: bakeToMs(hold.endMeasure, bpmTable, stopTable),
-        });
+    for (const tap of taps) {
+        const startMs = bakeToMs(tap.measure, bpmTable, stopTable);
+        const key = `${tap.col}:${startMs}`;
+        if (seenMs.has(key)) {
+            continue; // 同列同 ms 重复 tap / 与 hold 头冲突（osu 非法）去重
+        }
+        seenMs.add(key);
+        objects.push({ col: tap.col, startMs, endMs: null });
     }
     objects.sort((a, b) => a.startMs - b.startMs || a.col - b.col);
 
