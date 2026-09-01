@@ -1,11 +1,11 @@
-// Malody 请求轮询（壳侧）——编辑器按钮触发的文件通道：
+// Malody 请求轮询（壳侧）——编辑器按钮触发的文件通道（备选）：
 //
-// 1) 编辑器插件（mma_editor.lua）点击后 WriteFile 写 {谱面目录}/mma_request.json
-//    （文档化 API，不依赖未文档化的 Editor:DoRequest）。
-// 2) 本模块扫描 {malodyRoot}/chart/**/mma_request.json（mtime 变化）→ 读请求
-//    （title/artist/level/keys）→ 按标题 resolve .mc 原文 → 发 song 帧 →
-//    页面分析 → result 帧 → 结果写回 {谱面目录}/mma_result.txt（编辑器轮询读取）。
-// 3) 处理完的请求文件内容清空（避免重复触发）；不删除文件（编辑器可再写）。
+// 主通道 = 编辑器插件 Editor:DoRequest 签名探测（bridges/malody/mma_editor.lua）；
+// 本文件通道 = 备选（Malody 目录可写时可用）：
+//   1) 编辑器插件 WriteFile 写 {谱面目录}/mma_request.json（文档化 API）。
+//   2) 本模块扫描 {malodyRoot}/chart/**/mma_request.json → 按标题 resolve .mc →
+//      发 song 帧 → 页面分析 → result 帧 → 写回 mma_result.txt。
+//   限制：壳写 chart 目录可能被拒（Steam 目录 ACL）——DoRequest 主通道无此问题。
 //
 // 壳不做任何「自动捕获最新谱面」——只有编辑器按钮触发才分析。
 
