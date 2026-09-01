@@ -369,11 +369,11 @@ export async function fetchBeatmapFile(reason) {
             || state.useSvDetection
             || state.vibroDetection
             || isAutoDisplayEnabledNow(),
-        ett: contentBarShows("Etterna")
+        ett: !state.externalSourceOsuLike && (contentBarShows("Etterna")
             || state.srText === "MSD"
             || state.diffText === "MSD"
             || state.vibroDetection
-            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"),
+            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed")),
         graph: state.diffText === "Graph" || contentBarShows("Graph"),
         interlude: state.srText === "InterludeSR"
             || state.diffText === "InterludeSR"

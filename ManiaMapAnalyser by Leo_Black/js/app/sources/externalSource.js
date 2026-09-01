@@ -104,6 +104,8 @@ export function handleSongFrame(payload) {
     // 签名文本保持 "none" 稳定（缓存键用，与 state 数值语义分离）。
     state.modSignature = `${state.speedRate.toFixed(5)}|${mod.odFlag || "none"}|${mod.cvtFlag || "none"}|${mod.classic || 0}`;
     state.externalSourceActive = source;
+    // osu 文本直通标记：osu 谱无 Etterna MSD 语义 → 主体不选 Etterna（回退 Pattern）。
+    state.externalSourceOsuLike = looksLikeOsu(payload.rawText);
     notifySourceEvent(source);
 
     scheduleRecompute("external source song", false);

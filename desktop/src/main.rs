@@ -113,38 +113,112 @@ fn main() {
 
             // 全局快捷键（页面焦点/点击穿透无关）。回调只改内存+异步应用窗口 API，
             // 绝不在回调内同步调用窗口方法（自死锁见文件头注）。
-            let _ = app.global_shortcut().on_shortcut(
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyT),
-                move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let next = !WINDOW_STATE.lock().unwrap().topmost;
-                        apply_flag_change(app, Some(next), None);
+            // 默认键位：Ctrl+Shift+T 置顶 / Ctrl+Shift+C 穿透 / Ctrl+Q 关闭；
+            // 可在 mma-shell.json 的 hotkeys 配置（"Ctrl+Shift+T" 等字符串）。
+            // 解析配置键位（失败回落默认）。
+            let cfg = config::read_shell_config();
+            let hot = |k: &str, def: &str| {
+                cfg.get("hotkeys")
+                    .and_then(|h| h.get(k))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| def.to_string())
+            };
+            let h_top = hot("topmost", "Ctrl+Shift+T");
+            let h_click = hot("clickThrough", "Ctrl+Shift+C");
+            let h_close = hot("close", "Ctrl+Q");
+            let parse_hot = |s: &str| -> Option<Shortcut> {
+                // 简单解析："Ctrl+Shift+T" / "Alt+C" / "Ctrl+Q"（仅单键+修饰符组合）。
+                let mut mods = Modifiers::empty();
+                let mut key: Option<Code> = None;
+                for part in s.split('+') {
+                    match part.trim() {
+                        "Ctrl" | "CTRL" | "ctrl" => mods |= Modifiers::CONTROL,
+                        "Shift" | "SHIFT" | "shift" => mods |= Modifiers::SHIFT,
+                        "Alt" | "ALT" | "alt" => mods |= Modifiers::ALT,
+                        "Super" | "Win" | "Meta" | "CMD" => mods |= Modifiers::SUPER,
+                        other => {
+                            key = match other {
+                                "T" => Some(Code::KeyT),
+                                "C" => Some(Code::KeyC),
+                                "Q" => Some(Code::KeyQ),
+                                "A" => Some(Code::KeyA),
+                                "B" => Some(Code::KeyB),
+                                "D" => Some(Code::KeyD),
+                                "E" => Some(Code::KeyE),
+                                "F" => Some(Code::KeyF),
+                                "G" => Some(Code::KeyG),
+                                "H" => Some(Code::KeyH),
+                                "I" => Some(Code::KeyI),
+                                "J" => Some(Code::KeyJ),
+                                "K" => Some(Code::KeyK),
+                                "L" => Some(Code::KeyL),
+                                "M" => Some(Code::KeyM),
+                                "N" => Some(Code::KeyN),
+                                "O" => Some(Code::KeyO),
+                                "P" => Some(Code::KeyP),
+                                "R" => Some(Code::KeyR),
+                                "S" => Some(Code::KeyS),
+                                "U" => Some(Code::KeyU),
+                                "V" => Some(Code::KeyV),
+                                "W" => Some(Code::KeyW),
+                                "X" => Some(Code::KeyX),
+                                "Y" => Some(Code::KeyY),
+                                "Z" => Some(Code::KeyZ),
+                                _ => None,
+                            };
+                        }
                     }
-                },
-            );
-            let _ = app.global_shortcut().on_shortcut(
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyC),
-                move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let next = !WINDOW_STATE.lock().unwrap().click_through;
-                        apply_flag_change(app, None, Some(next));
-                    }
-                },
-            );
-            let _ = app.global_shortcut().on_shortcut(
-                Shortcut::new(Some(Modifiers::CONTROL), Code::KeyQ),
-                move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let app2 = app.clone();
-                        let _ = app.run_on_main_thread(move || {
-                            persist_window_state();
-                            if let Some(window) = app2.get_webview_window("main") {
-                                let _ = window.close();
-                            }
-                        });
-                    }
-                },
-            );
+                }
+                key.map(|k| Shortcut::new(if mods.is_empty() { None } else { Some(mods) }, k))
+            };
+            if let Some(sc) = parse_hot(&h_top) {
+                match app.global_shortcut().on_shortcut(
+                    sc,
+                    move |app, _shortcut, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            let next = !WINDOW_STATE.lock().unwrap().topmost;
+                            apply_flag_change(app, Some(next), None);
+                        }
+                    },
+                ) {
+                    Ok(_) => server::log_line(&format!("shortcut registered: topmost={}", h_top)),
+                    Err(e) => server::log_line(&format!("shortcut FAILED topmost={}: {}", h_top, e)),
+                }
+            }
+            if let Some(sc) = parse_hot(&h_click) {
+                match app.global_shortcut().on_shortcut(
+                    sc,
+                    move |app, _shortcut, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            let next = !WINDOW_STATE.lock().unwrap().click_through;
+                            apply_flag_change(app, None, Some(next));
+                        }
+                    },
+                ) {
+                    Ok(_) => server::log_line(&format!("shortcut registered: clickThrough={}", h_click)),
+                    Err(e) => server::log_line(&format!("shortcut FAILED clickThrough={}: {}", h_click, e)),
+                }
+            }
+            if let Some(sc) = parse_hot(&h_close) {
+                match app.global_shortcut().on_shortcut(
+                    sc,
+                    move |app, _shortcut, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            let app2 = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                persist_window_state();
+                                if let Some(window) = app2.get_webview_window("main") {
+                                    let _ = window.close();
+                                }
+                            });
+                        }
+                    },
+                ) {
+                    Ok(_) => server::log_line(&format!("shortcut registered: close={}", h_close)),
+                    Err(e) => server::log_line(&format!("shortcut FAILED close={}: {}", h_close, e)),
+                }
+            }
             // 窗口状态兜底：主线程每 5s 查询一次位置/尺寸并写盘（部分透明窗口
             // Moved/Resized 事件可能不触发；查询必须经 run_on_main_thread）。
             {

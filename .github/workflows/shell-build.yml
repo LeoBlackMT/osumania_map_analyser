@@ -1,5 +1,8 @@
 name: shell-build
 
+# 仅构建 Windows：Etterna（Windows 优先，Linux 有社区 build）与 Malody V
+# （仅 Windows/Android/iOS，无 Linux 版）——shell 的桥接目标均不支持 Linux，
+# 无 Linux 产物必要。手动触发仍可用。
 on:
   push:
     branches: [main]
@@ -11,28 +14,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-linux:
-    name: Build shell (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Tauri Linux system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
-            curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build release
-        working-directory: desktop
-        run: cargo build --release --locked
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mma-shell-linux
-          path: desktop/target/release/mma-shell
-          if-no-files-found: error
-
   build-windows:
     name: Build shell (Windows)
     runs-on: windows-latest
