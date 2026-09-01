@@ -24,10 +24,11 @@ pub struct EtternaStatus {
 }
 
 /// Etterna 根目录：env 覆盖 → offline_settings（=mma-shell.json，可直接编辑）→ tosu 在线只读。
+/// 路径经 normalize_path 容错（`\` 与 `/` 混用、尾部斜杠）。
 pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
     if let Ok(over) = std::env::var("MMA_ETTERNA_ROOT") {
         if !over.is_empty() {
-            return Some(PathBuf::from(over));
+            return Some(PathBuf::from(config::normalize_path(&over)));
         }
     }
     let offline = shared
@@ -38,7 +39,7 @@ pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
         .cloned();
     if let Some(v) = offline.as_ref().and_then(|v| v.as_str()) {
         if !v.is_empty() {
-            return Some(PathBuf::from(v));
+            return config::config_path(&serde_json::json!({"etternaRoot": v}), "etternaRoot");
         }
     }
     let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
@@ -52,7 +53,7 @@ pub fn etterna_root(shared: &Shared) -> Option<PathBuf> {
     };
     if let Some(v) = value.as_ref().and_then(|v| v.as_str()) {
         if !v.is_empty() {
-            return Some(PathBuf::from(v));
+            return config::config_path(&serde_json::json!({"etternaRoot": v}), "etternaRoot");
         }
     }
     config::detect_etterna_root()

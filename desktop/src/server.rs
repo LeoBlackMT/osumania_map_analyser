@@ -449,17 +449,56 @@ fn spawn_post(shared: Arc<Shared>, listener: TcpListener) {
     });
 }
 
-/// 诊断日志（exe 旁 mma-shell.log，追加）。
+/// 诊断日志（exe 旁 mma-shell-YYYYMMDD.log，按日轮转 + 时间戳 + 级别）。
+/// 级别：debug < info < warn < error；off 关闭。mma-shell.json 的 logLevel 控制。
 pub fn log_line(msg: &str) {
+    log_at("info", msg);
+}
+
+/// 按级别记日志（级别过滤见 log_level）。
+pub fn log_at(level: &str, msg: &str) {
     use std::io::Write;
+    let cfg_level = crate::config::log_level();
+    if cfg_level == "off" {
+        return;
+    }
+    const ORDER: [&str; 4] = ["debug", "info", "warn", "error"];
+    let lv = ORDER.iter().position(|l| *l == level).unwrap_or(1);
+    let cfg = ORDER.iter().position(|l| *l == cfg_level.as_str()).unwrap_or(1);
+    if lv < cfg {
+        return;
+    }
     let Some(dir) = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
     else {
         return;
     };
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(dir.join("mma-shell.log")) {
-        let _ = writeln!(f, "{}", msg);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    // 按日文件名：当天 0 点开始的秒数 → 本地日期（简化：用天数索引）。
+    let day = now / 86400;
+    let name = format!("mma-shell-{}.log", day);
+    let path = dir.join(name);
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "[{}] [{}] {}", now, level, msg);
+    }
+    // 清理旧日志（保留最近 7 个文件）。
+    if let Ok(entries) = fs::read_dir(&dir) {
+        let mut logs: Vec<(u64, std::path::PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let stem = name.strip_prefix("mma-shell-")?.strip_suffix(".log")?;
+                stem.parse::<u64>().ok().map(|d| (d, e.path()))
+            })
+            .collect();
+        logs.sort_by_key(|(d, _)| *d);
+        for (_, p) in logs.iter().take(logs.len().saturating_sub(7)) {
+            let _ = fs::remove_file(p);
+        }
     }
 }
 
@@ -662,7 +701,7 @@ fn json_error(text: &str) -> String {
 pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
     if let Ok(over) = std::env::var("MMA_MALODY_ROOT") {
         if !over.is_empty() {
-            return Some(PathBuf::from(over));
+            return Some(PathBuf::from(config::normalize_path(&over)));
         }
     }
     let offline = shared
@@ -673,7 +712,7 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
         .cloned();
     if let Some(v) = offline.as_ref().and_then(|v| v.as_str()) {
         if !v.is_empty() {
-            return Some(PathBuf::from(v));
+            return config::config_path(&serde_json::json!({"malodyRoot": v}), "malodyRoot");
         }
     }
     let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
@@ -687,7 +726,7 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
     };
     if let Some(v) = value.as_ref().and_then(|v| v.as_str()) {
         if !v.is_empty() {
-            return Some(PathBuf::from(v));
+            return config::config_path(&serde_json::json!({"malodyRoot": v}), "malodyRoot");
         }
     }
     config::detect_malody_root()

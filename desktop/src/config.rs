@@ -135,16 +135,49 @@ pub fn read_tosu_settings(info: &TosuInfo) -> serde_json::Value {
 
 // ---- 独立配置（mma-shell.json，exe 旁）：无 tosu 用户也能配置游戏路径 ----
 
-/// 读取 exe 所在目录下的 mma-shell.json（不存在/损坏 → 空对象）。
+/// 读取 exe 所在目录下的 mma-shell.json（不存在/损坏 → 空对象；损坏时记录警告到日志）。
 pub fn read_shell_config() -> serde_json::Value {
     let Some(dir) = exe_dir() else {
         return serde_json::Value::Null;
     };
     let path = dir.join("mma-shell.json");
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(serde_json::Value::Null)
+    match fs::read_to_string(&path) {
+        Ok(s) => match serde_json::from_str(&s) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("mma-shell.json 解析失败（使用默认配置）：{}", e);
+                serde_json::Value::Null
+            }
+        },
+        Err(_) => serde_json::Value::Null,
+    }
+}
+
+/// 日志级别（mma-shell.json 的 logLevel；默认 info）。
+pub fn log_level() -> String {
+    read_shell_config()
+        .get("logLevel")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_lowercase())
+        .filter(|s| matches!(s.as_str(), "debug" | "info" | "warn" | "error" | "off"))
+        .unwrap_or_else(|| "info".to_string())
+}
+
+/// 路径归一化：用户可能写 `D:\Games\Etterna`（json 里反斜杠需转义，但容错
+/// 处理 `\` 与 `/` 混用），统一转 `/` 并去掉尾部斜杠。
+pub fn normalize_path(input: &str) -> String {
+    input.trim().replace('\\', "/").trim_end_matches('/').to_string()
+}
+
+/// 取配置里的路径字段（归一化）；缺失/空 → None。
+pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
+    let raw = value.get(key).and_then(|v| v.as_str())?;
+    let norm = normalize_path(raw);
+    if norm.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(norm))
+    }
 }
 
 /// /settings POST 时落盘（仅保存已知键，丢弃其余）。
