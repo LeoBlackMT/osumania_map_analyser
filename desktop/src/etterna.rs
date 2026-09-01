@@ -258,7 +258,7 @@ fn build_song_frame(
         "requestId": request_id,
         "source": "etterna",
         "identity": identity,
-        "modData": { "speedRate": rate, "odFlag": "none", "cvtFlag": "none", "classic": 0 },
+        "modData": { "speedRate": rate },
         "meta": {
             "title": kv.get("title").cloned().unwrap_or_default(),
             "artist": kv.get("artist").cloned().unwrap_or_default(),

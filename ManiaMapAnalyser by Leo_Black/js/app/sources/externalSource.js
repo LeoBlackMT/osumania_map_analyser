@@ -95,8 +95,11 @@ export function handleSongFrame(payload) {
     state.pendingSourceRequestId = requestId;
     state.pendingSourceActive = source;
     state.speedRate = Number(mod.speedRate) || 1;
-    state.odFlag = mod.odFlag || null;
-    state.cvtFlag = mod.cvtFlag || null;
+    // odFlag/cvtFlag：仅接受真实修改值；"none"/空/null 一律归一为 null
+    // （"none" 会被估算器 parseFloat 成 NaN → star 全链 NaN——历史事故）。
+    const normFlag = (v) => (v == null || v === "" || v === "none" ? null : v);
+    state.odFlag = normFlag(mod.odFlag);
+    state.cvtFlag = normFlag(mod.cvtFlag);
     // 外部源 modSignature 直构（不走 modData 派生、与 client 无关）；
     // 签名文本保持 "none" 稳定（缓存键用，与 state 数值语义分离）。
     state.modSignature = `${state.speedRate.toFixed(5)}|${mod.odFlag || "none"}|${mod.cvtFlag || "none"}|${mod.classic || 0}`;
