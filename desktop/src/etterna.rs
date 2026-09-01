@@ -88,6 +88,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
         let mut bridge_seen = false;
         let mut bridge_sig: Option<(SystemTime, String)> = None;
         let mut gameplay_sig: Option<(SystemTime, String)> = None;
+        let mut frame_seq = 0u64;
         loop {
             thread::sleep(POLL_INTERVAL);
             let Some(root) = etterna_root(&shared) else { continue };
@@ -147,7 +148,8 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         root.display(),
                         text.len()
                     ));
-                    if let Some(song) = build_song_frame(&shared, &root, &text) {
+                    if let Some(song) = build_song_frame(&shared, &root, &text, frame_seq) {
+                        frame_seq += 1;
                         // 诊断：rawText 的 md5（应与 identity 内 content_md5 一致，也
                         // 应等于磁盘谱面文件 md5）——三值对拍定位「转换/传输不一致」。
                         let raw = song.get("rawText").and_then(|v| v.as_str()).unwrap_or("");
@@ -184,6 +186,7 @@ fn build_song_frame(
     shared: &Shared,
     root: &std::path::Path,
     text: &str,
+    seq: u64,
 ) -> Option<serde_json::Value> {
     let kv = read_kv(text);
     let step_file = kv.get("step_file")?;
@@ -247,8 +250,12 @@ fn build_song_frame(
         .map(|i| kv.get(&format!("msd_{}", i)).and_then(|v| v.parse().ok()).unwrap_or(0.0))
         .collect();
 
+    // requestId：外部源 result 回传的关联键——Etterna 帧此前恒 null 导致页面
+    // 分析完成却从不回 result（壳与页面都无感知）。用递增 seq 派生唯一 id。
+    let request_id = format!("e{}", seq);
+
     Some(serde_json::json!({
-        "requestId": null,
+        "requestId": request_id,
         "source": "etterna",
         "identity": identity,
         "modData": { "speedRate": rate, "odFlag": "none", "cvtFlag": "none", "classic": 0 },
