@@ -31,6 +31,8 @@ pub struct Shared {
     pub offline_settings: Mutex<serde_json::Value>,
     /// 离线全量插件设置（mma-settings.json）缓存（timers 检测变化推送）。
     pub plugin_settings: Mutex<serde_json::Value>,
+    /// tosu 设置文件缓存（timers 检测变化推送 settings 帧）。
+    pub tosu_settings_cache: Mutex<serde_json::Value>,
     /// Malody 最近 POST 时间（60s 存活窗口）。
     pub last_malody_post: Mutex<Option<Instant>>,
     pub tosu_online: Mutex<bool>,
@@ -64,6 +66,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         cover_whitelist: Mutex::new(std::collections::HashSet::new()),
         offline_settings: Mutex::new(config::read_shell_config()),
         plugin_settings: Mutex::new(config::read_plugin_settings()),
+        tosu_settings_cache: Mutex::new(serde_json::Value::Null),
         last_malody_post: Mutex::new(None),
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
@@ -252,6 +255,18 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             if plugin_cfg.is_object() && plugin_cfg != *shared.plugin_settings.lock().unwrap() {
                 *shared.plugin_settings.lock().unwrap() = plugin_cfg.clone();
                 broadcast(&shared, "settings", Some(plugin_cfg));
+            }
+            // tosu 设置文件（<插件目录名>.values.json）变化检测：用户在线模式
+            // 在 tosu dashboard 改设置 → 文件更新 → 推送 settings 帧（壳窗口
+            // 页面即时生效，无需重启）。离线（无 tosu）时跳过。
+            if let Some(info) = shared.tosu.as_ref() {
+                let tosu_cfg = config::read_tosu_settings(info);
+                if tosu_cfg.is_object()
+                    && tosu_cfg != *shared.tosu_settings_cache.lock().unwrap()
+                {
+                    *shared.tosu_settings_cache.lock().unwrap() = tosu_cfg.clone();
+                    broadcast(&shared, "settings", Some(tosu_cfg));
+                }
             }
             broadcast(&shared, "state", Some(state_frame(&shared)));
             broadcast(&shared, "ping", None);
