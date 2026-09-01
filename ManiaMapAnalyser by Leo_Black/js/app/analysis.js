@@ -308,9 +308,13 @@ export function resetReworkDisplay() {
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
-    // 离线圈模式守卫：无 tosu 数据面时不做 osu 抓取（避免 "Failed to fetch" 噪声），
-    // 等待外部源 song 帧触发分析。
-    if (reason === "initial load" && state.externalBridgeAvailable && !state.shellTosuOnline) {
+    // 离线圈模式守卫：仅当页面本身就是壳离线页（端口 24061）且无 tosu 数据面
+    // 时才跳过 osu 抓取（避免 "Failed to fetch" 噪声）。浏览器 tosu 页
+    // （其他端口）即使壳开着也绝不挡——否则首图/背景/切图会被吞。
+    const isShellOfflinePage = typeof window !== "undefined"
+        && window.location
+        && String(window.location.port) === "24061";
+    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline) {
         setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
         return;
     }
@@ -414,8 +418,8 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty external beatmap content.");
             }
         } else {
-            // 壳离线（无 tosu 数据面）时任何 osu 抓取都守卫：Waiting 而非报错。
-            if (state.externalBridgeAvailable && !state.shellTosuOnline && !state.pendingSourceText) {
+            // 壳离线页（24061）无 tosu 数据面时任何 osu 抓取都守卫：Waiting 而非报错。
+            if (isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline && !state.pendingSourceText) {
                 setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                 return;
             }

@@ -55,9 +55,12 @@ export async function initialize() {
                 .catch(() => {});
         },
     });
-    // 延迟初始加载仅用于「壳离线模式」（避免 tosu 抓取噪声）；浏览器模式
-    // （tosu 页）立即执行，否则首图/切图/背景会被 1.2s 延迟吞掉。
-    const shellOffline = state.externalBridgeAvailable && !state.shellTosuOnline;
+    // 延迟初始加载仅用于「壳离线页」（端口 24061，避免 tosu 抓取噪声）；
+    // 浏览器模式（tosu 页）立即执行，否则首图/切图/背景会被 1.2s 延迟吞掉。
+    const isShellOfflinePage = typeof window !== "undefined"
+        && window.location
+        && String(window.location.port) === "24061";
+    const shellOffline = isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline;
     if (shellOffline) {
         setTimeout(() => scheduleRecompute("initial load", false), 1200);
     } else {
