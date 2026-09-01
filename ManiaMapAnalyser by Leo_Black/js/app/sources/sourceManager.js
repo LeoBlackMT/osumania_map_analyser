@@ -158,18 +158,19 @@ function dotElement() {
 function syncDot(source) {
     const dot = dotElement();
     if (!dot) return;
-    // 空心语义：仅「无任何源」或「osu 源」（osu 数据面始终在 tosu，非
-    // shell 外部源；Etterna/Malody 才用实心色标识）。
-    if (!source || source === "osu") {
+    // 空心 = 无来源；osu!/Etterna/Malody 各一实心色（蓝/绿/橙）。
+    if (!source) {
         dot.className = "mma-source-dot off";
-        dot.title = source === "osu" ? "数据源：osu!" : "无数据源";
+        dot.title = "无数据源";
         return;
     }
     dot.className = "mma-source-dot on";
     dot.style.background = DOT_COLORS[source] || "#888";
     const followState = source === "malody"
         ? "编辑器/web post 精确；游玩受限"
-        : "精确（桥文件跟随）";
+        : source === "etterna"
+            ? "精确（桥文件跟随）"
+            : "精确（tosu）";
     dot.title = `数据源：${LABELS[source]}（${followState}）`;
 }
 
