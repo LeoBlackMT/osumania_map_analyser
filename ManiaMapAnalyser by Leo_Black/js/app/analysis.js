@@ -490,7 +490,18 @@ export async function fetchBeatmapFile(reason) {
                 };
                 const pipelineInput = { rawText, estimatorAlgorithm, options: pipelineOptions };
                 const wp = runInWorker(pipelineInput);
-                pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput);
+                try {
+                    pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput);
+                } catch (workerErr) {
+                    // Worker 超时/崩溃/被取代 → 降级主线程重跑（不显示 No data）。
+                    // 首次分析（worker WASM 初始化慢）或 Etterna 双帧竞态（superseded）
+                    // 会让 worker 请求失败——主线程兜底保证卡片总能出结果。
+                    if (!isStaleRequest()) {
+                        pipelineResult = await runAnalysisPipeline(pipelineInput);
+                    } else {
+                        throw workerErr; // stale：上层 catch 的 isStaleRequest 会 return
+                    }
+                }
                 parsedInfo = pipelineResult.parsedSummary;
                 applyContentBarOverride(parsedInfo.columnCount);
             } catch (error) {

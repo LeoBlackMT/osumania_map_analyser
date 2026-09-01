@@ -62,9 +62,11 @@ local function postAnalyze(meta, chartText)
         .. '},"chartText":' .. jsonQuote(chartText) .. '}'
     PENDING.mode = 'analyze'
     local okA, errA = pcall(function()
-        -- 签名实测为 DoRequest(method, url, body)：参数顺序是 method 在前
-        -- （错误 "invalid url: POST" 即旧写法 (url,'POST',body) 把 'POST' 当 url）。
-        Editor:DoRequest('POST', ENDPOINT, payload)
+        -- 签名探测结论（用户实测两轮）：
+        --   (url,'POST',body) → 报 invalid url: POST
+        --   ('POST',url,body) → OnResponse 收到 "POST"（'POST' 被当 url 回显）
+        -- 两者都证明第一个参数是 url → 用 2 参形态 (url, body)（默认 POST 方法）。
+        Editor:DoRequest(ENDPOINT, payload)
     end)
     if not okA then
         note('分析请求失败：' .. tostring(errA) .. '（请确认壳 mma-shell 已运行）')
@@ -147,7 +149,8 @@ function Run()
         .. ',"keys":' .. tostring(meta.keys or 0)
         .. ',"path":' .. jsonQuote(meta.path) .. '}'
     local ok, err = pcall(function()
-        Editor:DoRequest('POST', RESOLVE_ENDPOINT, payload)
+        -- 2 参形态 (url, body)：默认 POST（见 postAnalyze 的签名探测说明）。
+        Editor:DoRequest(RESOLVE_ENDPOINT, payload)
     end)
     if not ok then
         note('DoRequest 调用失败：' .. tostring(err) .. '（请确认壳已运行、MalodyV 6.6.43+）')
