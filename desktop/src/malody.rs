@@ -238,8 +238,16 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                             } else {
                                 format!("MMA: 分析失败：{}", errs.join("；"))
                             };
-                            let _ = fs::write(req_path.with_file_name("mma_result.txt"), content);
-                            log_line("malody result written to mma_result.txt");
+                            let target = req_path.with_file_name("mma_result.txt");
+                            if fs::write(&target, content).is_ok() {
+                                log_line("malody result written to mma_result.txt");
+                            } else {
+                                // 权限不足（Steam 目录 ACL 常拒普通用户写）：提示管理员运行。
+                                log_line(&format!(
+                                    "malody result WRITE FAILED: {}（目录不可写——请以管理员运行壳）",
+                                    target.display()
+                                ));
+                            }
                         }
                     }
                     Err(_) => {
