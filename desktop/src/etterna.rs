@@ -221,7 +221,7 @@ fn build_song_frame(
     let raw_text = fs::read_to_string(chart_path).ok()?;
     if raw_text.len() > MAX_PAYLOAD_BYTES {
         shared.shell_errors.lock().unwrap().push(format!(
-            "Etterna 谱面过大被跳过：{}（>5MB 字节）",
+            "Etterna chart too large, skipped: {} (>5MB)",
             step_file
         ));
         return None;

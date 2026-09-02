@@ -18,15 +18,13 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Real-time Analysis**: Analyzes various data of the current beatmap in real-time during gameplay or beatmap selection.
 - **Multi-mod Support**: Compatible with multiple mods in both lazer and stable, supporting custom speed multipliers and OD adjustments.
 - **Customizable Etterna Version**: Allows users to select different versions of [Etterna](https://github.com/etternagame/etterna) MinaCalc for calculation while surpassing Etterna's official cap.
-- **Pause Detection**: Detects pauses during gameplay and marks their positions on the graph.
 - **Difficulty Estimation**: Estimates difficulty based on beatmap data and provides detailed analysis results, offering multiple estimation algorithms. Compatible with LN and RC Dans for 4/6/7K.
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand the difficulty distribution of a beatmap.
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution in the beatmap to help players understand its structure.
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
 - **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
-- **SV Detection**: Detects whether a beatmap is an SV (speed variation) map.
-- **Multi-source Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! blue / Etterna green / Malody orange).
-- **Desktop Shell**: A standalone always-on-top/transparent/borderless mini window. Tutorial: [docs/shell-guide.md](docs/shell-guide.md).
+- **Etterna/Malody Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! blue / Etterna green / Malody orange).
+- **Desktop Shell**: A standalone always-on-top/transparent/borderless mini window.
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 
 ## Usage

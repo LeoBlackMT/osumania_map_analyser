@@ -9,7 +9,7 @@
 -- 并在同目录 default.lua 的 return t 前插入：
 --   t[#t + 1] = LoadActor("mma_bridge.lua")
 --
--- 机制（对照 Dan-Overlay 桥实战模式）：每 0.5s 轮询检查（SetUpdateFunction
+-- 机制：每 0.5s 轮询检查（SetUpdateFunction
 -- 优先——Etterna 0.7x 支持；不存在则 SetUpdateRate 兜底）+ 全套选歌消息钩子
 -- 即时重检。任何 API 异常都 pcall 隔离且不得中断后续注册与循环。
 
@@ -110,7 +110,7 @@ local function checkAndUpdate()
         if not steps then
             return
         end
-        -- 快速滚动时 steps 可能属于旧歌：按难度匹配回当前歌的 steps（Dan 桥同款）。
+        -- 快速滚动时 steps 可能属于旧歌：按难度匹配回当前歌的 steps。
         local songDir = song:GetSongDir() or ""
         local stepFile = steps:GetFilename() or ""
         if songDir ~= "" and (stepFile == "" or not string.find(stepFile, songDir, 1, true)) then
@@ -171,7 +171,7 @@ return Def.ActorFrame {
             checkAndUpdate()
         end)
     end,
-    -- 选歌消息钩子（Dan-Overlay 实战验证过的集合）→ 即时重检
+    -- 选歌消息钩子
     CurrentSongChangedMessageCommand = function(self) checkAndUpdate() end,
     CurrentStepsChangedMessageCommand = function(self) checkAndUpdate() end,
     DelayedChartUpdateMessageCommand = function(self) checkAndUpdate() end,

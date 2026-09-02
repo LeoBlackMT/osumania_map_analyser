@@ -167,7 +167,7 @@ fn read_exe_json(file: &str, display: &str) -> serde_json::Value {
         Ok(s) => match serde_json::from_str(&s) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("{} 解析失败（使用默认配置）：{}", display, e);
+                eprintln!("{} parse failed (using defaults): {}", display, e);
                 serde_json::Value::Null
             }
         },

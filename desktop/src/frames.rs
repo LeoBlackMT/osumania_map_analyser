@@ -12,16 +12,16 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(15);
 // ---- 错误文本常量（编辑器 ShowMessage 直用）----
 
 pub fn source_not_active(active: &str) -> String {
-    format!("路由不可用：当前活跃源为 {}", active)
+    format!("route unavailable: current active source is {}", active)
 }
 pub fn payload_too_large() -> &'static str {
-    "谱面文件过大（>5MB 字节）"
+    "chart file too large (>5MB)"
 }
 pub fn timeout_msg() -> &'static str {
-    "分析超时（30s）"
+    "analysis timeout (30s)"
 }
 pub fn analysis_failed(errors: &[String]) -> String {
-    format!("分析失败：{}", errors.join("；"))
+    format!("analysis failed: {}", errors.join("; "))
 }
 
 // ---- 帧信封 ----

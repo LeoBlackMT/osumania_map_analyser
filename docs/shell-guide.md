@@ -9,10 +9,13 @@
 桌面壳（mma-shell）是一个可选的小窗口程序，用来：把分析卡片显示在**独立的置顶小窗口**里（可以盖在游戏/浏览器上）；在**不启动 tosu** 的情况下，让卡片接收来自 Etterna 或 Malody V 编辑器的数据。浏览器旧用法（tosu 插件）不受影响，可以正常使用。
 
 系统要求：Windows；Etterna/Malody 数据源需要安装对应游戏的桥文件（见下文「安装桥」）。最低游戏版本：**Etterna 0.70+**；**Malody V 6.6.43+**
+支持的谱面类型：`.mc` `.ssc` `.sm`。
 
 > 注意：
+> - 本子项目受[DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)启发，感谢 DanielEtterna 的作者提供的思路与部分代码。
 > - 壳是实验性功能，可能存在未知问题。请在使用中遇到问题时及时反馈。
 > - 受限于 Malody V 的 API，Malody 数据源仅在编辑器中可用，无法在游玩时使用。请在 Malody V 编辑器中使用「MMA Analyze」功能来查看谱面分析。
+> - 转换后默认为 OD9。
 
 ## 一、快速开始
 
@@ -21,7 +24,7 @@
   - 如果你下载的是压缩包，请解压后放在 **tosu 插件目录**（`tosu/static/`）内。
 - 随后请参照下方「安装桥」章节安装 Etterna/Malody 桥文件。
 - 如有需要，请编辑 `mma-shell-config.json` 来对壳进行配置，例如指定游戏安装路径（`etternaRoot` / `malodyRoot`）或修改快捷键（`hotkeys`）。你也可以编辑 `mma-settings.json` 来配置卡片显示（离线模式 / 没有 tosu 时使用）。
-- 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 编辑器中点击「MMA Analyze」按钮显示。
+- 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 中选择编辑谱面，在编辑器中点击「MMA Analyze」按钮进行分析。
 - 数据源指示：卡片右上状态行末尾的小圆点——蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源。
 
 ## 二、窗口操作说明
@@ -93,12 +96,13 @@ return t
   - 如果**tosu 设置文件可用**（tosu 安装目录的 `settings/<插件目录名>.values.json`）时，壳**优先使用它**（在线只读 / 离线读文件），不生成也不使用 mma-settings.json。
   - 如果**找不到 tosu 设置文件**时进入本地模式：存在 `mma-settings.json` 则直接使用；不存在则由壳按插件的 `settings.json` 生成默认骨架。
 - 设置键与 tosu 设置界面完全一致；只改 `gameClient/etternaRoot/malodyRoot` 的用户**不需要碰它**（这三个在 mma-shell-config.json）。
+- 受限于框架和操作复杂度，**暂不提供图形化设置界面**，目前折中的方案是直接编辑 JSON 文件。请对照[settings.md](settings.md)的说明来修改。
 
-配置填错/JSON 损坏将自动回落默认并警告。
+配置填错/JSON损坏将自动回落默认并在日志中警告。
 
 ## 五、日志
 
-壳运行日志写在 **插件log目录** `log/mma-shell-YYYYMMDD.log`（按日轮转，保留 7 天）。排查问题时将 `logLevel` 设为 `debug` ，随后把最新日志内容发给我们即可。
+壳运行日志写在 **插件log目录** `log/mma-shell-YYYYMMDD.log`（按日轮转，保留 7 天）。排查问题时将 `logLevel` 设为 `debug` ，随后把最新日志内容发给我们即可。如果你遇到问题，请先确认日志输出内容。
 
 ## 六、常见问题/已知问题
 
@@ -113,11 +117,13 @@ return t
 
 mma-shell is an optional small window program that: shows the analysis card in a **standalone always-on-top mini window** (can overlay games/browsers); and, **without tosu running**, lets the card receive data from **Etterna** or the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
 
-System requirements: Windows; Etterna/Malody data sources need their game bridge files installed (see "Bridges" below). Minimum game versions: **Etterna 0.70+**; **Malody V 6.6.43+**.
+System requirements: Windows; Etterna/Malody data sources need their game bridge files installed (see "Bridges" below). Minimum game versions: **Etterna 0.70+**; **Malody V 6.6.43+**. Supported chart types: `.mc`, `.ssc`, `.sm`.
 
 > Note:
+> - This subproject is inspired by [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna); thanks to its author for the ideas and parts of the code.
 > - The shell is experimental — unknown issues may exist. Please report anything you find.
 > - Due to Malody V API limitations, the Malody source only works in the editor, not during gameplay. Use the "MMA Analyze" button in the Malody V editor to view a chart's analysis.
+> - Default OD after conversion is 9.
 
 ## Quick start
 
@@ -126,7 +132,7 @@ System requirements: Windows; Etterna/Malody data sources need their game bridge
   - If you downloaded the archive, extract it into **the tosu plugin folder** (`tosu/static/`).
 - Then install the Etterna/Malody bridge files per the "Bridges" section below.
 - If needed, edit `mma-shell-config.json` to configure the shell — e.g. game install paths (`etternaRoot` / `malodyRoot`) or shortcuts (`hotkeys`). You can also edit `mma-settings.json` to configure the card display (offline mode / when tosu is absent).
-- Start the shell: select a song in Etterna to display, or click "MMA Analyze" in the Malody V editor.
+- Start the shell: select a song in Etterna to display, or select a chart in Malody V and click "MMA Analyze" in the editor.
 - Source indicator: the small dot at the end of the card's top status row — blue = osu!, green = Etterna, orange = Malody, hollow grey = no data source.
 
 ## Window controls
@@ -200,12 +206,13 @@ The shell has two independent config files, both **next to the exe** (auto-creat
   - When the **tosu settings file** (`settings/<plugin folder name>.values.json` inside the tosu install) is available, the shell **prefers it** (read-only online / read file offline) and never creates or uses `mma-settings.json`.
   - Without a tosu settings file, local mode kicks in: existing `mma-settings.json` is used as-is; otherwise the shell generates a default skeleton from the plugin's `settings.json`.
 - Keys match the tosu settings UI exactly; users who only change `gameClient/etternaRoot/malodyRoot` never touch this file (those live in `mma-shell-config.json`).
+- No GUI settings panel is provided for now (framework/effort tradeoff); the pragmatic approach is editing the JSON files directly. Refer to [settings.md](settings.md) for the key meanings.
 
-A malformed config falls back to defaults with a warning.
+A malformed config falls back to defaults with a warning in the log.
 
 ## Logs
 
-Shell logs go to **the plugin's log folder** `log/mma-shell-YYYYMMDD.log` (rotated daily, 7 kept). When troubleshooting, set `logLevel` to `debug` and send us the latest log.
+Shell logs go to **the plugin's log folder** `log/mma-shell-YYYYMMDD.log` (rotated daily, 7 kept). When troubleshooting, set `logLevel` to `debug` and send us the latest log. If something misbehaves, check the log output first.
 
 ## Troubleshooting / known issues
 

@@ -175,7 +175,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     continue;
                 };
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    log_at("error", &format!("malody request malformed ({}): 非 JSON",
+                    log_at("error", &format!("malody request malformed ({}): not JSON",
                         req_path.display()
                     ));
                     continue;
@@ -199,7 +199,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                 // 1. 谱面本体 = 同目录 `<base>.mc|.osu`（Malody 生成的 base 精确锁定，
                 //    与命名规整度/格式无关）。
                 let Some(chart_path) = chart_path_for(&req_path) else {
-                    log_at("error", &format!("malody chart not found beside request: {}（请确认谱面已保存为 .mc/.osu）",
+                    log_at("error", &format!("malody chart not found beside request: {} (ensure the chart is saved as .mc/.osu)",
                         req_path.display()
                     ));
                     let _ = fs::remove_file(&req_path);
@@ -260,7 +260,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     if fs::remove_file(&req_path).is_ok() {
                         log_at("debug", "malody request removed after processing");
                     } else {
-                        log_at("error", &format!("malody request REMOVE FAILED: {}（残留可能造成重复分析；目录不可写时请以管理员运行壳）",
+                        log_at("error", &format!("malody request REMOVE FAILED: {} (leftover may cause re-analysis; if the dir is not writable run the shell as admin)",
                             req_path.display()
                         ));
                     }

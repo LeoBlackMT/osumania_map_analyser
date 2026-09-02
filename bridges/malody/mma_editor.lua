@@ -1,6 +1,6 @@
 -- MMA Analyze 编辑器插件（MalodyV，触发类 PluginType=0）。
 --
--- 用法：打开谱面编辑器 → 「更多」菜单点击 Analyze → 请求分析当前谱面。
+-- 用法：打开谱面编辑器 → 菜单点击 Analyze → 请求分析当前谱面。
 --
 -- 通道（文件，全文档化 API）：
 --   1. Run()：ChartInfo 取 title/artist/level/key → Editor:WriteFile('mma_request.json')
@@ -49,8 +49,8 @@ function Run()
         Editor:WriteFile(REQUEST_FILE, payload)
     end)
     if not okW then
-        note('请求写入失败：' .. tostring(errW)
-            .. '\n可能原因：Malody 目录无写权限（请以管理员运行 Malody）。')
+        note('WriteFile failed: ' .. tostring(errW)
+            .. '\nPossible cause: Malody dir not writable (run Malody as admin).')
         return
     end
     -- 验证写入（ReadFile 读回；Malody 加前缀规则同 WriteFile）。
@@ -58,9 +58,9 @@ function Run()
         return Editor:ReadFile(REQUEST_FILE)
     end)
     if not (verifyOk and verifyContent and verifyContent ~= '') then
-        note('请求写入未生效（目录只读？）。\n请以管理员运行 Malody，或检查 MalodyV/editor 权限。')
+        note('Request write not effective (dir read-only?).\nRun Malody as admin, or check MalodyV/editor permissions.')
         return
     end
-    note('已请求分析：' .. (meta.title or '')
-        .. '\n结果将显示在 mma-shell 窗口的卡片上。')
+    note('Analysis requested: ' .. (meta.title or '')
+        .. '\nResult will appear on the mma-shell window card.')
 end

@@ -16,15 +16,13 @@
 - **实时分析**：在游戏/选图过程中实时分析当前谱面的各项数据。
 - **多mod支持**：兼容lazer与stable的多个mod，支持自定义倍速与改变OD。
 - **自定义Ett版本**：允许用户选择不同版本的[Etterna](https://github.com/etternagame/etterna) MinaCalc进行计算，同时突破 Etterna 官方上限。
-- **暂停检测**：在游玩过程中检测暂停次数并在图表上显示暂停位置。
 - **难度估计**：基于谱面数据估算难度，并提供详细的分析结果。同时提供多种难度估计算法。适配4/6/7K的LN与RC段位。
 - **图表可视化**：提供难度变化图，帮助玩家更好地理解谱面难度分布。
 - **键型分析**：分析谱面中的RC/LN键型分布，帮助玩家了解谱面结构。
 - **Rework PP**：提供Rework PP难度表现面板，显示Max PP/Live PP、Proportion及各乘子柱状图，游玩/结算时实时更新。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
-- **SV检测**：检测谱面是否为SV谱面。
-- **多数据源跟随**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
-- **桌面壳**：独立置顶/透明/无边框小窗口。使用教程见 [docs/shell-guide.md](docs/shell-guide.md)。
+- **Etterna/Malody支持**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
+- **桌面壳**：独立置顶/透明/无边框小窗口。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
 
 ## 使用方法
@@ -55,10 +53,10 @@
 如不希望上报，可在 tosu 设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
 
 ## 设置说明
-注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。
-见 [docs/settings.md](docs/settings.md) 了解详细设置说明。
-预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。
-桌面壳（含窗口操作、桥安装、故障排查）教程见 [docs/shell-guide.md](docs/shell-guide.md)。
+注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。  
+见 [docs/settings.md](docs/settings.md) 了解详细设置说明。  
+预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。  
+桌面壳教程见 [docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 算法说明
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
