@@ -1,11 +1,11 @@
-// Malody 请求轮询（壳侧）——编辑器按钮触发的文件通道（备选）：
+// Malody 请求轮询（壳侧）——编辑器按钮触发的文件通道：
 //
-// 主通道 = 编辑器插件 Editor:DoRequest 签名探测（bridges/malody/mma_editor.lua）；
-// 本文件通道 = 备选（Malody 目录可写时可用）：
-//   1) 编辑器插件 WriteFile 写 {谱面目录}/mma_request.json（文档化 API）。
-//   2) 本模块扫描 {malodyRoot}/chart/**/mma_request.json → 按标题 resolve .mc →
-//      发 song 帧 → 页面分析 → result 帧 → 写回 mma_result.txt。
-//   限制：壳写 chart 目录可能被拒（Steam 目录 ACL）——DoRequest 主通道无此问题。
+// 1) 编辑器插件 WriteFile 写请求——Malody 自动加谱面名前缀，实际文件为
+//    {谱面目录}/<谱面base名>_mma_request.json（实测确认）。
+// 2) 本模块扫描 {malodyRoot}/chart/**/*_mma_request.json（后缀匹配）→ 按标题
+//    resolve .mc → 发 song 帧 → 页面分析 → result 帧 → 写回
+//    <谱面base名>_mma_result.txt（编辑器 ReadFile('mma_result.txt') 同前缀读取）。
+// 3) 壳写 chart 目录可能被拒（Steam ACL）→ 日志提示以管理员运行壳。
 //
 // 壳不做任何「自动捕获最新谱面」——只有编辑器按钮触发才分析。
 
@@ -31,23 +31,79 @@ fn md5_hex(input: &str) -> String {
         .collect()
 }
 
-/// 递归收集 chart/** 下的 mma_request.json（含内容 mtime）。
-fn scan_requests(root: &std::path::Path) -> Vec<(PathBuf, SystemTime)> {
+/// Malody WriteFile 生成的请求文件名为 `<谱面base名>_mma_request.json`；
+/// 结果文件应对应 `<谱面base名>_mma_result.txt`（编辑器 ReadFile('mma_result.txt')
+/// 同样会被 Malody 加前缀）。
+fn result_path_for(req: &std::path::Path) -> PathBuf {
+    let name = req.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = name.trim_end_matches("_mma_request.json");
+    req.with_file_name(format!("{}_mma_result.txt", stem))
+}
+
+/// 增量扫描：维护目录 mtime 缓存，只对「mtime 变化的目录」深入。
+/// Malody 结构 chart/<song>/<difficulty>/；request 写在 <difficulty>/ 下。
+/// Windows 目录 mtime 只在「直接子项」变化时更新——写文件到 <difficulty>/
+/// 只更新 <difficulty>/ 的 mtime，不会向上传播到 chart/<song>/。因此快筛必须
+/// 覆盖两层：chart/ 直接子目录（song 层）+ 每个 song 的直接子目录（difficulty
+/// 层，通常 _song_XXXX/N 形态）。song 层数量数百、difficulty 层数千——
+/// 每轮 ~几千次 stat（<100ms），每 2s 一次可接受。
+fn scan_requests(
+    root: &std::path::Path,
+    dir_cache: &mut HashMap<PathBuf, SystemTime>,
+) -> Vec<(PathBuf, SystemTime)> {
     let mut out = Vec::new();
-    let mut walk = vec![root.join("chart")];
-    while let Some(dir) = walk.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
+    let chart = root.join("chart");
+    let mut changed_leaves: Vec<PathBuf> = Vec::new();
+
+    let stat_mt = |p: &std::path::Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+
+    // 1. song 层：chart/ 直接子目录（mtime 对比）。
+    let Ok(entries) = fs::read_dir(&chart) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if !ft.is_dir() {
             continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk.push(path);
+        }
+        let path = entry.path();
+        let mt = stat_mt(&path);
+        let cached = dir_cache.get(&path).copied();
+        dir_cache.insert(path.clone(), mt.unwrap_or(SystemTime::UNIX_EPOCH));
+        if mt.is_some() && cached == mt {
+            // song 目录未变：其直接子目录（difficulty 层）可能有变——继续检查。
+        }
+        // 2. difficulty 层：song 的直接子目录 mtime 对比。
+        let Ok(sub) = fs::read_dir(&path) else { continue };
+        for sub_entry in sub.flatten() {
+            let Ok(sft) = sub_entry.file_type() else { continue };
+            if !sft.is_dir() {
                 continue;
             }
-            if path.file_name().map(|n| n.to_string_lossy().to_string())
-                != Some("mma_request.json".to_string())
-            {
+            let dpath = sub_entry.path();
+            let dmt = stat_mt(&dpath);
+            let dcached = dir_cache.get(&dpath).copied();
+            dir_cache.insert(dpath.clone(), dmt.unwrap_or(SystemTime::UNIX_EPOCH));
+            if dmt.is_some() && dcached == dmt {
+                continue; // difficulty 目录未变
+            }
+            changed_leaves.push(dpath);
+        }
+    }
+
+    // 3. 深入所有变化 difficulty 目录找 *_mma_request.json（含子目录递归）。
+    let mut stack: Vec<PathBuf> = changed_leaves;
+    while let Some(dir) = stack.pop() {
+        let Ok(sub) = fs::read_dir(&dir) else { continue };
+        for entry in sub.flatten() {
+            let path = entry.path();
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if !name.ends_with("_mma_request.json") {
                 continue;
             }
             if let Ok(meta) = fs::metadata(&path) {
@@ -134,6 +190,8 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
     thread::spawn(move || {
         // 已处理的请求签名（path -> mtime），避免重复触发。
         let mut handled: HashMap<PathBuf, SystemTime> = HashMap::new();
+        // 目录 mtime 缓存（分层快筛，避免每轮全量 stat 数万文件）。
+        let mut dir_cache: HashMap<PathBuf, SystemTime> = HashMap::new();
         let mut seq = 0u64;
 
         loop {
@@ -141,7 +199,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
             let Some(root) = crate::server::malody_root(&shared) else {
                 continue;
             };
-            for (req_path, mt) in scan_requests(&root) {
+            for (req_path, mt) in scan_requests(&root, &mut dir_cache) {
                 if handled.get(&req_path).copied() == Some(mt) {
                     continue; // 已处理
                 }
@@ -174,15 +232,15 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
 
                 // 1. resolve .mc 原文。
                 let Some(mc_path) = resolve_mc(&root, title, artist, keys) else {
-                    let _ = fs::write(
-                        req_path.with_file_name("mma_result.txt"),
-                        "MMA: 壳未在 chart 目录找到该谱面（title="
-                            .to_string()
-                            + title
-                            + " artist="
-                            + artist
-                            + "）\n",
-                    );
+                    let target = result_path_for(&req_path);
+                    if fs::write(&target, format!(
+                        "MMA: 壳未在 chart 目录找到该谱面（title={} artist={}）\n",
+                        title, artist
+                    )).is_ok() {
+                        log_line(&format!("malody result written to {}", target.display()));
+                    } else {
+                        log_line(&format!("malody result WRITE FAILED: {}（请以管理员运行壳）", target.display()));
+                    }
                     continue;
                 };
                 let Ok(mc_text) = fs::read_to_string(&mc_path) else {
@@ -238,9 +296,9 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                             } else {
                                 format!("MMA: 分析失败：{}", errs.join("；"))
                             };
-                            let target = req_path.with_file_name("mma_result.txt");
+                            let target = result_path_for(&req_path);
                             if fs::write(&target, content).is_ok() {
-                                log_line("malody result written to mma_result.txt");
+                                log_line(&format!("malody result written to {}", target.display()));
                             } else {
                                 // 权限不足（Steam 目录 ACL 常拒普通用户写）：提示管理员运行。
                                 log_line(&format!(
@@ -251,10 +309,8 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                         }
                     }
                     Err(_) => {
-                        let _ = fs::write(
-                            req_path.with_file_name("mma_result.txt"),
-                            "MMA: 分析超时（30s）\n",
-                        );
+                        let target = result_path_for(&req_path);
+                        let _ = fs::write(&target, "MMA: 分析超时（30s）\n");
                     }
                 }
             }

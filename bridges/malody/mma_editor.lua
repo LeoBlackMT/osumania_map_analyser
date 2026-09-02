@@ -61,6 +61,9 @@ local function readResult()
     return nil
 end
 
+-- 上次点击是否显示过残留结果（静态，跨 Run 保留）。
+local showedStale = false
+
 function Run()
     PENDING = {
         meta = {},
@@ -74,6 +77,18 @@ function Run()
         meta.level = Editor:ChartInfo('level') or ''
         meta.keys = tonumber(Editor:ChartInfo('key')) or 0
     end)
+
+    -- 残留结果：上次点击已显示过 → 本次视为「重新分析」跳过残留；
+    -- 未显示过（壳已写好）→ 直接展示（二次点击查看结果）。
+    local prev = readResult()
+    if prev and prev ~= '' and not showedStale then
+        PENDING.done = true
+        note(trim(prev, 2000) .. '\n（再次点击可重新分析）')
+        showedStale = true
+        return
+    end
+    showedStale = false
+
     note('正在请求分析：' .. (meta.title or '') .. '…')
 
     local payload = '{"action":"analyze","title":' .. jsonQuote(meta.title)
@@ -96,23 +111,25 @@ function Run()
         return
     end
     PENDING.sent = true
-    note('请求已写入，等待壳分析…（约 5–10 秒）')
 
-    -- 轮询结果文件（ReadFile 文档化 API，读谱面目录下 mma_result.txt）。
-    local waited = 0
-    while waited < 200 do
-        if os.sleep then
+    -- 尽力轮询结果：若 os.sleep 可用则等约 10s；否则提示稍后再点（沙箱无 sleep）。
+    if os.sleep then
+        note('请求已写入，等待壳分析…')
+        local waited = 0
+        while waited < 100 do
             pcall(function()
                 os.sleep(0.1)
             end)
+            waited = waited + 1
+            local result = readResult()
+            if result and result ~= '' then
+                PENDING.done = true
+                note(trim(result, 2000))
+                return
+            end
         end
-        waited = waited + 1
-        local result = readResult()
-        if result then
-            PENDING.done = true
-            note(trim(result, 2000))
-            return
-        end
+        note('未收到分析结果（10s 超时）。请确认 mma-shell 正在运行，并查看壳日志。')
+    else
+        note('请求已写入。壳处理完成后，再次点击「MMA Analyze」即可查看结果（本环境无 sleep，无法自动等待）。')
     end
-    note('未收到分析结果（20s 超时）。请确认 mma-shell 正在运行，并查看壳日志。')
 end
