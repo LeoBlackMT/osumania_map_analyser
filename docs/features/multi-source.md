@@ -11,13 +11,15 @@
 ```
 Etterna（主题 Lua 桥写 Save/MmaBridge.txt + MmaGameplay.txt）
   → 壳（desktop，2Hz 轮询 → song 帧）
-Malody（编辑器插件 POST 24060 → song 帧；皮肤目录显示方案已废弃移除）
+Malody（编辑器插件 WriteFile `<base>_mma_request.json` → 壳 ≤1Hz 扫 chart/
+  → 谱面 = 同目录 `<base>.mc|.osu` → song 帧；处理完删 request）
   → 壳 WS/HTTP → 页面 sources/（bridgeClient → externalSource → state 注入）
   → fetchBeatmapFile（外部文本绕过 tosu 抓取）→ 既有管线
-  → result 帧（finally 汇合，四路）→ 壳应答 POST
+  → 分析结果展示在壳窗口卡片（不回写 txt 到游戏内）
 ```
 
 - 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版在线（tosu 存活）双活数据面。
+- Malody 编辑器通道说明：Malody `WriteFile` 只能写当前谱面目录且强制加谱面名前缀（`<base>_mma_request.json`）；`DoRequest` 的 POST+body 被 Malody 网络层拒绝（`invalid url: {body}`）；壳用 request 文件名 base 锁定同目录 `<base>.mc|.osu`（与命名/格式无关，.osu 谱也可分析）。
 - 契约：`desktop/docs/CONTRACT.md`（版本 2，九领域：帧七型/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/state 周期/contract 终态；皮肤状态文件章节已标注废弃）。
 
 ## 转换器
@@ -45,7 +47,7 @@ Malody（编辑器插件 POST 24060 → song 帧；皮肤目录显示方案已�
 
 | 能力 | Etterna | Malody |
 |---|---|---|
-| 谱面跟随 | 精确（选歌桥 key 门控写一次） | 编辑器场景精确（web post，resolve 按标题/路径） |
+| 谱面跟随 | 精确（选歌桥 key 门控写一次） | 编辑器场景精确（文件通道：request base 锁定同目录谱面） |
 | rate | speedRate=rate.toFixed(5) 入签名（同图不同 rate 缓存独立） | 无 rate 概念按 1.0 |
 | mod | 无（桥不提供） | 无（PlayMeta 字段未证实；真机验证项） |
 | 原生 MSD | 桥 msd×8（meta.devMsd8，**仅开发对照**，页面显示为 MinaCalc 自算） | 无 |

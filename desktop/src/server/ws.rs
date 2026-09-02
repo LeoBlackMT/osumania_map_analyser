@@ -2,7 +2,7 @@
 // 逻辑从原 server.rs 拆分。
 
 use crate::frames::{ControlInbound, ResultInbound};
-use crate::server::{hello_frame, log::log_at, log::log_line, next_seq, Shared};
+use crate::server::{hello_frame, log::log_at, next_seq, Shared};
 use std::net::TcpStream;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -132,10 +132,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                         .unwrap_or_default();
                     let hint = inbound.status_hint.as_deref().unwrap_or("");
                     if hint == "analysis-failed" || !errs.is_empty() {
-                        log_line(&format!(
-                            "page result: req={} hint={} active={} errors={}",
-                            inbound.request_id.as_deref().unwrap_or(""),
-                            hint,
+                        log_at("error", &format!("page result: req={} hint={} active={} errors={}", inbound.request_id.as_deref().unwrap_or(""), hint,
                             inbound.active_source.as_deref().unwrap_or(""),
                             errs.chars().take(400).collect::<String>(),
                         ));

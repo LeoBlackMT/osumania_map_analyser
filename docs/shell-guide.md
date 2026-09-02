@@ -10,7 +10,9 @@
 
 系统要求：Windows；Etterna/Malody 数据源需要安装对应游戏的桥文件（见下文「安装桥」）。最低游戏版本：**Etterna 0.70+**；**Malody V 6.6.43+**
 
-> 注意：壳是实验性功能，可能存在未知问题。请在使用中遇到问题时及时反馈。
+> 注意：
+> - 壳是实验性功能，可能存在未知问题。请在使用中遇到问题时及时反馈。
+> - 受限于 Malody V 的 API，Malody 数据源仅在编辑器中可用，无法在游玩时使用。请在 Malody V 编辑器中使用「MMA Analyze」功能来查看谱面分析。
 
 ## 一、快速开始
 
@@ -19,6 +21,7 @@
   - 如果你下载的是压缩包，请解压后放在 **tosu 插件目录**（`tosu/static/`）内。
 - 随后请参照下方「安装桥」章节安装 Etterna/Malody 桥文件。
 - 如有需要，请编辑 `mma-shell-config.json` 来对壳进行配置，例如指定游戏安装路径（`etternaRoot` / `malodyRoot`）或修改快捷键（`hotkeys`）。你也可以编辑 `mma-settings.json` 来配置卡片显示（离线模式 / 没有 tosu 时使用）。
+- 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 编辑器中点击「MMA Analyze」按钮显示。
 - 数据源指示：卡片右上状态行末尾的小圆点——蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源。
 
 ## 二、窗口操作说明
@@ -58,7 +61,8 @@ return t
 ### Malody V
 
 - 把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/editor/` 中（目录不存在就新建）。随后打开游戏 → 打开谱面编辑器 → **MMA Analyze** → 卡片显示本谱分析。
-2. 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。
+- 或者在游戏编辑器左上角点击按钮 → 插件管理 → 导入。
+- 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。
 
 ## 四、配置
 
@@ -99,9 +103,9 @@ return t
 ## 六、常见问题/已知问题
 
 - **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装、壳在运行。
-- **Malody 编辑器点了没反应（30 秒后报超时）**：壳没在运行，或窗口还没加载完（先开壳，等几秒再点）。
+- **Malody 编辑器点了没反应/报超时**：壳没在运行，或窗口还没加载完（先开壳，等几秒再点）。
 - **窗口是黑/白的闪一下**：透明白闪为已知小抖动；不影响使用。
-- **更新了插件文件夹但窗口显示旧版**：关掉壳重新打开（页面每次启动重新加载）。
+- **卡片主体偶尔显示No Data**：对于Etterna，切成另一张谱面再切回来即可。对于Malody，请重新点击 MMA Analyze。
 
 # English
 
@@ -111,7 +115,9 @@ mma-shell is an optional small window program that: shows the analysis card in a
 
 System requirements: Windows; Etterna/Malody data sources need their game bridge files installed (see "Bridges" below). Minimum game versions: **Etterna 0.70+**; **Malody V 6.6.43+**.
 
-> Note: the shell is experimental — unknown issues may exist. Please report anything you find.
+> Note:
+> - The shell is experimental — unknown issues may exist. Please report anything you find.
+> - Due to Malody V API limitations, the Malody source only works in the editor, not during gameplay. Use the "MMA Analyze" button in the Malody V editor to view a chart's analysis.
 
 ## Quick start
 
@@ -120,6 +126,7 @@ System requirements: Windows; Etterna/Malody data sources need their game bridge
   - If you downloaded the archive, extract it into **the tosu plugin folder** (`tosu/static/`).
 - Then install the Etterna/Malody bridge files per the "Bridges" section below.
 - If needed, edit `mma-shell-config.json` to configure the shell — e.g. game install paths (`etternaRoot` / `malodyRoot`) or shortcuts (`hotkeys`). You can also edit `mma-settings.json` to configure the card display (offline mode / when tosu is absent).
+- Start the shell: select a song in Etterna to display, or click "MMA Analyze" in the Malody V editor.
 - Source indicator: the small dot at the end of the card's top status row — blue = osu!, green = Etterna, orange = Malody, hollow grey = no data source.
 
 ## Window controls
@@ -161,6 +168,7 @@ return t
 ### Malody V
 
 - Put `bridges/malody/mma_editor.lua` into `MalodyV/editor/` (create the folder if missing). Then open the game → open the chart editor → **MMA Analyze** → the card shows this chart's analysis.
+- Or, in the game editor's top-left, open the plugin manager and import the file.
 - Open `mma-shell-config.json` next to the plugin and fill in `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`).
 
 ## Configuration
@@ -202,6 +210,6 @@ Shell logs go to **the plugin's log folder** `log/mma-shell-YYYYMMDD.log` (rotat
 ## Troubleshooting / known issues
 
 - **Hollow grey dot / frozen card**: game not running, bridge not installed, or shell not running.
-- **Malody editor no reaction (30s timeout)**: shell not running, or the window hasn't finished loading (start the shell first, wait a few seconds, then trigger).
+- **Malody editor no reaction / timeout**: shell not running, or the window hasn't finished loading (start the shell first, wait a few seconds, then trigger).
 - **White/black flash on open**: known cosmetic quirk of transparency; doesn't affect use.
-- **Window shows an old version after updating the plugin folder**: close the shell and reopen (the page reloads on every start).
+- **Card body occasionally shows No Data**: for Etterna, switch to another chart and back; for Malody, click MMA Analyze again.

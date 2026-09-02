@@ -191,7 +191,7 @@ fn main() {
                     },
                 ) {
                     Ok(_) => server::log::log_line(&format!("shortcut registered: topmost={}", h_top)),
-                    Err(e) => server::log::log_line(&format!("shortcut FAILED topmost={}: {}", h_top, e)),
+                    Err(e) => server::log::log_at("error", &format!("shortcut FAILED topmost={}: {}", h_top, e)),
                 }
             }
             if let Some(sc) = parse_hot(&h_click) {
@@ -206,7 +206,7 @@ fn main() {
                     },
                 ) {
                     Ok(_) => server::log::log_line(&format!("shortcut registered: clickThrough={}", h_click)),
-                    Err(e) => server::log::log_line(&format!("shortcut FAILED clickThrough={}: {}", h_click, e)),
+                    Err(e) => server::log::log_at("error", &format!("shortcut FAILED clickThrough={}: {}", h_click, e)),
                 }
             }
             if let Some(sc) = parse_hot(&h_close) {
@@ -226,7 +226,7 @@ fn main() {
                     },
                 ) {
                     Ok(_) => server::log::log_line(&format!("shortcut registered: close={}", h_close)),
-                    Err(e) => server::log::log_line(&format!("shortcut FAILED close={}: {}", h_close, e)),
+                    Err(e) => server::log::log_at("error", &format!("shortcut FAILED close={}: {}", h_close, e)),
                 }
             }
             // 窗口状态兜底：主线程每 5s 查询一次位置/尺寸并写盘（部分透明窗口

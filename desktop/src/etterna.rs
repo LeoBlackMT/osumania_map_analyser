@@ -173,7 +173,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                         ));
                         broadcast(&shared, "song", Some(song));
                     } else {
-                        crate::server::log::log_at("debug", "etterna bridge parse FAILED (no song frame)");
+                        crate::server::log::log_at("error", "etterna bridge parse FAILED (no song frame)");
                     }
                 }
             }
@@ -206,8 +206,7 @@ fn build_song_frame(
     ];
     let chart_path = candidates.iter().find(|c| c.is_file());
     if chart_path.is_none() {
-        crate::server::log::log_at("debug", &format!(
-            "etterna chart not found: song_dir={:?} step_file={} candidates=[{}]",
+        crate::server::log::log_at("error", &format!("etterna chart not found: song_dir={:?} step_file={} candidates=[{}]",
             song_dir,
             step_file,
             candidates

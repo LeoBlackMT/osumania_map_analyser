@@ -11,7 +11,7 @@
 // 壳不做任何「自动捕获最新谱面」——只有编辑器按钮触发才分析。
 
 use crate::server::{broadcast, Shared};
-use crate::server::log::{log_at, log_line};
+use crate::server::log::log_at;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -19,7 +19,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(1);
+// 轮询率 ≤1Hz（用户建议上限）：目录结构 stat + request 处理间隔 1.5s。
+const POLL_INTERVAL: Duration = Duration::from_millis(1500);
 
 fn md5_hex(input: &str) -> String {
     use md5::{Digest, Md5};
@@ -52,23 +53,27 @@ fn chart_path_for(req: &std::path::Path) -> Option<PathBuf> {
 }
 
 /// 增量扫描：维护目录 mtime 缓存，只对「mtime 变化的目录」深入。
-/// Malody 结构 chart/<song>/<difficulty>/；request 写在 <difficulty>/ 下。
-/// Windows 目录 mtime 只在「直接子项」变化时更新——写文件到 <difficulty>/
-/// 只更新 <difficulty>/ 的 mtime，不会向上传播到 chart/<song>/。因此快筛必须
-/// 覆盖两层：chart/ 直接子目录（song 层）+ 每个 song 的直接子目录（difficulty
-/// 层，通常 _song_XXXX/N 形态）。song 层数量数百、difficulty 层数千——
-/// 每轮 ~几千次 stat（<100ms），每 2s 一次可接受。
+/// Malody 结构两种：
+///   a) 嵌套 chart/<song>/<difficulty>/（_song_XXXX/N 形态，难度文件在 N/ 下）；
+///   b) 平铺 chart/<song>/（osu 导入等：难度文件直接在 song 目录，如
+///      chart/2323413_Kou!.../xxx.osu——实测 113/295 song 目录为平铺）。
+/// Windows 目录 mtime 只在「直接子项」变化时更新。因此：
+///   - song 目录 mtime 变 → 检查 song 目录内的 *_mma_request.json（平铺 case b）
+///     及其子目录（嵌套时子目录被新建/改名）。
+///   - song 目录未变 → 其子目录（difficulty 层）可能有内部变化（嵌套 case a 的
+///     新 request 写进 N/）——仍需逐 difficulty 子目录对比 mtime。
 fn scan_requests(
     root: &std::path::Path,
     dir_cache: &mut HashMap<PathBuf, SystemTime>,
 ) -> Vec<(PathBuf, SystemTime)> {
     let mut out = Vec::new();
     let chart = root.join("chart");
-    let mut changed_leaves: Vec<PathBuf> = Vec::new();
+    let mut changed_dirs: Vec<PathBuf> = Vec::new();
 
     let stat_mt = |p: &std::path::Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    let is_req = |name: &str| name.ends_with("_mma_request.json");
 
-    // 1. song 层：chart/ 直接子目录（mtime 对比）。
+    // 1. song 层：chart/ 直接子目录。
     let Ok(entries) = fs::read_dir(&chart) else {
         return out;
     };
@@ -77,15 +82,36 @@ fn scan_requests(
         if !ft.is_dir() {
             continue;
         }
-        let path = entry.path();
-        let mt = stat_mt(&path);
-        let cached = dir_cache.get(&path).copied();
-        dir_cache.insert(path.clone(), mt.unwrap_or(SystemTime::UNIX_EPOCH));
-        if mt.is_some() && cached == mt {
-            // song 目录未变：其直接子目录（difficulty 层）可能有变——继续检查。
+        let song = entry.path();
+        let mt = stat_mt(&song);
+        let cached = dir_cache.get(&song).copied();
+        dir_cache.insert(song.clone(), mt.unwrap_or(SystemTime::UNIX_EPOCH));
+        let song_changed = mt.is_some() && cached != mt;
+
+        if song_changed {
+            // 2a. song 目录本身变了：平铺 case b——难度文件（含 request）直接在此。
+            let Ok(sub) = fs::read_dir(&song) else { continue };
+            for sub_entry in sub.flatten() {
+                let spath = sub_entry.path();
+                let Ok(sft) = sub_entry.file_type() else { continue };
+                if !sft.is_dir() {
+                    let name = spath.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    if is_req(&name) {
+                        if let Ok(meta) = fs::metadata(&spath) {
+                            if let Ok(smt) = meta.modified() {
+                                out.push((spath, smt));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                // 新子目录（嵌套结构的 N/ 层被创建）——整棵入队检查。
+                changed_dirs.push(spath);
+            }
         }
-        // 2. difficulty 层：song 的直接子目录 mtime 对比。
-        let Ok(sub) = fs::read_dir(&path) else { continue };
+
+        // 2b. difficulty 层：song 的直接子目录 mtime 对比（嵌套 case a）。
+        let Ok(sub) = fs::read_dir(&song) else { continue };
         for sub_entry in sub.flatten() {
             let Ok(sft) = sub_entry.file_type() else { continue };
             if !sft.is_dir() {
@@ -98,12 +124,12 @@ fn scan_requests(
             if dmt.is_some() && dcached == dmt {
                 continue; // difficulty 目录未变
             }
-            changed_leaves.push(dpath);
+            changed_dirs.push(dpath);
         }
     }
 
-    // 3. 深入所有变化 difficulty 目录找 *_mma_request.json（含子目录递归）。
-    let mut stack: Vec<PathBuf> = changed_leaves;
+    // 3. 深入所有变化目录找 *_mma_request.json（含子目录递归）。
+    let mut stack: Vec<PathBuf> = changed_dirs;
     while let Some(dir) = stack.pop() {
         let Ok(sub) = fs::read_dir(&dir) else { continue };
         for entry in sub.flatten() {
@@ -114,7 +140,7 @@ fn scan_requests(
                 continue;
             }
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            if !name.ends_with("_mma_request.json") {
+            if !is_req(&name) {
                 continue;
             }
             if let Ok(meta) = fs::metadata(&path) {
@@ -149,7 +175,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     continue;
                 };
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    log_at("debug", &format!("malody request malformed ({}): 非 JSON",
+                    log_at("error", &format!("malody request malformed ({}): 非 JSON",
                         req_path.display()
                     ));
                     continue;
@@ -173,7 +199,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                 // 1. 谱面本体 = 同目录 `<base>.mc|.osu`（Malody 生成的 base 精确锁定，
                 //    与命名规整度/格式无关）。
                 let Some(chart_path) = chart_path_for(&req_path) else {
-                    log_at("debug", &format!("malody chart not found beside request: {}（请确认谱面已保存为 .mc/.osu）",
+                    log_at("error", &format!("malody chart not found beside request: {}（请确认谱面已保存为 .mc/.osu）",
                         req_path.display()
                     ));
                     let _ = fs::remove_file(&req_path);
@@ -212,8 +238,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                                 if errs.is_empty() {
                                     log_at("debug", "malody analysis ok (shown on card)");
                                 } else {
-                                    log_line(&format!(
-                                        "malody analysis failed: {}",
+                                    log_at("error", &format!("malody analysis failed: {}",
                                         errs.join("；").chars().take(300).collect::<String>()
                                     ));
                                 }
@@ -235,8 +260,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     if fs::remove_file(&req_path).is_ok() {
                         log_at("debug", "malody request removed after processing");
                     } else {
-                        log_line(&format!(
-                            "malody request REMOVE FAILED: {}（残留可能造成重复分析；目录不可写时请以管理员运行壳）",
+                        log_at("error", &format!("malody request REMOVE FAILED: {}（残留可能造成重复分析；目录不可写时请以管理员运行壳）",
                             req_path.display()
                         ));
                     }

@@ -67,4 +67,4 @@ window.navigate(url)
 
 ## 6. 已知限制与待办
 
-离线设置持久化已实现（`mma-shell-config.json` 壳配置 + `mma-settings.json` 插件设置 + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器 DoRequest 签名与自动化读谱（resolve 通道按标题扫 chart 目录，支持 level/keys 精化；DoRequest 真机签名待验）、PlayMeta 字段、皮肤目录可写性；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。来源指示器：空心=无源；osu! 蓝 / Etterna 绿 / Malody 橙实心。
+离线设置持久化已实现（`mma-shell-config.json` 壳配置 + `mma-settings.json` 插件设置 + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器文件通道（WriteFile `<base>_mma_request.json` → 壳扫 chart/（两级目录 mtime 快筛，≤1Hz）→ 谱面 = 同目录 `<base>.mc|.osu` → 分析 → 卡片展示，处理完删 request；DoRequest POST 实测被 Malody 网络层拒绝（invalid url: {body}），故不走网络通道）、PlayMeta 字段；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。来源指示器：空心=无源；osu! 蓝 / Etterna 绿 / Malody 橙实心。
