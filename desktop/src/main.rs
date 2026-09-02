@@ -184,6 +184,7 @@ fn main() {
                     sc,
                     move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
+                            server::log::log_line("shortcut pressed: topmost");
                             let next = !WINDOW_STATE.lock().unwrap().topmost;
                             apply_flag_change(app, Some(next), None);
                         }
@@ -198,6 +199,7 @@ fn main() {
                     sc,
                     move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
+                            server::log::log_line("shortcut pressed: clickThrough");
                             let next = !WINDOW_STATE.lock().unwrap().click_through;
                             apply_flag_change(app, None, Some(next));
                         }
@@ -212,6 +214,7 @@ fn main() {
                     sc,
                     move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
+                            server::log::log_line("shortcut pressed: close");
                             let app2 = app.clone();
                             let _ = app.run_on_main_thread(move || {
                                 persist_window_state();

@@ -105,13 +105,25 @@ function OnResponse(...)
                 .. ' level=' .. (PENDING.meta.level or '') .. '）')
             PENDING.miss = true
         end
-    elseif string.find(tostring(body), 'invalid url', 1, true) then
-        -- 该签名无效：不设任何标志，让 Run() 继续尝试下一个签名。
+    elseif string.find(tostring(body), 'invalid url', 1, true)
+        or string.find(tostring(body), '^POST$', 1)
+        or string.find(tostring(body), '^GET$', 1)
+        or string.find(tostring(body), '^PUT$', 1)
+    then
+        -- 签名无效：body 是 method 回显或 invalid url 错误——不设 done，
+        -- 让 Run() 继续尝试下一个签名；记录完整错误供最终落盘诊断。
+        PENDING.lastError = tostring(body)
         PENDING.badSignature = true
     else
-        -- 分析响应：显示结果
+        -- 分析响应：显示结果（壳返回的分析文本/错误 JSON）。
         PENDING.done = true
-        note(trim(body, 2000))
+        local bodyText = tostring(body)
+        -- 若为 JSON 错误（{"error":...}）截断显示；正常结果完整显示。
+        if string.find(bodyText, '^{', 1) then
+            note(trim(bodyText, 500))
+        else
+            note(trim(bodyText, 2000))
+        end
     end
 end
 
@@ -164,6 +176,7 @@ function Run()
         resolved = false,
         miss = false,
         done = false,
+        lastError = nil,
     }
     local meta = PENDING.meta
     pcall(function()
@@ -206,6 +219,17 @@ function Run()
             return
         end
     end
-    note('未收到壳响应（4 种签名均无有效回执，约 6s）。请确认 mma-shell 正在运行，'
-        .. '并检查 MalodyV 日志。')
+    -- 全部签名失败：把最后一次错误完整写入 mma_result.txt（AddText 会截断长文本，
+    -- 关键信息在尾部——用户反馈截断看不到；WriteFile 由游戏进程写，有权限）。
+    if PENDING.lastError then
+        local diag = 'MMA 诊断：4 种 DoRequest 签名均无效。最后错误：\n' .. tostring(PENDING.lastError)
+        pcall(function()
+            Editor:WriteFile('mma_result.txt', diag)
+        end)
+        note('4 种签名均无效，诊断已写入 mma_result.txt（详见文件末尾）。错误开头：'
+            .. trim(tostring(PENDING.lastError), 120))
+    else
+        note('未收到壳响应（4 种签名均无有效回执，约 6s）。请确认 mma-shell 正在运行，'
+            .. '并检查 MalodyV 日志。')
+    end
 end

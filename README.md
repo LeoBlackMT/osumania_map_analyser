@@ -23,8 +23,8 @@
 - **Rework PP**：提供Rework PP难度表现面板，显示Max PP/Live PP、Proportion及各乘子柱状图，游玩/结算时实时更新。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
 - **SV检测**：检测谱面是否为SV谱面。
-- **多数据源跟随**：除 osu!mania 外可跟随 Etterna、Malody V（需桌面壳），Auto 模式按游玩状态自动切换数据源，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
-- **桌面壳（可选）**：独立置顶/透明/无边框小窗口（Windows/Linux），即使 tosu 未运行也能使用 Etterna/Malody 数据源；使用教程见 [docs/shell-guide.md](docs/shell-guide.md)。
+- **多数据源跟随**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
+- **桌面壳**：独立置顶/透明/无边框小窗口。使用教程见 [docs/shell-guide.md](docs/shell-guide.md)。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
 
 ## 使用方法
@@ -33,7 +33,7 @@
 3. 将整个文件夹放置在 tosu 的 `static` 目录下，如果你没有修改`Counters Directory`设置项的话。
 4. 启动 tosu，进入 dashborad，即可找到 "ManiaMapAnalyser" 插件，可以点击右侧`Settings`按钮进行相关设置。
 5. 游戏内界面以及OBS的使用方法见 tosu 相关文档。
-6. （可选）桌面壳：从 Release（或 GitHub Actions artifact）下载 `mma-shell`，放到插件文件夹（`ManiaMapAnalyser by Leo_Black`）旁边双击运行，即可获得独立置顶窗口与 Etterna/Malody 数据源；完整教程见 [docs/shell-guide.md](docs/shell-guide.md)。
+6. （可选）桌面壳：完整教程见 [docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 难度估计算法基准测试
 - 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
@@ -48,7 +48,6 @@
 5. 难度估计算法虽然经过调整，但仍然可能存在不准确的情况，请仅将其作为参考。对于4K，一般情况下高难相对比较准确，整体误差不超过半个段位，低难相对没那么准确；在Minijack、Stamina和Anchor等键型中，估计结果可能会有较大的偏差。对于6K和7K，整体表现相对一般。建议玩家结合自己的实际游玩体验进行判断，不要过于依赖估计结果。
 6. 该插件的性能可能会受到谱面复杂度和所选功能的影响，在某些情况下可能会出现卡顿或延迟的情况，请根据实际情况调整设置以获得更好的体验。
 7. 如果存在问题欢迎提交issue。
-8. 桌面壳的 Etterna/Malody 数据源需要在对应游戏安装桥文件（脚本），并可视需要在设置中指定游戏目录（`Etterna Folder` / `Malody V Folder`）；Etterna 主题更新后需重装桥文件，详见 [docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 隐私 / 匿名使用统计
 本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容**不含**用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。公开看板见：https://mma-stats.leoblack.top/
@@ -61,12 +60,13 @@
 预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。
 桌面壳（含窗口操作、桥安装、故障排查）教程见 [docs/shell-guide.md](docs/shell-guide.md)。
 
-## Roxy 算法说明
-Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
-低于 Alpha（< 11）的谱面 Roxy 返回 "< Alpha Low"（不输出数值难度），达到或超过 Emik Zeta high（>= 17）返回 "> Emik Zeta high"；Mixed 算法会自动将低难谱面路由至 Azusa 估算，因此 Roxy 的低难估算不作为最终结果。
+## 算法说明
+- Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
+- Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
-## Azusa 算法说明
-该算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
+## Malody V 编辑器 / Etterna 支持
+- Malody V 编辑器和 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。
+- 该功能仍处于实验阶段，可能存在未知问题。请在使用过程中遇到问题时及时反馈。
 
 ## 贡献指南
 详见 [CONTRIBUTING.md](CONTRIBUTING.md)。

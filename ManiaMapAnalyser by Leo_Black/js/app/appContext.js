@@ -226,8 +226,6 @@ export const {
     parseEnableAlwaysShowLNDifficultyValue,
     parseEnableTelemetryValue,
     parseGameClientValue,
-    parseEtternaRootValue,
-    parseMalodyRootValue,
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {

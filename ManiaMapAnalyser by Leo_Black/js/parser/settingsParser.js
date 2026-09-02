@@ -385,22 +385,6 @@ export function createSettingsParsers(appConfig) {
         return normalized || appConfig.defaults.gameClient || "Auto";
     }
 
-    function parseEtternaRootValue(settingsPayload) {
-        const value = extractSettingValue(settingsPayload, "etternaRoot");
-        if (typeof value === "string" && value.trim() !== "") {
-            return value.trim();
-        }
-        return appConfig.defaults.etternaRoot || "";
-    }
-
-    function parseMalodyRootValue(settingsPayload) {
-        const value = extractSettingValue(settingsPayload, "malodyRoot");
-        if (typeof value === "string" && value.trim() !== "") {
-            return value.trim();
-        }
-        return appConfig.defaults.malodyRoot || "";
-    }
-
     function parseEnablePauseDetectionValue(settingsPayload) {
         const value = extractSettingValue(settingsPayload, "enablePauseDetection");
         return normalizeBooleanSetting(value, appConfig.defaults.pauseDetectionEnabled);
@@ -632,7 +616,5 @@ export function createSettingsParsers(appConfig) {
         parseEnableAlwaysShowLNDifficultyValue,
         parseEnableTelemetryValue,
         parseGameClientValue,
-        parseEtternaRootValue,
-        parseMalodyRootValue,
     };
 }

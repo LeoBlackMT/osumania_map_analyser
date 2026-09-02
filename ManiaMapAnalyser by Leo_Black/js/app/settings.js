@@ -44,8 +44,6 @@ import {
     parseEnableAlwaysShowLNDifficultyValue,
     parseEnableTelemetryValue,
     parseGameClientValue,
-    parseEtternaRootValue,
-    parseMalodyRootValue,
     patternClustersEl,
     ppBarsEl,
     reworkStarEl,
@@ -364,20 +362,6 @@ export function applyGameClientSetting(value) {
     const next = value || "Auto";
     const changed = state.gameClient !== next;
     state.gameClient = next;
-    return changed;
-}
-
-export function applyEtternaRootSetting(value) {
-    const next = typeof value === "string" ? value.trim() : "";
-    const changed = state.etternaRoot !== next;
-    state.etternaRoot = next;
-    return changed;
-}
-
-export function applyMalodyRootSetting(value) {
-    const next = typeof value === "string" ? value.trim() : "";
-    const changed = state.malodyRoot !== next;
-    state.malodyRoot = next;
     return changed;
 }
 
@@ -782,8 +766,6 @@ const SETTING_HANDLERS = [
     { key: "enableCoverArt", parse: parseEnableCoverArtValue, apply: applyEnableCoverArtSetting },
     { key: "customBackgroundColor", parse: parseCustomBackgroundColorValue, apply: applyCustomBackgroundColorSetting },
     { key: "gameClient", parse: parseGameClientValue, apply: applyGameClientSetting },
-    { key: "etternaRoot", parse: parseEtternaRootValue, apply: applyEtternaRootSetting },
-    { key: "malodyRoot", parse: parseMalodyRootValue, apply: applyMalodyRootSetting },
 ];
 
 /** Keys whose change requires a recompute (mirrors the old recomputeNeeded list). */
