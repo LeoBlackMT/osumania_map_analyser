@@ -132,8 +132,8 @@ fn resolve_malody_chart(shared: &Shared, title: &str, artist: &str, level: &str,
 fn handle_resolve(shared: &Shared, stream: &mut TcpStream, title: &str, artist: &str,
     level: &str, keys: u64, chart_path: &str) {
     let root = malody_root(shared);
-    // resolve 请求提到 info：用户排障 Malody 编辑器失败时无需开 debug 就能看到。
-    crate::server::log::log_line(&format!(
+    // resolve 请求降 debug（文件通道为主通道后仅诊断用）。
+    log_at("debug", &format!(
         "resolve title={} artist={} level={} keys={} path={} malodyRoot={:?}",
         title,
         artist,
@@ -159,7 +159,7 @@ fn handle_resolve(shared: &Shared, stream: &mut TcpStream, title: &str, artist: 
             http::write_response(stream, 200, "application/json", text.as_bytes());
         }
         None => {
-            crate::server::log::log_line("resolve MISS (chart not found)");
+            log_at("debug", "resolve MISS (chart not found)");
             http::respond_json(stream, 404, r#"{"error":"chart not found in malody chart dir"}"#);
         }
     }

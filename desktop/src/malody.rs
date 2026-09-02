@@ -2,15 +2,16 @@
 //
 // 1) 编辑器插件 WriteFile 写请求——Malody 自动加谱面名前缀，实际文件为
 //    {谱面目录}/<谱面base名>_mma_request.json（实测确认）。
-// 2) 本模块扫描 {malodyRoot}/chart/**/*_mma_request.json（后缀匹配）→ 按标题
-//    resolve .mc → 发 song 帧 → 页面分析 → result 帧 → 写回
-//    <谱面base名>_mma_result.txt（编辑器 ReadFile('mma_result.txt') 同前缀读取）。
-// 3) 壳写 chart 目录可能被拒（Steam ACL）→ 日志提示以管理员运行壳。
+// 2) 本模块扫描 {malodyRoot}/chart/**/*_mma_request.json（两级目录 mtime 快筛）
+//    → 谱面本体 = 同目录 <base>.mc|.osu（base 精确锁定，与命名/格式无关）
+//    → 发 song 帧 → 页面分析 → 卡片展示（壳即展示端，不回写 txt 到游戏内）。
+// 3) 处理完删除 request 文件（防残留污染：切难度时旧 request 不得重处理）；
+//    删除失败（ACL）→ 日志提示，handled 集合兜底防同 mtime 重复。
 //
 // 壳不做任何「自动捕获最新谱面」——只有编辑器按钮触发才分析。
 
 use crate::server::{broadcast, Shared};
-use crate::server::log::log_line;
+use crate::server::log::{log_at, log_line};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -31,13 +32,23 @@ fn md5_hex(input: &str) -> String {
         .collect()
 }
 
-/// Malody WriteFile 生成的请求文件名为 `<谱面base名>_mma_request.json`；
-/// 结果文件应对应 `<谱面base名>_mma_result.txt`（编辑器 ReadFile('mma_result.txt')
-/// 同样会被 Malody 加前缀）。
-fn result_path_for(req: &std::path::Path) -> PathBuf {
+/// Malody WriteFile 生成的请求文件名为 `<谱面base名>_mma_request.json`。
+/// 谱面本体 = 同目录下的 `<谱面base名>.mc`（或 .osu——Malody 也可读 osu 谱）。
+/// 用 base 精确定位谱面——与真实谱面命名（title/artist 不规整）无关。
+fn chart_path_for(req: &std::path::Path) -> Option<PathBuf> {
     let name = req.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let stem = name.trim_end_matches("_mma_request.json");
-    req.with_file_name(format!("{}_mma_result.txt", stem))
+    let base = name.trim_end_matches("_mma_request.json");
+    if base.is_empty() {
+        return None;
+    }
+    let dir = req.parent()?;
+    for ext in ["mc", "osu"] {
+        let p = dir.join(format!("{}.{}", base, ext));
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 /// 增量扫描：维护目录 mtime 缓存，只对「mtime 变化的目录」深入。
@@ -116,76 +127,6 @@ fn scan_requests(
     out
 }
 
-/// 按 title/artist/keys 在 chart 目录递归匹配 .mc（与 post.rs resolve 同语义，
-/// 简化版：精确标题优先，子串兜底）。
-fn resolve_mc(root: &std::path::Path, title: &str, artist: &str, keys: u64) -> Option<PathBuf> {
-    let title_norm = title.trim().to_lowercase();
-    let artist_norm = artist.trim().to_lowercase();
-    let mut walk = vec![root.join("chart")];
-    let mut exact: Option<PathBuf> = None;
-    let mut sub: Option<PathBuf> = None;
-    while let Some(dir) = walk.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk.push(path);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("mc") {
-                continue;
-            }
-            let Ok(text) = fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let t = v
-                .pointer("/meta/song/title")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let a = v
-                .pointer("/meta/song/artist")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let fname = path.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
-            let is_exact_title = !title_norm.is_empty() && t == title_norm;
-            let is_exact = is_exact_title && (artist_norm.is_empty() || a == artist_norm);
-            let keys_ok = keys == 0
-                || v.pointer("/meta/mode_ext/column")
-                    .and_then(|x| x.as_u64())
-                    .map(|c| c == keys)
-                    .unwrap_or(true);
-            if is_exact && keys_ok && exact.is_none() {
-                exact = Some(path.clone());
-            }
-            if exact.is_none()
-                && !title_norm.is_empty()
-                && fname.contains(&title_norm)
-                && keys_ok
-                && sub.is_none()
-            {
-                sub = Some(path.clone());
-            }
-            if exact.is_none()
-                && !title_norm.is_empty()
-                && !t.is_empty()
-                && (t.contains(&title_norm) || title_norm.contains(&t))
-                && keys_ok
-                && sub.is_none()
-            {
-                sub = Some(path.clone());
-            }
-        }
-    }
-    exact.or(sub)
-}
-
 pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
     thread::spawn(move || {
         // 已处理的请求签名（path -> mtime），避免重复触发。
@@ -208,8 +149,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     continue;
                 };
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    log_line(&format!(
-                        "malody request malformed ({}): 非 JSON",
+                    log_at("debug", &format!("malody request malformed ({}): 非 JSON",
                         req_path.display()
                     ));
                     continue;
@@ -221,7 +161,7 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                 let artist = v.get("artist").and_then(|x| x.as_str()).unwrap_or("");
                 let level = v.get("level").and_then(|x| x.as_str()).unwrap_or("");
                 let keys = v.get("keys").and_then(|x| x.as_u64()).unwrap_or(0);
-                log_line(&format!(
+                log_at("debug", &format!(
                     "malody request: {} (title={} artist={} level={} keys={})",
                     req_path.display(),
                     title,
@@ -230,27 +170,25 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     keys
                 ));
 
-                // 1. resolve .mc 原文。
-                let Some(mc_path) = resolve_mc(&root, title, artist, keys) else {
-                    let target = result_path_for(&req_path);
-                    if fs::write(&target, format!(
-                        "MMA: 壳未在 chart 目录找到该谱面（title={} artist={}）\n",
-                        title, artist
-                    )).is_ok() {
-                        log_line(&format!("malody result written to {}", target.display()));
-                    } else {
-                        log_line(&format!("malody result WRITE FAILED: {}（请以管理员运行壳）", target.display()));
-                    }
+                // 1. 谱面本体 = 同目录 `<base>.mc|.osu`（Malody 生成的 base 精确锁定，
+                //    与命名规整度/格式无关）。
+                let Some(chart_path) = chart_path_for(&req_path) else {
+                    log_at("debug", &format!("malody chart not found beside request: {}（请确认谱面已保存为 .mc/.osu）",
+                        req_path.display()
+                    ));
+                    let _ = fs::remove_file(&req_path);
                     continue;
                 };
-                let Ok(mc_text) = fs::read_to_string(&mc_path) else {
+                let Ok(chart_text) = fs::read_to_string(&chart_path) else {
+                    let _ = fs::remove_file(&req_path);
                     continue;
                 };
 
-                // 2. 发 song 帧（请求关联 requestId = r{seq}）。
+                // 2. 发 song 帧（请求关联 requestId = r{seq}；页面分析后卡片展示——
+                //    壳就是展示端，不回写 txt 到游戏内，见问题 6 拍板）。
                 seq += 1;
                 let request_id = format!("r{}", seq);
-                let content_md5 = md5_hex(&mc_text);
+                let content_md5 = md5_hex(&chart_text);
                 let identity = format!("mdy:{}:{}:{}:{}", title, level, keys, content_md5);
                 let song = serde_json::json!({
                     "requestId": request_id,
@@ -259,59 +197,52 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                     "modData": { "speedRate": "1.0" },
                     "meta": { "title": title, "artist": artist, "version": level, "keys": keys, "devMsd8": [] },
                     "cover": null,
-                    "rawText": mc_text,
+                    "rawText": chart_text,
                 });
                 broadcast(&shared, "song", Some(song));
 
-                // 3. 等待页面 result 帧（30s 超时）。
+                // 3. 等待页面 result 帧（仅确认分析完成/失败，供日志；不回写游戏内）。
                 let (tx, rx) = mpsc::channel::<String>();
                 shared.pending.lock().unwrap().insert(request_id.clone(), tx);
-                match rx.recv_timeout(Duration::from_secs(30)) {
+                let got_result = match rx.recv_timeout(Duration::from_secs(30)) {
                     Ok(result_text) => {
-                        if let Some(inbound) = crate::server::ws::parse_result_payload(&result_text) {
-                            let errs = inbound.errors.unwrap_or_default();
-                            let content = if errs.is_empty() {
-                                let star_v = serde_json::from_str::<serde_json::Value>(&result_text)
-                                    .ok()
-                                    .and_then(|j| {
-                                        j.get("payload")
-                                            .cloned()
-                                            .unwrap_or(j)
-                                            .get("star")
-                                            .cloned()
-                                    });
-                                let star_s = star_v
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| "-".to_string());
-                                let active = inbound
-                                    .active_source
-                                    .as_deref()
-                                    .unwrap_or("");
-                                format!(
-                                    "MMA: 分析完成\nstar={}\npattern={}\nactiveSource={}",
-                                    star_s,
-                                    inbound.status_hint.as_deref().unwrap_or(""),
-                                    active
-                                )
-                            } else {
-                                format!("MMA: 分析失败：{}", errs.join("；"))
-                            };
-                            let target = result_path_for(&req_path);
-                            if fs::write(&target, content).is_ok() {
-                                log_line(&format!("malody result written to {}", target.display()));
-                            } else {
-                                // 权限不足（Steam 目录 ACL 常拒普通用户写）：提示管理员运行。
-                                log_line(&format!(
-                                    "malody result WRITE FAILED: {}（目录不可写——请以管理员运行壳）",
-                                    target.display()
-                                ));
+                        match crate::server::ws::parse_result_payload(&result_text) {
+                            Some(inbound) => {
+                                let errs = inbound.errors.unwrap_or_default();
+                                if errs.is_empty() {
+                                    log_at("debug", "malody analysis ok (shown on card)");
+                                } else {
+                                    log_line(&format!(
+                                        "malody analysis failed: {}",
+                                        errs.join("；").chars().take(300).collect::<String>()
+                                    ));
+                                }
+                                true
                             }
+                            None => false,
                         }
                     }
                     Err(_) => {
-                        let target = result_path_for(&req_path);
-                        let _ = fs::write(&target, "MMA: 分析超时（30s）\n");
+                        log_at("debug", "malody analysis timed out (no page yet?)");
+                        false
                     }
+                };
+
+                // 4. 页面成功分析后才删 request。超时（页面未就绪/未连接——开壳即
+                //    自动触发时 song 帧可能丢失，造成首次 NoData）→ 保留 request 并
+                //    移出 handled，页面就绪后下轮重试。
+                if got_result {
+                    if fs::remove_file(&req_path).is_ok() {
+                        log_at("debug", "malody request removed after processing");
+                    } else {
+                        log_line(&format!(
+                            "malody request REMOVE FAILED: {}（残留可能造成重复分析；目录不可写时请以管理员运行壳）",
+                            req_path.display()
+                        ));
+                    }
+                } else {
+                    handled.remove(&req_path);
+                    log_at("debug", "malody request kept for retry (page not ready)");
                 }
             }
         }
