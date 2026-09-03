@@ -18,11 +18,17 @@ function columnToX(column, keys) {
 }
 
 // 难度名归一化（对齐 simfile-parser 的 normalizedDifficultyMap 别名）。
+// 额外兼容 Etterna `Steps:GetDifficulty()` 返回的 `Difficulty_*` 前缀枚举
+// （桥文件 difficulty=Difficulty_Hard 等）——切难度时若不解前缀，
+// `difficulty_hard` 匹配不到 .sm 块内无前缀的 hard → 恒回退首块（同谱面
+// 多难度只分析第一个难度的根因）。
 const DIFFICULTY_ALIASES = { easy: "basic", trick: "difficult", another: "difficult", medium: "difficult", maniac: "expert", hard: "expert", ssr: "expert" };
 
 function normalizeDifficulty(name) {
     const lower = String(name || "").toLowerCase();
-    return DIFFICULTY_ALIASES[lower] || lower;
+    // Etterna 枚举：Difficulty_Beginner/Basic/Difficult/Expert/Challenge/Edit
+    const stripped = lower.startsWith("difficulty_") ? lower.slice("difficulty_".length) : lower;
+    return DIFFICULTY_ALIASES[stripped] || stripped;
 }
 
 // ── 时间轴 ─────────────────────────────────────────────

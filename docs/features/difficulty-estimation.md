@@ -73,7 +73,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`analysis.js:494`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`analysis.js:671` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
-- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:753`），命中恢复一致；缓存键带 `star-v2` 版本前缀使旧快照（存算法自身 star）失效。
+- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:753`），命中恢复一致；缓存键带 `star-v4` 版本前缀使旧快照（存算法自身 star；v4 亦作废 Etterna 难度前缀修复前的错误首块快照）失效。
 
 ## 4. Worker 回退（主线程同步执行）
 

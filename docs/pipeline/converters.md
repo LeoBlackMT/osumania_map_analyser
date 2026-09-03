@@ -18,6 +18,7 @@
 - **hold/roll**：`2`/`4` 头 → type 128 LN（roll 同化为 LN）；`3` 尾配对。
 - **LN 尾冲突修复**：同列下一条起始前 1ms 截尾；尾 ≤ 头时压为头 + 1ms。
 - **mine/lift/keysound**（`M`/`L`/`K`）：丢弃（osu 无对应概念）。
+- **难度块选择**：传 `difficulty` 时按归一化名匹配 `.sm` 的 `#NOTES` / `.ssc` 的 `#DIFFICULTY` 块；不传则取首块。归一化同时接受**无前缀难度名**（`Hard`）与 **Etterna `Steps:GetDifficulty()` 枚举前缀**（`Difficulty_Hard` → `difficulty_hard` → 别名 hard→expert）——桥文件上报的就是后者，缺此前缀匹配会失败并恒回退首块（同谱面切难度只分析首个难度的根因，2.1.0 修复）。
 - **.mc**：`time[]` → BPM 红线；`effect[]`（scroll）→ 负斜率线（`100/|scroll|`，scroll=0 → `1E+308`）；`endbeat` → type 128；LN 尾同毫秒自动微调；仅 Key 模式。
 
 ## 测试
@@ -40,6 +41,7 @@ node --experimental-detect-module tests/run-converter-tests.mjs
 | sm-stops-4k（`#STOPS:0.500=0.500`） | STOPS 烘焙 | 第二批 tap = 2000+250=2250ms（stop 0.5 拍@120bpm=250ms） |
 | sm-7k（7 列变宽行） | 列宽 | keys=7、noteCount=4（vendor 列宽补丁） |
 | ssc-multi（双 #NOTEDATA 块） | 多难度 | difficulty=Medium → `difficult 8`；默认 → 第一块 `expert 12`；归一化别名（hard→expert 等） |
+| sm-multi（三 #NOTES 块：Beginner/Challenge/Hard） | 多难度 + Etterna 前缀 | difficulty=`Difficulty_Hard` → `expert 8`（2 notes）；`Difficulty_Challenge` → `challenge 10`（4 notes）；无前缀 `Hard` 同命中 |
 | mc-simple（tap+hold+SV 1.5） | .mc | keys=4；BPM 点 1；SV 红线 `0,-66.666666…`；hold 1000→2000ms |
 | mc-ln-collision | LN 尾冲突 | hold 尾修复为 1999ms（下一条 2000ms 前 1ms） |
 | sm-rests-only（无 note） | 边界 | 抛出「未找到难度块」而非崩溃 |
