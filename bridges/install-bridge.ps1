@@ -142,6 +142,8 @@ $script:L = @{
     OptHelpZh       = '如何找到游戏路径？'
     OptAbort        = "Abort (don't install)"
     OptAbortZh      = '取消（不安装）'
+    BrowseFail      = 'folder browser unavailable, please type the path instead'
+    BrowseFailZh    = '文件夹浏览不可用，请改为手动输入路径'
     TypePathPrompt  = 'Enter the full {0} folder path'
     TypePathPromptZh = '请输入完整的 {0} 目录路径'
     InvalidRoot     = 'Not valid as a {0} folder (path check failed): {1}'
@@ -152,16 +154,12 @@ How to find your Etterna folder:
      'Open file location'.
   2. In the folder that opens (or its parent if it contains the .exe),
      click the address bar and copy the full path, e.g. D:\Games\Etterna.
-  3. Steam users: check D:\Steam\steamapps\common\Etterna
-     (the Steam library may be on another drive - look for steamapps\common\Etterna).
 The folder we need is the one that directly contains 'Save' and 'Themes'.
 '@
     HelpEtternaZh   = @'
 如何找到您的 Etterna 目录：
   1. 右键点击 Etterna 快捷方式（桌面 / 开始菜单），选择「打开文件所在位置」。
   2. 在打开的文件夹（或其上一级包含 .exe 的文件夹）中，点击地址栏复制完整路径，例如 D:\Games\Etterna。
-  3. Steam 用户：请查看 D:\Steam\steamapps\common\Etterna
-     （Steam 库可能在其它盘符——找到 steamapps\common\Etterna 即可）。
 我们需要的是直接包含 Save 和 Themes 两个文件夹的那个目录。
 '@
     HelpMalody      = @'
@@ -303,6 +301,7 @@ function Write-Step {
         'SKIP' { 'Yellow' }
         'FAIL' { 'Red' }
         'INFO' { 'Cyan' }
+        'WARN' { 'Yellow' }
         default { 'Gray' }
     }
     Write-Host ("[{0}] {1}" -f $Status, $Msg) -ForegroundColor $color
@@ -334,9 +333,9 @@ function Read-Option {
         Write-Host ("  [{0}] {1}" -f ($Options.Count + 1), $Extra)
     }
     while ($true) {
-        $input = Read-Host (Get-Text 'EnterChoice')
+        $choice = Read-Host (Get-Text 'EnterChoice')
         $n = 0
-        if ([int]::TryParse($input, [ref]$n)) {
+        if ([int]::TryParse($choice, [ref]$n)) {
             if ($n -ge 1 -and $n -le $Options.Count) { return ($n - 1) }
             if ($Extra -and $n -eq $Options.Count + 1) { return $n - 1 }
         }
@@ -351,15 +350,15 @@ function Confirm-YesNo {
     )
     $hint = if ($DefaultYes) { 'Y/n' } else { 'y/N' }
     while ($true) {
-        $input = Read-Host ("{0} [{1}]" -f $Prompt, $hint)
-        if ([string]::IsNullOrWhiteSpace($input)) { return $DefaultYes }
-        if ($input -match '^(y|yes)$') { return $true }
-        if ($input -match '^(n|no)$') { return $false }
+        $answer = Read-Host ("{0} [{1}]" -f $Prompt, $hint)
+        if ([string]::IsNullOrWhiteSpace($answer)) { return $DefaultYes }
+        if ($answer -match '^(y|yes)$') { return $true }
+        if ($answer -match '^(n|no)$') { return $false }
         Write-Host (Get-Text 'AnswerYN') -ForegroundColor Yellow
     }
 }
 
-function Normalize-PathInput {
+function Format-PathInput {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
     $p = $Path.Trim()
@@ -381,11 +380,11 @@ function Select-FolderBrowser {
         $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
         $dlg.Description = $Description
         $dlg.ShowNewFolderButton = $false
-        if ($dlg.ShowDialog() -eq [Windows.Forms.DialogResult]::OK) {
+        if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             return $dlg.SelectedPath
         }
     } catch {
-        Write-Step WARN 'folder browser unavailable, please type the path instead'
+        Write-Step WARN (Get-Text 'BrowseFail')
     }
     return $null
 }
@@ -409,7 +408,7 @@ function Read-CustomPath {
         if ($pick -eq 0) {
             $chosen = Select-FolderBrowser -Description $What
             if (-not $chosen) { continue }
-            $chosen = Normalize-PathInput -Path $chosen
+            $chosen = Format-PathInput -Path $chosen
             if (& $Validator $chosen) { return $chosen }
             Write-Step FAIL ((Get-Text 'InvalidRoot') -f $What, $chosen)
             continue
@@ -417,7 +416,7 @@ function Read-CustomPath {
         # type manually
         $p = Read-Host ((Get-Text 'TypePathPrompt') -f $What)
         if ([string]::IsNullOrWhiteSpace($p)) { continue }
-        $p = Normalize-PathInput -Path $p
+        $p = Format-PathInput -Path $p
         if ($p -and (& $Validator $p)) { return $p }
         Write-Step FAIL ((Get-Text 'InvalidRoot') -f $What, $p)
     }
@@ -485,6 +484,7 @@ function Get-EtternaCandidates {
     $cands = New-Object 'System.Collections.Generic.List[string]'
     $add = {
         param($p)
+        if ($p) { $p = Format-PathInput -Path $p }
         if ($p -and (Test-EtternaRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
     }
     # running process
@@ -492,11 +492,7 @@ function Get-EtternaCandidates {
     if ($p) { & $add $p }
     # env override
     if ($env:MMA_ETTERNA_ROOT) { & $add $env:MMA_ETTERNA_ROOT }
-    # steam libraries
-    foreach ($lib in (Get-SteamLibraryRoots)) {
-        & $add (Join-Path $lib 'steamapps\common\Etterna')
-    }
-    # common install paths
+    # common install paths (Etterna is NOT a Steam app)
     foreach ($c in @('D:/Games/Etterna', 'C:/Games/Etterna', 'D:/Etterna', 'C:/Etterna')) {
         & $add $c
     }
@@ -507,6 +503,7 @@ function Get-MalodyCandidates {
     $cands = New-Object 'System.Collections.Generic.List[string]'
     $add = {
         param($p)
+        if ($p) { $p = Format-PathInput -Path $p }
         if ($p -and (Test-MalodyRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
     }
     $p = Get-RunningProcessRoot -Names 'Malody V', 'MalodyV'
@@ -534,30 +531,34 @@ function Select-GameRoot {
     )
     $validator = if ($Game -eq 'Etterna') { { param($p) Test-EtternaRoot $p } } else { { param($p) Test-MalodyRoot $p } }
     if ($ForceRoot) {
-        $norm = Normalize-PathInput -Path $ForceRoot
+        $norm = Format-PathInput -Path $ForceRoot
         if ($norm -and (& $validator $norm)) { return $norm }
         Write-Step FAIL ((Get-Text 'InvalidRoot') -f $Game, $ForceRoot)
         return $null
     }
-    if ($Candidates.Count -eq 1 -or $Yes) {
-        # single candidate, or auto mode: take the highest-priority candidate
-        if ($Yes -and $Candidates.Count -gt 1) {
-            Write-Step INFO ((Get-Text 'AutoPick') -f $Game, $Candidates[0])
-        }
-        if ($Yes) { return $Candidates[0] }
-        if (Confirm-YesNo ((Get-Text 'UseDetected') -f $Game, $Candidates[0])) {
-            return $Candidates[0]
-        }
-    } elseif ($Candidates.Count -gt 1) {
-        $idx = Read-Option -Title ((Get-Text 'MultipleDet') -f $Game) -Options $Candidates -Extra (Get-Text 'EnterManual')
-        if ($idx -lt $Candidates.Count) { return $Candidates[$idx] }
-    } else {
+    if ($Candidates.Count -eq 0) {
         Write-Step INFO ((Get-Text 'NoAutoDetect') -f $Game)
         if ($Yes) {
             Write-Host ((Get-Text 'NeedRoot') -f $Game) -ForegroundColor Yellow
             return $null
         }
+        return Read-CustomPath -What $Game -Validator $validator
     }
+    if ($Yes) {
+        # auto mode: take the highest-priority candidate
+        if ($Candidates.Count -gt 1) {
+            Write-Step INFO ((Get-Text 'AutoPick') -f $Game, $Candidates[0])
+        }
+        return $Candidates[0]
+    }
+    if ($Candidates.Count -eq 1) {
+        if (Confirm-YesNo ((Get-Text 'UseDetected') -f $Game, $Candidates[0])) {
+            return $Candidates[0]
+        }
+        return Read-CustomPath -What $Game -Validator $validator
+    }
+    $idx = Read-Option -Title ((Get-Text 'MultipleDet') -f $Game) -Options $Candidates -Extra (Get-Text 'EnterManual')
+    if ($idx -lt $Candidates.Count) { return $Candidates[$idx] }
     return Read-CustomPath -What $Game -Validator $validator
 }
 
@@ -840,6 +841,22 @@ function Select-Theme {
     return $names[$idx]
 }
 
+function Test-ThemeHasBridge {
+    param([pscustomobject]$Theme)
+    foreach ($dir in @($Theme.SelectDir, $Theme.GameplayDir)) {
+        foreach ($f in @('mma_bridge.lua', 'mma_gameplay.lua')) {
+            if (Test-Path -LiteralPath (Join-Path $dir $f)) { return $true }
+        }
+    }
+    foreach ($lua in @($Theme.SelectDefault, $Theme.GameplayDefault)) {
+        if (Test-Path -LiteralPath $lua) {
+            $raw = Get-Content -LiteralPath $lua -Raw -ErrorAction SilentlyContinue
+            if ($raw -match 'LoadActor\(\s*"mma_(bridge|gameplay)\.lua"\s*\)') { return $true }
+        }
+    }
+    return $false
+}
+
 function Uninstall-EtternaBridge {
     Write-Host ''
     Write-Host (Get-Text 'RmEtterna') -ForegroundColor Cyan
@@ -847,7 +864,9 @@ function Uninstall-EtternaBridge {
     $root = Select-GameRoot -Game 'Etterna' -Candidates $cands -ForceRoot $Root
     if (-not $root) { return }
 
-    $support = Get-ThemeSupport -EtternaRoot $root | Where-Object { $_.Installable }
+    # uninstall list = themes with bridge traces (files/injected lines), even if
+    # their structure degraded since install; structurally complete ones too.
+    $support = Get-ThemeSupport -EtternaRoot $root | Where-Object { $_.Installable -or (Test-ThemeHasBridge $_) }
     $themes = @($support | Select-Object -ExpandProperty Name)
     if ($themes.Count -eq 0) {
         Write-Step FAIL ((Get-Text 'NoThemesRm') -f $root)

@@ -2,15 +2,16 @@
 chcp 65001 >nul
 rem ============================================================
 rem  ManiaMapAnalyser - Bridge Installer (Chinese UI)
-rem  Double-click this file to install/remove the Etterna or
-rem  Malody V bridge files for mma-shell, with Chinese UI text.
+rem  Double-click to run the installer with a Chinese interface.
+rem  The interface text itself comes from install-bridge.ps1
+rem  (the -Chinese switch); this file only launches it.
 rem ============================================================
-title ManiaMapAnalyser - 桥文件安装器 (中文)
+title ManiaMapAnalyser - Bridge Installer (Chinese UI)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-bridge.ps1" -Chinese
 set "EXITCODE=%ERRORLEVEL%"
 echo.
 if not "%EXITCODE%"=="0" (
-    echo 安装器退出码 %EXITCODE%，请查看上方提示。
+    echo Installer exited with code %EXITCODE%. See messages above.
 )
 echo.
 pause
