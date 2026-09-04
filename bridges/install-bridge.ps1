@@ -122,6 +122,8 @@ $script:L = @{
     RmMalodyZh      = '--- 正在卸载 Malody V 桥文件 ---'
     UseDetected     = "Use detected {0} folder:`n  {1}"
     UseDetectedZh   = "使用检测到的 {0} 目录：`n  {1}"
+    UsingCfgRoot    = "using {0} root from mma-shell-config.json: {1}"
+    UsingCfgRootZh  = "使用 mma-shell-config.json 中记录的 {0} 目录：{1}"
     MultipleDet     = 'Multiple {0} installs detected, pick one:'
     MultipleDetZh   = '检测到多个 {0} 安装位置，请选择：'
     EnterManual     = 'Enter manually...'
@@ -228,6 +230,8 @@ We need the folder that directly contains 'chart' and 'skin'.
     NoDefaultLuaZh  = '{0} 处没有 default.lua'
     BackupDel       = 'deleted backup {0}'
     BackupDelZh     = '已删除备份 {0}'
+    ConfirmRmTheme  = "Remove bridge from theme '{0}'?"
+    ConfirmRmThemeZh = "从主题 '{0}' 卸载桥文件？"
 
     # malody
     CreatedDir      = 'created {0}'
@@ -688,6 +692,46 @@ function Get-ShellConfigPath {
     return (Join-Path $root 'mma-shell-config.json')
 }
 
+function Get-ShellConfigRoot {
+    param([string]$Key)
+    $path = Get-ShellConfigPath
+    if (-not (Test-Path -LiteralPath $path)) { return '' }
+    try {
+        $obj = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $v = $obj.PSObject.Properties[$Key]
+        if ($v) { return ([string]$v.Value).Trim() }
+    } catch { }
+    return ''
+}
+
+function Select-ExistingRoot {
+    <#
+    .SYNOPSIS
+        Pick a game root for UNINSTALL: explicit -Root first, then the root we
+        recorded in mma-shell-config.json at install time (no re-probing), then
+        fall back to the normal detection flow only when neither is available.
+    #>
+    param(
+        [string]$Game,
+        [string]$ConfigKey,
+        [scriptblock]$Validator
+    )
+    if ($Root) {
+        $norm = Format-PathInput -Path $Root
+        if ($norm -and (& $Validator $norm)) { return $norm }
+        Write-Step FAIL ((Get-Text 'InvalidRoot') -f $Game, $Root)
+        return $null
+    }
+    $cfg = Get-ShellConfigRoot -Key $ConfigKey
+    if ($cfg -and (& $Validator $cfg)) {
+        $cfg = Format-PathInput -Path $cfg
+        Write-Step INFO ((Get-Text 'UsingCfgRoot') -f $Game, $cfg)
+        return $cfg
+    }
+    $cands = @(if ($Game -eq 'Etterna') { Get-EtternaCandidates } else { Get-MalodyCandidates })
+    return Select-GameRoot -Game $Game -Candidates $cands -ForceRoot ''
+}
+
 function Set-ShellConfigValue {
     param([string]$Key, [string]$Value)
     $path = Get-ShellConfigPath
@@ -860,8 +904,8 @@ function Test-ThemeHasBridge {
 function Uninstall-EtternaBridge {
     Write-Host ''
     Write-Host (Get-Text 'RmEtterna') -ForegroundColor Cyan
-    $cands = Get-EtternaCandidates
-    $root = Select-GameRoot -Game 'Etterna' -Candidates $cands -ForceRoot $Root
+    # use the recorded root from mma-shell-config.json when available (no re-probing)
+    $root = Select-ExistingRoot -Game 'Etterna' -ConfigKey 'etternaRoot' -Validator { param($p) Test-EtternaRoot $p }
     if (-not $root) { return }
 
     # uninstall list = themes with bridge traces (files/injected lines), even if
@@ -872,20 +916,27 @@ function Uninstall-EtternaBridge {
         Write-Step FAIL ((Get-Text 'NoThemesRm') -f $root)
         return
     }
+    $theme = $null
     if ($Theme) {
         if ($themes -contains $Theme) {
-            Write-Step INFO ((Get-Text 'RmThemeFrom') -f $Theme)
-            Uninstall-EtternaTheme -Root $root -Theme $Theme
+            $theme = $Theme
         } else {
             Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $Theme, $root)
+            return
         }
-    } elseif ($themes -contains 'Rebirth') {
-        Write-Step INFO ((Get-Text 'RmThemeFrom') -f 'Rebirth')
-        Uninstall-EtternaTheme -Root $root -Theme 'Rebirth'
+    } elseif ($Yes) {
+        # auto mode: highest-priority theme
+        if ($themes -contains 'Rebirth') { $theme = 'Rebirth' } else { $theme = $themes[0] }
+    } elseif ($themes.Count -eq 1) {
+        # single candidate: still ask before removing
+        if (-not (Confirm-YesNo ((Get-Text 'ConfirmRmTheme') -f $themes[0]) -DefaultYes $false)) { return }
+        $theme = $themes[0]
     } else {
         $idx = Read-Option -Title (Get-Text 'ThemePickRm') -Options $themes
-        Uninstall-EtternaTheme -Root $root -Theme $themes[$idx]
+        $theme = $themes[$idx]
     }
+    Write-Step INFO ((Get-Text 'RmThemeFrom') -f $theme)
+    Uninstall-EtternaTheme -Root $root -Theme $theme
     if ((-not $Yes) -and (Confirm-YesNo (Get-Text 'ConfirmClearE') -DefaultYes $false)) {
         Clear-ShellConfigValue -Key 'etternaRoot'
     }
@@ -894,23 +945,27 @@ function Uninstall-EtternaBridge {
 
 function Uninstall-EtternaTheme {
     param([string]$Root, [string]$Theme)
-    foreach ($screen in @('ScreenSelectMusic decorations', 'ScreenGameplay overlay')) {
-        $screenDir = Join-Path $Root ("Themes\{0}\BGAnimations\{1}" -f $Theme, $screen)
+    # screen -> file pairing, mirrors the install targets exactly
+    # (each screen only ever holds its own bridge file)
+    $pairs = @(
+        @{ Screen = 'ScreenSelectMusic decorations'; File = 'mma_bridge.lua' },
+        @{ Screen = 'ScreenGameplay overlay';        File = 'mma_gameplay.lua' }
+    )
+    foreach ($pair in $pairs) {
+        $screenDir = Join-Path $Root ("Themes\{0}\BGAnimations\{1}" -f $Theme, $pair.Screen)
         $defaultLua = Join-Path $screenDir 'default.lua'
         if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
             Write-Step SKIP ((Get-Text 'ScreenDirNo') -f $screenDir)
             continue
         }
-        foreach ($f in @('mma_bridge.lua', 'mma_gameplay.lua')) {
-            $target = Join-Path $screenDir $f
-            if (Test-Path -LiteralPath $target) {
-                Remove-Item -LiteralPath $target -Force
-                Write-Step OK ((Get-Text 'Deleted') -f $target)
-            } else {
-                Write-Step SKIP ((Get-Text 'NotPresent') -f $target)
-            }
-            Remove-LoadActorLine -DefaultLua $defaultLua -ActorFile $f | Out-Null
+        $target = Join-Path $screenDir $pair.File
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target -Force
+            Write-Step OK ((Get-Text 'Deleted') -f $target)
+        } else {
+            Write-Step SKIP ((Get-Text 'NotPresent') -f $target)
         }
+        Remove-LoadActorLine -DefaultLua $defaultLua -ActorFile $pair.File | Out-Null
         # drop the backup file we created (if any)
         $bak = $defaultLua + '.mma-backup'
         if (Test-Path -LiteralPath $bak) {
@@ -954,8 +1009,8 @@ function Install-MalodyBridge {
 function Uninstall-MalodyBridge {
     Write-Host ''
     Write-Host (Get-Text 'RmMalody') -ForegroundColor Cyan
-    $cands = Get-MalodyCandidates
-    $root = Select-GameRoot -Game 'Malody' -Candidates $cands -ForceRoot $Root
+    # use the recorded root from mma-shell-config.json when available (no re-probing)
+    $root = Select-ExistingRoot -Game 'Malody' -ConfigKey 'malodyRoot' -Validator { param($p) Test-MalodyRoot $p }
     if (-not $root) { return }
 
     $editor = Join-Path $root 'editor'

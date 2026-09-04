@@ -24,7 +24,7 @@
 2. Malody V：复制 `mma_editor.lua` 到 `MalodyV/editor/`（目录不存在则创建）。
 3. 写配置：读取→更新→写回 `mma-shell-config.json`（保留 `gameClient`/`hotkeys`/`logLevel` 等既有字段；UTF-8 无 BOM）。
 
-卸载：删除注入行（仅自己的行）+ 删除桥文件 + 删除备份；询问是否同时清空配置中的 `etternaRoot` / `malodyRoot`（默认不清）。
+卸载：优先使用 `mma-shell-config.json` 中记录的 `etternaRoot` / `malodyRoot`（不重新探测；`-Root` 指定则用指定值），并询问要卸载的主题（单主题也先确认；`-Theme` 指定或 `-Yes` 可跳过）；按「屏幕-文件」配对删除注入行（仅自己的行）+ 删除桥文件 + 删除备份，全程不触碰其他脚本的注入行；最后询问是否同时清空配置中的 `etternaRoot` / `malodyRoot`（默认不清）。
 
 # bridges/ — game-side bridge files
 
@@ -49,4 +49,4 @@ What it does (replacing the manual steps):
 2. Malody V: copies `mma_editor.lua` into `MalodyV/editor/` (creates the folder if missing).
 3. Config: read → update → write back `mma-shell-config.json` (preserves `gameClient`/`hotkeys`/`logLevel` and any other fields; UTF-8 without BOM).
 
-Uninstall: removes only its own injection lines, deletes the bridge files and its backup; optionally clears `etternaRoot` / `malodyRoot` from the config (default: keep).
+Uninstall: prefers the `etternaRoot` / `malodyRoot` recorded in `mma-shell-config.json` (no re-probing; `-Root` overrides), asks which theme to remove (single-theme confirm included; skipped via `-Theme` or `-Yes`), then removes only its own injection lines, the bridge files and its backup — paired screen↔file, other scripts' injections are never touched — and optionally clears `etternaRoot` / `malodyRoot` from the config (default: keep).
