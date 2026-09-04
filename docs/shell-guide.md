@@ -40,6 +40,8 @@
 
 ## 三、安装桥
 
+> **推荐：自动安装**。bridges 目录自带交互式安装器：双击 `bridges/install-bridge.bat`（或命令行运行 `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1`），按菜单选择 Install / Uninstall 与游戏即可——自动探测游戏安装目录（进程/环境变量/Steam 库/常见路径）、默认安装到 Etterna 的 Rebirth 主题、自动写入 `mma-shell-config.json`，卸载时只移除自身注入行，与其他脚本（如 DanOverlay）共存。若你想手动安装，按下文步骤操作。
+
 ### Etterna
 
 1. 复制 `bridges/etterna/mma_bridge.lua` 到 `Etterna/Themes/<你的主题>/BGAnimations/ScreenSelectMusic decorations/` 中；随后在该目录 `default.lua` 的 `return t` 之前加一行：`t[#t + 1] = LoadActor("mma_bridge.lua")`。例如：
@@ -149,6 +151,8 @@ System requirements: Windows; Etterna/Malody data sources need their game bridge
 Window position/size/topmost/click-through are remembered across launches. Global shortcuts keep working while the window is unfocused or click-through is active.
 
 ## Bridges
+
+> **Recommended: automated install.** The bridges folder ships an interactive installer: double-click `bridges/install-bridge.bat` (or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1`), pick Install / Uninstall and the game from the menu — it auto-detects game install folders (process / env vars / Steam libraries / common paths), installs into the Etterna Rebirth theme by default, and writes `mma-shell-config.json` for you; uninstall only removes its own injection lines and coexists with other scripts (e.g. DanOverlay). To install manually, follow the steps below.
 
 ### Etterna
 
