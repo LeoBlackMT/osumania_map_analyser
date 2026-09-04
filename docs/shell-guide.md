@@ -40,7 +40,7 @@
 
 ## 三、安装桥
 
-> **推荐：自动安装**。bridges 目录自带交互式安装器：双击 `bridges/install-bridge.bat`（或命令行运行 `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1`），按菜单选择 Install / Uninstall 与游戏即可——自动探测游戏安装目录（进程/环境变量/Steam 库/常见路径）、默认安装到 Etterna 的 Rebirth 主题、自动写入 `mma-shell-config.json`，卸载时只移除自身注入行，与其他脚本（如 DanOverlay）共存。若你想手动安装，按下文步骤操作。
+> **推荐：自动安装**。bridges 目录自带交互式安装器：双击 `bridges/install-bridge.bat`（中文界面用 `bridges/install-bridge-zh.bat`；或命令行运行 `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`），按菜单选择 Install / Uninstall 与游戏即可——自动探测游戏安装目录（进程/环境变量/Steam 库/常见路径，探测失败可浏览选择或手动输入路径）、默认安装到 Etterna 的 Rebirth 主题、自动写入 `mma-shell-config.json`，卸载时只移除自身注入行，与其他脚本（如 DanOverlay）共存。若你想手动安装，按下文步骤操作。
 
 ### Etterna
 
@@ -152,7 +152,7 @@ Window position/size/topmost/click-through are remembered across launches. Globa
 
 ## Bridges
 
-> **Recommended: automated install.** The bridges folder ships an interactive installer: double-click `bridges/install-bridge.bat` (or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1`), pick Install / Uninstall and the game from the menu — it auto-detects game install folders (process / env vars / Steam libraries / common paths), installs into the Etterna Rebirth theme by default, and writes `mma-shell-config.json` for you; uninstall only removes its own injection lines and coexists with other scripts (e.g. DanOverlay). To install manually, follow the steps below.
+> **Recommended: automated install.** The bridges folder ships an interactive installer: double-click `bridges/install-bridge.bat` (use `bridges/install-bridge-zh.bat` for the Chinese UI; or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`), pick Install / Uninstall and the game from the menu — it auto-detects game install folders (process / env vars / Steam libraries / common paths; if detection fails you can browse for the folder or type a path), installs into the Etterna Rebirth theme by default, and writes `mma-shell-config.json` for you; uninstall only removes its own injection lines and coexists with other scripts (e.g. DanOverlay). To install manually, follow the steps below.
 
 ### Etterna
 

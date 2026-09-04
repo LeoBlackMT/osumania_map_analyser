@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Interactive installer/remover for the ManiaMapAnalyser game bridge files
     (Etterna theme LoadActor injection + Malody V editor plugin).
@@ -13,9 +13,17 @@
 
     Game root directories are auto-detected (running process first, then the
     MMA_ETTERNA_ROOT / MMA_MALODY_ROOT env vars, then Steam libraries found via
-    the registry + steamapps/libraryfolders.vdf, then common install paths),
-    with a manual entry fallback. The Etterna target theme defaults to Rebirth
-    and falls back to a theme picker when Rebirth is missing.
+    the registry + steamapps/libraryfolders.vdf, then common install paths).
+    If detection finds nothing, you can pick a folder with a file browser,
+    type a path (/, \ and \\ are all accepted; quoting and trailing slashes
+    are tolerated), or read a short how-to-find-the-path hint.
+
+    The Etterna theme list is pre-checked: only themes whose structure is
+    complete (both ScreenSelectMusic decorations\default.lua and
+    ScreenGameplay overlay\default.lua exist) are offered for installing into;
+    broken themes like _fallback are listed with the reason they were skipped.
+    Rebirth is the default when present; installing to ALL themes at once is
+    intentionally NOT offered.
 
     The installer never touches other scripts' LoadActor lines (e.g. DanOverlay,
     elements, titlesplash): it only adds its own line idempotently and removes
@@ -27,6 +35,11 @@
 
 .PARAMETER Uninstall
     Remove instead of install.
+
+.PARAMETER Chinese
+    Output interface text in Chinese (script file must be UTF-8 with BOM for
+    Windows PowerShell 5.1 to parse the strings correctly; install-bridge-zh.bat
+    already handles this).
 
 .PARAMETER Yes
     Skip confirmation prompts where a safe default exists (advanced usage,
@@ -46,13 +59,14 @@
 
 .NOTES
     Target: Windows PowerShell 5.1+ (built into Windows 10/11) and pwsh 7.
-    UTF-8 without BOM. English only (no console codepage pitfalls).
+    English by default; -Chinese switches the user-facing text to Chinese.
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('Etterna', 'Malody')]
     [string]$Game,
     [switch]$Uninstall,
+    [switch]$Chinese,
     [switch]$Yes,
     [string]$Root,
     [string]$Theme,
@@ -60,6 +74,223 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ---------------------------------------------------------------------------
+# localization
+# ---------------------------------------------------------------------------
+
+$script:L = @{
+    # banner / menus
+    AppTitle        = 'ManiaMapAnalyser - Bridge Installer v1.0.0'
+    Lede1           = 'Installs / removes data bridges for mma-shell:'
+    Lede1Zh         = '安装 / 卸载 mma-shell 数据桥：'
+    LedeEtterna     = '   - Etterna theme bridge (mma_bridge / mma_gameplay)'
+    LedeMalody      = '   - Malody V editor plugin (mma_editor)'
+    MenuAsk         = 'What would you like to do?'
+    MenuAskZh       = '你想做什么？'
+    MenuInstall     = 'Install bridges'
+    MenuInstallZh   = '安装桥文件'
+    MenuUninstall   = 'Uninstall bridges'
+    MenuUninstallZh = '卸载桥文件'
+    MenuExit        = 'Exit'
+    MenuExitZh      = '退出'
+    ChooseGameIn    = 'Install bridge for:'
+    ChooseGameInZh  = '为以下游戏安装桥：'
+    ChooseGameRm    = 'Remove bridge for:'
+    ChooseGameRmZh  = '为以下游戏卸载桥：'
+    BackToMenu      = 'Back to menu'
+    BackToMenuZh    = '返回菜单'
+    EnterChoice     = 'Enter choice'
+    EnterChoiceZh   = '请输入选项'
+    InvalidChoice   = 'Invalid choice, try again.'
+    InvalidChoiceZh = '无效选项，请重试。'
+    AnswerYN        = 'Please answer y or n.'
+    AnswerYNZh      = '请输入 y 或 n。'
+    ContinueAsk     = 'Continue?'
+    ContinueAskZh   = '继续？'
+    Done            = 'Done.'
+    DoneZh          = '完成。'
+
+    # detection
+    HeaderEtterna   = '--- Installing Etterna bridge ---'
+    HeaderEtternaZh = '--- 正在安装 Etterna 桥文件 ---'
+    HeaderMalody    = '--- Installing Malody V bridge ---'
+    HeaderMalodyZh  = '--- 正在安装 Malody V 桥文件 ---'
+    RmEtterna       = '--- Removing Etterna bridge ---'
+    RmEtternaZh     = '--- 正在卸载 Etterna 桥文件 ---'
+    RmMalody        = '--- Removing Malody V bridge ---'
+    RmMalodyZh      = '--- 正在卸载 Malody V 桥文件 ---'
+    UseDetected     = "Use detected {0} folder:`n  {1}"
+    UseDetectedZh   = "使用检测到的 {0} 目录：`n  {1}"
+    MultipleDet     = 'Multiple {0} installs detected, pick one:'
+    MultipleDetZh   = '检测到多个 {0} 安装位置，请选择：'
+    EnterManual     = 'Enter manually...'
+    EnterManualZh   = '手动输入……'
+    AutoPick        = 'Auto mode: using the first detected {0} folder: {1}'
+    AutoPickZh      = '自动模式：使用第一个检测到的 {0} 目录：{1}'
+    NoAutoDetect    = 'No {0} install auto-detected'
+    NoAutoDetectZh  = '未自动检测到 {0} 安装位置'
+    NeedRoot        = 'No {0} detected and interactive input is disabled (-Yes). Please pass -Root <path>.'
+    NeedRootZh      = '未检测到 {0} 且已禁用交互输入（-Yes）。请通过 -Root <path> 指定路径。'
+    ProvideFolder   = 'How would you like to provide the {0} folder?'
+    ProvideFolderZh = '如何提供 {0} 目录？'
+    OptBrowse       = 'Browse for the folder...'
+    OptBrowseZh     = '浏览选择目录……'
+    OptType         = 'Type the path manually'
+    OptTypeZh       = '手动输入路径'
+    OptHelp         = 'How do I find the path?'
+    OptHelpZh       = '如何找到游戏路径？'
+    OptAbort        = "Abort (don't install)"
+    OptAbortZh      = '取消（不安装）'
+    TypePathPrompt  = 'Enter the full {0} folder path'
+    TypePathPromptZh = '请输入完整的 {0} 目录路径'
+    InvalidRoot     = 'Not valid as a {0} folder (path check failed): {1}'
+    InvalidRootZh   = '不是有效的 {0} 目录（路径校验失败）：{1}'
+    HelpEtterna     = @'
+How to find your Etterna folder:
+  1. Right-click the Etterna shortcut (desktop / Start menu), choose
+     'Open file location'.
+  2. In the folder that opens (or its parent if it contains the .exe),
+     click the address bar and copy the full path, e.g. D:\Games\Etterna.
+  3. Steam users: check D:\Steam\steamapps\common\Etterna
+     (the Steam library may be on another drive - look for steamapps\common\Etterna).
+The folder we need is the one that directly contains 'Save' and 'Themes'.
+'@
+    HelpEtternaZh   = @'
+如何找到您的 Etterna 目录：
+  1. 右键点击 Etterna 快捷方式（桌面 / 开始菜单），选择「打开文件所在位置」。
+  2. 在打开的文件夹（或其上一级包含 .exe 的文件夹）中，点击地址栏复制完整路径，例如 D:\Games\Etterna。
+  3. Steam 用户：请查看 D:\Steam\steamapps\common\Etterna
+     （Steam 库可能在其它盘符——找到 steamapps\common\Etterna 即可）。
+我们需要的是直接包含 Save 和 Themes 两个文件夹的那个目录。
+'@
+    HelpMalody      = @'
+How to find your Malody V folder:
+  1. Steam users: usually D:\Steam\steamapps\common\MalodyV
+     (the Steam library may be on another drive - look for steamapps\common\MalodyV).
+  2. Otherwise: right-click the Malody V shortcut, choose 'Open file location'.
+We need the folder that directly contains 'chart' and 'skin'.
+'@
+    HelpMalodyZh    = @'
+如何找到您的 Malody V 目录：
+  1. Steam 用户：通常在 D:\Steam\steamapps\common\MalodyV
+     （Steam 库可能在其它盘符——找到 steamapps\common\MalodyV 即可）。
+  2. 其他方式：右键 Malody V 快捷方式，选择「打开文件所在位置」。
+我们需要的是直接包含 chart 和 skin 两个文件夹的那个目录。
+'@
+
+    # themes
+    ThemeConfirm    = "Use theme '{0}'? (installable: {1})"
+    ThemeConfirmZh  = "使用主题 '{0}'？（可安装：{1}）"
+    ThemePick       = 'Select the Etterna theme to install into:'
+    ThemePickZh     = '选择要安装到的 Etterna 主题：'
+    ThemePickRm     = 'Select the theme the bridge was installed into:'
+    ThemePickRmZh   = '选择桥文件所安装到的主题：'
+    ThemeSkipped    = "skipped theme '{0}': {1}"
+    ThemeSkippedZh  = "已跳过主题 '{0}'：{1}"
+    ReasonNoSel     = 'missing ScreenSelectMusic decorations\default.lua'
+    ReasonNoSelZh   = '缺少 ScreenSelectMusic decorations\default.lua'
+    ReasonNoGp      = 'missing ScreenGameplay overlay\default.lua'
+    ReasonNoGpZh    = '缺少 ScreenGameplay overlay\default.lua'
+    NoThemes        = 'No installable theme folders found under {0}\Themes'
+    NoThemesZh      = '在 {0}\Themes 下未找到可安装的主题目录'
+    NoThemesRm      = 'no theme folders found under {0}\Themes - nothing to remove'
+    NoThemesRmZh    = '在 {0}\Themes 下未找到主题目录 - 无需卸载'
+    ThemeNotFound   = "Theme '{0}' not found under {1}\Themes"
+    ThemeNotFoundZh = "在 {1}\Themes 下未找到主题 '{0}'"
+    EtternaRootInfo = 'Etterna root: {0}\Themes\{1}'
+    EtternaRootInfoZh = 'Etterna 目录：{0}\Themes\{1}'
+    RmThemeFrom     = 'Removing from theme: {0}'
+    RmThemeFromZh   = '正在从主题卸载：{0}'
+    BridgeSrcNo     = 'bridge sources not found next to this script: {0} (expected mma_bridge.lua / mma_gameplay.lua)'
+    BridgeSrcNoZh   = '未在脚本旁找到桥文件源：{0}（应为 mma_bridge.lua / mma_gameplay.lua）'
+    ScreenDirNo     = 'screen directory missing: {0} (theme structure incomplete?)'
+    ScreenDirNoZh   = '缺少屏幕目录：{0}（主题结构不完整？）'
+    LuaMissing      = 'default.lua missing: {0} - cannot inject safely, please install manually'
+    LuaMissingZh    = '缺少 default.lua：{0} - 无法安全注入，请手动安装'
+    Copied          = 'copied {0} -> {1}'
+    CopiedZh        = '已复制 {0} -> {1}'
+    Injected        = "injected LoadActor({0}) before 'return t' in {1}"
+    InjectedZh      = "已在 {1} 的 'return t' 前注入 LoadActor({0})"
+    AlreadyInj      = 'already injected in {0}'
+    AlreadyInjZh    = '已注入过：{0}'
+    NoReturnT       = "No standalone 'return t' line found in {0} - please install manually"
+    NoReturnTZh     = "在 {0} 中未找到独立的 'return t' 行 - 请手动安装"
+    InjFail         = 'injection failed for {0}'
+    InjFailZh       = '注入失败：{0}'
+    RemovedLine     = "removed LoadActor({0}) line from {1}"
+    RemovedLineZh   = '已从 {1} 移除 LoadActor({0}) 行'
+    NoLineFound     = "no LoadActor({0}) line found in {1}"
+    NoLineFoundZh   = "在 {1} 中未找到 LoadActor({0}) 行"
+    Deleted         = 'deleted {0}'
+    DeletedZh       = '已删除 {0}'
+    NotPresent      = 'not present: {0}'
+    NotPresentZh    = '不存在：{0}'
+    NoDefaultLua    = 'no default.lua at {0}'
+    NoDefaultLuaZh  = '{0} 处没有 default.lua'
+    BackupDel       = 'deleted backup {0}'
+    BackupDelZh     = '已删除备份 {0}'
+
+    # malody
+    CreatedDir      = 'created {0}'
+    CreatedDirZh    = '已创建 {0}'
+    MalodySrcNo     = 'bridge source not found next to this script: {0} (expected mma_editor.lua)'
+    MalodySrcNoZh   = '未在脚本旁找到桥文件源：{0}（应为 mma_editor.lua）'
+    MalodyTip       = 'Use it from the Malody editor: More menu -> MMA Analyze.'
+    MalodyTipZh     = '使用方式：打开 Malody 编辑器 → 菜单 → MMA Analyze。'
+
+    # config
+    CfgCreate       = 'creating mma-shell-config.json: {0}'
+    CfgCreateZh     = '正在创建 mma-shell-config.json：{0}'
+    CfgUnread       = 'mma-shell-config.json unreadable, regenerating: {0}'
+    CfgUnreadZh     = 'mma-shell-config.json 无法读取，正在重新生成：{0}'
+    CfgWrote        = 'wrote {0} = {1} to {2}'
+    CfgWroteZh      = '已写入 {0} = {1} 到 {2}'
+    CfgCleared      = 'cleared {0} in {1}'
+    CfgClearedZh    = '已清空 {1} 中的 {0}'
+    CfgNoFile       = 'no mma-shell-config.json at {0}'
+    CfgNoFileZh     = '{0} 处没有 mma-shell-config.json'
+    CfgNoKey        = '{0} not present in {1}'
+    CfgNoKeyZh      = '{1} 中不存在 {0}'
+    CfgReadFail     = 'could not read {0}'
+    CfgReadFailZh   = '无法读取 {0}'
+    ConfirmClearE   = 'Also clear etternaRoot in mma-shell-config.json?'
+    ConfirmClearEZh = '是否同时清空 mma-shell-config.json 中的 etternaRoot？'
+    ConfirmClearM   = 'Also clear malodyRoot in mma-shell-config.json?'
+    ConfirmClearMZh = '是否同时清空 mma-shell-config.json 中的 malodyRoot？'
+
+    # results
+    EtternaOk       = 'Etterna bridge installed.'
+    EtternaOkZh     = 'Etterna 桥文件安装完成。'
+    EtternaNot      = 'Etterna bridge was NOT installed (see failures above).'
+    EtternaNotZh    = 'Etterna 桥文件未安装成功（请查看上方错误）。'
+    EtternaGone     = 'Etterna bridge removed.'
+    EtternaGoneZh   = 'Etterna 桥文件已卸载。'
+    MalodyOk        = 'Malody V bridge installed.'
+    MalodyOkZh      = 'Malody V 桥文件安装完成。'
+    MalodyGone      = 'Malody V bridge removed.'
+    MalodyGoneZh    = 'Malody V 桥文件已卸载。'
+    RemindTheme     = 'Reminder: a theme update wipes these files - re-run this installer to restore.'
+    RemindThemeZh   = '提示：主题更新会删除这些文件 - 重新运行本安装器即可恢复。'
+}
+
+# When -Chinese: flip all *Zh keys over their English base names.
+if ($Chinese) {
+    $map = @{}
+    foreach ($k in $script:L.Keys) {
+        if ($k.EndsWith('Zh')) {
+            $base = $k.Substring(0, $k.Length - 2)
+            $map[$base] = $script:L[$k]
+        }
+    }
+    foreach ($k in $map.Keys) { $script:L[$k] = $map[$k] }
+    try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+}
+
+function Get-Text {
+    param([string]$Key)
+    return $script:L[$Key]
+}
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -79,12 +310,12 @@ function Write-Step {
 
 function Show-Banner {
     Write-Host ''
-    Write-Host '==================================================' -ForegroundColor Cyan
-    Write-Host ' ManiaMapAnalyser - Bridge Installer v1.0.0' -ForegroundColor Cyan
-    Write-Host '==================================================' -ForegroundColor Cyan
-    Write-Host ' Installs / removes data bridges for mma-shell:' -ForegroundColor Gray
-    Write-Host '   - Etterna theme bridge (mma_bridge / mma_gameplay)' -ForegroundColor Gray
-    Write-Host '   - Malody V editor plugin (mma_editor)' -ForegroundColor Gray
+    Write-Host ('==================================================') -ForegroundColor Cyan
+    Write-Host (' {0}' -f (Get-Text 'AppTitle')) -ForegroundColor Cyan
+    Write-Host ('==================================================') -ForegroundColor Cyan
+    Write-Host (Get-Text 'Lede1') -ForegroundColor Gray
+    Write-Host (Get-Text 'LedeEtterna') -ForegroundColor Gray
+    Write-Host (Get-Text 'LedeMalody') -ForegroundColor Gray
     Write-Host ''
 }
 
@@ -103,13 +334,13 @@ function Read-Option {
         Write-Host ("  [{0}] {1}" -f ($Options.Count + 1), $Extra)
     }
     while ($true) {
-        $input = Read-Host 'Enter choice'
+        $input = Read-Host (Get-Text 'EnterChoice')
         $n = 0
         if ([int]::TryParse($input, [ref]$n)) {
             if ($n -ge 1 -and $n -le $Options.Count) { return ($n - 1) }
             if ($Extra -and $n -eq $Options.Count + 1) { return $n - 1 }
         }
-        Write-Host 'Invalid choice, try again.' -ForegroundColor Yellow
+        Write-Host (Get-Text 'InvalidChoice') -ForegroundColor Yellow
     }
 }
 
@@ -124,18 +355,71 @@ function Confirm-YesNo {
         if ([string]::IsNullOrWhiteSpace($input)) { return $DefaultYes }
         if ($input -match '^(y|yes)$') { return $true }
         if ($input -match '^(n|no)$') { return $false }
-        Write-Host 'Please answer y or n.' -ForegroundColor Yellow
+        Write-Host (Get-Text 'AnswerYN') -ForegroundColor Yellow
     }
+}
+
+function Normalize-PathInput {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    $p = $Path.Trim()
+    # strip wrapping quotes (user may have pasted "D:\..." or 'D:\...')
+    $p = $p.Trim([char[]]@('"', "'"))
+    # fold double backslashes (user may type D:\\Games\\Etterna thinking of JSON escaping)
+    $p = $p -replace '\\\\', '\'
+    # unify separators to backslash
+    $p = $p -replace '/', '\'
+    # trim trailing separators
+    $p = $p.TrimEnd([char[]]@('\', '/'))
+    return $p
+}
+
+function Select-FolderBrowser {
+    param([string]$Description)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description = $Description
+        $dlg.ShowNewFolderButton = $false
+        if ($dlg.ShowDialog() -eq [Windows.Forms.DialogResult]::OK) {
+            return $dlg.SelectedPath
+        }
+    } catch {
+        Write-Step WARN 'folder browser unavailable, please type the path instead'
+    }
+    return $null
 }
 
 function Read-CustomPath {
     param([string]$What, [scriptblock]$Validator)
     while ($true) {
-        $p = Read-Host ("Enter the full {0} folder path" -f $What)
-        if ([string]::IsNullOrWhiteSpace($p)) { return $null }
-        $p = $p.Trim().TrimEnd('\', '/')
+        $pick = Read-Option -Title ((Get-Text 'ProvideFolder') -f $What) `
+            -Options @(
+                (Get-Text 'OptBrowse'),
+                (Get-Text 'OptType'),
+                (Get-Text 'OptHelp')
+            ) -Extra (Get-Text 'OptAbort')
+        if ($pick -eq 3) { return $null }
+        if ($pick -eq 2) {
+            $help = if ($What -eq 'Etterna') { Get-Text 'HelpEtterna' } else { Get-Text 'HelpMalody' }
+            Write-Host ''
+            Write-Host $help -ForegroundColor Gray
+            continue
+        }
+        if ($pick -eq 0) {
+            $chosen = Select-FolderBrowser -Description $What
+            if (-not $chosen) { continue }
+            $chosen = Normalize-PathInput -Path $chosen
+            if (& $Validator $chosen) { return $chosen }
+            Write-Step FAIL ((Get-Text 'InvalidRoot') -f $What, $chosen)
+            continue
+        }
+        # type manually
+        $p = Read-Host ((Get-Text 'TypePathPrompt') -f $What)
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        $p = Normalize-PathInput -Path $p
         if ($p -and (& $Validator $p)) { return $p }
-        Write-Step FAIL "Not a valid $What folder (path check failed): $p"
+        Write-Step FAIL ((Get-Text 'InvalidRoot') -f $What, $p)
     }
 }
 
@@ -250,56 +534,78 @@ function Select-GameRoot {
     )
     $validator = if ($Game -eq 'Etterna') { { param($p) Test-EtternaRoot $p } } else { { param($p) Test-MalodyRoot $p } }
     if ($ForceRoot) {
-        if (& $validator $ForceRoot) { return $ForceRoot.TrimEnd('\', '/') }
-        Write-Step FAIL "Provided -Root is not a valid $Game folder: $ForceRoot"
+        $norm = Normalize-PathInput -Path $ForceRoot
+        if ($norm -and (& $validator $norm)) { return $norm }
+        Write-Step FAIL ((Get-Text 'InvalidRoot') -f $Game, $ForceRoot)
         return $null
     }
-    if ($Candidates.Count -eq 1) {
+    if ($Candidates.Count -eq 1 -or $Yes) {
+        # single candidate, or auto mode: take the highest-priority candidate
+        if ($Yes -and $Candidates.Count -gt 1) {
+            Write-Step INFO ((Get-Text 'AutoPick') -f $Game, $Candidates[0])
+        }
         if ($Yes) { return $Candidates[0] }
-        if (Confirm-YesNo ("Use detected {0} folder:{1}  {2}" -f $Game, [Environment]::NewLine, $Candidates[0])) {
+        if (Confirm-YesNo ((Get-Text 'UseDetected') -f $Game, $Candidates[0])) {
             return $Candidates[0]
         }
     } elseif ($Candidates.Count -gt 1) {
-        $idx = Read-Option -Title "Multiple $Game installs detected, pick one:" -Options $Candidates -Extra 'Enter manually...'
+        $idx = Read-Option -Title ((Get-Text 'MultipleDet') -f $Game) -Options $Candidates -Extra (Get-Text 'EnterManual')
         if ($idx -lt $Candidates.Count) { return $Candidates[$idx] }
     } else {
-        Write-Step INFO "No $Game install auto-detected"
+        Write-Step INFO ((Get-Text 'NoAutoDetect') -f $Game)
+        if ($Yes) {
+            Write-Host ((Get-Text 'NeedRoot') -f $Game) -ForegroundColor Yellow
+            return $null
+        }
     }
     return Read-CustomPath -What $Game -Validator $validator
 }
 
-function Get-Themes {
-    param([string]$EtternaRoot)
-    $dir = Join-Path $EtternaRoot 'Themes'
-    if (-not (Test-Path $dir -PathType Container)) { return @() }
-    return @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-}
+# ---------------------------------------------------------------------------
+# theme support pre-check: only structurally complete themes are installable
+# ---------------------------------------------------------------------------
 
-function Select-Theme {
-    param(
-        [string]$EtternaRoot,
-        [string]$ForcedTheme
-    )
-    $themes = Get-Themes -EtternaRoot $EtternaRoot
-    if ($themes.Count -eq 0) {
-        Write-Step FAIL "No theme folders found under $EtternaRoot\Themes"
-        return $null
+function Get-ThemeSupport {
+    param([string]$EtternaRoot)
+    $themes = @()
+    $dir = Join-Path $EtternaRoot 'Themes'
+    if (Test-Path $dir -PathType Container) {
+        $themes = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name)
     }
-    if ($ForcedTheme) {
-        if ($themes -contains $ForcedTheme) { return $ForcedTheme }
-        Write-Step FAIL "Theme '$ForcedTheme' not found under $EtternaRoot\Themes"
-        return $null
-    }
-    # default: Rebirth (does NOT offer installing to all themes at once)
-    if ($themes -contains 'Rebirth') {
-        if ($Yes) { return 'Rebirth' }
-        if (Confirm-YesNo ("Use theme 'Rebirth'? (available themes: {0})" -f ($themes -join ', '))) {
-            return 'Rebirth'
+    $out = @()
+    foreach ($t in $themes) {
+        $selDir = Join-Path $EtternaRoot ("Themes\{0}\BGAnimations\ScreenSelectMusic decorations" -f $t)
+        $gpDir = Join-Path $EtternaRoot ("Themes\{0}\BGAnimations\ScreenGameplay overlay" -f $t)
+        $selLua = Join-Path $selDir 'default.lua'
+        $gpLua = Join-Path $gpDir 'default.lua'
+        $selOk = Test-Path -LiteralPath $selLua
+        $gpOk = Test-Path -LiteralPath $gpLua
+        $out += [pscustomobject]@{
+            Name          = $t
+            SelectDir     = $selDir
+            GameplayDir   = $gpDir
+            SelectOk      = $selOk
+            GameplayOk    = $gpOk
+            Installable   = ($selOk -and $gpOk)
+            SelectDefault = $selLua
+            GameplayDefault = $gpLua
         }
     }
-    $idx = Read-Option -Title 'Select the Etterna theme to install into:' -Options $themes
-    return $themes[$idx]
+    return $out
+}
+
+function Get-InstallableThemes {
+    param([string]$EtternaRoot)
+    $all = Get-ThemeSupport -EtternaRoot $EtternaRoot
+    # report skipped themes (why they are not offered)
+    foreach ($t in $all) {
+        if (-not $t.Installable) {
+            $reason = if (-not $t.SelectOk) { (Get-Text 'ReasonNoSel') } else { (Get-Text 'ReasonNoGp') }
+            Write-Step SKIP ((Get-Text 'ThemeSkipped') -f $t.Name, $reason)
+        }
+    }
+    return @($all | Where-Object { $_.Installable })
 }
 
 # ---------------------------------------------------------------------------
@@ -323,14 +629,14 @@ function Add-LoadActorLine {
 
     # already injected? (any existing LoadActor for this file -> leave alone)
     if ($raw -match ('LoadActor\(\s*"' + [regex]::Escape($ActorFile) + '"\s*\)')) {
-        Write-Step SKIP "already injected in $DefaultLua"
+        Write-Step SKIP ((Get-Text 'AlreadyInj') -f $DefaultLua)
         return $true
     }
 
     # locate the LAST standalone `return t` line (allowing leading whitespace / trailing ';')
     $ms = [regex]::Matches($raw, '(?m)^[ \t]*return t[ \t]*;?[ \t]*\r?$')
     if ($ms.Count -eq 0) {
-        Write-Step FAIL "No standalone 'return t' line found in $DefaultLua - please install manually"
+        Write-Step FAIL ((Get-Text 'NoReturnT') -f $DefaultLua)
         return $false
     }
     $m = $ms[$ms.Count - 1]
@@ -345,7 +651,7 @@ function Add-LoadActorLine {
     $insert = $indent + 't[#t + 1] = LoadActor("' + $ActorFile + '")' + $nl
     $new = $raw.Substring(0, $m.Index) + $insert + $raw.Substring($m.Index)
     [System.IO.File]::WriteAllText($DefaultLua, $new, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Step OK ("injected LoadActor({0}) before 'return t' in {1}" -f $ActorFile, $DefaultLua)
+    Write-Step OK ((Get-Text 'Injected') -f $ActorFile, $DefaultLua)
     return $true
 }
 
@@ -355,7 +661,7 @@ function Remove-LoadActorLine {
         [string]$ActorFile
     )
     if (-not (Test-Path -LiteralPath $DefaultLua)) {
-        Write-Step SKIP "no default.lua at $DefaultLua"
+        Write-Step SKIP ((Get-Text 'NoDefaultLua') -f $DefaultLua)
         return $true
     }
     $raw = [System.IO.File]::ReadAllText($DefaultLua)
@@ -363,11 +669,11 @@ function Remove-LoadActorLine {
         [regex]::Escape($ActorFile) + '"\s*\)[ \t]*\r?\n?'
     $new = [regex]::Replace($raw, $pattern, '')
     if ($new -eq $raw) {
-        Write-Step SKIP "no LoadActor($ActorFile) line found in $DefaultLua"
+        Write-Step SKIP ((Get-Text 'NoLineFound') -f $ActorFile, $DefaultLua)
         return $true
     }
     [System.IO.File]::WriteAllText($DefaultLua, $new, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Step OK ("removed LoadActor({0}) line from {1}" -f $ActorFile, $DefaultLua)
+    Write-Step OK ((Get-Text 'RemovedLine') -f $ActorFile, $DefaultLua)
     return $true
 }
 
@@ -390,10 +696,10 @@ function Set-ShellConfigValue {
             $obj = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
             foreach ($prop in $obj.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
         } catch {
-            Write-Step INFO "mma-shell-config.json unreadable, regenerating: $path"
+            Write-Step INFO ((Get-Text 'CfgUnread') -f $path)
         }
     } else {
-        Write-Step INFO "creating mma-shell-config.json: $path"
+        Write-Step INFO ((Get-Text 'CfgCreate') -f $path)
     }
     # skeleton defaults (match the shell's ensure_shell_config)
     if (-not $data.Contains('gameClient')) { $data['gameClient'] = 'Auto' }
@@ -408,14 +714,14 @@ function Set-ShellConfigValue {
     $data[$Key] = $Value.Replace('\', '/')
     $json = $data | ConvertTo-Json -Depth 10
     [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Step OK ("wrote {0} = {1} to {2}" -f $Key, $data[$Key], $path)
+    Write-Step OK ((Get-Text 'CfgWrote') -f $Key, $data[$Key], $path)
 }
 
 function Clear-ShellConfigValue {
     param([string]$Key)
     $path = Get-ShellConfigPath
     if (-not (Test-Path -LiteralPath $path)) {
-        Write-Step SKIP "no mma-shell-config.json at $path"
+        Write-Step SKIP ((Get-Text 'CfgNoFile') -f $path)
         return
     }
     $data = [ordered]@{}
@@ -423,17 +729,17 @@ function Clear-ShellConfigValue {
         $obj = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
         foreach ($prop in $obj.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
     } catch {
-        Write-Step FAIL "could not read $path"
+        Write-Step FAIL ((Get-Text 'CfgReadFail') -f $path)
         return
     }
     if (-not $data.Contains($Key)) {
-        Write-Step SKIP "$Key not present in $path"
+        Write-Step SKIP ((Get-Text 'CfgNoKey') -f $Key, $path)
         return
     }
     $data[$Key] = ''
     $json = $data | ConvertTo-Json -Depth 10
     [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Step OK ("cleared {0} in {1}" -f $Key, $path)
+    Write-Step OK ((Get-Text 'CfgCleared') -f $Key, $path)
 }
 
 # ---------------------------------------------------------------------------
@@ -442,41 +748,49 @@ function Clear-ShellConfigValue {
 
 function Install-EtternaBridge {
     Write-Host ''
-    Write-Host '--- Installing Etterna bridge ---' -ForegroundColor Cyan
+    Write-Host (Get-Text 'HeaderEtterna') -ForegroundColor Cyan
     $cands = Get-EtternaCandidates
     $root = Select-GameRoot -Game 'Etterna' -Candidates $cands -ForceRoot $Root
     if (-not $root) { return }
-    $theme = Select-Theme -EtternaRoot $root -ForcedTheme $Theme
+
+    # theme pre-check: only structurally complete themes are offered
+    $installable = Get-InstallableThemes -EtternaRoot $root
+    if ($installable.Count -eq 0) {
+        Write-Step FAIL ((Get-Text 'NoThemes') -f $root)
+        return
+    }
+    $theme = Select-Theme -EtternaRoot $root -Installable $installable -ForcedTheme $Theme
     if (-not $theme) { return }
-    Write-Step INFO ("Etterna root: {0}\Themes\{1}" -f $root, $theme)
+    $info = (Get-ThemeSupport -EtternaRoot $root | Where-Object { $_.Name -eq $theme } | Select-Object -First 1)
+    Write-Step INFO ((Get-Text 'EtternaRootInfo') -f $root, $theme)
 
     # source bridge files live next to this script: bridges\etterna\...
     $src = Join-Path $PSScriptRoot 'etterna'
     if (-not (Test-Path (Join-Path $src 'mma_bridge.lua')) -or
         -not (Test-Path (Join-Path $src 'mma_gameplay.lua'))) {
-        Write-Step FAIL "bridge sources not found next to this script: $src (expected mma_bridge.lua / mma_gameplay.lua)"
+        Write-Step FAIL ((Get-Text 'BridgeSrcNo') -f $src)
         return
     }
 
     $targets = @(
-        @{ Screen = 'ScreenSelectMusic decorations'; File = 'mma_bridge.lua' },
-        @{ Screen = 'ScreenGameplay overlay';        File = 'mma_gameplay.lua' }
+        @{ Screen = 'ScreenSelectMusic decorations'; File = 'mma_bridge.lua'; Lua = $info.SelectDefault },
+        @{ Screen = 'ScreenGameplay overlay';        File = 'mma_gameplay.lua'; Lua = $info.GameplayDefault }
     )
     $anyOk = $false
     foreach ($t in $targets) {
         $screenDir = Join-Path $root ("Themes\{0}\BGAnimations\{1}" -f $theme, $t.Screen)
-        $defaultLua = Join-Path $screenDir 'default.lua'
+        $defaultLua = $t.Lua
         if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
-            Write-Step FAIL ("screen directory missing: {0} (theme structure incomplete?)" -f $screenDir)
+            Write-Step FAIL ((Get-Text 'ScreenDirNo') -f $screenDir)
             continue
         }
         if (-not (Test-Path -LiteralPath $defaultLua)) {
-            Write-Step FAIL ("default.lua missing: {0} - cannot inject safely, please install manually" -f $defaultLua)
+            Write-Step FAIL ((Get-Text 'LuaMissing') -f $defaultLua)
             continue
         }
         # copy the bridge file (overwrite on re-run = re-install after theme update)
         Copy-Item -LiteralPath (Join-Path $src $t.File) -Destination (Join-Path $screenDir $t.File) -Force
-        Write-Step OK ("copied {0} -> {1}" -f $t.File, $screenDir)
+        Write-Step OK ((Get-Text 'Copied') -f $t.File, $screenDir)
         if (Add-LoadActorLine -DefaultLua $defaultLua -ActorFile $t.File) {
             $anyOk = $true
         }
@@ -485,43 +799,78 @@ function Install-EtternaBridge {
     if ($anyOk) {
         Set-ShellConfigValue -Key 'etternaRoot' -Value $root
         Write-Host ''
-        Write-Step OK 'Etterna bridge installed.'
-        Write-Host 'Reminder: a theme update wipes these files - re-run this installer to restore.' -ForegroundColor Yellow
+        Write-Step OK (Get-Text 'EtternaOk')
+        Write-Host (Get-Text 'RemindTheme') -ForegroundColor Yellow
     } else {
         Write-Host ''
-        Write-Step FAIL 'Etterna bridge was NOT installed (see failures above).'
+        Write-Step FAIL (Get-Text 'EtternaNot')
     }
+}
+
+function Select-Theme {
+    param(
+        [string]$EtternaRoot,
+        [object[]]$Installable,
+        [string]$ForcedTheme
+    )
+    $names = @($Installable | Select-Object -ExpandProperty Name)
+    if ($names.Count -eq 0) {
+        return $null
+    }
+    if ($ForcedTheme) {
+        if ($names -contains $ForcedTheme) { return $ForcedTheme }
+        $which = Get-ThemeSupport -EtternaRoot $EtternaRoot | Where-Object { $_.Name -eq $ForcedTheme } | Select-Object -First 1
+        if ($which) {
+            # forced theme exists but is not structurally complete
+            $reasonKey = if (-not $which.SelectOk) { 'ReasonNoSel' } else { 'ReasonNoGp' }
+            Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $ForcedTheme, $EtternaRoot) + ' (' + (Get-Text $reasonKey) + ')'
+        } else {
+            Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $ForcedTheme, $EtternaRoot)
+        }
+        return $null
+    }
+    # default: Rebirth (does NOT offer installing to all themes at once)
+    if ($names -contains 'Rebirth') {
+        if ($Yes) { return 'Rebirth' }
+        if (Confirm-YesNo ((Get-Text 'ThemeConfirm') -f 'Rebirth', ($names -join ', '))) {
+            return 'Rebirth'
+        }
+    }
+    $idx = Read-Option -Title (Get-Text 'ThemePick') -Options $names
+    return $names[$idx]
 }
 
 function Uninstall-EtternaBridge {
     Write-Host ''
-    Write-Host '--- Removing Etterna bridge ---' -ForegroundColor Cyan
+    Write-Host (Get-Text 'RmEtterna') -ForegroundColor Cyan
     $cands = Get-EtternaCandidates
     $root = Select-GameRoot -Game 'Etterna' -Candidates $cands -ForceRoot $Root
     if (-not $root) { return }
-    $themes = Get-Themes -EtternaRoot $root
+
+    $support = Get-ThemeSupport -EtternaRoot $root | Where-Object { $_.Installable }
+    $themes = @($support | Select-Object -ExpandProperty Name)
     if ($themes.Count -eq 0) {
-        Write-Step FAIL "no theme folders found under $root\Themes - nothing to remove"
+        Write-Step FAIL ((Get-Text 'NoThemesRm') -f $root)
         return
     }
     if ($Theme) {
         if ($themes -contains $Theme) {
-            Write-Step INFO ("Removing from theme: {0}" -f $Theme)
+            Write-Step INFO ((Get-Text 'RmThemeFrom') -f $Theme)
             Uninstall-EtternaTheme -Root $root -Theme $Theme
         } else {
-            Write-Step FAIL "Theme '$Theme' not found under $root\Themes"
+            Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $Theme, $root)
         }
     } elseif ($themes -contains 'Rebirth') {
-        Write-Step INFO ('Removing from theme: Rebirth')
+        Write-Step INFO ((Get-Text 'RmThemeFrom') -f 'Rebirth')
         Uninstall-EtternaTheme -Root $root -Theme 'Rebirth'
     } else {
-        $idx = Read-Option -Title 'Select the theme the bridge was installed into:' -Options $themes
+        $idx = Read-Option -Title (Get-Text 'ThemePickRm') -Options $themes
         Uninstall-EtternaTheme -Root $root -Theme $themes[$idx]
     }
-    if ((-not $Yes) -and (Confirm-YesNo 'Also clear etternaRoot in mma-shell-config.json?' -DefaultYes $false)) {
+    if ((-not $Yes) -and (Confirm-YesNo (Get-Text 'ConfirmClearE') -DefaultYes $false)) {
         Clear-ShellConfigValue -Key 'etternaRoot'
     }
-    Write-Step OK 'Etterna bridge removed.'
+    Write-Step OK (Get-Text 'EtternaGone')
 }
 
 function Uninstall-EtternaTheme {
@@ -530,16 +879,16 @@ function Uninstall-EtternaTheme {
         $screenDir = Join-Path $Root ("Themes\{0}\BGAnimations\{1}" -f $Theme, $screen)
         $defaultLua = Join-Path $screenDir 'default.lua'
         if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
-            Write-Step SKIP "screen directory missing: $screenDir"
+            Write-Step SKIP ((Get-Text 'ScreenDirNo') -f $screenDir)
             continue
         }
         foreach ($f in @('mma_bridge.lua', 'mma_gameplay.lua')) {
             $target = Join-Path $screenDir $f
             if (Test-Path -LiteralPath $target) {
                 Remove-Item -LiteralPath $target -Force
-                Write-Step OK "deleted $target"
+                Write-Step OK ((Get-Text 'Deleted') -f $target)
             } else {
-                Write-Step SKIP "not present: $target"
+                Write-Step SKIP ((Get-Text 'NotPresent') -f $target)
             }
             Remove-LoadActorLine -DefaultLua $defaultLua -ActorFile $f | Out-Null
         }
@@ -547,7 +896,7 @@ function Uninstall-EtternaTheme {
         $bak = $defaultLua + '.mma-backup'
         if (Test-Path -LiteralPath $bak) {
             Remove-Item -LiteralPath $bak -Force
-            Write-Step OK "deleted backup $bak"
+            Write-Step OK ((Get-Text 'BackupDel') -f $bak)
         }
     }
 }
@@ -558,34 +907,34 @@ function Uninstall-EtternaTheme {
 
 function Install-MalodyBridge {
     Write-Host ''
-    Write-Host '--- Installing Malody V bridge ---' -ForegroundColor Cyan
+    Write-Host (Get-Text 'HeaderMalody') -ForegroundColor Cyan
     $cands = Get-MalodyCandidates
     $root = Select-GameRoot -Game 'Malody' -Candidates $cands -ForceRoot $Root
     if (-not $root) { return }
 
     $src = Join-Path $PSScriptRoot 'malody\mma_editor.lua'
     if (-not (Test-Path -LiteralPath $src)) {
-        Write-Step FAIL "bridge source not found next to this script: $src (expected mma_editor.lua)"
+        Write-Step FAIL ((Get-Text 'MalodySrcNo') -f $src)
         return
     }
     # Malody V plugin folder (lowercase 'editor' is the real one; NTFS is case-insensitive anyway)
     $editor = Join-Path $root 'editor'
     if (-not (Test-Path -LiteralPath $editor -PathType Container)) {
         New-Item -ItemType Directory -Path $editor -Force | Out-Null
-        Write-Step OK "created $editor"
+        Write-Step OK ((Get-Text 'CreatedDir') -f $editor)
     }
     Copy-Item -LiteralPath $src -Destination (Join-Path $editor 'mma_editor.lua') -Force
-    Write-Step OK "copied mma_editor.lua -> $editor"
+    Write-Step OK ((Get-Text 'Copied') -f 'mma_editor.lua', $editor)
 
     Set-ShellConfigValue -Key 'malodyRoot' -Value $root
     Write-Host ''
-    Write-Step OK 'Malody V bridge installed.'
-    Write-Host 'Use it from the Malody editor: More menu -> MMA Analyze.' -ForegroundColor Gray
+    Write-Step OK (Get-Text 'MalodyOk')
+    Write-Host (Get-Text 'MalodyTip') -ForegroundColor Gray
 }
 
 function Uninstall-MalodyBridge {
     Write-Host ''
-    Write-Host '--- Removing Malody V bridge ---' -ForegroundColor Cyan
+    Write-Host (Get-Text 'RmMalody') -ForegroundColor Cyan
     $cands = Get-MalodyCandidates
     $root = Select-GameRoot -Game 'Malody' -Candidates $cands -ForceRoot $Root
     if (-not $root) { return }
@@ -594,14 +943,14 @@ function Uninstall-MalodyBridge {
     $target = Join-Path $editor 'mma_editor.lua'
     if (Test-Path -LiteralPath $target) {
         Remove-Item -LiteralPath $target -Force
-        Write-Step OK "deleted $target"
+        Write-Step OK ((Get-Text 'Deleted') -f $target)
     } else {
-        Write-Step SKIP "not present: $target"
+        Write-Step SKIP ((Get-Text 'NotPresent') -f $target)
     }
-    if ((-not $Yes) -and (Confirm-YesNo 'Also clear malodyRoot in mma-shell-config.json?' -DefaultYes $false)) {
+    if ((-not $Yes) -and (Confirm-YesNo (Get-Text 'ConfirmClearM') -DefaultYes $false)) {
         Clear-ShellConfigValue -Key 'malodyRoot'
     }
-    Write-Step OK 'Malody V bridge removed.'
+    Write-Step OK (Get-Text 'MalodyGone')
 }
 
 # ---------------------------------------------------------------------------
@@ -623,18 +972,22 @@ if ($Game) {
     Invoke-GameFlow -G $Game -Remove ([bool]$Uninstall)
 } else {
     while ($true) {
-        $mode = Read-Option -Title 'What would you like to do?' -Options @('Install bridges', 'Uninstall bridges', 'Exit')
+        $mode = Read-Option -Title (Get-Text 'MenuAsk') -Options @(
+            (Get-Text 'MenuInstall'),
+            (Get-Text 'MenuUninstall'),
+            (Get-Text 'MenuExit')
+        )
         if ($mode -eq 2) { break }
         $removeMode = ($mode -eq 1)
-        $gameItem = Read-Option -Title $(if ($removeMode) { 'Remove bridge for:' } else { 'Install bridge for:' }) `
-            -Options @('Etterna', 'Malody V') -Extra 'Back to menu'
+        $gameItem = Read-Option -Title $(if ($removeMode) { Get-Text 'ChooseGameRm' } else { Get-Text 'ChooseGameIn' }) `
+            -Options @('Etterna', 'Malody V') -Extra (Get-Text 'BackToMenu')
         if ($gameItem -eq 2) { continue }
         Invoke-GameFlow -G $(if ($gameItem -eq 0) { 'Etterna' } else { 'Malody' }) -Remove $removeMode
         if (-not $Yes) {
-            if (-not (Confirm-YesNo 'Continue?' -DefaultYes $false)) { break }
+            if (-not (Confirm-YesNo (Get-Text 'ContinueAsk') -DefaultYes $false)) { break }
         }
     }
 }
 
 Write-Host ''
-Write-Host 'Done.' -ForegroundColor Green
+Write-Host (Get-Text 'Done') -ForegroundColor Green
