@@ -47,7 +47,7 @@
 - desktop/ 为可选桌面壳子项目（Tauri v2 + Rust）：改动涉及 `desktop/**` 时遵循其自身构建（cargo build）与契约（desktop/docs/CONTRACT.md，其版本号须与页面 `js/app/sources/bridgeClient.js` 的 CONTRACT_VERSION 一致）；壳构建 CI 仅监听 main 分支的 desktop/** 变动。
 - 请按照用户的实际情况进行git操作，默认允许 commit，但是不允许 push。请在进行 push 之前征求用户意见。严禁直接 push 到 main 分支，除非用户明确要求。请在进行 push 之前确保代码已经过测试，并且不会破坏已有功能。请使用Pull Request的方式进行贡献，以便后续进行代码审查和测试。
 - 文档编写的规范和要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因，以便后续进行代码审查和测试。
-- 由于插件实际运行在纯浏览器环境下，因此，在功能编写时，请确保代码的兼容性和性能。避免使用不兼容的API和过于复杂的算法，以确保插件在各种环境下都能正常运行。此外，不应当使用除tosu之外的第三方工具获取数据或进行计算，或要求用户启用一个如node的环境，以确保插件的独立性和可移植性。
+- 插件的谱面数据源共三类：osu!（经 tosu）、Etterna 与 Malody V（经桌面壳 desktop/ 与游戏桥 bridges/ 接入，架构见 [docs/features/multi-source.md](docs/features/multi-source.md)）。浏览器本体仍只运行在纯浏览器环境下：功能编写时请确保代码的兼容性和性能，避免使用不兼容的API和过于复杂的算法；不得要求用户启用一个如node的额外运行时环境；浏览器模式（无壳）必须保持 osu! 单源完整可用，以确保插件的独立性和可移植性。
 - 【豁免】匿名使用统计（遥测）是唯一允许的 tosu 之外数据去向：`js/app/telemetry.js` 向自建后端（`backend/`，Go + SQLite）匿名上报聚合属性（算法/键数/mod/模式/难度/耗时等）。约束：默认开启可关（`enableTelemetry` 设置，Network 分组）、endpoint 硬编码于 `index.js`、静默失败不影响插件、绝不采集用户名/玩家id/分数/谱面标识/IP。后端代码随仓库提交（`backend/`，其中 `backend/docs/`、`.env`、`telemetry.db` 为 gitignore 私有）。
 - 在README和settings.json中，由于目标为普通用户，请使用直白的语言描述功能，不要使用过于专业，或内部使用的术语。
 - settings.json中，请全程使用英文。设置描述应当简洁直白，以确保用户能够理解设置项的作用。checkbox类应当放在options类之前；Link部分应当放在最前面。
@@ -57,7 +57,7 @@
 
 ## 注意事项
 - 在有必要的情况下，你可以根据下方[参考链接](#参考链接)下载涉及到的仓库到本地进行分析。
-- 插件的数据来源为 tosu 的 Websocket API，插件通过 Websocket API 获取谱面数据和游戏状态，并在前端页面实时显示分析结果。你无需关心数据是如何得来的。
+- 插件的数据来源共三类：osu! 经 tosu 的 Websocket API（谱面数据与游戏状态）；Etterna 与 Malody V 经桌面壳（desktop/，song/state/settings 帧）接入。浏览器模式下壳不可达时自动回落 osu! 单源。你无需关心数据是如何得来的。
 - config.js文件是提供给js内部使用的配置文件，而 settings.json 文件是暴露给 tosu 的插件设置定义文件，包含插件的设置项和默认值,用户可以通过 tosu 的设置界面修改这里定义的内容，从而改变插件的行为。但是，这并不是设置文件。实际的设置文件位于 tosu 的 `settings` 目录下，文件名为 `<插件目录名>.json`。实际的设置是通过 Websocket 从 tosu 传递给插件的，你无需关心设置是如何被修改的。
 - index.js中的版本号应当与metadata.txt中的版本号保持一致。metadata.txt中的版本号是暴露给 tosu 的插件版本号，用户可以在 tosu 的插件管理界面看到该版本号。index.js中的版本号是插件内部使用的版本号，用于判断插件是否需要更新。
 - tosu 的默认端口为24050，其获取谱面数据的端点为http://{host:port}/files/beatmap/file。

@@ -14,7 +14,7 @@
    - Malody skin 状态文件写入（`mma_state.txt`，契约 §9）。
 3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 
-模块：`desktop/src/{main,server,config,frames,etterna}.rs`；契约 `desktop/docs/CONTRACT.md`（v2）。
+模块：`desktop/src/{main,config,frames,etterna,malody}.rs` + `server/`（mod/http/ws/post/log）；契约 `desktop/docs/CONTRACT.md`（v2）。
 
 ## 2. 启动流程（main.rs + config.rs）
 

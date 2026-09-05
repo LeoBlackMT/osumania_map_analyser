@@ -144,7 +144,10 @@
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.35);
 }
 
-/* 壳窗口拖动把手（data-tauri-drag-region + WS dragStart 双通道；hover 才显现） */
+/* 壳窗口拖动把手（data-tauri-drag-region + WS dragStart 双通道；hover 才显现）。
+   pointer-events 默认 none：浏览器 tosu 模式下不可见条不得拦截顶部 22px 的
+   点击/cursor（opacity 不禁用命中测试）；仅壳模式（html.shell-mode，WS 已连）
+   恢复可命中。 */
 .mma-drag-bar {
     position: absolute;
     top: 0;
@@ -159,10 +162,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    pointer-events: none;
 }
 .mma-drag-bar:hover {
     opacity: 1;
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
+}
+html.shell-mode .mma-drag-bar {
+    pointer-events: auto;
 }
 .mma-drag-hint {
     color: rgba(255, 255, 255, 0.5);

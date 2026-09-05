@@ -143,9 +143,23 @@ fn handle_resolve(shared: &Shared, stream: &mut TcpStream, title: &str, artist: 
         root
     ));
     // 编辑器给了绝对路径：直接读文件（绕开标题扫描，最可靠）。
+    // 安全：path 仅允许 malodyRoot 内的文件（canonicalize 后前缀校验）——
+    // 本地 HTTP 端点不得成为任意文件读取原语（Host 伪造/DNS rebinding 防护）。
     if !chart_path.is_empty() {
         let p = PathBuf::from(config::normalize_path(chart_path));
-        if p.is_file() {
+        if p.exists() {
+            let root_ok = malody_root(shared)
+                .and_then(|root| root.canonicalize().ok())
+                .and_then(|root_canon| {
+                    p.canonicalize()
+                        .ok()
+                        .map(|cand_canon| cand_canon.starts_with(root_canon))
+                });
+            if root_ok != Some(true) {
+                log_at("error", "resolve path REJECTED (outside malodyRoot)");
+                http::respond_json(stream, 403, r#"{"error":"path outside malodyRoot"}"#);
+                return;
+            }
             if let Ok(text) = fs::read_to_string(&p) {
                 log_at("debug", "resolve by path HIT");
                 http::write_response(stream, 200, "application/json", text.as_bytes());

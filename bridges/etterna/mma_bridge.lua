@@ -1,8 +1,8 @@
 -- MMA 选歌桥（Etterna / StepMania 系主题）。
 --
--- 写入 Save/LeosMmaBridge.txt：选歌/换难度/改速率变化时写（key 门控幂等）。
--- 诊断：Save/LeosMmaBridgeLoaded.txt（脚本加载即写）、
---       Save/LeosMmaBridgeError.txt（运行时错误）。
+-- 写入 Save/MmaBridge.txt：选歌/换难度/改速率变化时写（key 门控幂等）。
+-- 诊断：Save/MmaBridgeLoaded.txt（脚本加载即写）、
+--       Save/MmaBridgeError.txt（运行时错误）。
 --
 -- 安装：复制到
 --   Themes/<你的主题>/BGAnimations/ScreenSelectMusic decorations/

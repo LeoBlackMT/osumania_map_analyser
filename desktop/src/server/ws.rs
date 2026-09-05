@@ -43,6 +43,32 @@ pub fn parse_result_payload(text: &str) -> Option<ResultInbound> {
     None
 }
 
+/// Origin 仅允许 loopback（契约 §0）：解析 origin 的 host 段**精确比较**
+/// `127.0.0.1` / `localhost` / `[::1]`——子串匹配（contains）会放过
+/// `localhost.evil.com` 这类域，形同虚设。
+fn is_loopback_origin(origin: &str) -> bool {
+    let rest = match origin.split_once("://") {
+        Some((_, r)) => r,
+        None => return false,
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let authority = match authority.rsplit_once('@') {
+        Some((_, h)) => h,
+        None => authority,
+    };
+    // IPv6 字面量：[::1]:port
+    if let Some(stripped) = authority.strip_prefix('[') {
+        if let Some(end) = stripped.find(']') {
+            return &stripped[..end] == "::1";
+        }
+    }
+    let host = match authority.rsplit_once(':') {
+        Some((h, _port)) => h,
+        None => authority,
+    };
+    host.eq_ignore_ascii_case("127.0.0.1") || host.eq_ignore_ascii_case("localhost")
+}
+
 pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
     // 出站排水依赖周期性唤醒：read timeout 让阻塞的 read 周期返回。
     let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
@@ -54,10 +80,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
             let origin_ok = req
                 .headers()
                 .get("Origin")
-                .map(|v| {
-                    let s = v.to_str().unwrap_or("");
-                    s.contains("127.0.0.1") || s.contains("localhost")
-                })
+                .map(|v| is_loopback_origin(v.to_str().unwrap_or("")))
                 .unwrap_or(true);
             if origin_ok {
                 Ok(resp)

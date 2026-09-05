@@ -1,6 +1,6 @@
 -- LeosMma 游玩桥（Etterna / StepMania 系主题）。
 --
--- 写入 Save/LeosMmaGameplay.txt：进入游玩与离开游玩时各写一次
+-- 写入 Save/MmaGameplay.txt：进入游玩与离开游玩时各写一次
 -- （游玩中零写入，避免 IO 抖动）：
 --   playing=1（进入）/ 0（离开）
 --   music_seconds=当前位置（进入时）

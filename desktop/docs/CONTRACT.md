@@ -1,13 +1,14 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**1**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）
+> 版本：**2**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
 
-- 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback。
-- 帧：`{v: 1, type, seq}`；`seq` 单向前递增。
-- type 全集（六型职责语义闭合）：
+- 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback——解析 Origin 的 host 段**精确匹配** `127.0.0.1` / `localhost` / `[::1]`（子串匹配会放过 `localhost.evil.com` 类域）；24061 HTTP 侧同样校验 Host 头仅本机 24061。
+- 帧：`{v: 2, type, seq}`；`seq` 单向前递增。
+- type 全集（七型职责语义闭合）：
   | type | 方向 | 职责 |
   |---|---|---|
   | hello | 壳→页 | 握手：`{tosuOnline, contract}` + 全量状态复位 |
@@ -16,7 +17,9 @@
   | settings | 壳→页 | 设置推送（tosu 设置文件 mtime 变化 / 离线 POST 变更时主动推送载荷） |
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
+  | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart`；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
 
+- diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入七型。
 - 浏览器模式（无壳）：24061 不可达 → 页面不建壳通道，osu 单源（现状行为）。
 
 ## 1. song 帧 schema
@@ -25,7 +28,7 @@
 { requestId, source, identity, modData, meta, cover, rawText }
 ```
 
-- `requestId`：POST 场景由壳生成（生命周期见 §4）；推送场景可为空。
+- `requestId`：壳为**每个 song 帧生成**——POST `m{seq}`、Malody 文件通道 `r{seq}`、Etterna 轮询 `e{seq}`；页面 result 帧原样回带，供应答关联（生命周期见 §4）。
 - `source`：`"etterna" | "malody"`。
 - `identity`：三源格式见 §5。
 - `modData`：`{ speedRate: rate.toFixed(5)（Malody 无 rate 时 "1.0"）, odFlag: "none", cvtFlag: "none", classic: 0 }`——
@@ -37,15 +40,16 @@
 ## 2. result 帧 schema
 
 ```
-{ requestId（可空：非 POST 推送场景为空）, statusHint, star, pattern, msd, graph,
-  activeSource, updatedAt, errors[] }
+{ requestId, statusHint, star, pattern, activeSource, updatedAt, errors[] }
 ```
 
 - `statusHint`：**页面可发三值** `success | analysis-failed | routing-reject`；
   `payload-too-large` / `timeout` **永不进页面帧**（壳在 HTTP 层直接 504 + 常量文本）。
 - 发出点：**fetchBeatmapFile 的 finally 汇合**（非 stale 守卫；成功/失败/缓存命中/未命中四路统一；catch 路径汇入；浏览器模式无壳连接时 no-op）。
 - `errors[]`：非空 = 失败（转换/解析/分析错误并入）；失败时壳回 500。
-- 写门：无（皮肤状态文件已废弃；result 帧只用于 24060 POST 应答）。
+- 写门：无（皮肤状态文件已废弃；result 帧用于 24060 POST 应答与 Malody 文件通道的完成判定——壳据 `errors` 空/非空决定删除 request 文件或保留重试）。
+- 帧以 Envelope 包裹发送；壳端 `parse_result_payload` 兼容 Envelope 与裸帧两种形态。
+- `star` 取自渲染后的星数胶囊文本（首个数值，正则提取）；`pattern` = 当前模式标签（RC/LN/HB/Mix）。
 
 ## 3. HTTP 应答两种来源（24060 POST）
 
