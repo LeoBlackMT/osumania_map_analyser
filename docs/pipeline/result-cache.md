@@ -57,7 +57,7 @@ fetchBeatmapFile() → 查缓存（analysis.js:308-317）
 `analysis.js:305`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2"; // 星数统一为 Sunny 原始 sr 后作废旧快照
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v4"; // 星数统一为 Sunny 原始 sr 后作废旧快照（v3→v4 见下）
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
@@ -65,7 +65,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v2` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:305） | 缓存语义版本。星数胶囊统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后，旧快照里存的是算法自身映射 star，必须失效——用版本前缀一次性作废所有旧条目 |
+| `star-v4` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:305） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:88） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
 | `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
@@ -204,3 +204,11 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - **meta 降级谱面缓存不生效**（§8）：性能上可接受，正确性上必须——标题键无法保证唯一。
 - **generation 是失效探测器**：`clearResultCache()`（代数 +1）是唯一让写门 `genAtStart === resultCacheGeneration()` 失败的路径（§7）；调 `clear()` 手动重置场景等同理。
 - **Node 环境**：`resultCache.js` 无 import，benchmark runner 的 `smoke-result-cache.mjs` 直接 `import` 它跑 8 个冒烟用例，修改本模块后建议跑一遍该用例保持 Node 侧兼容。
+## 多数据源（外部源）补充
+
+外部源（`ett:`/`mdy:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
+
+- identity 含**内容摘要 md5**（壳对谱面原文计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
+- modSignature 由 externalSource **直构**（`speedRate|none|none|0`，speedRate 段 = 桥 rate 派生）——同图不同 rate 缓存独立；额外部源不走 modData 派生、与 client 无关。
+- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot`/`malodyRoot` 不影响键值。
+- meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。

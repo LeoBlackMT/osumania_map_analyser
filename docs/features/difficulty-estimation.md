@@ -25,7 +25,7 @@
 | **Roxy** | worker | `roxyEstimator.js:1400 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1439`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:29-37`） |
-| **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 中仅当 `star < 9` 时启用，`mixedEstimator.js:277`） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:498` 以 `columnCount === 4` 决定是否触发） |
+| **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 中仅当 `star < 9` 时启用，`mixedEstimator.js:277`） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:498` 以 `columnCount === 4` 决定是否触发）；高 LN 谱面在 analysis.js 层跳过（见 3.2） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:14 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:521-533`） |
 
 ## 3. 估算器分派机制
@@ -45,6 +45,9 @@ Mixed 与 Companella 不经过 Worker：
 
 - **Mixed**：在 `analysis.js:500 runMixedEstimatorFromText(rawText, estimatorOptions)` 直接同步执行；结果中的 `mixedCompanellaPlan`（`mixedEstimator.js:310`）触发后续 Companella 异步估算，完成后经 `mixedEstimator.js:314 applyCompanellaToMixedResult` 合并回结果。
 - **Companella**：先同步跑 Sunny 作为兜底（`analysis.js:494`），置 `pendingCompanellaEstimate` 标志（`analysis.js:498`），随后异步执行 ONNX 推理（`companellaEstimator.js:209-222`：`getOrtNamespace()` + `getModelSession()` 并行加载）。
+- **Companella LN 门控与失败回退**（analysis.js Companella 段，浏览器/壳两路径同效）：
+  - 谱面 `lnRatio > 0.18`（与 Azusa/Roxy 的 RC 门控同阈值）时**跳过** Companella 估算，直接沿用 pipeline 已归一化的 Sunny 基线——RC 模型对高 LN 谱面系统性偏离；此时若 `actualEstimatorAlgorithm === "Companella"` 置为 `"Sunny"`。
+  - ONNX 推理抛错时同样回退 Sunny 基线（`pendingCompanellaEstimate` 复位），不产生 No data；pipeline 本身也失败时走主错误路径（`errors` 已含 Rework failed）。
 
 ### 3.3 实际执行者追踪
 
@@ -73,7 +76,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`analysis.js:494`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`analysis.js:671` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
-- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:753`），命中恢复一致；缓存键带 `star-v2` 版本前缀使旧快照（存算法自身 star）失效。
+- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:753`），命中恢复一致；缓存键带 `star-v4` 版本前缀使旧快照（存算法自身 star；v4 亦作废 Etterna 难度前缀修复前的错误首块快照）失效。
 
 ## 4. Worker 回退（主线程同步执行）
 

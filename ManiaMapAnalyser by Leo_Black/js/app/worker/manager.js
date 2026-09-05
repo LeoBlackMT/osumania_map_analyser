@@ -11,9 +11,11 @@
 let worker = null;
 let nextId = 0;
 let messageHandlerAttached = false;
+let workerDisabled = false; // 崩溃后永久降级主线程（避免每次分析都失败/No data）
 const pendingRequests = new Map();
 
 function ensureWorker() {
+    if (workerDisabled) return null;
     if (worker) return worker;
     try {
         const w = new Worker(
@@ -33,11 +35,15 @@ function ensureWorker() {
                 }
                 worker = null;
                 messageHandlerAttached = false;
+                // 崩溃一次后不再重建：worker 内 WASM 路径/加载问题会反复失败，
+                // 每次都 No data。降级主线程（calc.js 主线程路径正常）。
+                workerDisabled = true;
             }
         });
     } catch (_) {
         worker = null;
         messageHandlerAttached = false;
+        workerDisabled = true;
     }
     return worker;
 }

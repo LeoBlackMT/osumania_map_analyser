@@ -18,13 +18,13 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Real-time Analysis**: Analyzes various data of the current beatmap in real-time during gameplay or beatmap selection.
 - **Multi-mod Support**: Compatible with multiple mods in both lazer and stable, supporting custom speed multipliers and OD adjustments.
 - **Customizable Etterna Version**: Allows users to select different versions of [Etterna](https://github.com/etternagame/etterna) MinaCalc for calculation while surpassing Etterna's official cap.
-- **Pause Detection**: Detects pauses during gameplay and marks their positions on the graph.
 - **Difficulty Estimation**: Estimates difficulty based on beatmap data and provides detailed analysis results, offering multiple estimation algorithms. Compatible with LN and RC Dans for 4/6/7K.
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand the difficulty distribution of a beatmap.
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution in the beatmap to help players understand its structure.
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
 - **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
-- **SV Detection**: Detects whether a beatmap is an SV (speed variation) map.
+- **Etterna/Malody Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! blue / Etterna green / Malody orange).
+- **Desktop Shell**: A standalone always-on-top/transparent/borderless mini window.
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 
 ## Usage
@@ -33,6 +33,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 3. Place the entire folder in the `static` directory of tosu if you haven't modified the `Counters Directory` setting.
 4. Launch tosu, go to the dashboard, and you will find the "ManiaMapAnalyser" plugin. Click the `Settings` button on the right to configure it.
 5. For instructions on using the in-game interface and OBS, please refer to the relevant tosu documentation.
+6. (Optional) Desktop shell: full tutorial: [docs/shell-guide.md](docs/shell-guide.md).
 
 ## Estimator Algorithm Benchmark
 - The benchmark has been migrated to the separate repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and the results can be viewed [here](https://benchmark.leoblack.top/). The tests cover the performance of multiple algorithms across different types of beatmaps, helping players choose the one that suits them best.
@@ -57,12 +58,13 @@ Note: It is recommended to start with the default settings or a suitable preset,
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
 For the preset system tutorial, see [docs/presets-guide.md](docs/presets-guide.md#english).
 
-## Roxy Algorithm Explanation
-Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
-Maps below Alpha (< 11) return "< Alpha Low" (no numeric difficulty) and maps at or above Emik Zeta high (>= 17) return "> Emik Zeta high"; Mixed automatically routes low-difficulty maps to Azusa, so Roxy's low-band estimate is not the final result.
+## Algorithm Explanation
+- Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
+- Azusa builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
 
-## Azusa Algorithm Explanation
-This algorithm builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
+## Malody V Editor / Etterna Support
+- Malody V editor and Etterna support require the desktop shell (mma-shell). The shell is a standalone mini window that receives data from the Malody V editor or Etterna even when tosu is not running, and shows the analysis result in a standalone always-on-top window. See [docs/shell-guide.md](docs/shell-guide.md) for details.
+- This feature is still experimental — unknown issues may exist. Please report anything you find.
 
 # Contribution Guide
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

@@ -138,7 +138,7 @@ state.pendingChangeKind = changeKind;   // :286
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:257-261 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:172-173）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `star-v2|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v2` 是星数统一语义的版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:305` 缓存键 = `star-v4|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v4` 是星数统一语义的版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -171,7 +171,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:334；Companella/Mixed 需要 ett 与 interlude，:333、:337-338；`contentBarShows("ReworkPP")` 需要 pp，:339）。
-- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v2` + 三段，modSignature 四段含 classic）。
+- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v4` + 三段，modSignature 四段含 classic）。
 - `analysis.js:306 isMetaDegraded`：identity 以 `meta:` 开头。
 - `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
 
@@ -316,3 +316,9 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导（analysis.js:284-286 注释），仅供覆盖检查；实际 shows*/need* 在 override 后重算（:362-365）——修改 needComputed 推导时注意保持两处一致。
 - **changeKind 只消费一次**：`analysis.js:262` 取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理（:258-261），避免换歌动画重复播放。
 - **身份为空的包直接丢弃**：`socketHandlers.js:253` 空 identity return——tosu 在谱面信息未就绪时发的包不会触发分析（mod 变化也进不来，此时 mod 状态保留旧值）。
+## 多数据源（外部源）补充
+
+多数据源场景（Etterna/Malody，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
+
+- 外部文本入口：`state.pendingSourceText` 存在时跳过 tosu HTTP 抓取（`analysis.js` fetch 分支；缓存命中短路在前，转换器只在 miss 路径执行——转换由 `js/app/sources/externalSource.js` 主线程完成）。
+- result 帧 finally 汇合：外部源触发的分析在 `finally`（非 stale 守卫）统一发 result 帧（成功/失败/缓存命中/未命中四路；浏览器无壳 no-op）。requestId 在函数开头快照（沿用请求序号本地快照模式）。

@@ -1,4 +1,4 @@
-﻿import { OsuFileParser } from "../parser/osuFileParser.js";
+import { OsuFileParser } from "../parser/osuFileParser.js";
 import {
     bisectLeft,
     bisectRight,
@@ -172,6 +172,10 @@ function preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed = null) {
     od = -20.761 + 2.566 * p.od;
     } else {
     od = Number.parseFloat(odFlag);
+    // 防御：非法字符串（如 "none"）回落谱面 OD，避免 NaN 全链。
+    if (!Number.isFinite(od)) {
+    od = p.od;
+    }
     }
 
     const timeScale = speedRate !== 0 ? 1 / speedRate : 1;

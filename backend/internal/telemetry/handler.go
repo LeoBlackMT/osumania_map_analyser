@@ -31,6 +31,7 @@ var allowedDataKeys = map[string]bool{
 	"typeBreakdown":     true,
 	"durationMs":        true,
 	"numericDifficulty": true,
+	"client":            true,
 }
 
 type eventPayload struct {

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" class="ma-theme-osu ma-fx-triangles ma-fx-cover">
 
 <head>
@@ -10,6 +10,7 @@
 </head>
 
 <body>
+<div class="mma-drag-bar" data-tauri-drag-region><span class="mma-drag-hint" data-tauri-drag-region>⋮⋮</span></div>
     <main class="dashboard">
         <section class="card main-card">
             <div class="triangle-field" aria-hidden="true"></div>
@@ -20,6 +21,7 @@
                     </svg>
                 </span>
                 <p id="status" class="status">Waiting to load beatmap file...</p>
+                <span id="mma-source-dot" class="mma-source-dot off" aria-hidden="true"></span>
             </div>
 
             <div class="star-block" id="rework">

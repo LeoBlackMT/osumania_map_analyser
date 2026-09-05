@@ -76,6 +76,7 @@ type Stats struct {
 	Keycounts         []KV          `json:"keycounts"`
 	Mods              []KV          `json:"mods"`
 	Modes             []KV          `json:"modes"`
+	Clients           []KV          `json:"clients"`
 	Versions          []KV          `json:"versions"`
 	StarHistogram     []Bucket      `json:"starHistogram"`
 	LnRatioHistogram  []Bucket      `json:"lnRatioHistogram"`
@@ -256,6 +257,9 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 		return err
 	}
 	if s.Modes, err = kv(rowCounts("mode")); err != nil {
+		return err
+	}
+	if s.Clients, err = kv(rowCounts("client")); err != nil {
 		return err
 	}
 	// Windowed analyze count (distributions already include it, but the

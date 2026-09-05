@@ -1,0 +1,37 @@
+name: shell-build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths:
+      - "desktop/**"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build shell (Windows)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release
+        working-directory: desktop
+        run: cargo build --release --locked
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mma-shell-windows
+          path: desktop/target/release/mma-shell.exe
+          if-no-files-found: error

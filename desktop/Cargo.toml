@@ -1,0 +1,31 @@
+[package]
+name = "mma-shell"
+version = "0.1.0"
+edition = "2021"
+description = "ManiaMapAnalyser desktop shell — local aggregation bridge (24060 POST / 24061 static+ws / tosu probe / etterna poll)"
+
+[dependencies]
+tiny_http = "0.12"
+tungstenite = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+md-5 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[lib]
+name = "mma_shell"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mma-shell"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true

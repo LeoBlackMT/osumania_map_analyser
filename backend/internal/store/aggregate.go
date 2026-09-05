@@ -116,6 +116,9 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 	if mode, _ := data["mode"].(string); mode != "" {
 		inc("mode", mode, 0)
 	}
+	if client, _ := data["client"].(string); client != "" {
+		inc("client", client, 0)
+	}
 
 	// Star histogram: 0.5★ bins; sum_val keeps raw star for the exact average.
 	if star, ok := num("star"); ok && star > 0 && star <= 20 {

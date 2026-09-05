@@ -30,7 +30,7 @@
 
 ## 验证方式（Verification）
 
-- 冒烟：`temp/smoke-marathon-estimator.mjs` 12/12 PASS——估算器参数化（with/without 参数对照、estDiff 重派生）、短图不受影响、pipeline 前置+复用（`withEtterna=false` 也生效）、Sunny 不受影响、ett 复用与独立计算逐位一致、无参回归逐位一致。
+- 冒烟：本地冒烟脚本（12/12 PASS，不入库）——估算器参数化（with/without 参数对照、estDiff 重派生）、短图不受影响、pipeline 前置+复用（`withEtterna=false` 也生效）、Sunny 不受影响、ett 复用与独立计算逐位一致、无参回归逐位一致。
 - 基准回归：osu.csv（746 行）Azusa/Roxy/Mixed 全量按修正口径重跑——course 行体现修正（Azusa 30/34、Roxy 13/34、Mixed 30/34，8th 9.28<9th 9.40 排序保持），非候选项与旧版逐字一致（缺省行为未被破坏，修正严格走参数通道）。
 - course 子集修正效果（参数校准记录）：Roxy MAE 0.4036→0.2250、Azusa MAE 0.4782→0.3544（Bias −0.085）；8th/9th 相邻段位排序修复（对数饱和）；全 pack 相邻段位零新增倒挂（详细见 docs/features/marathon-correction.md §8）。
 
@@ -68,6 +68,6 @@ User architecture decision: the correction belongs to the estimator, whose outpu
 
 ## Verification
 
-- Smoke `temp/smoke-marathon-estimator.mjs` 12/12 PASS (parameterized estimator, short-map invariance, pipeline pre-Ett + reuse, Sunny untouched, ett reuse bit-identical, no-param regression bit-identical).
+- Smoke: local-only smoke script (not in the repo), 12/12 PASS (parameterized estimator, short-map invariance, pipeline pre-Ett + reuse, Sunny untouched, ett reuse bit-identical, no-param regression bit-identical).
 - Benchmark regression: osu.csv (746 rows) fully rerun with correction injection — course rows moved (Azusa 30/34, Roxy 13/34, Mixed 30/34; 8th 9.28 < 9th 9.40 ordering kept), non-candidate rows byte-identical to the previous HEAD results (default behavior intact, correction strictly parameter-gated).
 - Course-subset effect (calibration record): Roxy MAE 0.4036→0.2250, Azusa 0.4782→0.3544 (Bias −0.085); 8th/9th adjacent-tier ordering fixed (log-saturation); zero new inversions across course packs (see docs/features/marathon-correction.md §8).

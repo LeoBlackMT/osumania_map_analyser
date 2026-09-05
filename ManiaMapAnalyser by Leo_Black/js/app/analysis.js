@@ -78,6 +78,7 @@ import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro } from "./vibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
+import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -307,7 +308,24 @@ export function resetReworkDisplay() {
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    // 离线圈模式守卫：仅当页面本身就是壳离线页（端口 24061）且无 tosu 数据面
+    // 时才跳过 osu 抓取（避免 "Failed to fetch" 噪声）。浏览器 tosu 页
+    // （其他端口）即使壳开着也绝不挡——否则首图/背景/切图会被吞。
+    const isShellOfflinePage = typeof window !== "undefined"
+        && window.location
+        && String(window.location.port) === "24061";
+    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline) {
+        setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+        return;
+    }
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+    // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
+    const sourceRequestId = state.pendingSourceRequestId;
+    const sourceActive = state.pendingSourceActive;
+    state.pendingSourceRequestId = null;
+    state.pendingSourceActive = null;
+    // 函数级错误收集（try 块内声明的 const 对 finally 不可见——result 帧 finally 汇合需要它）。
+    let errors = [];
     const genAtStart = resultCacheGeneration();
     const analysisStartedAt = performance.now();
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
@@ -351,11 +369,15 @@ export async function fetchBeatmapFile(reason) {
             || state.useSvDetection
             || state.vibroDetection
             || isAutoDisplayEnabledNow(),
-        ett: contentBarShows("Etterna")
+        ett: !state.externalSourceOsuLike && (contentBarShows("Etterna")
             || state.srText === "MSD"
             || state.diffText === "MSD"
             || state.vibroDetection
-            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"),
+            || (currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed"))
+            // ⚠️ externalSourceOsuLike（Etterna 容器内 osu 谱）：仅关 Etterna 展示栏；
+            // Companella/Mixed 算法仍需 Ett 输入（classifyCompanellaDifficulty 依赖 MSD），
+            // 否则 Companella 无 MSD 输入 → 输出严重偏离 + 主体 No data。
+            || ((currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed")),
         graph: state.diffText === "Graph" || contentBarShows("Graph"),
         interlude: state.srText === "InterludeSR"
             || state.diffText === "InterludeSR"
@@ -364,7 +386,10 @@ export async function fetchBeatmapFile(reason) {
         pp: contentBarShows("ReworkPP") || state.srText === "ReworkPP",
     };
     // 缓存键加版本段：star 口径统一为 Sunny 原始 sr 后，旧快照（存的是 Azusa/Roxy 映射 star）必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v2";
+    // star-v3：Companella LN 门控 + 12K star fallback 使 estDiff 语义变化 → 旧快照全部失效。
+    // star-v4：转换器难度别名修复（Etterna Difficulty_* 前缀此前匹配失败 → 恒取首块），
+    //   同 identity 的旧快照（错误的首块结果）必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v4";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -385,13 +410,32 @@ export async function fetchBeatmapFile(reason) {
         let rawText = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
         // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
+        // 唯一例外：Etterna 容器内的 osu 谱（externalSourceOsuLike）没有 Etterna
+        // MSD 语义，强制降级为 Pattern 主体，避免 Etterna 栏空态 No data。
         const applyContentBarOverride = (columnCount) => {
+            if (state.externalSourceOsuLike) {
+                setEffectiveContentBarForMap("Pattern");
+                return;
+            }
             setEffectiveContentBarForMap(null);
         };
         if (cached) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
+        } else if (state.pendingSourceText) {
+            // 外部源（Etterna/Malody）：文本已由 externalSource 转换并注入，跳过 tosu 抓取。
+            rawText = state.pendingSourceText;
+            state.pendingSourceText = null;
+            if (isStaleRequest()) return;
+            if (!rawText || !rawText.trim()) {
+                throw new Error("Empty external beatmap content.");
+            }
         } else {
+            // 壳离线页（24061）无 tosu 数据面时任何 osu 抓取都守卫：Waiting 而非报错。
+            if (isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline && !state.pendingSourceText) {
+                setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+                return;
+            }
             const response = await fetch(getEndpoint(), {
                 method: "GET",
                 cache: "no-store",
@@ -416,7 +460,7 @@ export async function fetchBeatmapFile(reason) {
         // 输出 parsedSummary 供 override 与渲染使用——主线程不再二次解析。
         // 逐段顺序与旧 analysis.js 完全一致（估算 → 归一化 → SunnyWindow → 派生 → Interlude →
         // Pattern → Ett → Companella）；渲染段与缓存键/写门不变。
-        const errors = [];
+        errors = [];
         const estimatorAlgorithm = currentEstimatorAlgorithm();
         let pipelineResult = null;
         if (!cached) {
@@ -448,16 +492,32 @@ export async function fetchBeatmapFile(reason) {
                 };
                 const pipelineInput = { rawText, estimatorAlgorithm, options: pipelineOptions };
                 const wp = runInWorker(pipelineInput);
-                pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput);
+                try {
+                    pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput);
+                } catch (workerErr) {
+                    // Worker 超时/崩溃/被取代 → 降级主线程重跑（不显示 No data）。
+                    // 首次分析（worker WASM 初始化慢）或 Etterna 双帧竞态（superseded）
+                    // 会让 worker 请求失败——主线程兜底保证卡片总能出结果。
+                    if (!isStaleRequest()) {
+                        pipelineResult = await runAnalysisPipeline(pipelineInput);
+                    } else {
+                        throw workerErr; // stale：上层 catch 的 isStaleRequest 会 return
+                    }
+                }
                 parsedInfo = pipelineResult.parsedSummary;
                 applyContentBarOverride(parsedInfo.columnCount);
             } catch (error) {
+                // 诊断字段无条件记录（stale 也要留痕）：外部源失败时把关键输入
+                // 特征打进错误，用于定位「同一文件本地 OK、页面 NaN」的差异。
+                const diagSuffix = sourceRequestId
+                    ? ` [diag src=${sourceActive} rawLen=${rawText ? rawText.length : "-"} est=${estimatorAlgorithm} rate=${state.speedRate} od=${state.odFlag} cvt=${state.cvtFlag} graph=${needComputed.graph} sunnyWin=${state.forceSunnyWindow} classic=${state.classicMod}]`
+                    : "";
+                errors.push(`Rework failed: ${error.message}${diagSuffix}`);
                 if (isStaleRequest()) return;
                 resetReworkDisplay();
                 if (state.diffText === "Graph" || contentBarShows("Graph")) {
                     showDiffGraphError("Graph unavailable");
                 }
-                errors.push(`Rework failed: ${error.message}`);
                 // 失败路径回退：pipeline 抛错（估算器失败）未返回 parsedSummary——用最小元信息解析补齐，
                 // 与旧代码 parseMetadataFromBeatmap 行为一致（正常路径保持 parse-once，不在此解析）。
                 try {
@@ -809,6 +869,16 @@ export async function fetchBeatmapFile(reason) {
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
 
             if (shouldRunCompanella && !cached) {
+                // Companella 是 RC 模型：高 LN 谱面（>18%，同 Azusa/Roxy 门控）不适用，
+                // 跳过 Companella 直接使用 pipeline 已归一化的 Sunny 基线（避免严重偏离）。
+                const companellaLnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio);
+                if (companellaLnRatio > 0.18) {
+                    pendingCompanellaEstimate = false;
+                    pendingMixedCompanellaContext = null;
+                    if (state.actualEstimatorAlgorithm === "Companella") {
+                        state.actualEstimatorAlgorithm = "Sunny";
+                    }
+                } else {
                 let companellaMsdValues = ettResult?.values;
                 const companellaEtternaVersion = String(
                     state.companellaEtternaVersion || state.etternaVersion,
@@ -866,6 +936,16 @@ export async function fetchBeatmapFile(reason) {
                     }
                 } catch (error) {
                     console.warn(`Companella estimate failed: ${error.message}`);
+                    // Companella 失败 → 回退 pipeline 已归一化的 Sunny 基线（与
+                    // Azusa/Roxy 的 fallback 语义一致）：保持已算出的 star/estDiff，
+                    // 不产生 No data。若 pipeline 也失败（resolvedEstDiff null），
+                    // 走主错误路径（errors 已含 Rework failed）。
+                    if (pendingCompanellaEstimate) {
+                        state.actualEstimatorAlgorithm = "Sunny";
+                    }
+                    pendingCompanellaEstimate = false;
+                    pendingMixedCompanellaContext = null;
+                }
                 }
             }
 
@@ -972,9 +1052,12 @@ export async function fetchBeatmapFile(reason) {
                 || state.useSvDetection
             ) && !needPatternAnalysis;
 
-            if (profileChanged && ((missingEtterna || missingPattern)
+            if (!sourceRequestId && profileChanged && ((missingEtterna || missingPattern)
                 || state.contentBar !== beforeContent
                 || state.srText !== beforeSrText)) {
+                // 外部源请求跳过二次 recompute：其自动补跑依赖 osu 的缓存兜底
+                // （identity 相同第二次命中快照）；外部源第二次会走 tosu 抓取而
+                // 失败，且会吞掉第一次请求的 result 帧（stale）。
                 scheduleRecompute("auto profile switched", false);
                 return;
             }
@@ -1094,6 +1177,7 @@ export async function fetchBeatmapFile(reason) {
             const payload = {
                 algorithm: state.estimatorAlgorithm,
                 actualAlgorithm: state.actualEstimatorAlgorithm,
+                client: state.activeSource || "osu",
                 keycount: Number(rework.columnCount),
                 mods: state.modCodes || [],
                 speedRate: Number(state.speedRate) || 1,
@@ -1128,6 +1212,24 @@ export async function fetchBeatmapFile(reason) {
             showSpinner: false,
         });
     } finally {
+        // result 帧（契约 §2）：外部源请求即使被衍生 recompute 判定 stale 也照发——
+        // result 仅外发（壳应答/写 skin），无页面 UI 副作用，stale 守卫不适用于它。
+        if (sourceRequestId && isBridgeConnected()) {
+            const hasError = errors.length > 0;
+            const starText = reworkStarEl && reworkStarEl.textContent
+                ? String(reworkStarEl.textContent)
+                : "";
+            const starMatch = starText.match(/-?\d+(\.\d+)?/);
+            sendResult({
+                requestId: sourceRequestId,
+                statusHint: hasError ? "analysis-failed" : "success",
+                activeSource: sourceActive || "",
+                errors: hasError ? [...errors] : [],
+                star: starMatch ? Number(starMatch[0]) : null,
+                pattern: state.currentModeTag || null,
+                updatedAt: Date.now(),
+            });
+        }
         if (isStaleRequest()) return;
         reworkMetaEl.classList.remove("loading");
     }
