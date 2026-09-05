@@ -1,6 +1,6 @@
 # 难度估计算法调优知识与教训
 
-> 本文档记录在难度估计算法（Roxy / Azusa / Daniel / Sunny / Mixed / Companella）开发与调优过程中积累的知识与教训，来源包括本仓库 `temp/` 目录的历史探针/调优日志、benchmark 验证记录与历次优化会话结论。
+> 本文档记录在难度估计算法（Roxy / Azusa / Daniel / Sunny / Mixed / Companella）开发与调优过程中积累的知识与教训，来源包括本仓库 `temp/` 目录（本地 gitignored，不入库）的历史探针/调优日志、benchmark 验证记录与历次优化会话结论。
 >
 > 目标读者：后续继续改进估计算法的 LLM 与开发者。**核心价值在于记录「什么无效」及「为什么」，避免重复踩坑。**
 
@@ -13,7 +13,7 @@
   - `expected` = 段位谱面的数值化难度（Reform 体系，1st=1.0 … alpha=11.0，实际标签含 0.1 步进如 14.7）。
   - 指标：Exact = `|delta| ≤ 0.2`，Close = `≤ 0.5`，Moderate = `≤ 1.0`，Miss = `> 1.0`，`delta = expected − got`（正 = 低估）。
   - **禁止读取 `samples/` 谱面数据**（防止硬编码/过拟合）；训练/验证只允许用 `results/` CSV 的 `expected` 与各算法 `got`。
-- **代码约束**：只能修改 git 跟踪文件；不得修改 benchmark 仓库（验证时把 runner 复制到 `temp/` 并重定向输出，或仅用官方 runner 在获得授权后更新 `results/`，且 `index.json` 的 `source` 键会被非覆盖式保留）。
+- **代码约束**：只能修改 git 跟踪文件；不得修改 benchmark 仓库（验证时把 runner 复制到 `temp/`（本地私有，不入库）并重定向输出，或仅用官方 runner 在获得授权后更新 `results/`，且 `index.json` 的 `source` 键会被非覆盖式保留）。
 - **防过拟合判据**：group-split CV（按谱面名/家族分组）的 full→CV gap 必须小；CV 不提升就回退。
 
 ---
@@ -75,8 +75,8 @@
 - **合规分组残差校正**（用 Roxy 自算 stats 如 chordRate/anchorRate 分箱做组残差）：无效（53.0% → 52.8~53.7%，噪声内）。之前用 benchmark subPattern 分组的「+3.2pp」不可复现且**违规**（subPattern 是标注，运行时不可得）。
 - **lambda 细扫**：见 3.2。
 - **0.25 网格 / 分段量化（≥16.5 ceil）**：0.25 网格 Exact 略低（57.9% vs 58.5%）；分段量化 ≥17 +1 张但 11~17 -3 张，净亏损。
-- **历史 15 轮调优**（`temp/roxy_tune_iterations.md`，2026-06）：ridge lambda grid、GBDT（500 树）、isotonic 标定、reference stacking、浅残差树、二阶门控残差 ridge、序列复杂度特征、chordjack 修正、特征组消融、加权 ridge 等——**全部因 full/CV gap 过大或 KPI5（Miss<2%、Close+>80%、Moderate<10%）不达标而拒绝**。唯一部分接受的是保守的 reference-gap 残差校正（`±0.10` 最终影响）。
-- **历史 GBDT 路由探针**（`temp/roxy_router_probe.py`）：500 树 GBDT、bucket 线性、isotonic、segmented 等模型对比，group-split CV 均退化——高容量模型在 ~500 样本上必然过拟合。
+- **历史 15 轮调优**（2026-06，本地调优日志，不入库）：ridge lambda grid、GBDT（500 树）、isotonic 标定、reference stacking、浅残差树、二阶门控残差 ridge、序列复杂度特征、chordjack 修正、特征组消融、加权 ridge 等——**全部因 full/CV gap 过大或 KPI5（Miss<2%、Close+>80%、Moderate<10%）不达标而拒绝**。唯一部分接受的是保守的 reference-gap 残差校正（`±0.10` 最终影响）。
+- **历史 GBDT 路由探针**（本地探针脚本，不入库）：500 树 GBDT、bucket 线性、isotonic、segmented 等模型对比，group-split CV 均退化——高容量模型在 ~500 样本上必然过拟合。
 
 ### 3.5 Azusa 相关的教训
 
