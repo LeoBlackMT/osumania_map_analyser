@@ -19,6 +19,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
+// 窗口内快捷键（Wayland 兜底）：tauri-plugin-global-shortcut 基于 X11 XGrabKey，
+// Wayland 会话下注册成功却永不触发 → 壳窗口聚焦时改由页面 keydown 经 control 帧
+// toggle（X11/Windows 全局快捷键仍照常工作，两通道并存）。键位与壳默认一致：
+// Ctrl+Shift+T 置顶 / Ctrl+Shift+C 点击穿透 / Ctrl+Q 关闭。
+document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("keydown", (event) => {
+        if (!(event.ctrlKey || event.metaKey)) {
+            return;
+        }
+        const key = event.key.toLowerCase();
+        if (event.shiftKey && key === "t") {
+            event.preventDefault();
+            sendControl("toggleTopmost", null);
+        } else if (event.shiftKey && key === "c") {
+            event.preventDefault();
+            sendControl("toggleClickThrough", null);
+        } else if (key === "q") {
+            event.preventDefault();
+            sendControl("close", null);
+        }
+    });
+});
+
 // 页面缩放（壳窗口持久化；浏览器模式同样生效但仅会话内）：
 // Ctrl+滚轮 / Ctrl+加号减号 / Ctrl+0 复位，缩放值存 localStorage 启动恢复。
 function applyZoom(factor) {
