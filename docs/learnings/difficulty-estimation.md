@@ -1,6 +1,6 @@
 # 难度估计算法调优知识与教训
 
-> 本文档记录在难度估计算法（Roxy / Azusa / Daniel / Sunny / Mixed / Companella）开发与调优过程中积累的知识与教训，来源包括本仓库 `temp/` 目录（本地 gitignored，不入库）的历史探针/调优日志、benchmark 验证记录与历次优化会话结论。
+> 本文档记录在难度估计算法（Roxy / Azusa / Daniel / Sunny / Mixed / Companella）开发与调优过程中积累的知识与教训，来源包括本地私有临时目录中的历史探针/调优日志（gitignore，不入库）、benchmark 验证记录与历次优化会话结论。
 >
 > 目标读者：后续继续改进估计算法的 LLM 与开发者。**核心价值在于记录「什么无效」及「为什么」，避免重复踩坑。**
 
@@ -13,7 +13,7 @@
   - `expected` = 段位谱面的数值化难度（Reform 体系，1st=1.0 … alpha=11.0，实际标签含 0.1 步进如 14.7）。
   - 指标：Exact = `|delta| ≤ 0.2`，Close = `≤ 0.5`，Moderate = `≤ 1.0`，Miss = `> 1.0`，`delta = expected − got`（正 = 低估）。
   - **禁止读取 `samples/` 谱面数据**（防止硬编码/过拟合）；训练/验证只允许用 `results/` CSV 的 `expected` 与各算法 `got`。
-- **代码约束**：只能修改 git 跟踪文件；不得修改 benchmark 仓库（验证时把 runner 复制到 `temp/`（本地私有，不入库）并重定向输出，或仅用官方 runner 在获得授权后更新 `results/`，且 `index.json` 的 `source` 键会被非覆盖式保留）。
+- **代码约束**：只能修改 git 跟踪文件；不得修改 benchmark 仓库（验证时把 runner 复制到本地私有临时目录并重定向输出，或仅用官方 runner 在获得授权后更新 `results/`，且 `index.json` 的 `source` 键会被非覆盖式保留）。
 - **防过拟合判据**：group-split CV（按谱面名/家族分组）的 full→CV gap 必须小；CV 不提升就回退。
 
 ---
@@ -94,7 +94,7 @@
 
 ## 4A. 基准验证基础设施（harness 模式，2026-09 起）
 
-- **不触碰 benchmark 仓库的验证方法**：把 runner + esm-loader 复制到本仓库 `temp/bench/`，改副本路径（插件 import 指向本地 js、samples 用绝对路径只读引用、输出重定向到 `temp/bench/results-out/`、禁用 bid 缓存拷贝），`node --loader esm-loader.mjs benchmark-runner.mjs --algorithm X` 即可全量复现官方结果（Sunny 745/746 行逐位一致；Mixed 因 main 后续合入的 Ett 0.74.0 重建有 45 行漂移，属预期）。
+- **不触碰 benchmark 仓库的验证方法**：把官方 runner + esm-loader 复制到本地私有临时目录（gitignore，不入库），改副本路径（插件 import 指向本地 js、samples 用绝对路径只读引用、输出重定向到该临时目录、禁用 bid 缓存拷贝），`node --loader esm-loader.mjs benchmark-runner.mjs --algorithm X` 即可全量复现官方结果（Sunny 745/746 行逐位一致；Mixed 因 main 后续合入的 Ett 0.74.0 重建有 45 行漂移，属预期）。
 - **先转储后搜索**：给 runner 副本加 debug 转储（每行导出 numeric/star/actualAlgo/流程内 Companella/Roxy finalNumeric 等），一次批量跑完五个算法，之后所有参数搜索（融合权重、scope 阈值、三方融合、族级稳定性）都在离线脚本里秒级完成，只对最终配置跑一次确认。**不要用 10 分钟一轮的整跑去做参数搜索。**
 - **official results/ 有滞后**：官方 CSV 生成后 main 又合入了影响估算的提交（Ett wasm 重建等），跨版本对比必须用同代码同环境的 harness before/after，不能拿官方旧数字当基线。
 
