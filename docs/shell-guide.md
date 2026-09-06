@@ -8,9 +8,9 @@
 
 桌面壳（mma-shell）是一个可选的小窗口程序，用来：把分析卡片显示在**独立的置顶小窗口**里（可以盖在游戏/浏览器上）；在**不启动 tosu** 的情况下，让卡片接收来自 Etterna 或 Malody V 编辑器的数据。浏览器旧用法（tosu 插件）不受影响，可以正常使用。
 
-- 系统要求：Windows；
+- 系统要求：Windows / Linux（桥安装器为 PowerShell 脚本，仅 Windows；Linux 按下文手动步骤安装）。
 - Etterna/Malody 数据源需要安装对应游戏的桥文件（见下文「安装桥」）。
-- 最低游戏版本：**Etterna 0.70+**；**Malody V 6.6.43+**。
+- 最低游戏版本：**Etterna 0.70+**（Linux 需 0.75+ 官方 Linux 版）；**Malody V 6.6.43+**（无 Linux 版，该源仅 Windows）。
 - 支持的谱面类型：`.mc` `.ssc` `.sm`。
 
 > 注意：
@@ -21,7 +21,7 @@
 
 ## 一、快速开始
 
-- 从发布页下载压缩包（推荐），或从 CI artifact 单独下载 `mma-shell.exe`。
+- 从发布页下载压缩包（推荐），或从 CI artifact 单独下载 `mma-shell.exe`（Windows）/ `mma-shell`（Linux）。
   - **压缩包**：已包含插件目录、`mma-shell.exe` 与 `bridges/`，整体解压到 tosu 插件目录（`tosu/static/`）即可。
   - **单独 exe**：请放进插件目录 `ManiaMapAnalyser by Leo_Black` 内，放好后双击运行。
   - 如果你不使用 tosu，直接解压到你喜欢的位置即可。
@@ -41,11 +41,11 @@
 | 开关点击穿透（默认关） | 默认按 `Ctrl + Shift + C`（全局快捷键） |
 | 关闭窗口 | `Alt+F4` 或默认 `Ctrl+Q`（全局快捷键） |
 
-窗口位置/尺寸/置顶/点击穿透会跨启动记忆（下次打开自动恢复）；全局快捷键在窗口失焦或点击穿透时同样有效。
+窗口位置/尺寸/置顶/点击穿透会跨启动记忆（下次打开自动恢复）；全局快捷键在窗口失焦或点击穿透时同样有效（Windows/X11；**Linux Wayland 会话**下全局快捷键不可用，窗口聚焦时由页面内快捷键兜底，键位相同）。
 
 ## 三、安装桥
 
-**推荐：自动安装**。bridges 目录自带交互式安装器，按菜单选择 Install / Uninstall 与游戏：
+**推荐：自动安装**（桥安装器为 Windows PowerShell 脚本，仅 Windows；Linux 按下方手动步骤操作）。bridges 目录自带交互式安装器，按菜单选择 Install / Uninstall 与游戏：
 
 - 双击 `bridges/install-bridge.bat`（英文界面）或 `bridges/install-bridge-zh.bat`（中文界面）；也可命令行运行 `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`。
 - 自动探测游戏安装目录（正在运行的进程 → 环境变量 → 常见安装路径；Malody V 额外探测 Steam 库）。
@@ -136,9 +136,9 @@ mma-shell is an optional small window program that: shows the analysis card in a
 window** (can overlay games/browsers); and, **without tosu running**, lets the card receive data from **Etterna** or
 the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
 
-- System requirements: Windows; 
+- System requirements: Windows / Linux (the bridge installer is a PowerShell script, Windows-only; on Linux follow the manual steps below). 
 - Etterna/Malody data sources need their game bridge files installed (see "Bridges" below). 
-- Minimum game versions: **Etterna 0.70+**; **Malody V 6.6.43+**. 
+- Minimum game versions: **Etterna 0.70+** (Linux needs the official 0.75+ Linux build); **Malody V 6.6.43+** (no Linux version — this source is Windows-only). 
 - Supported chart types: `.mc`, `.ssc`, `.sm`.
 
 > Note:
@@ -150,7 +150,7 @@ the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
 
 ## Quick start
 
-- Download the archive from the release page (recommended), or just `mma-shell.exe` from CI artifacts.
+- Download the archive from the release page (recommended), or just `mma-shell.exe` (Windows) / `mma-shell` (Linux) from CI artifacts.
   - **Archive**: it already contains the plugin folder, `mma-shell.exe` and `bridges/` — extract it into the tosu
     plugin folder (`tosu/static/`) as a whole.
   - **Standalone exe**: place it inside the `ManiaMapAnalyser by Leo_Black` plugin folder and double-click to run.
@@ -176,11 +176,13 @@ the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
 | Close | `Alt+F4` or `Ctrl+Q` by default (global shortcut) |
 
 Window position/size/topmost/click-through are remembered across launches. Global shortcuts keep working while the
-window is unfocused or click-through is active.
+window is unfocused or click-through is active (Windows/X11; global shortcuts are unavailable on **Linux Wayland**
+sessions — while the shell window is focused, in-page shortcuts take over with the same key bindings).
 
 ## Bridges
 
-**Recommended: automated install.** The bridges folder ships an interactive installer — double-click
+**Recommended: automated install** (the installer is a Windows PowerShell script; on Linux, follow the manual steps
+below)**.** The bridges folder ships an interactive installer — double-click
 `bridges/install-bridge.bat` (or `bridges/install-bridge-zh.bat` for the Chinese UI; or run
 `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`) and pick Install / Uninstall
 and the game from the menu:

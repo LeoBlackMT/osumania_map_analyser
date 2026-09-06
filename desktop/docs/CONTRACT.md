@@ -17,7 +17,7 @@
   | settings | 壳→页 | 设置推送（tosu 设置文件 mtime 变化 / 离线 POST 变更时主动推送载荷） |
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
-  | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart`；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
+  | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart` / `toggleTopmost` / `toggleClickThrough`（后两者为 v2 行内扩展——Wayland 页面内快捷键兜底，页面与壳同版本发布故不升 v3；toggle 以 `mma-shell-state.json` 为权威读-翻-写，主线程执行）；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
 
 - diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入七型。
 - 浏览器模式（无壳）：24061 不可达 → 页面不建壳通道，osu 单源（现状行为）。

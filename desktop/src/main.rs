@@ -48,16 +48,28 @@ fn persist_window_state() {
     config::write_window_state(&WINDOW_STATE.lock().unwrap());
 }
 
-/// 切换置顶/穿透：仅在内存改标志并异步应用窗口 API。
+/// 位置/尺寸事件后持久化：置顶/穿透以磁盘为权威（control toggle 可能刚改过），
+/// 只把磁盘上的两标志合并进内存再写盘，避免本通道旧快照覆盖对侧通道的切换。
+fn merge_disk_flags_and_persist() {
+    let disk = config::read_window_state();
+    {
+        let mut st = WINDOW_STATE.lock().unwrap();
+        st.topmost = disk.topmost;
+        st.click_through = disk.click_through;
+    }
+    persist_window_state();
+}
+
+/// 切换置顶/穿透：入参为目标值（快捷键回调已算好 next）；应用窗口 API 并写盘。
+/// 写盘前从磁盘读回对侧标志——两通道（全局快捷键 / 页面 control toggle）共用
+/// mma-shell-state.json 为权威，防止各自内存副本互相覆盖（曾出现 control toggle
+/// 写盘后 5s 定时器用快捷键通道的旧内存值覆盖回滚）。
 fn apply_flag_change(app: &tauri::AppHandle, topmost: Option<bool>, click_through: Option<bool>) {
     {
         let mut st = WINDOW_STATE.lock().unwrap();
-        if let Some(v) = topmost {
-            st.topmost = v;
-        }
-        if let Some(v) = click_through {
-            st.click_through = v;
-        }
+        let disk = config::read_window_state();
+        st.topmost = topmost.unwrap_or(disk.topmost);
+        st.click_through = click_through.unwrap_or(disk.click_through);
     }
     persist_window_state();
     let app2 = app.clone();
@@ -195,7 +207,7 @@ fn main() {
                     move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
                             server::log::log_at("debug", "shortcut pressed: topmost");
-                            let next = !WINDOW_STATE.lock().unwrap().topmost;
+                            let next = !config::read_window_state().topmost;
                             apply_flag_change(app, Some(next), None);
                         }
                     },
@@ -210,7 +222,7 @@ fn main() {
                     move |app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
                             server::log::log_at("debug", "shortcut pressed: clickThrough");
-                            let next = !WINDOW_STATE.lock().unwrap().click_through;
+                            let next = !config::read_window_state().click_through;
                             apply_flag_change(app, None, Some(next));
                         }
                     },
@@ -258,6 +270,14 @@ fn main() {
                             WINDOW_STATE.lock().unwrap().w = size.width;
                             WINDOW_STATE.lock().unwrap().h = size.height;
                         }
+                        // 置顶/穿透以磁盘为权威（control toggle / 快捷键都可能改），
+                        // 仅刷新位置尺寸，避免用本线程的旧快照覆盖对侧通道的切换。
+                        let disk = config::read_window_state();
+                        {
+                            let mut st = WINDOW_STATE.lock().unwrap();
+                            st.topmost = disk.topmost;
+                            st.click_through = disk.click_through;
+                        }
                         persist_window_state();
                     });
                 });
@@ -271,15 +291,15 @@ fn main() {
                 tauri::WindowEvent::Moved(position) => {
                     WINDOW_STATE.lock().unwrap().x = position.x;
                     WINDOW_STATE.lock().unwrap().y = position.y;
-                    persist_window_state();
+                    merge_disk_flags_and_persist();
                 }
                 tauri::WindowEvent::Resized(size) => {
                     WINDOW_STATE.lock().unwrap().w = size.width;
                     WINDOW_STATE.lock().unwrap().h = size.height;
-                    persist_window_state();
+                    merge_disk_flags_and_persist();
                 }
                 tauri::WindowEvent::CloseRequested { .. } => {
-                    persist_window_state();
+                    merge_disk_flags_and_persist();
                 }
                 _ => {}
             }

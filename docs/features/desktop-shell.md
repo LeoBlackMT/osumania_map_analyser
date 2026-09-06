@@ -10,8 +10,7 @@
 2. **本地聚合桥**（无 tosu 环境时的数据面）：
    - `24060` HTTP POST——Malody 编辑器分析入口（经 WS 中转到页面）；
    - `24061` HTTP——插件页静态服务（离线模式）、`/settings`（离线设置）、`/cover/`（封面白名单）；
-   - `24061/ws` WS——帧通道（hello/state/song/settings/result/control + ping），页面与壳双向；
-   - Malody skin 状态文件写入（`mma_state.txt`，契约 §9）。
+   - `24061/ws` WS——帧通道（hello/state/song/settings/result/control + ping），页面与壳双向。
 3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 
 模块：`desktop/src/{main,config,frames,etterna,malody}.rs` + `server/`（mod/http/ws/post/log）；契约 `desktop/docs/CONTRACT.md`（v2）。
@@ -38,19 +37,19 @@ window.navigate(url)
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 2, shell}`；契约不匹配=终态（页面停止重连并提示） |
+| hello | 壳→页 | `{contract: 2, tosuOnline}`；契约不匹配=终态（页面停止重连并提示） |
 | state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},malody{alive}} |
 | song | 壳→页 | requestId/source/identity/modData{rate,...}/cover/rawText |
 | settings | 双向 | 离线设置 JSON（在线只读不推） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
-| control | 页→壳 | `{action: alwaysOnTop\|close\|clickThrough, value: bool}`（窗口操控；快捷键已全局化，此帧供未来 UI） |
+| control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
 
 ## 4. 窗口操控（v2 起）
 
 无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`——**拖拽边缘改窗口尺寸**；**整窗移动**用页面顶部 `data-tauri-drag-region` 拖动把手（22px 发光条，中间 `⋮⋮` 提示）；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
 
-**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell-config.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
+**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell-config.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。**平台差异**：Windows（RegisterHotKey）/X11（XGrabKey）为真全局，失焦/穿透均生效；**Wayland 会话下 XGrabKey 注册成功但永不触发**——壳窗口聚焦时由页面内快捷键兜底（键位一致，经 control 帧 `toggleTopmost`/`toggleClickThrough`/`close`，见 §3）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存；置顶/穿透以该文件为唯一权威（快捷键、control toggle、5s persister、窗口事件四写通道均先合并磁盘值再写，避免旧内存快照回滚对侧通道的切换）。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
 
 ## 4b. 配置、日志与路径容错
 
@@ -62,8 +61,9 @@ window.navigate(url)
 ## 5. 构建与发布
 
 - 开发：`cargo build`（debug 保留控制台输出）。
-- 发布：`cargo build --release`；`desktop/release.ps1` 将 exe 拷入插件目录并打 zip；**release 为 Windows GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
-- CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows**（release 产物上传 artifact）；`workflow_dispatch` 可手动触发。**Linux 构建已移除**：Etterna 无官方 Linux 版、Malody V 无 Linux 版，无对应受众。
+- 发布：`cargo build --release`；打包脚本 `desktop/release.ps1`（Windows，打 zip）/ `desktop/build-linux.sh`（Linux，打 tar.gz，保留执行位），版本号均读插件 `metadata.txt`，产物落在仓库 `release/`；**Windows release 为 GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
+- **平台**：Windows 全功能；Linux 支持 Etterna 数据源（0.75+ 官方 Linux 版），Malody V 无 Linux 版（该源仅 Windows）。
+- CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows + Linux**（release 产物上传 artifact `mma-shell-windows` / `mma-shell-linux`；Linux = ubuntu-24.04 + Tauri 系统依赖）；`workflow_dispatch` 可手动触发。Linux 构建曾因无受众移除，Etterna 0.75 发布官方 Linux 版后恢复（Ubuntu 24.04 VM 全链路实测）。
 
 ## 6. 已知限制与待办
 

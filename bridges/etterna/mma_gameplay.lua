@@ -48,8 +48,16 @@ local function write(playing)
     end)
 end
 
+-- 命令时机说明：Etterna（StepMania 系）对 BGAnimation overlay 顶层 actor，
+-- InCommand 并非总在进入游玩时发出（实测 Etterna 0.75 Linux 从不触发），
+-- 而 OnCommand 稳定触发；两者并存以保证各主题/平台都写入 playing=1。
+-- 离开游玩时 OutCommand 同样未必发出，壳端以 total_seconds/rate 外推
+-- + 30s 超时兜底 playing=0，此处仅尽力而为。
 return Def.Actor {
     InCommand = function(self)
+        write(true)
+    end,
+    OnCommand = function(self)
         write(true)
     end,
     OutCommand = function(self)

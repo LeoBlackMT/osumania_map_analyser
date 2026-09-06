@@ -6,6 +6,7 @@ use crate::server::{hello_frame, log::log_at, next_seq, Shared};
 use std::net::TcpStream;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
+use tauri::Manager;
 
 /// 契约 v2 control 帧处理（窗口操控）。
 pub fn handle_control(shared: &Shared, ctrl: &ControlInbound) {
@@ -24,8 +25,31 @@ pub fn handle_control(shared: &Shared, ctrl: &ControlInbound) {
             let window2 = window.clone();
             let _ = window2.start_dragging();
         }
+        // 窗口内快捷键兜底（Wayland 无全局快捷键；页面 keydown → 此处 toggle）。
+        // 状态以 mma-shell-state.json 为准（main.rs 全局快捷键同源写盘），
+        // 读取最新值后取反；窗口 API 一律 run_on_main_thread（自死锁见 main.rs 注）。
+        "toggleTopmost" => toggle_window_flag(&window, true),
+        "toggleClickThrough" => toggle_window_flag(&window, false),
         _ => {}
     }
+}
+
+fn toggle_window_flag(window: &tauri::WebviewWindow, topmost: bool) {
+    let app = window.app_handle().clone();
+    let window2 = window.clone();
+    // 状态读写都在主线程闭包内进行：read → 取反 → set → 写盘。
+    // （若在闭包外读，连续两次 toggle 会读到同一旧值 → 竞态翻转失效。）
+    let _ = app.run_on_main_thread(move || {
+        let mut saved = crate::config::read_window_state();
+        if topmost {
+            saved.topmost = !saved.topmost;
+            let _ = window2.set_always_on_top(saved.topmost);
+        } else {
+            saved.click_through = !saved.click_through;
+            let _ = window2.set_ignore_cursor_events(saved.click_through);
+        }
+        crate::config::write_window_state(&saved);
+    });
 }
 
 /// 从 result 帧（Envelope 包裹或裸帧）提取 ResultInbound（契约 §2 payload 载体）。
