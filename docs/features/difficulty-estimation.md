@@ -20,12 +20,12 @@
 
 | 算法 | 线程 | 入口函数 | 适用键型/场景 | 限制 |
 | --- | --- | --- | --- | --- |
-| **Mixed** | main | `mixedEstimator.js:192 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 用 Companella 覆盖，高难用 Daniel） | 依赖 Ett WASM 与模式分析结果，只能主线程运行；RC 仅 4K 生效，非 4K RC 直接回退 Sunny 基线（`mixedEstimator.js:206`） |
-| **Azusa** | worker | `azusaEstimator.js:822 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果，`azusaEstimator.js:844`）；LN 上限配置 `rcLnRatioLimit: 0.18`（`azusaEstimator.js:7`）；结果无效时由分派层回退 Sunny |
+| **Mixed** | main | `mixedEstimator.js:192 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel） | 依赖 Ett WASM 与模式分析结果，只能主线程运行；RC 仅 4K 生效，非 4K RC 直接回退 Sunny 基线（`mixedEstimator.js:206`） |
+| **Azusa** | worker | `azusaEstimator.js:822 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
 | **Roxy** | worker | `roxyEstimator.js:1400 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1439`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:29-37`） |
-| **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 中仅当 `star < 9` 时启用，`mixedEstimator.js:277`） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:498` 以 `columnCount === 4` 决定是否触发）；高 LN 谱面在 analysis.js 层跳过（见 3.2） |
+| **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:498` 以 `columnCount === 4` 决定是否触发）；高 LN 谱面在 analysis.js 层跳过（见 3.2） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:14 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:521-533`） |
 
 ## 3. 估算器分派机制
@@ -65,6 +65,17 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - `CArr`（Classic 密度）与 `CArrV2` 均由 `computeCAndKs` 计算（sunnyAlgorithm.js:918-919），effectiveWeights 是**唯一切换行**——Classic 开时用 C_arr，否则用 C_arrV2（对标 C# MACalculator.cs ContainsCL 分支与 genirx dart `containsCL ? cArr : cArrV2`）。
 - **classicMod 选项**：`options.classicMod === true` 时切换；`undefined/false`（缺省）时输出与改动前**逐位一致**（回归锚点，基准 runner 不传 classicMod → 预期零差异）。classicMod 沿 options 链透传：analysis.js `classicMod: state.classicMod === true`（pipeline options）→ sunnyEstimator → calculate。
 - **classic 判定**：`client === "lazer" ? modCodes.has("CL") : !modCodes.has("SV2")`（modData.js:218-220，见 mod-handling.md §2.1），经 modSignature 第 4 段进缓存键——classic 状态切换自动触发重算。
+
+### 3.6 Mixed 低难段 RC 融合（Azusa⊕Companella）
+
+低难 4K 谱面（RC 分支中 Roxy scope-out，或 LN/Mix 分支中 `sunnyBaseline.star < 9`）的 RC 数值不再交给单一估算器，而是以 **Azusa 为基准与 Companella 做 0.5/0.5 加权融合**（`RC_AZUSA_COMPANELLA_FUSION_WEIGHT`）：
+
+- **机制**：两个近似独立的低难估计器取平均以降低方差（与 Roxy 内部 Azusa 融合同一机制族）；离线探针显示权重在 0.4~0.7 间结果平坦，取对称 0.5 避免拟合基准分布。
+- **计划传递**：`mixedCompanellaPlan` 携带 `{fuseRc: true, rcNumeric, rcEstDiff, onDisagree, lnRatio, lnDifficulty}`，异步 Companella 结果到达后在 `applyCompanellaToMixedResult` 内融合；`estDiff` 由融合数值经 `numericToRcLabel` 重新派生（numeric 与 estDiff 保持同源）。
+- **作用域门控**：仅当 Azusa 数值低于 Alpha（`RC_FUSION_LOW_BAND_MAX = 11`，低难主张成立）时融合；未通过时回落 `onDisagree` 指定的分支原赢家（RC 分支 = Azusa，LN/Mix 分支 = Companella），保证 11~17/LN 段行为与融合引入前逐位一致。一致性门控（|Azusa−Companella| ≤ 1.0）经真实运行验证会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除。
+- **回退**：Companella ONNX 失败/数值无效时不动结果，base 的纯 Azusa RC 段即为兜底显示。
+- **行内标签**：融合后 `actualEstimatorAlgorithm` 为 `"Azusa"`（基准侧）；`mixedCompanellaPlan` 不再残留（置 null）。
+- **效果**（benchmark harness，main 基线 → 融合，746 行全量）：RC <11 Exact 20.3% → 21.9%、MAE 0.734 → 0.715；RC ALL Exact 50.5% → 50.9%、MAE 0.302 → 0.294；ALL Exact 44.9% → 45.3%、MAE 0.428 → 0.422；11~17 微升（MAE 0.318 → 0.316），≥17 / LN 与基线逐位一致（无回归）。改动行净效应 −4.89 MAE 点（73 行改善 / 52 行回退）。
 - 只改星数密度，**不影响** v2Acc/PP 公式与 Azusa/Roxy/Daniel 等非 Sunny 主算法的自身口径（Azusa/Roxy 内部参考 Sunny 调用同参透传）。
 
 ### 3.4 显示星数统一为 Sunny 原始 sr

@@ -389,7 +389,9 @@ export async function fetchBeatmapFile(reason) {
     // star-v3：Companella LN 门控 + 12K star fallback 使 estDiff 语义变化 → 旧快照全部失效。
     // star-v4：转换器难度别名修复（Etterna Difficulty_* 前缀此前匹配失败 → 恒取首块），
     //   同 identity 的旧快照（错误的首块结果）必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v4";
+    // star-v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控生效，
+    //   低难图的 numeric/estDiff 语义变化 → 旧快照必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v5";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
