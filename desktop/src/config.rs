@@ -5,7 +5,8 @@ use std::env;
 use std::fs;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 pub const PLUGIN_FOLDER: &str = "ManiaMapAnalyser by Leo_Black";
 
@@ -318,6 +319,47 @@ fn exe_dir() -> Option<PathBuf> {
 
 // ---- Steam 库发现（注册表 + libraryfolders.vdf）+ 常见路径启发探测 ----
 
+/// 盘符预检：候选路径探测前先确认盘符存在且就绪。用户可能没有 D: 盘；
+/// "存在但未就绪"的驱动器（读卡器/光驱）上的元数据查询还可能阻塞数秒——
+/// 先探根目录快速跳过。非盘符前缀（UNC/相对路径）视为可用，交由后续判定。
+fn drive_root_ready(p: &Path) -> bool {
+    let Some(first) = p.iter().next() else {
+        return false;
+    };
+    let first = first.to_string_lossy();
+    let bytes = first.as_bytes();
+    if bytes.len() == 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        fs::metadata(format!("{}/", &first[..2])).is_ok()
+    } else {
+        true
+    }
+}
+
+/// 探测结果 30s TTL 缓存：未配置根目录时轮询器每个周期都会走到 detect_*，
+/// 每次都打注册表 + vdf + 逐候选盘符探测既浪费也会放大未就绪驱动器的阻塞。
+const DETECT_CACHE_TTL: Duration = Duration::from_secs(30);
+
+static ETTERNA_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
+static MALODY_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
+
+fn detect_cached(
+    cache: &Mutex<Option<(Instant, Option<PathBuf>)>>,
+    once: fn() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    if let Ok(guard) = cache.lock() {
+        if let Some((at, hit)) = guard.as_ref() {
+            if at.elapsed() < DETECT_CACHE_TTL {
+                return hit.clone();
+            }
+        }
+    }
+    let hit = once();
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((Instant::now(), hit.clone()));
+    }
+    hit
+}
+
 /// 读 Windows 注册表拿 Steam 安装路径（SteamPath/InstallPath），并解析
 /// libraryfolders.vdf 收集全部 Steam 库根（含 Steam 自身库与其他库）。
 /// 非 Windows 平台：仅靠硬编码候选（壳目前 Windows-only，Linux 构建时跳过注册表）。
@@ -379,15 +421,19 @@ fn steam_library_roots() -> Vec<PathBuf> {
 
 /// Etterna：Steam 库（appid 607810 的 common/Etterna）→ 常见路径 → env。
 pub fn detect_etterna_root() -> Option<PathBuf> {
+    detect_cached(&ETTERNA_DETECT_CACHE, detect_etterna_root_once)
+}
+
+fn detect_etterna_root_once() -> Option<PathBuf> {
     if let Ok(over) = env::var("MMA_ETTERNA_ROOT") {
         let p = PathBuf::from(normalize_path(&over));
-        if p.join("Save").is_dir() {
+        if drive_root_ready(&p) && p.join("Save").is_dir() {
             return Some(p);
         }
     }
     for lib in steam_library_roots() {
         let dir = lib.join("steamapps").join("common").join("Etterna");
-        if dir.join("Save").is_dir() {
+        if drive_root_ready(&dir) && dir.join("Save").is_dir() {
             return Some(dir);
         }
     }
@@ -399,7 +445,7 @@ pub fn detect_etterna_root() -> Option<PathBuf> {
     ];
     for c in candidates {
         let dir = PathBuf::from(c);
-        if dir.join("Save").is_dir() {
+        if drive_root_ready(&dir) && dir.join("Save").is_dir() {
             return Some(dir);
         }
     }
@@ -408,15 +454,19 @@ pub fn detect_etterna_root() -> Option<PathBuf> {
 
 /// MalodyV：Steam 库（common/MalodyV）→ 常见路径 → env。
 pub fn detect_malody_root() -> Option<PathBuf> {
+    detect_cached(&MALODY_DETECT_CACHE, detect_malody_root_once)
+}
+
+fn detect_malody_root_once() -> Option<PathBuf> {
     if let Ok(over) = env::var("MMA_MALODY_ROOT") {
         let p = PathBuf::from(normalize_path(&over));
-        if p.join("chart").is_dir() && p.join("skin").is_dir() {
+        if drive_root_ready(&p) && p.join("chart").is_dir() && p.join("skin").is_dir() {
             return Some(p);
         }
     }
     for lib in steam_library_roots() {
         let dir = lib.join("steamapps").join("common").join("MalodyV");
-        if dir.join("chart").is_dir() && dir.join("skin").is_dir() {
+        if drive_root_ready(&dir) && dir.join("chart").is_dir() && dir.join("skin").is_dir() {
             return Some(dir);
         }
     }
@@ -428,7 +478,7 @@ pub fn detect_malody_root() -> Option<PathBuf> {
     ];
     for c in candidates {
         let dir = PathBuf::from(c);
-        if dir.join("chart").is_dir() && dir.join("skin").is_dir() {
+        if drive_root_ready(&dir) && dir.join("chart").is_dir() && dir.join("skin").is_dir() {
             return Some(dir);
         }
     }

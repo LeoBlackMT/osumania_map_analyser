@@ -377,6 +377,26 @@ function Format-PathInput {
     return $p
 }
 
+function Test-PathRootAvailable {
+    <#
+        Drive-letter pre-check. Join-Path throws DriveNotFoundException when the
+        first path segment names a drive that does not exist (e.g. the common-path
+        candidates probe D:\ while the user has no D: drive) - a terminating error
+        under $ErrorActionPreference = 'Stop' that would kill the installer.
+        Detection must never crash: probe the drive root first and skip.
+    #>
+    param([string]$p)
+    if (-not $p) { return $false }
+    $root = [System.IO.Path]::GetPathRoot($p)
+    if (-not $root) { return $true }  # relative path: no drive to validate
+    if ($root -notmatch '^[A-Za-z]:') { return $true }  # UNC / device path
+    try {
+        return [System.IO.DriveInfo]::new($root.Substring(0, 1)).IsReady
+    } catch {
+        return $false
+    }
+}
+
 function Select-FolderBrowser {
     param([string]$Description)
     try {
@@ -442,6 +462,7 @@ function Get-SteamLibraryRoots {
     # 2. libraryfolders.vdf inside every known root
     $snapshot = @($roots)
     foreach ($r in $snapshot) {
+        if (-not (Test-PathRootAvailable $r)) { continue }
         $vdf = Join-Path $r 'steamapps\libraryfolders.vdf'
         if (Test-Path $vdf) {
             $text = Get-Content -LiteralPath $vdf -Raw -ErrorAction SilentlyContinue
@@ -459,6 +480,7 @@ function Get-SteamLibraryRoots {
 function Test-EtternaRoot {
     param([string]$p)
     if (-not $p) { return $false }
+    if (-not (Test-PathRootAvailable $p)) { return $false }
     $save = Join-Path $p 'Save'
     $themes = Join-Path $p 'Themes'
     return (Test-Path $save -PathType Container) -and (Test-Path $themes -PathType Container)
@@ -467,6 +489,7 @@ function Test-EtternaRoot {
 function Test-MalodyRoot {
     param([string]$p)
     if (-not $p) { return $false }
+    if (-not (Test-PathRootAvailable $p)) { return $false }
     return (Test-Path (Join-Path $p 'chart') -PathType Container) -and
            (Test-Path (Join-Path $p 'skin') -PathType Container)
 }
@@ -488,8 +511,12 @@ function Get-EtternaCandidates {
     $cands = New-Object 'System.Collections.Generic.List[string]'
     $add = {
         param($p)
-        if ($p) { $p = Format-PathInput -Path $p }
-        if ($p -and (Test-EtternaRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
+        # probing is best-effort: never let an unexpected provider error
+        # terminate the installer ($ErrorActionPreference = 'Stop')
+        try {
+            if ($p) { $p = Format-PathInput -Path $p }
+            if ($p -and (Test-EtternaRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
+        } catch { }
     }
     # running process
     $p = Get-RunningProcessRoot -Names 'Etterna'
@@ -507,13 +534,18 @@ function Get-MalodyCandidates {
     $cands = New-Object 'System.Collections.Generic.List[string]'
     $add = {
         param($p)
-        if ($p) { $p = Format-PathInput -Path $p }
-        if ($p -and (Test-MalodyRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
+        # probing is best-effort: never let an unexpected provider error
+        # terminate the installer ($ErrorActionPreference = 'Stop')
+        try {
+            if ($p) { $p = Format-PathInput -Path $p }
+            if ($p -and (Test-MalodyRoot $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
+        } catch { }
     }
     $p = Get-RunningProcessRoot -Names 'Malody V', 'MalodyV'
     if ($p) { & $add $p }
     if ($env:MMA_MALODY_ROOT) { & $add $env:MMA_MALODY_ROOT }
     foreach ($lib in (Get-SteamLibraryRoots)) {
+        if (-not (Test-PathRootAvailable $lib)) { continue }
         & $add (Join-Path $lib 'steamapps\common\MalodyV')
     }
     foreach ($c in @(

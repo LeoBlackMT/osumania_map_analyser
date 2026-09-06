@@ -11,7 +11,7 @@
 
 - 双击 `install-bridge.bat`（英文界面）或 `install-bridge-zh.bat`（中文界面）即可；命令行运行：`powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`。
 - 主菜单选择 **Install** / **Uninstall**，再选择游戏（Etterna / Malody V）。全程交互确认。
-- 游戏根目录自动探测：正在运行的进程 → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 → 常见安装路径；Malody V（Steam 游戏）额外探测 Steam 库（注册表 + `steamapps/libraryfolders.vdf`），Etterna 不是 Steam 应用、不走 Steam 检测。
+- 游戏根目录自动探测：正在运行的进程 → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 → 常见安装路径；Malody V（Steam 游戏）额外探测 Steam 库（注册表 + `steamapps/libraryfolders.vdf`），Etterna 不是 Steam 应用、不走 Steam 检测。探测前先做盘符就绪预检——不存在的盘符（如没有 D: 盘）直接跳过，绝不因探测不存在的路径而中断安装器。
 - **自动探测失败时**：可从「浏览选择目录」图形对话框选择、手动输入路径（`/`、`\`、`\\` 写法与包裹引号、尾部斜杠都能兼容归一化），或按提示查看「如何找到游戏路径」指引。
 - **Etterna 主题预检**：安装前检查每个主题的目录结构，只列出结构完整（`ScreenSelectMusic decorations/default.lua` 与 `ScreenGameplay overlay/default.lua` 都存在）的主题；`_fallback` 这类缺少屏目录的主题会被跳过并说明原因。默认安装到 **Rebirth**（存在时；否则列出可安装主题供选择；不提供一次性安装到全部主题）。
 - 写入/更新插件根目录（`bridges/..`，即 `mma-shell.exe` 旁）的 `mma-shell-config.json` 的 `etternaRoot` / `malodyRoot`（正斜杠路径）。
@@ -36,7 +36,7 @@ For users unfamiliar with manual steps, this folder ships an interactive install
 
 - Double-click `install-bridge.bat` (English UI) or `install-bridge-zh.bat` (Chinese UI); or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`.
 - Main menu: **Install** / **Uninstall**, then pick the game (Etterna / Malody V). Every step asks for confirmation.
-- Game roots are auto-detected: running process → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` env vars → common install paths; Malody V (a Steam game) additionally probes Steam libraries (registry + `steamapps/libraryfolders.vdf`), while Etterna is not a Steam app and is never probed there.
+- Game roots are auto-detected: running process → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` env vars → common install paths; Malody V (a Steam game) additionally probes Steam libraries (registry + `steamapps/libraryfolders.vdf`), while Etterna is not a Steam app and is never probed there. Drive readiness is checked before probing: candidates on drives that do not exist (e.g. no D:) are skipped silently — probing never aborts the installer.
 - **If auto-detection finds nothing**: pick the folder from a browse dialog, type a path (`/`, `\` or `\\` separators, wrapping quotes and trailing slashes are all normalized), or follow the built-in "how do I find the path" hint.
 - **Etterna theme pre-check**: each theme's structure is validated before listing — only themes with both `ScreenSelectMusic decorations/default.lua` and `ScreenGameplay overlay/default.lua` present are offered; incomplete themes (like `_fallback`) are skipped with the reason shown. Installs into **Rebirth** by default (falls back to the installable-theme picker if missing; installing to all themes at once is intentionally not offered).
 - Writes/updates `etternaRoot` / `malodyRoot` (forward-slash paths) in `mma-shell-config.json` next to the plugin root (`bridges/..`, i.e. next to `mma-shell.exe`).

@@ -84,9 +84,19 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
+            // 插件版本从 metadata.txt 读取（不再硬编码，避免版本漂移）。
+            let plugin_version = std::fs::read_to_string(plugin_dir.join("metadata.txt"))
+                .ok()
+                .and_then(|text| {
+                    text.lines().find_map(|line| {
+                        line.trim().strip_prefix("Version:").map(|v| v.trim().to_string())
+                    })
+                })
+                .unwrap_or_else(|| "?".to_string());
             server::log::log_line(&format!(
-                "mma-shell start (crate v{}, plugin v2.1.0, ts={})",
+                "mma-shell start (crate v{}, plugin v{}, ts={})",
                 env!("CARGO_PKG_VERSION"),
+                plugin_version,
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
