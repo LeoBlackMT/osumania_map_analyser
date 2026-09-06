@@ -82,6 +82,21 @@
 
 - **低难 floor 量化**（<11 向下取整 0.5 网格）曾带来 Mixed <11 Close +14pp，但同样存在显示一致性问题（estDiff 基于未量化值），且对 expected 11~12 但输出 10.75~10.88 的图有害（floor 10.88→10.50，Close→Moderate）——**已随量化整体回退**。
 - Azusa 对「结构难但段位低」的图（star of andromeda 等）也系统性低估——这是**标注与算法共识的分歧**（expected 11+ 但主流算法都认为 10 级），任何规则修复都是过拟合。
+- **Azusa 的 LN 门控曾长期只存在于文档**（2026-09 发现）：`rcLnRatioLimit: 0.18` 自 Azusa 引入起只写在 config 与文档里，入口从未检查。此前未暴露是因为 benchmark runner 按 pattern 跳过 ln 行、Mixed 只把 RC tag（ln≤0.15）的图喂给 Azusa；一旦 Mixed 的低难融合在 Mix 分支（ln 可到 0.18）调用 Azusa，LN 主导谱面就会拿到 RC 模型的无意义数值。**教训：文档声明的输入约束必须在入口断言，否则迟早被新调用路径绕过。**
+
+### 3.6 Mixed 低难段 Azusa⊕Companella 融合（2026-09）
+
+- **方向有效但收益有限**：低难段（RC <11，n=187）融合真实运行 MAE 0.734→0.715、Exact +1.6pp，全段无回归（LN/≥17 与基线逐位一致），改动行净效应 −4.89 MAE 点（73 改善 / 52 回退）。离线探针（用独立 Companella CSV 代理流程内 Companella）预估的 MAE −0.08 在真实运行中缩水到 −0.019——**Mixed 流内 Companella 输入（sunnyStar 归一化、Ett 版本）与独立运行不同，离线代理会高估收益**。
+- **一致性门控（|Azusa−Companella| ≤ 1.0）被证伪并移除**：它同时挡掉有益与有害的融合（净收益 4.89 → 2.87 MAE 点，变差）；移除后收益恢复至 −4.89。分歧大小无法区分方向对错，靠净效应平坦性兜底即可。
+- **作用域门控是必须的**：仅当 Azusa 数值 <11 时融合 + `onDisagree` 回落分支原赢家，保证 11~17/LN 段逐位不变。无门控版本曾把 LN 段 MAE 1.228 → 1.303（Azusa 无 LN 门控时在 LN 主导图上输出假数值并被融合）。
+- **参数面已穷尽**（五算法 debug 转储 + 离线全参数搜索）：w∈[0.4,0.7] 平坦（0.5 对称最优），scope>11 重新引入 11-17 泄漏且族级稳定性崩坏（17-19 worse），Roxy finalNumeric 作第三信号单调变差（0.528→0.533）——当前配置位于该机制族的平台上。
+- **辅助发现**：数据集扩充后（746 行）低难段大部分行（84/137）走 LN/Mix 分支（ln∈(0.15,0.18]），「RC course 被 LN 分支劫持」不是个别现象而是低难段的主体路径——低难改进必须同时覆盖两条分支。
+
+## 4A. 基准验证基础设施（harness 模式，2026-09 起）
+
+- **不触碰 benchmark 仓库的验证方法**：把 runner + esm-loader 复制到本仓库 `temp/bench/`，改副本路径（插件 import 指向本地 js、samples 用绝对路径只读引用、输出重定向到 `temp/bench/results-out/`、禁用 bid 缓存拷贝），`node --loader esm-loader.mjs benchmark-runner.mjs --algorithm X` 即可全量复现官方结果（Sunny 745/746 行逐位一致；Mixed 因 main 后续合入的 Ett 0.74.0 重建有 45 行漂移，属预期）。
+- **先转储后搜索**：给 runner 副本加 debug 转储（每行导出 numeric/star/actualAlgo/流程内 Companella/Roxy finalNumeric 等），一次批量跑完五个算法，之后所有参数搜索（融合权重、scope 阈值、三方融合、族级稳定性）都在离线脚本里秒级完成，只对最终配置跑一次确认。**不要用 10 分钟一轮的整跑去做参数搜索。**
+- **official results/ 有滞后**：官方 CSV 生成后 main 又合入了影响估算的提交（Ett wasm 重建等），跨版本对比必须用同代码同环境的 harness before/after，不能拿官方旧数字当基线。
 
 ---
 
@@ -96,14 +111,35 @@
 
 ---
 
-## 5. 当前状态与数据（截至 2026-08）
+## 5. 当前状态与数据
 
-分支 `feat/roxy-calibration-head`（待合并）最终方案：
+### 2026-09 轮（分支 `feat/estimator-accuracy-experiments`）
+
+本轮方案（零新增标注，纯算法/路由侧）：
+- **Mixed 低难段 RC 融合**：Azusa⊕Companella 0.5/0.5（scope=azusa<11 + star<9 门控，`onDisagree` 回落分支原赢家，详见 §3.6 与 difficulty-estimation.md §3.6）。
+- **Azusa LN 门控生效**：`rcLnRatioLimit=0.18` 在入口断言（此前只存在于文档，见 §3.5）。
+- **缓存键 bump star-v4 → star-v5**（低难 numeric/estDiff 语义变化）。
+
+Benchmark（harness harness before/after，746 行，官方 results 为旧代码口径不可直接对比）：
+
+| 段 | Exact 前→后 | MAE 前→后 |
+|---|---|---|
+| Mixed RC <11 | 20.3% → 21.9% | 0.734 → 0.715 |
+| Mixed RC 11~17 | 53.4% → 53.4% | 0.318 → 0.316 |
+| Mixed RC ≥17 | 45.5% → 45.5% | 0.520 → 0.520 |
+| Mixed RC ALL | 50.5% → 50.9% | 0.302 → 0.294 |
+| Mixed LN | 9.8% → 9.8% | 1.228 → 1.228 |
+| Mixed ALL | 44.9% → 45.3% | 0.428 → 0.422 |
+
+改动行净效应 −4.89 MAE 点（73 改善 / 52 回退）。
+
+### 2026-08 轮（分支 `feat/roxy-calibration-head`，已合并）
+
 - **Roxy**：序数 ridge meta 头（0.5 网格标签，lambda=2.0，拟合 11~17+≥17，全分布标准化），**无输出量化**，numeric=finalNumeric 与 estDiff 一致。
 - **Mixed**：换路判定用 `debug.finalNumeric`；跨界规则（Roxy≥11 & Azusa<11 → Azusa）。
 - **Azusa**：无改动（量化已回退）。
 
-Benchmark（官方 runner，4K RC）：
+Benchmark（官方 runner，4K RC，当时数据集 526 行）：
 
 | 算法 | 段 | Exact 前→后 | MAE 前→后 |
 |---|---|---|---|
@@ -113,14 +149,17 @@ Benchmark（官方 runner，4K RC）：
 | Mixed | ≥17 | 52.6% → 52.6% | 0.263 → 0.273 |
 | Mixed | ALL | 47.4% → 50.5% | 0.307 → 0.302 |
 
+注：数据集此后扩充到 746 行（新增变速变体、LN Dan Courses 等），新旧数字不可直接对比。
+
 未受影响：Mixed LN（MAE 1.228，Exact 9.8%——仍是整个系统最弱环节，样本/标注/特征三重受限）。
 
 ---
 
 ## 6. 遗留问题与未来方向
 
+- **低难段标签噪声地板（本轮核心判断）**：若低难段每图标注误差 σ≈0.5~0.7 段位，完美估算器的观测 MAE 下限即为 0.4~0.55——当前 0.715 仍有少量空间但已接近；低难点精度的进一步提升**受标注质量封顶**，需要标签审计（复标 30~50 张测噪声地板）/ 成对比较标注 / 分级容差指标等评测侧工作，纯算法侧已穷尽（见 §3.6 参数面结论）。
 - **LN 段**：Mixed LN 最弱（MAE 1.228），但 LN 样本少、人工标注难、特征分析难——需要独立的数据/标注工作。
 - **≥17 段**：22 张小样本，Roxy 结构模型对部分图固有低估（structural 13~15 vs expected 17+）——标注分歧，无法可靠修复。
 - **低难跨界图**（6 张 Azusa≥11）：所有算法都说 11+ 但标注 <11——无可靠区分信号。
 - **更高容量模型（GBDT/神经网络）**：~500 有效样本下必然过拟合（历史反复验证），除非获得更多标注数据。
-- **新特征（SV/BPM/变速段）**：现有 stats 已覆盖大部分；序列复杂度特征历史验证无效。
+- **新特征（SV/BPM/变速段）**：现有 stats 已覆盖大部分；序列复杂度特征历史验证无效；本轮补充：Roxy finalNumeric 作低难第三融合信号已验证为单调变差（离线搜索，§3.6）。

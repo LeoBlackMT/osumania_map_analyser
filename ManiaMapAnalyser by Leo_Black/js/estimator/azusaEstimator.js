@@ -846,6 +846,17 @@ export function runAzusaEstimatorFromText(osuText, options = {}, parsed = null) 
         return buildErrorResult("UnsupportedKeys", "Azusa only supports 4K", { lnRatio, columnCount });
     }
 
+    // RC 模型的 LN 上限（docs/azusa_algorithm.md §2.1 记录的行为）。该检查
+    // 此前只存在于 config 与文档、从未在入口实现；RC 应用于 LN 主导谱面时
+    // 会输出无意义的 RC 数值（Mixed Mix 分支与用户直选 Azusa 均可触达此路径）。
+    if (lnRatio > AZUSA_CONFIG.rcLnRatioLimit) {
+        return buildErrorResult(
+            "UnsupportedLN",
+            `Azusa RC scope rejects LN ratio ${(lnRatio * 100).toFixed(1)}%`,
+            { lnRatio, columnCount },
+        );
+    }
+
     const taps = buildTapNotes(parsedData);
     if (taps.length < AZUSA_CONFIG.minNotes) {
         return buildErrorResult(
