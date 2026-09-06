@@ -8,7 +8,12 @@ $root = Split-Path $PSScriptRoot -Parent
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
 $outDir = Join-Path $root "release"
-$version = "2.1.0"
+# 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
+$metadataPath = Join-Path $pluginDir "metadata.txt"
+$version = ((Get-Content -LiteralPath $metadataPath) |
+    Where-Object { $_ -like 'Version:*' } |
+    Select-Object -First 1) -replace '^Version:\s*', ''
+if (-not $version) { throw "version not found in $metadataPath" }
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
