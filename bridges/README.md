@@ -11,7 +11,7 @@
 
 - 双击 `install-bridge.bat`（英文界面）或 `install-bridge-zh.bat`（中文界面）即可；命令行运行：`powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`。
 - 主菜单选择 **Install** / **Uninstall**，再选择游戏（Etterna / Malody V）。全程交互确认。
-- 游戏根目录自动探测：正在运行的进程 → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 → 常见安装路径；Malody V 额外探测 Steam 库（注册表 + `steamapps/libraryfolders.vdf`）。
+- 游戏根目录自动探测：正在运行的进程 → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 → 常见安装路径；Malody V 额外探测 Steam 库（注册表 + `steamapps/libraryfolders.vdf`。
 - **自动探测失败时**：可从「浏览选择目录」图形对话框选择、手动输入路径（`/`、`\`、`\\` 写法与包裹引号、尾部斜杠都能兼容归一化），或按提示查看「如何找到游戏路径」指引。
 - **Etterna 主题预检**：安装前检查每个主题的目录结构，只列出结构完整（`ScreenSelectMusic decorations/default.lua` 与 `ScreenGameplay overlay/default.lua` 都存在）的主题；`_fallback` 这类缺少屏目录的主题会被跳过并说明原因。默认安装到 **Rebirth**（存在时；否则列出可安装主题供选择；不提供一次性安装到全部主题）。
 - 写入/更新插件根目录（`bridges/..`，即 `mma-shell.exe` 旁）的 `mma-shell-config.json` 的 `etternaRoot` / `malodyRoot`（正斜杠路径）。
