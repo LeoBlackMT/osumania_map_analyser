@@ -22,8 +22,8 @@ import {
  * xxy constants used by sunny.rs.
  */
 export const SURFACE_TIMING_MODEL = Object.freeze({
-    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 595541d. */
-    VERSION: "595541d",
+    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 529e612. */
+    VERSION: "529e612",
     // ErrorModel production defaults (sunny_accuracy.rs DEFAULT_* / MEASURED_*;
     // sigma_ref & co. are `#[cfg(test)]` there and reserved here).
     ERROR_MODEL: Object.freeze({
@@ -58,9 +58,11 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
     }),
     /** sunny_accuracy.rs `TIMING_CORE_SIGMA` (replay-measured, reserved). */
     TIMING_CORE_SIGMA: 8.5,
-    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` — used by BOTH map-factor
-     * (compute_timing_pp_with_units) and score adjustment
-     * (compute_per_judgement_timing_adjustment) since ad3fbe1. */
+    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` (11.0). Since a44a63 (529e612)
+     * the sigma actually fed into expected counts is SR-scaled:
+     * `base_timing_sigma = TIMING_BASELINE_SIGMA * sr_to_base_sigma_scale(SR)`,
+     * applied to BOTH map-factor expected accuracy (compute_timing_pp_with_units)
+     * and score adjustment (compute_per_judgement_timing_adjustment L930). */
     TIMING_BASELINE_SIGMA: 11.0,
     /** retired: score adjustment now uses TIMING_BASELINE_SIGMA (=11.0); kept
      * for reference to the pre-ad3fbe1 local 12.0. */
@@ -287,6 +289,20 @@ export function sigmaScaleFromDifficulty(difficulty) {
 }
 
 /**
+ * Map-level sigma scaling from SR (sunny_accuracy.rs `sr_to_base_sigma_scale`,
+ * @ a44a63 / 529e612). Converts the map's star rating into a multiplier for
+ * TIMING_BASELINE_SIGMA — same power-law as sigma_scale_from_difficulty_ratio
+ * but operating on SR instead of local difficulty; applied once per map
+ * (`base_timing_sigma = TIMING_BASELINE_SIGMA * sr_to_base_sigma_scale(SR)`),
+ * not per operation.
+ * @param {number} sr
+ * @returns {number}
+ */
+export function srToBaseSigmaScale(sr) {
+    return sigmaScaleFromDifficultyRatio(sr, SURFACE_TIMING_MODEL.TIMING_DIFFICULTY_REFERENCE);
+}
+
+/**
  * `count` judgements sharing one local difficulty (sunny_accuracy.rs
  * `JudgementUnit::repeated`, @ 595541d). Since 595541d the sigma scale carries
  * the fixed-spread difficulty factor `sigma_scale_from_difficulty(difficulty)`.
@@ -472,9 +488,10 @@ export function buildJudgementUnits({ stars, unitsTotal, nObjects, nLongNotes, l
 
 /**
  * Map-based timing difficulty factor (sunny.rs `compute_map_timing_difficulty`,
- * L818-874, @ ad3fbe1). A PP multiplier in ~[0.75, 1.15] reflecting the map's
- * inherent accuracy difficulty: window tightness via expected accuracy at
- * baseline sigma. **The LN structural boost was removed upstream** (commented
+ * L833-889, @ ad3fbe1). A PP multiplier in ~[0.75, 1.15] reflecting the map's
+ * inherent accuracy difficulty: window tightness via expected accuracy at the
+ * SR-scaled baseline sigma (since a44a63 the caller computes `expectedAcc`
+ * with `base_timing_sigma`). **The LN structural boost was removed upstream** (commented
  * out in ad3fbe1), so `lnFactor` is always 1.0; nLongNotes/lnBuckets are kept
  * in the signature only for call-site stability.
  * @param {{expectedAcc: number, nLongNotes?: number, nObjects?: number, lnBuckets?: number[]}} args
@@ -491,21 +508,23 @@ export function computeMapTimingFactor({ expectedAcc, lnBuckets = [], nLongNotes
 
 /**
  * Score-based timing adjustment from per-judgement loss analysis (sunny.rs
- * `compute_per_judgement_timing_adjustment`, L896-980, @ ad3fbe1).
- * Player distribution is compared against expected counts at
- * TIMING_BASELINE_SIGMA (11.0 since ad3fbe1; previously a local 12.0);
+ * `compute_per_judgement_timing_adjustment`, L912-995, @ 529e612).
+ * Player distribution is compared against expected counts at the SR-scaled
+ * `baseTimingSigma` (since a44a63; = TIMING_BASELINE_SIGMA [11.0] ×
+ * sr_to_base_sigma_scale(SR); previously a fixed 11.0);
  * asymmetric PENALTY_WEIGHTS weight misses most. Better than expected
  * rewards > 1.0, worse penalises < 1.0, clamp [0.75, 1.15].
- * @param {{playerCounts: number[], units: object[], windows: object, hitTotal: number, model: object}} args
+ * @param {{playerCounts: number[], units: object[], windows: object, hitTotal: number, model: object, baseTimingSigma?: number}} args
  * @returns {{multiplier: number, playerLoss: number, expectedLoss: number, lossDiff: number, expectedArr: number[]}}
  */
-export function computeScoreAdjustment({ playerCounts, units, windows, hitTotal, model }) {
+export function computeScoreAdjustment({ playerCounts, units, windows, hitTotal, model, baseTimingSigma }) {
     const M = SURFACE_TIMING_MODEL;
     if (hitTotal <= 0) {
         return { multiplier: 1, playerLoss: 0, expectedLoss: 0, lossDiff: 0, expectedArr: [0, 0, 0, 0, 0, 0] };
     }
-    // ad3fbe1: expected uses TIMING_BASELINE_SIGMA, the same 11.0 as SR phase.
-    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, M.TIMING_BASELINE_SIGMA);
+    // a44a63 (529e612): expected uses the SR-scaled base_timing_sigma; falls
+    // back to the plain 11.0 baseline when no SR-scaled value is supplied.
+    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, baseTimingSigma ?? M.TIMING_BASELINE_SIGMA);
     let totalPlayerLoss = 0;
     let totalExpectedLoss = 0;
     for (let i = 0; i < 6; i += 1) {

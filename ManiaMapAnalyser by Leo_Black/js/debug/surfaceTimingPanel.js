@@ -39,6 +39,7 @@ import {
     computeSurfacePp,
     expectedCountsAtCoreSigma,
     expectedCountsCustomAccuracy,
+    srToBaseSigmaScale,
     SURFACE_TIMING_MODEL,
 } from "./surfaceTimingCurve.js";
 import { calculateOfficialPp, calculateOfficialStar } from "./surfaceTimingOfficial.js";
@@ -237,14 +238,17 @@ export function runSurfacePipeline({
     const units = buildJudgementUnits({ stars, unitsTotal, nObjects, nLongNotes, lnBuckets, classic, model });
     const t2 = performance.now();
 
-    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, SURFACE_TIMING_MODEL.TIMING_BASELINE_SIGMA);
+    // a44a63 (529e612): SR-scaled baseline sigma, applied once per map to BOTH
+    // the map-factor expected accuracy and the score adjustment expected counts.
+    const baseTimingSigma = SURFACE_TIMING_MODEL.TIMING_BASELINE_SIGMA * srToBaseSigmaScale(stars);
+    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, baseTimingSigma);
     const expectedAcc = expectedCountsCustomAccuracy(expectedArr);
     const t3 = performance.now();
 
     const mapFactorRes = computeMapTimingFactor({ expectedAcc, nLongNotes, nObjects, lnBuckets });
     const t4 = performance.now();
 
-    const scoreAdjRes = computeScoreAdjustment({ playerCounts: counts, units, windows, hitTotal, model });
+    const scoreAdjRes = computeScoreAdjustment({ playerCounts: counts, units, windows, hitTotal, model, baseTimingSigma });
     const t5 = performance.now();
 
     const scoreAccuracy = expectedCountsCustomAccuracy(counts);
