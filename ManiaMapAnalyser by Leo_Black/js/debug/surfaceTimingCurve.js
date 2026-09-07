@@ -22,8 +22,8 @@ import {
  * xxy constants used by sunny.rs.
  */
 export const SURFACE_TIMING_MODEL = Object.freeze({
-    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 328e339. */
-    VERSION: "328e339",
+    /** Upstream commit the whole surface timing port tracks: rosu-pp @ ad3fbe1. */
+    VERSION: "ad3fbe1",
     // ErrorModel production defaults (sunny_accuracy.rs DEFAULT_* / MEASURED_*;
     // sigma_ref & co. are `#[cfg(test)]` there and reserved here).
     ERROR_MODEL: Object.freeze({
@@ -58,28 +58,32 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
     }),
     /** sunny_accuracy.rs `TIMING_CORE_SIGMA` (replay-measured, reserved). */
     TIMING_CORE_SIGMA: 8.5,
-    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` — map-factor side (compute_timing_pp_with_units). */
+    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` — used by BOTH map-factor
+     * (compute_timing_pp_with_units) and score adjustment
+     * (compute_per_judgement_timing_adjustment) since ad3fbe1. */
     TIMING_BASELINE_SIGMA: 11.0,
-    /** sunny.rs `compute_per_judgement_timing_adjustment` BASELINE_SIGMA local. */
+    /** retired: score adjustment now uses TIMING_BASELINE_SIGMA (=11.0); kept
+     * for reference to the pre-ad3fbe1 local 12.0. */
     SCORE_ADJ_SIGMA: 12.0,
-    /** sunny.rs `compute_map_timing_difficulty` BASELINE_ACC. */
-    BASELINE_ACC: 0.994,
-    /** sunny.rs `compute_map_timing_difficulty` ACC_SCALE. */
-    ACC_SCALE: 15.0,
-    /** sunny.rs `compute_map_timing_difficulty` ln_factor boost. */
+    /** sunny.rs `compute_map_timing_difficulty` BASELINE_ACC (ad3fbe1). */
+    BASELINE_ACC: 0.98,
+    /** sunny.rs `compute_map_timing_difficulty` ACC_SCALE (ad3fbe1). */
+    ACC_SCALE: 1.0,
+    /** retired (ad3fbe1): the LN structural boost was commented out upstream;
+     * kept for reference to the pre-ad3fbe1 1.03 policy. */
     LN_FACTOR_BOOST: 1.03,
-    /** sunny.rs `compute_map_timing_difficulty` LN ratio gate (0.3). */
+    /** retired (ad3fbe1): LN ratio gate, no longer applied. */
     LN_RATIO_GATE: 0.3,
-    /** sunny.rs `compute_map_timing_difficulty` LN boost ratio gate (0.5). */
+    /** retired (ad3fbe1): LN boost ratio gate, no longer applied. */
     LN_RATIO_BOOST_GATE: 0.5,
-    /** sunny.rs `compute_map_timing_difficulty` LN bucket-count gate (3). */
+    /** retired (ad3fbe1): LN bucket-count gate, no longer applied. */
     LN_BUCKET_GATE: 3,
-    /** sunny.rs `compute_map_timing_difficulty` combined clamp. */
-    MAP_CLAMP: [0.85, 1.15],
-    /** sunny.rs `compute_per_judgement_timing_adjustment` multiplier clamp. */
-    SCORE_CLAMP: [0.85, 1.15],
-    /** sunny.rs `compute_per_judgement_timing_adjustment` SCALE. */
-    LOSS_SCALE: 5.0,
+    /** sunny.rs `compute_map_timing_difficulty` combined clamp (ad3fbe1). */
+    MAP_CLAMP: [0.75, 1.15],
+    /** sunny.rs `compute_per_judgement_timing_adjustment` multiplier clamp (ad3fbe1). */
+    SCORE_CLAMP: [0.75, 1.15],
+    /** sunny.rs `compute_per_judgement_timing_adjustment` SCALE (ad3fbe1, dialed back from 5.0). */
+    LOSS_SCALE: 1.0,
     /** sunny_accuracy.rs `LN_DURATION_BUCKETS`. */
     LN_DURATION_BUCKETS: 8,
     /** sunny.rs `LN_DURATION_EDGES`. */
@@ -88,12 +92,20 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
     LN_DURATION_REPRESENTATIVES: [34, 56, 84, 120, 175, 259, 419, 900],
     /** sunny.rs `compute_per_judgement_timing_adjustment` ACC_WEIGHTS (305-based). */
     ACC_WEIGHTS: [1, 300 / 305, 200 / 305, 100 / 305, 50 / 305, 0],
-    /** sunny.rs `compute_per_judgement_timing_adjustment` PENALTY_WEIGHTS (uniform). */
-    PENALTY_WEIGHTS: [1, 1, 1, 1, 1, 1],
+    /** sunny.rs `compute_per_judgement_timing_adjustment` PENALTY_WEIGHTS
+     * (asymmetric since ad3fbe1: misses penalized most). */
+    PENALTY_WEIGHTS: [1.0, 1.1, 1.2, 1.4, 1.8, 2.6],
     /** sunny.rs `calculate_performance_inner` xxy pattern coefficient 9.8. */
     PATTERN_MULTIPLIER: 9.8,
     /** sunny.rs `calculate_performance_inner` pattern difficulty floor (0.2). */
     PATTERN_FLOOR: 0.2,
+    /** sunny_accuracy.rs `TIMING_DIFFICULTY_REFERENCE` — six-star gauge for the
+     * fixed-spread difficulty power law (added 595541d). */
+    TIMING_DIFFICULTY_REFERENCE: 6.0,
+    /** sunny_accuracy.rs `TIMING_DIFFICULTY_FLOOR`. */
+    TIMING_DIFFICULTY_FLOOR: 0.6,
+    /** sunny_accuracy.rs `TIMING_DIFFICULTY_EXPONENT` — old skill-curve exponent. */
+    TIMING_DIFFICULTY_EXPONENT: 1.7,
 });
 
 /**
@@ -247,14 +259,43 @@ export function makeUnit({ difficulty, weight, sigmaScale = 1, meanOffset = 0, f
 }
 
 /**
+ * Relative timing spread for a note of local difficulty `difficulty` against a
+ * map-level `reference` difficulty (sunny_accuracy.rs
+ * `sigma_scale_from_difficulty_ratio`, @ 595541d). Preserves the old skill
+ * curve's difficulty relationship `((d + 0.6) / (reference + 0.6))^1.7`
+ * without making core_sigma map-dependent.
+ * @param {number} difficulty
+ * @param {number} reference
+ * @returns {number}
+ */
+export function sigmaScaleFromDifficultyRatio(difficulty, reference) {
+    const M = SURFACE_TIMING_MODEL;
+    const numerator = Math.max(difficulty, 0) + M.TIMING_DIFFICULTY_FLOOR;
+    const denominator = Math.max(reference, 0) + M.TIMING_DIFFICULTY_FLOOR;
+    const scale = Math.pow(numerator / denominator, M.TIMING_DIFFICULTY_EXPONENT);
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/**
+ * Relative timing spread using six stars as the reference gauge
+ * (sunny_accuracy.rs `sigma_scale_from_difficulty`, @ 595541d).
+ * @param {number} difficulty
+ * @returns {number}
+ */
+export function sigmaScaleFromDifficulty(difficulty) {
+    return sigmaScaleFromDifficultyRatio(difficulty, SURFACE_TIMING_MODEL.TIMING_DIFFICULTY_REFERENCE);
+}
+
+/**
  * `count` judgements sharing one local difficulty (sunny_accuracy.rs
- * `JudgementUnit::repeated`, L1211).
+ * `JudgementUnit::repeated`, @ 595541d). Since 595541d the sigma scale carries
+ * the fixed-spread difficulty factor `sigma_scale_from_difficulty(difficulty)`.
  * @param {number} difficulty
  * @param {number} count
  * @returns {object}
  */
 export function makeRepeatedUnit(difficulty, count) {
-    return makeUnit({ difficulty, weight: count });
+    return makeUnit({ difficulty, weight: count, sigmaScale: sigmaScaleFromDifficulty(difficulty) });
 }
 
 /**
@@ -310,7 +351,8 @@ export function lnSigmaScaleForDuration(model, durationMs) {
 /**
  * `count` ScoreV1 long-note judgements of local difficulty `difficulty`,
  * widened by the release-asymmetry spread and shifted by the release mean
- * offset (sunny_accuracy.rs `JudgementUnit::long_note`, L1229-1237).
+ * offset (sunny_accuracy.rs `JudgementUnit::long_note`, @ 595541d). Since
+ * 595541d the sigma scale = difficulty factor × release factor.
  * @param {number} difficulty
  * @param {number} count
  * @param {object} model ErrorModel (uses releaseSigmaRatio / shortHoldPenalty / shortHoldScale / releaseMeanOffset)
@@ -321,7 +363,8 @@ export function makeLongNoteUnit(difficulty, count, model, durationMs) {
     return makeUnit({
         difficulty,
         weight: count,
-        sigmaScale: lnSigmaScaleForDuration(model, durationMs),
+        sigmaScale: sigmaScaleFromDifficulty(difficulty)
+            * lnSigmaScaleForDuration(model, durationMs),
         meanOffset: model.releaseMeanOffset,
         fadingMeanOffset: 0,
     });
@@ -429,32 +472,30 @@ export function buildJudgementUnits({ stars, unitsTotal, nObjects, nLongNotes, l
 
 /**
  * Map-based timing difficulty factor (sunny.rs `compute_map_timing_difficulty`,
- * L818-873). A PP multiplier in ~[0.85, 1.15] reflecting the map's inherent
- * accuracy difficulty: window tightness via expected accuracy at baseline
- * sigma, plus an LN boost for varied-duration high-LN maps.
- * @param {{expectedAcc: number, nLongNotes: number, nObjects: number, lnBuckets: number[]}} args
+ * L818-874, @ ad3fbe1). A PP multiplier in ~[0.75, 1.15] reflecting the map's
+ * inherent accuracy difficulty: window tightness via expected accuracy at
+ * baseline sigma. **The LN structural boost was removed upstream** (commented
+ * out in ad3fbe1), so `lnFactor` is always 1.0; nLongNotes/lnBuckets are kept
+ * in the signature only for call-site stability.
+ * @param {{expectedAcc: number, nLongNotes?: number, nObjects?: number, lnBuckets?: number[]}} args
  * @returns {{factor: number, windowFactor: number, lnFactor: number, expectedAcc: number}}
  */
-export function computeMapTimingFactor({ expectedAcc, nLongNotes, nObjects, lnBuckets }) {
+export function computeMapTimingFactor({ expectedAcc, lnBuckets = [], nLongNotes = 0, nObjects = 0 }) {
     const M = SURFACE_TIMING_MODEL;
     const windowFactor = 1 + (M.BASELINE_ACC - expectedAcc) * M.ACC_SCALE;
-    const lnRatio = nObjects > 0 ? nLongNotes / nObjects : 0;
-    let lnFactor = 1.0;
-    if (lnRatio > M.LN_RATIO_GATE && nLongNotes > 0) {
-        const bucketsUsed = lnBuckets.filter((c) => c > 0).length;
-        if (bucketsUsed >= M.LN_BUCKET_GATE && lnRatio > M.LN_RATIO_BOOST_GATE) {
-            lnFactor = M.LN_FACTOR_BOOST;
-        }
-    }
+    // LN structural boost retired upstream (ad3fbe1): window-based only.
+    const lnFactor = 1.0;
     const factor = Math.min(M.MAP_CLAMP[1], Math.max(M.MAP_CLAMP[0], windowFactor * lnFactor));
     return { factor, windowFactor, lnFactor, expectedAcc };
 }
 
 /**
  * Score-based timing adjustment from per-judgement loss analysis (sunny.rs
- * `compute_per_judgement_timing_adjustment`, L896-978). Player distribution is
- * compared against expected counts at SCORE_ADJ_SIGMA; better than expected
- * rewards > 1.0, worse penalises < 1.0.
+ * `compute_per_judgement_timing_adjustment`, L896-980, @ ad3fbe1).
+ * Player distribution is compared against expected counts at
+ * TIMING_BASELINE_SIGMA (11.0 since ad3fbe1; previously a local 12.0);
+ * asymmetric PENALTY_WEIGHTS weight misses most. Better than expected
+ * rewards > 1.0, worse penalises < 1.0, clamp [0.75, 1.15].
  * @param {{playerCounts: number[], units: object[], windows: object, hitTotal: number, model: object}} args
  * @returns {{multiplier: number, playerLoss: number, expectedLoss: number, lossDiff: number, expectedArr: number[]}}
  */
@@ -463,7 +504,8 @@ export function computeScoreAdjustment({ playerCounts, units, windows, hitTotal,
     if (hitTotal <= 0) {
         return { multiplier: 1, playerLoss: 0, expectedLoss: 0, lossDiff: 0, expectedArr: [0, 0, 0, 0, 0, 0] };
     }
-    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, M.SCORE_ADJ_SIGMA);
+    // ad3fbe1: expected uses TIMING_BASELINE_SIGMA, the same 11.0 as SR phase.
+    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, M.TIMING_BASELINE_SIGMA);
     let totalPlayerLoss = 0;
     let totalExpectedLoss = 0;
     for (let i = 0; i < 6; i += 1) {
@@ -480,8 +522,10 @@ export function computeScoreAdjustment({ playerCounts, units, windows, hitTotal,
 
 /**
  * Full surface PP composition (sunny.rs `calculate_performance_inner`
- * L992-1103 plus the xxy_* helpers). Pattern difficulty follows the xxy
- * formulation; timing difficulty multiplies it by `mapFactor * scoreAdj`;
+ * L994-1105 plus the xxy_* helpers, @ ad3fbe1). Pattern difficulty follows the
+ * xxy formulation; the timing multiplier is the **additive combination**
+ * `(score_timing_adjustment + map_timing_factor) - 1` (since ad3fbe1; was
+ * `mapFactor * scoreAdj` product before), applied onto xxy_pp;
  * `noFail` applies the 0.75 normalize_for_human_reference factor to the final
  * pp. All returned fields are numbers.
  * @param {{stars: number, variety: number, accScalar: number, nObjects: number, scoreAccuracy: number, mapFactor: number, scoreAdj: number, noFail?: boolean}} args
@@ -500,7 +544,8 @@ export function computeSurfacePp({ stars, variety, accScalar, nObjects, scoreAcc
     const xxyPpPattern = M.PATTERN_MULTIPLIER * Math.pow(patternDifficulty, 2.2) * varietyMultiplier * lengthMultiplier * 1.0;
     const xxyPpAccuracy = xxyPpPattern * (proportion * accMultiplier - 1);
     const xxyPp = xxyPpPattern + xxyPpAccuracy;
-    const timingMultiplier = mapFactor * scoreAdj;
+    // ad3fbe1: additive combination of map factor and score adjustment.
+    const timingMultiplier = (scoreAdj + mapFactor) - 1;
     const ppWithTiming = xxyPp * timingMultiplier;
     const ppTiming = ppWithTiming - xxyPp;
     const pp = ppWithTiming * (noFail ? 0.75 : 1);
