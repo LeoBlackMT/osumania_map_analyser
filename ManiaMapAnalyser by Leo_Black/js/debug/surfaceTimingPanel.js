@@ -396,6 +396,9 @@ export function createSurfaceTimingPanel({
     let runSeq = 0;          // async invalidation
     let collapsed = false;   // second gate (debug.html layer gates first)
     let lastRender = null;   // {error: string} or full result object
+    let lastFetchFailed = false; // transient fetch failure (tosu not ready yet)
+    let lastFetchFailAt = 0;  // ms timestamp — throttle retry storms while tosu warms up
+    const FETCH_RETRY_MS = 1000;
 
     async function fetchCurrentBeatmap() {
         const response = await fetch(`http://${socketHost}/files/beatmap/file`, {
@@ -420,7 +423,9 @@ export function createSurfaceTimingPanel({
     function render() {
         const result = lastRender;
         if (result == null) {
-            root.innerHTML = "<div class=\"estimator-debug-empty\">Waiting for map data.</div>";
+            root.innerHTML = lastFetchFailed
+                ? "<div class=\"estimator-debug-note\">Waiting for beatmap file… (tosu not ready, retrying on next update)</div>"
+                : "<div class=\"estimator-debug-empty\">Waiting for map data.</div>";
             return;
         }
         if (result.error) {
@@ -433,11 +438,17 @@ export function createSurfaceTimingPanel({
     async function handleSocketPayload(data) {
         if (collapsed) return;
 
+        // Invalidate any in-flight async from an earlier message FIRST, then
+        // capture the new sequence (estimatorDebugPanel runAll pattern). Every
+        // async continuation checks `seq !== runSeq` and bails if a newer
+        // message arrived meanwhile.
+        runSeq += 1;
+        const seq = runSeq;
+
         const modData = getDebugModData(data);
         const mapKey = buildMapIdentity(data);
         if (!mapKey) return; // keep "Waiting for map data." until a real beatmap
 
-        const seq = runSeq;
         const mapChanged = mapKey !== lastIdentity;
         const modsChanged = modData.modSignature !== lastModsKey;
         let needRecomputeSR = mapChanged || modsChanged;
@@ -446,10 +457,17 @@ export function createSurfaceTimingPanel({
         // reuse the cached text/parse — parse results are mod-independent
         // (modIN/HO conversion happens inside sunnyAlgorithm on a clone).
         if (mapChanged || !lastOsuText) {
+            // Throttle retries while tosu/osu are warming up: ws messages arrive
+            // every ~100ms, so an immediate refetch on every message would spam
+            // the server during the startup window. Fetch again at most once
+            // per FETCH_RETRY_MS after a failure (or immediately after success).
+            const now = Date.now();
+            if (lastOsuText === "" && lastFetchFailed && now - lastFetchFailAt < FETCH_RETRY_MS) {
+                return;
+            }
             lastOsuText = "";
             lastParse = null;
             lastSunny = null;
-            runSeq += 1;
             try {
                 const osuText = await fetchCurrentBeatmap();
                 if (seq !== runSeq) return;
@@ -460,8 +478,23 @@ export function createSurfaceTimingPanel({
                 if (seq !== runSeq) return;
                 lastParse = parsed;
                 lastIdentity = mapKey;
+                if (lastFetchFailed) {
+                    lastFetchFailed = false;
+                    lastFetchFailAt = 0;
+                    lastRender = null;
+                    render();
+                }
             } catch (error) {
-                renderError(error?.message || "beatmap fetch/parse failed");
+                // Transient failure (e.g. tosu/osu just starting, menu beatmap
+                // not ready yet → HTTP 404): do NOT brick the panel into a
+                // permanent error. Mark the retry state and wait for the next
+                // api_v2 message with a beatmap — the empty lastIdentity /
+                // lastOsuText below makes any later payload retry the fetch
+                // (throttled by FETCH_RETRY_MS).
+                lastFetchFailed = true;
+                lastFetchFailAt = now;
+                lastRender = null;
+                render();
                 return;
             }
         }
