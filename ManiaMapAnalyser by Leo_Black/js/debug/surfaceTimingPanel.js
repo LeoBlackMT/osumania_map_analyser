@@ -41,6 +41,7 @@ import {
     expectedCountsCustomAccuracy,
     SURFACE_TIMING_MODEL,
 } from "./surfaceTimingCurve.js";
+import { calculateOfficialPp, calculateOfficialStar } from "./surfaceTimingOfficial.js";
 
 const SORTED_KNOWN_MOD_CODES = [...APP_CONFIG.mods.knownCodes].sort((a, b) => b.length - a.length);
 const MOD_BIT_FLAG_ENTRIES = Object.entries(APP_CONFIG.mods.bitFlags);
@@ -301,7 +302,7 @@ function buildPanelHtml(result) {
     const {
         mode, source, counts, unitsTotal, hitTotal, od, odAvailable,
         classic, isConvert, hr, ez, clockRate, windows, mapWindows,
-        expectedAcc, mapFactorRes, scoreAdjRes, ppRes, rework, deltaPct, timings,
+        expectedAcc, mapFactorRes, scoreAdjRes, ppRes, rework, deltaPct, official, timings,
     } = result;
 
     const diffMultiplier = hr ? 1.4 : (ez ? 1 / 1.4 : 1);
@@ -356,15 +357,17 @@ function buildPanelHtml(result) {
                 <dd>${formatNumber(ppRes.ppWithTiming, 2)}</dd>
                 <dt>pp_timing</dt>
                 <dd>${formatNumber(ppRes.ppTiming, 2)}</dd>
-                <dt>${mode} PP <span class="estimator-debug-meta">(${source})</span></dt>
+                <dt>${mode === "Live" ? "Live PP" : mode} <span class="estimator-debug-meta">(${source})</span></dt>
                 <dd>${formatNumber(ppRes.pp, 2)} <span class="estimator-debug-meta">(Rework ${formatNumber(rework && rework.pp, 2)} · Δ ${formatNumber(deltaPct, 2)}%)</span></dd>
             </div>
             <div class="estimator-debug-result-line">
-                <strong>Rework PP: ${formatNumber(rework && rework.pp, 2)}</strong>
+                <strong>${mode} (Surface): ${formatNumber(ppRes.pp, 2)}</strong>
                 <span>|</span>
-                <span>Surface PP: ${formatNumber(ppRes.pp, 2)}</span>
+                <span>Official PP: ${formatNumber(official && official.pp, 2)}</span>
                 <span>|</span>
-                <span>Δ: ${formatNumber(deltaPct, 2)}%</span>
+                <span>Rework PP: ${formatNumber(rework && rework.pp, 2)}</span>
+                <span>|</span>
+                <span>Δ(Surface−Rework): ${formatNumber(deltaPct, 2)}%</span>
             </div>
             <div class="estimator-debug-note">
                 timings — sunny ${formatNumber(timings.sunny ?? 0, 1)}ms · windows ${formatNumber(timings.windows, 1)}ms · units ${formatNumber(timings.units, 1)}ms · expected ${formatNumber(timings.expected, 1)}ms · mapFactor ${formatNumber(timings.mapFactor, 1)}ms · scoreAdj ${formatNumber(timings.scoreAdj, 1)}ms · total ${formatNumber(timings.total, 1)}ms
@@ -623,6 +626,23 @@ export function createSurfaceTimingPanel({
             model: SURFACE_TIMING_MODEL.ERROR_MODEL,
         });
 
+        // Official osu!mania reference row (genirx official port of osu-master).
+        const officialStar = calculateOfficialStar({
+            columns: lastParse.columns ?? [],
+            noteStarts: lastParse.noteStarts ?? [],
+            noteEnds: lastParse.noteEnds ?? [],
+        }, modData.speedRate);
+        const officialPp = officialStar != null
+            ? calculateOfficialPp({
+                starRating: officialStar,
+                perfect: counts[0], great: counts[1], good: counts[2],
+                ok: counts[3], meh: counts[4], miss: counts[5],
+                noFail: modCodes.includes("NF"),
+                easy: modCodes.includes("EZ"),
+            })
+            : null;
+        const official = officialPp != null ? { star: officialStar, pp: officialPp } : null;
+
         lastRender = {
             mode,
             source,
@@ -644,6 +664,7 @@ export function createSurfaceTimingPanel({
             ppRes: pipeline.ppRes,
             rework: pipeline.rework,
             deltaPct: pipeline.deltaPct,
+            official,
             timings: {
                 ...pipeline.timings,
                 sunny: sunnyMs,
