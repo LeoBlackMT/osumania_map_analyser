@@ -22,8 +22,8 @@ import {
  * xxy constants used by sunny.rs.
  */
 export const SURFACE_TIMING_MODEL = Object.freeze({
-    /** Upstream commit the whole surface timing port tracks: rosu-pp @ dd5eeb5. */
-    VERSION: "dd5eeb5",
+    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 143f0a8. */
+    VERSION: "143f0a8",
     // ErrorModel production defaults (sunny_accuracy.rs DEFAULT_* / MEASURED_*;
     // sigma_ref & co. are `#[cfg(test)]` there and reserved here).
     ERROR_MODEL: Object.freeze({
@@ -64,12 +64,12 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
      * applied to BOTH map-factor expected accuracy (compute_timing_pp_with_units)
      * and score adjustment (compute_per_judgement_timing_adjustment L930). */
     TIMING_BASELINE_SIGMA: 11.0,
-    /** sunny_accuracy.rs SR-level sigma scaling constants (34fde58a / dd5eeb5):
-     * `sr_to_base_sigma_scale` uses its own neutral SR reference (8★), separate
-     * from the per-note difficulty reference (TIMING_DIFFICULTY_REFERENCE 6.0). */
-    SR_REFERENCE: 8.0,
-    SR_SCALING_FLOOR: 0.6,
-    SR_SCALING_EXPONENT: 1.7,
+    /** sunny_accuracy.rs Map-level SR scaling constants (143f0a8): logarithmic
+     * `sr_to_base_sigma_scale` centered at MAP_SR_REFERENCE (10★ neutral),
+     * factor 0.15 per log-unit, clamped [0.7, 1.3]. Separate from the per-note
+     * difficulty gauge (PER_NOTE_DIFFICULTY_REFERENCE_UNTUNED 6.0). */
+    MAP_SR_REFERENCE: 10.0,
+    MAP_SR_SCALING_FACTOR: 0.15,
     /** retired: score adjustment now uses TIMING_BASELINE_SIGMA (=11.0); kept
      * for reference to the pre-ad3fbe1 local 12.0. */
     SCORE_ADJ_SIGMA: 12.0,
@@ -107,13 +107,15 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
     PATTERN_MULTIPLIER: 9.8,
     /** sunny.rs `calculate_performance_inner` pattern difficulty floor (0.2). */
     PATTERN_FLOOR: 0.2,
-    /** sunny_accuracy.rs `TIMING_DIFFICULTY_REFERENCE` — six-star gauge for the
-     * fixed-spread difficulty power law (added 595541d). */
-    TIMING_DIFFICULTY_REFERENCE: 6.0,
-    /** sunny_accuracy.rs `TIMING_DIFFICULTY_FLOOR`. */
-    TIMING_DIFFICULTY_FLOOR: 0.6,
-    /** sunny_accuracy.rs `TIMING_DIFFICULTY_EXPONENT` — old skill-curve exponent. */
-    TIMING_DIFFICULTY_EXPONENT: 1.7,
+    /** sunny_accuracy.rs `PER_NOTE_DIFFICULTY_REFERENCE_UNTUNED` — per-note
+     * difficulty gauge for the fixed-spread power law (6.0 since 595541d;
+     * named UNTUNED since 143f0a8). */
+    PER_NOTE_DIFFICULTY_REFERENCE_UNTUNED: 6.0,
+    /** sunny_accuracy.rs `PER_NOTE_DIFFICULTY_FLOOR` (0.5 since 143f0a8; was 0.6). */
+    PER_NOTE_DIFFICULTY_FLOOR: 0.5,
+    /** sunny_accuracy.rs `PER_NOTE_DIFFICULTY_EXPONENT` — per-note power-law
+     * exponent (2.0 since 143f0a8; was 1.7). */
+    PER_NOTE_DIFFICULTY_EXPONENT: 2.0,
 });
 
 /**
@@ -269,39 +271,41 @@ export function makeUnit({ difficulty, weight, sigmaScale = 1, meanOffset = 0, f
 /**
  * Relative timing spread for a note of local difficulty `difficulty` against a
  * map-level `reference` difficulty (sunny_accuracy.rs
- * `sigma_scale_from_difficulty_ratio`, @ 595541d). Preserves the old skill
- * curve's difficulty relationship `((d + 0.6) / (reference + 0.6))^1.7`
- * without making core_sigma map-dependent.
+ * `sigma_scale_from_difficulty_ratio`, @ 143f0a8). Preserves the per-note
+ * difficulty relationship `((d + 0.5) / (reference + 0.5))^2.0` (floor/exponent
+ * retuned 143f0a8; were 0.6 / 1.7).
  * @param {number} difficulty
  * @param {number} reference
  * @returns {number}
  */
 export function sigmaScaleFromDifficultyRatio(difficulty, reference) {
     const M = SURFACE_TIMING_MODEL;
-    const numerator = Math.max(difficulty, 0) + M.TIMING_DIFFICULTY_FLOOR;
-    const denominator = Math.max(reference, 0) + M.TIMING_DIFFICULTY_FLOOR;
-    const scale = Math.pow(numerator / denominator, M.TIMING_DIFFICULTY_EXPONENT);
+    const numerator = Math.max(difficulty, 0) + M.PER_NOTE_DIFFICULTY_FLOOR;
+    const denominator = Math.max(reference, 0) + M.PER_NOTE_DIFFICULTY_FLOOR;
+    const scale = Math.pow(numerator / denominator, M.PER_NOTE_DIFFICULTY_EXPONENT);
     return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 /**
- * Relative timing spread using six stars as the reference gauge
- * (sunny_accuracy.rs `sigma_scale_from_difficulty`, @ 595541d).
+ * Relative timing spread using the untuned per-note difficulty reference (6.0)
+ * (sunny_accuracy.rs `sigma_scale_from_difficulty`, @ 143f0a8). Used by the
+ * standalone unit constructors (uniform fallback, LN duration split) when
+ * per-note difficulty bins are not available.
  * @param {number} difficulty
  * @returns {number}
  */
 export function sigmaScaleFromDifficulty(difficulty) {
-    return sigmaScaleFromDifficultyRatio(difficulty, SURFACE_TIMING_MODEL.TIMING_DIFFICULTY_REFERENCE);
+    return sigmaScaleFromDifficultyRatio(difficulty, SURFACE_TIMING_MODEL.PER_NOTE_DIFFICULTY_REFERENCE_UNTUNED);
 }
 
 /**
  * Map-level sigma scaling from SR (sunny_accuracy.rs `sr_to_base_sigma_scale`,
- * @ 34fde58a / dd5eeb5). Converts the map's star rating into a multiplier for
- * TIMING_BASELINE_SIGMA — its own power-law with a separate neutral reference:
- * `((sr.max(0) + SR_SCALING_FLOOR) / (SR_REFERENCE + SR_SCALING_FLOOR))^SR_SCALING_EXPONENT`
- * i.e. ((SR + 0.6) / 8.6)^1.7. 8★ is the neutral point (scale 1, base sigma
- * 11ms); below 8★ expects tighter timing (smaller sigma), above 8★ looser.
- * NOT the per-note gauge (which keeps TIMING_DIFFICULTY_REFERENCE = 6.0).
+ * @ 143f0a8). Converts the map's star rating into a multiplier for
+ * TIMING_BASELINE_SIGMA with a LOGARITHMIC formula centered at
+ * MAP_SR_REFERENCE (10★ neutral):
+ * `scale = clamp(1.0 - ln(SR / 10.0) * MAP_SR_SCALING_FACTOR, 0.7, 1.3)`.
+ * Below 10★ expects looser timing (scale > 1, bigger sigma); above 10★ tighter.
+ * log(0) guarded via sr.max(0.1); NaN propagates (matches `f64::clamp`).
  * Applied once per map (`base_timing_sigma = TIMING_BASELINE_SIGMA *
  * sr_to_base_sigma_scale(SR)`), not per operation.
  * @param {number} sr
@@ -309,10 +313,9 @@ export function sigmaScaleFromDifficulty(difficulty) {
  */
 export function srToBaseSigmaScale(sr) {
     const M = SURFACE_TIMING_MODEL;
-    const numerator = Math.max(sr, 0) + M.SR_SCALING_FLOOR;
-    const denominator = M.SR_REFERENCE + M.SR_SCALING_FLOOR;
-    const scale = Math.pow(numerator / denominator, M.SR_SCALING_EXPONENT);
-    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const safeSr = Math.max(sr, 0.1);
+    const scale = 1 - Math.log(safeSr / M.MAP_SR_REFERENCE) * M.MAP_SR_SCALING_FACTOR;
+    return Math.min(1.3, Math.max(0.7, scale));
 }
 
 /**
