@@ -123,6 +123,13 @@ function schemeLabel(classic, isConvert) {
     return isConvert ? "classic convert" : "classic non-convert";
 }
 
+// Key count from the parsed chart's column range (max column + 1), falling back
+// to null when no parsed columns survive (should not happen in practice).
+function columnCountFromParsed(parsed) {
+    if (!parsed || !Array.isArray(parsed.columns) || parsed.columns.length === 0) return null;
+    return Math.max(...parsed.columns) + 1;
+}
+
 /**
  * Resolve the display mode and judgement counts from an api_v2 payload.
  * Pure DOM-free helper (Node smoke tested).
@@ -300,7 +307,7 @@ function bandValuesText(windows) {
 
 function buildPanelHtml(result) {
     const {
-        mode, source, counts, unitsTotal, hitTotal, od, odAvailable,
+        mapInfo, mode, source, counts, unitsTotal, hitTotal, od, odAvailable,
         classic, isConvert, hr, ez, clockRate, windows, mapWindows,
         expectedAcc, mapFactorRes, scoreAdjRes, ppRes, rework, deltaPct, official, timings,
     } = result;
@@ -311,6 +318,16 @@ function buildPanelHtml(result) {
         `difficulty ×${formatNumber(diffMultiplier, 2)}${hr ? " (HR)" : ""}${ez ? " (EZ)" : ""}`,
         `clock_rate ${formatNumber(clockRate, 3)}`,
     ].join(" · ");
+    const officialStarText = official && official.star != null ? formatNumber(official.star, 2) : "-";
+
+    const countNames = ["perfect", "great", "good", "ok", "meh", "miss"];
+    const countText = counts.map((c, i) => `${countNames[i]} ${c}`).join(" · ");
+
+    const ppCell = (label, value) => `
+        <div class="surface-pp-cell">
+            <div class="surface-pp-value ${value == null ? "surface-dim" : ""}">${formatNumber(value == null ? null : value, 2)}</div>
+            <div class="surface-pp-label">${label}</div>
+        </div>`;
 
     return `
         <section class="estimator-debug-panel">
@@ -324,57 +341,99 @@ function buildPanelHtml(result) {
                     </div>
                 </div>
             </div>
-            <div class="kv">
-                <dt>windows (${schemeLabel(classic, isConvert)})</dt>
-                <dd>${bandValuesText(windows)}</dd>
-                <dt>mods</dt>
-                <dd>${modsText}</dd>
-                <dt>map_windows</dt>
-                <dd>${bandValuesText(mapWindows)}</dd>
-                <dt>expected_acc</dt>
-                <dd>${formatNumber(expectedAcc * 100, 3)}%</dd>
-                <dt>window_factor</dt>
-                <dd>${formatNumber(mapFactorRes.windowFactor, 4)}</dd>
-                <dt>ln_factor</dt>
-                <dd>${formatNumber(mapFactorRes.lnFactor, 4)}</dd>
-                <dt>map_factor</dt>
-                <dd>${formatNumber(mapFactorRes.factor, 4)}</dd>
-                <dt>counts <span class="estimator-debug-meta">(${source})</span></dt>
-                <dd>perfect: ${counts[0]} · great: ${counts[1]} · good: ${counts[2]} · ok: ${counts[3]} · meh: ${counts[4]} · miss: ${counts[5]} <span class="estimator-debug-meta">(hitTotal ${hitTotal})</span></dd>
-                <dt>units_total</dt>
-                <dd>${unitsTotal} (${unitLabel})</dd>
-                <dt>score_adjustment</dt>
-                <dd>player_loss ${formatNumber(scoreAdjRes.playerLoss, 4)} · expected_loss ${formatNumber(scoreAdjRes.expectedLoss, 4)} · loss_diff ${formatNumber(scoreAdjRes.lossDiff, 4)} <strong>→ multiplier ${formatNumber(scoreAdjRes.multiplier, 4)}</strong></dd>
-                <dt>timing_multiplier</dt>
-                <dd>${formatNumber(ppRes.timingMultiplier, 4)} (map × score)</dd>
-                <dt>xxy_pp_pattern</dt>
-                <dd>${formatNumber(ppRes.xxyPpPattern, 2)}</dd>
-                <dt>xxy_pp_accuracy</dt>
-                <dd>${formatNumber(ppRes.xxyPpAccuracy, 2)}</dd>
-                <dt>xxy_pp</dt>
-                <dd>${formatNumber(ppRes.xxyPp, 2)}</dd>
-                <dt>pp_with_timing</dt>
-                <dd>${formatNumber(ppRes.ppWithTiming, 2)}</dd>
-                <dt>pp_timing</dt>
-                <dd>${formatNumber(ppRes.ppTiming, 2)}</dd>
-                <dt>${mode === "Live" ? "Live PP" : mode} <span class="estimator-debug-meta">(${source})</span></dt>
-                <dd>${formatNumber(ppRes.pp, 2)} <span class="estimator-debug-meta">(Rework ${formatNumber(rework && rework.pp, 2)} · Δ ${formatNumber(deltaPct, 2)}%)</span></dd>
+
+            <div class="surface-map-info">
+                <strong>${escapeHtml(mapInfo.artist)} - ${escapeHtml(mapInfo.title)} <span class="surface-dim">[${escapeHtml(mapInfo.version)}]</span></strong>
+                <span class="estimator-debug-meta">by ${escapeHtml(mapInfo.mapper)}</span>
+                <span class="badge">${mapInfo.keyCount != null ? `${mapInfo.keyCount}K` : "-K"}</span>
+                <span class="badge">od ${formatNumber(od, 1)}${odAvailable ? "" : "?"}</span>
+                <span class="badge">Sunny ${formatNumber(mapInfo.sunnyStar, 2)}★</span>
+                <span class="badge">Official ${officialStarText}★</span>
+                <span class="badge">${classic ? "classic" : "lazer"} · ${unitLabel}</span>
             </div>
-            <div class="estimator-debug-result-line">
-                <strong>${mode} (Surface): ${formatNumber(ppRes.pp, 2)}</strong>
-                <span>|</span>
-                <span>Official PP: ${formatNumber(official && official.pp, 2)}</span>
-                <span>|</span>
-                <span>Rework PP: ${formatNumber(rework && rework.pp, 2)}</span>
-                <span>|</span>
-                <span>Δ(Surface−Rework): ${formatNumber(deltaPct, 2)}%</span>
+
+            <div class="surface-hero">
+                <div class="surface-pp-cell surface-hero-pp">
+                    <div class="surface-pp-value">${formatNumber(ppRes.pp, 2)}</div>
+                    <div class="surface-pp-label">${mode === "Live" ? "Live PP" : mode} · Surface</div>
+                </div>
+                ${ppCell("Official PP", official && official.pp)}
+                ${ppCell("Rework PP", rework && rework.pp)}
+                ${ppCell("Δ vs Rework", deltaPct == null ? null : deltaPct)}
             </div>
-            <div class="estimator-debug-note">
+            ${deltaPct == null ? "" : `<div class="surface-hero-delta">${deltaPct >= 0 ? "+" : ""}${formatNumber(deltaPct, 2)}%</div>`}
+
+            <div class="surface-group">
+                <div class="surface-group-title">Map timing factor</div>
+                <div class="kv">
+                    <dt>windows (${schemeLabel(classic, isConvert)})</dt>
+                    <dd>${bandValuesText(windows)}</dd>
+                    <dt>map_windows</dt>
+                    <dd>${bandValuesText(mapWindows)}</dd>
+                    <dt>mods</dt>
+                    <dd>${modsText}</dd>
+                    <dt>expected_acc</dt>
+                    <dd>${formatNumber(expectedAcc * 100, 3)}%</dd>
+                    <dt>window_factor</dt>
+                    <dd>${formatNumber(mapFactorRes.windowFactor, 4)}</dd>
+                    <dt>ln_factor</dt>
+                    <dd>${formatNumber(mapFactorRes.lnFactor, 4)}</dd>
+                    <dt>map_factor</dt>
+                    <dd><strong>${formatNumber(mapFactorRes.factor, 4)}</strong></dd>
+                </div>
+            </div>
+
+            <div class="surface-group">
+                <div class="surface-group-title">Score timing adjustment</div>
+                <div class="kv">
+                    <dt>counts (${source})</dt>
+                    <dd>${countText} <span class="estimator-debug-meta">(hitTotal ${hitTotal})</span></dd>
+                    <dt>units_total</dt>
+                    <dd>${unitsTotal} (${unitLabel})</dd>
+                    <dt>player_loss</dt>
+                    <dd>${formatNumber(scoreAdjRes.playerLoss, 4)}</dd>
+                    <dt>expected_loss</dt>
+                    <dd>${formatNumber(scoreAdjRes.expectedLoss, 4)}</dd>
+                    <dt>loss_diff</dt>
+                    <dd>${formatNumber(scoreAdjRes.lossDiff, 4)}</dd>
+                    <dt>score multiplier</dt>
+                    <dd><strong>${formatNumber(scoreAdjRes.multiplier, 4)}</strong></dd>
+                    <dt>timing_multiplier <span class="estimator-debug-meta">(map+score)</span></dt>
+                    <dd><strong>${formatNumber(ppRes.timingMultiplier, 4)}</strong></dd>
+                </div>
+            </div>
+
+            <div class="surface-group">
+                <div class="surface-group-title">PP decomposition</div>
+                <div class="kv">
+                    <dt>xxy_pp_pattern</dt>
+                    <dd>${formatNumber(ppRes.xxyPpPattern, 2)}</dd>
+                    <dt>xxy_pp_accuracy</dt>
+                    <dd>${formatNumber(ppRes.xxyPpAccuracy, 2)}</dd>
+                    <dt>xxy_pp</dt>
+                    <dd>${formatNumber(ppRes.xxyPp, 2)}</dd>
+                    <dt>pp_with_timing</dt>
+                    <dd>${formatNumber(ppRes.ppWithTiming, 2)}</dd>
+                    <dt>pp_timing</dt>
+                    <dd>${formatNumber(ppRes.ppTiming, 2)}</dd>
+                </div>
+            </div>
+
+            <div class="estimator-debug-note surface-footnote">
                 timings — sunny ${formatNumber(timings.sunny ?? 0, 1)}ms · windows ${formatNumber(timings.windows, 1)}ms · units ${formatNumber(timings.units, 1)}ms · expected ${formatNumber(timings.expected, 1)}ms · mapFactor ${formatNumber(timings.mapFactor, 1)}ms · scoreAdj ${formatNumber(timings.scoreAdj, 1)}ms · total ${formatNumber(timings.total, 1)}ms
-                · od ${formatNumber(od, 1)}${odAvailable ? "" : " (unavailable)"}
             </div>
         </section>
     `;
+}
+
+// Minimal HTML escape for user-supplied beatmap metadata.
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
 
 /**
@@ -643,7 +702,21 @@ export function createSurfaceTimingPanel({
             : null;
         const official = officialPp != null ? { star: officialStar, pp: officialPp } : null;
 
+        // Beatmap metadata row (from the payload + sunny result).
+        const beatmap = data?.beatmap || {};
+        const mapInfo = {
+            artist: normalizeText(beatmap?.artist) || "-",
+            title: normalizeText(beatmap?.title) || "-",
+            version: normalizeText(beatmap?.version) || "-",
+            mapper: normalizeText(beatmap?.mapper) || "-",
+            keyCount: finiteNumber(ppMetrics?.totalNotes) != null
+                ? columnCountFromParsed(lastParse, classic)
+                : null,
+            sunnyStar: Number.isFinite(stars) ? stars : null,
+        };
+
         lastRender = {
+            mapInfo,
             mode,
             source,
             counts,
