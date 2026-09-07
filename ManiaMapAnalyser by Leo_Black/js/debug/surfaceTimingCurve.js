@@ -22,8 +22,8 @@ import {
  * xxy constants used by sunny.rs.
  */
 export const SURFACE_TIMING_MODEL = Object.freeze({
-    /** Upstream commit the whole surface timing port tracks: rosu-pp @ ad3fbe1. */
-    VERSION: "ad3fbe1",
+    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 595541d. */
+    VERSION: "595541d",
     // ErrorModel production defaults (sunny_accuracy.rs DEFAULT_* / MEASURED_*;
     // sigma_ref & co. are `#[cfg(test)]` there and reserved here).
     ERROR_MODEL: Object.freeze({
