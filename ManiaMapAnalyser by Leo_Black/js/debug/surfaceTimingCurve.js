@@ -22,8 +22,8 @@ import {
  * xxy constants used by sunny.rs.
  */
 export const SURFACE_TIMING_MODEL = Object.freeze({
-    /** Upstream commit the whole surface timing port tracks: rosu-pp @ 529e612. */
-    VERSION: "529e612",
+    /** Upstream commit the whole surface timing port tracks: rosu-pp @ dd5eeb5. */
+    VERSION: "dd5eeb5",
     // ErrorModel production defaults (sunny_accuracy.rs DEFAULT_* / MEASURED_*;
     // sigma_ref & co. are `#[cfg(test)]` there and reserved here).
     ERROR_MODEL: Object.freeze({
@@ -58,12 +58,18 @@ export const SURFACE_TIMING_MODEL = Object.freeze({
     }),
     /** sunny_accuracy.rs `TIMING_CORE_SIGMA` (replay-measured, reserved). */
     TIMING_CORE_SIGMA: 8.5,
-    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` (11.0). Since a44a63 (529e612)
-     * the sigma actually fed into expected counts is SR-scaled:
+    /** sunny_accuracy.rs `TIMING_BASELINE_SIGMA` (11.0). Since a44a63 the sigma
+     * actually fed into expected counts is SR-scaled:
      * `base_timing_sigma = TIMING_BASELINE_SIGMA * sr_to_base_sigma_scale(SR)`,
      * applied to BOTH map-factor expected accuracy (compute_timing_pp_with_units)
      * and score adjustment (compute_per_judgement_timing_adjustment L930). */
     TIMING_BASELINE_SIGMA: 11.0,
+    /** sunny_accuracy.rs SR-level sigma scaling constants (34fde58a / dd5eeb5):
+     * `sr_to_base_sigma_scale` uses its own neutral SR reference (8★), separate
+     * from the per-note difficulty reference (TIMING_DIFFICULTY_REFERENCE 6.0). */
+    SR_REFERENCE: 8.0,
+    SR_SCALING_FLOOR: 0.6,
+    SR_SCALING_EXPONENT: 1.7,
     /** retired: score adjustment now uses TIMING_BASELINE_SIGMA (=11.0); kept
      * for reference to the pre-ad3fbe1 local 12.0. */
     SCORE_ADJ_SIGMA: 12.0,
@@ -290,16 +296,23 @@ export function sigmaScaleFromDifficulty(difficulty) {
 
 /**
  * Map-level sigma scaling from SR (sunny_accuracy.rs `sr_to_base_sigma_scale`,
- * @ a44a63 / 529e612). Converts the map's star rating into a multiplier for
- * TIMING_BASELINE_SIGMA — same power-law as sigma_scale_from_difficulty_ratio
- * but operating on SR instead of local difficulty; applied once per map
- * (`base_timing_sigma = TIMING_BASELINE_SIGMA * sr_to_base_sigma_scale(SR)`),
- * not per operation.
+ * @ 34fde58a / dd5eeb5). Converts the map's star rating into a multiplier for
+ * TIMING_BASELINE_SIGMA — its own power-law with a separate neutral reference:
+ * `((sr.max(0) + SR_SCALING_FLOOR) / (SR_REFERENCE + SR_SCALING_FLOOR))^SR_SCALING_EXPONENT`
+ * i.e. ((SR + 0.6) / 8.6)^1.7. 8★ is the neutral point (scale 1, base sigma
+ * 11ms); below 8★ expects tighter timing (smaller sigma), above 8★ looser.
+ * NOT the per-note gauge (which keeps TIMING_DIFFICULTY_REFERENCE = 6.0).
+ * Applied once per map (`base_timing_sigma = TIMING_BASELINE_SIGMA *
+ * sr_to_base_sigma_scale(SR)`), not per operation.
  * @param {number} sr
  * @returns {number}
  */
 export function srToBaseSigmaScale(sr) {
-    return sigmaScaleFromDifficultyRatio(sr, SURFACE_TIMING_MODEL.TIMING_DIFFICULTY_REFERENCE);
+    const M = SURFACE_TIMING_MODEL;
+    const numerator = Math.max(sr, 0) + M.SR_SCALING_FLOOR;
+    const denominator = M.SR_REFERENCE + M.SR_SCALING_FLOOR;
+    const scale = Math.pow(numerator / denominator, M.SR_SCALING_EXPONENT);
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 /**
