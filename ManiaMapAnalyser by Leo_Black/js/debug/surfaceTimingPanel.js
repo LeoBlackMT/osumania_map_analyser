@@ -367,7 +367,7 @@ function buildPanelHtml(result) {
                 <span>Δ: ${formatNumber(deltaPct, 2)}%</span>
             </div>
             <div class="estimator-debug-note">
-                timings — windows ${formatNumber(timings.windows, 1)}ms · units ${formatNumber(timings.units, 1)}ms · expected ${formatNumber(timings.expected, 1)}ms · mapFactor ${formatNumber(timings.mapFactor, 1)}ms · scoreAdj ${formatNumber(timings.scoreAdj, 1)}ms · total ${formatNumber(timings.total, 1)}ms
+                timings — sunny ${formatNumber(timings.sunny ?? 0, 1)}ms · windows ${formatNumber(timings.windows, 1)}ms · units ${formatNumber(timings.units, 1)}ms · expected ${formatNumber(timings.expected, 1)}ms · mapFactor ${formatNumber(timings.mapFactor, 1)}ms · scoreAdj ${formatNumber(timings.scoreAdj, 1)}ms · total ${formatNumber(timings.total, 1)}ms
                 · od ${formatNumber(od, 1)}${odAvailable ? "" : " (unavailable)"}
             </div>
         </section>
@@ -398,6 +398,7 @@ export function createSurfaceTimingPanel({
     let lastRender = null;   // {error: string} or full result object
     let lastFetchFailed = false; // transient fetch failure (tosu not ready yet)
     let lastFetchFailAt = 0;  // ms timestamp — throttle retry storms while tosu warms up
+    let lastCountsKey = null; // live/score hits fingerprint (recompute gate)
     const FETCH_RETRY_MS = 1000;
 
     async function fetchCurrentBeatmap() {
@@ -437,6 +438,7 @@ export function createSurfaceTimingPanel({
 
     async function handleSocketPayload(data) {
         if (collapsed) return;
+        const tStart = performance.now();
 
         // Invalidate any in-flight async from an earlier message FIRST, then
         // capture the new sequence (estimatorDebugPanel runAll pattern). Every
@@ -452,6 +454,39 @@ export function createSurfaceTimingPanel({
         const mapChanged = mapKey !== lastIdentity;
         const modsChanged = modData.modSignature !== lastModsKey;
         let needRecomputeSR = mapChanged || modsChanged;
+
+        // --- Recompute gate: skip the whole pipeline when nothing that feeds
+        // the display changed. ws messages arrive continuously (~10/s), and
+        // without this every message re-runs the pipeline + full re-render
+        // (all timings show ~0.0ms, panel churns for nothing). Two cases:
+        //   1. map+mods unchanged and a successful result already rendered →
+        //      nothing on screen can change (Max PP is a fixed SS snapshot).
+        //   2. live/score: same map+mods but identical hits counts → also a
+        //      no-op. Only a change in counts (or map/mods) triggers rework.
+        const stateName = normalizeClientStateName(data?.state?.name);
+        const isPlayState = isPlayStateName(stateName);
+        const isResultState = isResultScreenStateName(stateName);
+        const hitsNow = isResultState
+            ? (data && data.resultsScreen && data.resultsScreen.hits)
+            : isPlayState ? (data && data.play && data.play.hits) : null;
+        const countsNow = hitsNow ? extractCounts(hitsNow) : null;
+        const countsKey = countsNow
+            ? `${countsNow.perfect},${countsNow.great},${countsNow.good},${countsNow.ok},${countsNow.meh},${countsNow.miss}`
+            : null;
+        const modeStateKey = isResultState ? "score" : isPlayState ? "live" : "max";
+
+        if (!mapChanged && !modsChanged && lastParse) {
+            // Same map+mods with a prior successful parse. For max mode the
+            // display is a fixed SS snapshot — nothing can differ. For live/
+            // score, only a hits-count change is a real update.
+            if (modeStateKey === "max") {
+                return;
+            }
+            if (countsKey !== null && countsKey === lastCountsKey) {
+                return;
+            }
+            lastCountsKey = countsKey;
+        }
 
         // Beatmap changed (or no cached text): fetch + parse. Mods-only changes
         // reuse the cached text/parse — parse results are mod-independent
@@ -508,7 +543,9 @@ export function createSurfaceTimingPanel({
 
         // Sunny SR — cached across identical map+mods; rerun when either changed.
         let sunny = lastSunny;
+        let sunnyMs = 0;
         if (needRecomputeSR) {
+            const tSunny = performance.now();
             try {
                 sunny = runSunnyEstimatorFromText(lastOsuText, {
                     speedRate: modData.speedRate,
@@ -521,6 +558,7 @@ export function createSurfaceTimingPanel({
                 renderError(error?.message || "Sunny estimator failed");
                 return;
             }
+            sunnyMs = performance.now() - tSunny;
             if (seq !== runSeq) return;
             lastSunny = sunny;
         }
@@ -606,7 +644,11 @@ export function createSurfaceTimingPanel({
             ppRes: pipeline.ppRes,
             rework: pipeline.rework,
             deltaPct: pipeline.deltaPct,
-            timings: pipeline.timings,
+            timings: {
+                ...pipeline.timings,
+                sunny: sunnyMs,
+                total: performance.now() - tStart,
+            },
         };
         lastModsKey = modData.modSignature;
         render();
