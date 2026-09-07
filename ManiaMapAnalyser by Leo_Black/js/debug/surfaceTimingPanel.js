@@ -1,0 +1,592 @@
+// Surface Timing Compare debug panel (browser-only, js/debug/).
+//
+// Renders the rosu-pp surface-map-timing pipeline (S2/S3 modules) against the
+// live tosu api_v2 payload: mode dispatch (Max PP / Score PP / Live), hit
+// judgement counts, map timing factor, score timing adjustment, and the
+// combined xxy+timing PP against the Rework PP reference.
+//
+// Mirrors estimatorDebugPanel.js conventions: root.innerHTML full re-render,
+// `.estimator-debug-*` + `.kv` classes from debug.html, performance.now()
+// segment timing, runSeq invalidation for the async beatmap fetch.
+//
+// The pure pipeline is split into module-level DOM-free exports so the Node
+// smoke (temp/surface-timing-smoke.mjs) can assert it without a browser:
+//   - resolveModeAndCounts(data, lastCounts, unitsTotal)  mode/hits dispatch
+//   - runSurfacePipeline({...})                            full calculation
+// createSurfaceTimingPanel itself is browser-only (fetch / innerHTML).
+
+import { APP_CONFIG } from "../../config.js";
+import { getModData } from "../app/modData.js";
+import {
+    isPlayStateName,
+    isResultScreenStateName,
+    normalizeClientStateName,
+} from "../app/modeLogic.js";
+import { extractCounts } from "../app/livePpCounts.js";
+import { runSunnyEstimatorFromText } from "../estimator/sunnyEstimator.js";
+import { OsuFileParser } from "../parser/osuFileParser.js";
+import { calculateReworkPp } from "../rework/reworkPerformance.js";
+import {
+    buildHitWindows,
+    buildMapWindows,
+    JUDGEMENT_NAMES,
+} from "./surfaceTimingWindows.js";
+import {
+    buildJudgementUnits,
+    buildLnDurationBuckets,
+    computeMapTimingFactor,
+    computeScoreAdjustment,
+    computeSurfacePp,
+    expectedCountsAtCoreSigma,
+    expectedCountsCustomAccuracy,
+    SURFACE_TIMING_MODEL,
+} from "./surfaceTimingCurve.js";
+
+const SORTED_KNOWN_MOD_CODES = [...APP_CONFIG.mods.knownCodes].sort((a, b) => b.length - a.length);
+const MOD_BIT_FLAG_ENTRIES = Object.entries(APP_CONFIG.mods.bitFlags);
+
+function finiteNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function formatNumber(value, digits = 2) {
+    const number = finiteNumber(value);
+    return number == null ? "-" : number.toFixed(digits);
+}
+
+function normalizeText(value) {
+    return String(value ?? "").trim();
+}
+
+function normalizePathText(value) {
+    return normalizeText(value).replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+}
+
+function getDebugModData(data) {
+    return getModData(data, {
+        sortedKnownModCodes: SORTED_KNOWN_MOD_CODES,
+        modBitFlagEntries: MOD_BIT_FLAG_ENTRIES,
+        fallbackClient: data?.client || "",
+        preferPlayMods: false,
+    });
+}
+
+// Map-only identity (no mods suffix) — drives the "beatmap changed → refetch"
+// gate. Mods-only changes reuse the cached osu text and recompute SR instead.
+function buildMapIdentity(data) {
+    const beatmap = data?.beatmap || {};
+    const id = finiteNumber(beatmap?.id);
+    const setId = finiteNumber(beatmap?.set || beatmap?.setId || beatmap?.beatmapSetId);
+    const hash = normalizeText(beatmap?.md5 || beatmap?.checksum).toLowerCase();
+    const path = normalizePathText(data?.files?.beatmap || data?.directPath?.beatmapFile);
+    const title = [
+        beatmap?.artist,
+        beatmap?.title,
+        beatmap?.version,
+        beatmap?.mapper,
+    ].map(normalizeText).join("::").toLowerCase();
+
+    const parts = [];
+    if (id != null && id > 0) parts.push(`id:${Math.trunc(id)}`);
+    if (hash) parts.push(`hash:${hash}`);
+    if (path) parts.push(`path:${path}`);
+    if (parts.length === 0 && title.replace(/[:]/g, "")) parts.push(`meta:${title}`);
+    if (setId != null && setId > 0) parts.push(`set:${Math.trunc(setId)}`);
+    return parts.join("|");
+}
+
+// Full identity incl. mods (same shape as estimatorDebugPanel.buildBeatmapIdentity).
+function buildBeatmapIdentity(data, modSignature) {
+    const mapKey = buildMapIdentity(data);
+    return mapKey ? `${mapKey}|mods:${modSignature || "none"}` : "";
+}
+
+function countsToArray(counts) {
+    return [
+        Number(counts?.perfect) || 0,
+        Number(counts?.great) || 0,
+        Number(counts?.good) || 0,
+        Number(counts?.ok) || 0,
+        Number(counts?.meh) || 0,
+        Number(counts?.miss) || 0,
+    ];
+}
+
+function countsTotal(counts) {
+    return counts.reduce((sum, c) => sum + c, 0);
+}
+
+function schemeLabel(classic, isConvert) {
+    if (!classic) return "lazer";
+    return isConvert ? "classic convert" : "classic non-convert";
+}
+
+/**
+ * Resolve the display mode and judgement counts from an api_v2 payload.
+ * Pure DOM-free helper (Node smoke tested).
+ *
+ * Mode dispatch: resultscreen → "Score PP", play/gameplay/playing → "Live",
+ * anything else → "Max PP" (SS assumption: every unit judged perfect).
+ * Counts come from resultsScreen.hits / play.hits (extractCounts semantics);
+ * a resultscreen without hits retains the previous counts (retainOnEmpty).
+ *
+ * @param {object} data api_v2 payload
+ * @param {number[]|null} [lastCounts] previous counts in JUDGEMENT_NAMES order
+ * @param {number} [unitsTotal] judgement units for the SS override (0 → all-zero SS row)
+ * @returns {{mode: string, source: string, isResult: boolean, isPlay: boolean,
+ *            hits: object|null, counts: number[], hitTotal: number}}
+ */
+export function resolveModeAndCounts(data, lastCounts = null, unitsTotal = 0) {
+    const stateName = normalizeClientStateName(data?.state?.name);
+    const isResult = isResultScreenStateName(stateName);
+    const isPlay = isPlayStateName(stateName);
+
+    let mode = "Max PP";
+    let source = "SS assumption";
+    if (isResult) {
+        mode = "Score PP";
+        source = "resultsScreen.hits";
+    } else if (isPlay) {
+        mode = "Live";
+        source = "play.hits";
+    }
+
+    const hits = isResult
+        ? (data && data.resultsScreen && data.resultsScreen.hits)
+        : isPlay ? (data && data.play && data.play.hits) : null;
+
+    let counts;
+    if (hits) {
+        counts = countsToArray(extractCounts(hits));
+        if (isResult && countsTotal(counts) === 0 && lastCounts) {
+            counts = lastCounts.slice();
+        }
+    } else if (isResult && lastCounts) {
+        counts = lastCounts.slice();
+    } else {
+        counts = [0, 0, 0, 0, 0, 0];
+    }
+
+    // Max PP: assume perfect on every judgement unit.
+    if (!isPlay && !isResult) {
+        counts = [unitsTotal, 0, 0, 0, 0, 0];
+    }
+
+    return { mode, source, isResult, isPlay, hits, counts, hitTotal: countsTotal(counts) };
+}
+
+/**
+ * The full surface timing calculation for one snapshot. Pure DOM-free (Node
+ * smoke tested). Mirrors handleSocketPayload's orchestration with
+ * performance.now() segment timing; callers supply parsed/derived inputs
+ * (no fetching, no parsing, no DOM).
+ *
+ * @param {{
+ *   od: number, isConvert?: boolean, classic?: boolean,
+ *   hr?: boolean, ez?: boolean, clockRate?: number,
+ *   stars: number, variety: number, accScalar: number,
+ *   nObjects: number, nLongNotes?: number, lnBuckets: number[],
+ *   counts: number[], hitTotal: number, unitsTotal: number,
+ *   totalNotes?: number, noFail?: boolean, easy?: boolean,
+ *   model: object,
+ * }} args
+ * @returns {{
+ *   windows: object, mapWindows: object, units: object[],
+ *   expectedArr: number[], expectedAcc: number, scoreAccuracy: number,
+ *   mapFactorRes: object, scoreAdjRes: object, ppRes: object,
+ *   rework: object|null, deltaPct: number|null,
+ *   timings: {windows: number, units: number, expected: number,
+ *             mapFactor: number, scoreAdj: number, total: number},
+ * }}
+ */
+export function runSurfacePipeline({
+    od,
+    isConvert = false,
+    classic = true,
+    hr = false,
+    ez = false,
+    clockRate = 1,
+    stars,
+    variety,
+    accScalar,
+    nObjects,
+    nLongNotes = 0,
+    lnBuckets,
+    counts,
+    hitTotal,
+    unitsTotal,
+    totalNotes = unitsTotal,
+    noFail = false,
+    easy = false,
+    model,
+}) {
+    const t0 = performance.now();
+    const windows = buildHitWindows({ od, isConvert, classic, hr, ez, clockRate });
+    const mapWindows = buildMapWindows({ od, isConvert, classic, clockRate });
+    const t1 = performance.now();
+
+    const units = buildJudgementUnits({ stars, unitsTotal, nObjects, nLongNotes, lnBuckets, classic, model });
+    const t2 = performance.now();
+
+    const expectedArr = expectedCountsAtCoreSigma(units, windows, model, SURFACE_TIMING_MODEL.TIMING_BASELINE_SIGMA);
+    const expectedAcc = expectedCountsCustomAccuracy(expectedArr);
+    const t3 = performance.now();
+
+    const mapFactorRes = computeMapTimingFactor({ expectedAcc, nLongNotes, nObjects, lnBuckets });
+    const t4 = performance.now();
+
+    const scoreAdjRes = computeScoreAdjustment({ playerCounts: counts, units, windows, hitTotal, model });
+    const t5 = performance.now();
+
+    const scoreAccuracy = expectedCountsCustomAccuracy(counts);
+    const ppRes = computeSurfacePp({
+        stars,
+        variety,
+        accScalar,
+        nObjects,
+        scoreAccuracy,
+        mapFactor: mapFactorRes.factor,
+        scoreAdj: scoreAdjRes.multiplier,
+        noFail,
+    });
+    const now = performance.now();
+
+    const rework = calculateReworkPp({
+        starRating: stars,
+        variety,
+        accScalar,
+        totalNotes,
+        perfect: counts[0],
+        great: counts[1],
+        good: counts[2],
+        ok: counts[3],
+        meh: counts[4],
+        miss: counts[5],
+        noFail,
+        easy,
+    });
+    const deltaPct = rework && Number.isFinite(ppRes.pp) && rework.pp > 0
+        ? (ppRes.pp - rework.pp) / rework.pp * 100
+        : null;
+
+    return {
+        windows,
+        mapWindows,
+        units,
+        expectedArr,
+        expectedAcc,
+        scoreAccuracy,
+        mapFactorRes,
+        scoreAdjRes,
+        ppRes,
+        rework,
+        deltaPct,
+        timings: {
+            windows: t1 - t0,
+            units: t2 - t1,
+            expected: t3 - t2,
+            mapFactor: t4 - t3,
+            scoreAdj: t5 - t4,
+            total: now - t0,
+        },
+    };
+}
+
+function bandValuesText(windows) {
+    return JUDGEMENT_NAMES.map((name) => `${name}: ${formatNumber(windows[name], 1)}ms`).join(" · ");
+}
+
+function buildPanelHtml(result) {
+    const {
+        mode, source, counts, unitsTotal, hitTotal, od, odAvailable,
+        classic, isConvert, hr, ez, clockRate, windows, mapWindows,
+        expectedAcc, mapFactorRes, scoreAdjRes, ppRes, rework, deltaPct, timings,
+    } = result;
+
+    const diffMultiplier = hr ? 1.4 : (ez ? 1 / 1.4 : 1);
+    const unitLabel = classic ? "V1" : "V2";
+    const modsText = [
+        `difficulty ×${formatNumber(diffMultiplier, 2)}${hr ? " (HR)" : ""}${ez ? " (EZ)" : ""}`,
+        `clock_rate ${formatNumber(clockRate, 3)}`,
+    ].join(" · ");
+
+    return `
+        <section class="estimator-debug-panel">
+            <div class="estimator-debug-header">
+                <div>
+                    <h2>Surface Timing Compare</h2>
+                    <div class="estimator-debug-meta">
+                        <span class="badge">${mode}</span>
+                        <span class="badge">${source}</span>
+                        <span class="badge">v${SURFACE_TIMING_MODEL.VERSION}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="kv">
+                <dt>windows (${schemeLabel(classic, isConvert)})</dt>
+                <dd>${bandValuesText(windows)}</dd>
+                <dt>mods</dt>
+                <dd>${modsText}</dd>
+                <dt>map_windows</dt>
+                <dd>${bandValuesText(mapWindows)}</dd>
+                <dt>expected_acc</dt>
+                <dd>${formatNumber(expectedAcc * 100, 3)}%</dd>
+                <dt>window_factor</dt>
+                <dd>${formatNumber(mapFactorRes.windowFactor, 4)}</dd>
+                <dt>ln_factor</dt>
+                <dd>${formatNumber(mapFactorRes.lnFactor, 4)}</dd>
+                <dt>map_factor</dt>
+                <dd>${formatNumber(mapFactorRes.factor, 4)}</dd>
+                <dt>counts <span class="estimator-debug-meta">(${source})</span></dt>
+                <dd>perfect: ${counts[0]} · great: ${counts[1]} · good: ${counts[2]} · ok: ${counts[3]} · meh: ${counts[4]} · miss: ${counts[5]} <span class="estimator-debug-meta">(hitTotal ${hitTotal})</span></dd>
+                <dt>units_total</dt>
+                <dd>${unitsTotal} (${unitLabel})</dd>
+                <dt>score_adjustment</dt>
+                <dd>player_loss ${formatNumber(scoreAdjRes.playerLoss, 4)} · expected_loss ${formatNumber(scoreAdjRes.expectedLoss, 4)} · loss_diff ${formatNumber(scoreAdjRes.lossDiff, 4)} <strong>→ multiplier ${formatNumber(scoreAdjRes.multiplier, 4)}</strong></dd>
+                <dt>timing_multiplier</dt>
+                <dd>${formatNumber(ppRes.timingMultiplier, 4)} (map × score)</dd>
+                <dt>xxy_pp_pattern</dt>
+                <dd>${formatNumber(ppRes.xxyPpPattern, 2)}</dd>
+                <dt>xxy_pp_accuracy</dt>
+                <dd>${formatNumber(ppRes.xxyPpAccuracy, 2)}</dd>
+                <dt>xxy_pp</dt>
+                <dd>${formatNumber(ppRes.xxyPp, 2)}</dd>
+                <dt>pp_with_timing</dt>
+                <dd>${formatNumber(ppRes.ppWithTiming, 2)}</dd>
+                <dt>pp_timing</dt>
+                <dd>${formatNumber(ppRes.ppTiming, 2)}</dd>
+                <dt>${mode} PP <span class="estimator-debug-meta">(${source})</span></dt>
+                <dd>${formatNumber(ppRes.pp, 2)} <span class="estimator-debug-meta">(Rework ${formatNumber(rework && rework.pp, 2)} · Δ ${formatNumber(deltaPct, 2)}%)</span></dd>
+            </div>
+            <div class="estimator-debug-result-line">
+                <strong>Rework PP: ${formatNumber(rework && rework.pp, 2)}</strong>
+                <span>|</span>
+                <span>Surface PP: ${formatNumber(ppRes.pp, 2)}</span>
+                <span>|</span>
+                <span>Δ: ${formatNumber(deltaPct, 2)}%</span>
+            </div>
+            <div class="estimator-debug-note">
+                timings — windows ${formatNumber(timings.windows, 1)}ms · units ${formatNumber(timings.units, 1)}ms · expected ${formatNumber(timings.expected, 1)}ms · mapFactor ${formatNumber(timings.mapFactor, 1)}ms · scoreAdj ${formatNumber(timings.scoreAdj, 1)}ms · total ${formatNumber(timings.total, 1)}ms
+                · od ${formatNumber(od, 1)}${odAvailable ? "" : " (unavailable)"}
+            </div>
+        </section>
+    `;
+}
+
+/**
+ * Surface Timing Compare debug panel.
+ * @param {{root: HTMLElement, socketHost?: string}} options
+ * @returns {{handleSocketPayload: (data: object) => Promise<void>, setCollapsed: (collapsed: boolean) => void}}
+ */
+export function createSurfaceTimingPanel({
+    root,
+    socketHost = "127.0.0.1:24050",
+} = {}) {
+    if (!root) {
+        throw new Error("Surface timing panel root is required");
+    }
+
+    let lastIdentity = "";   // map-only key (refetch gate)
+    let lastOsuText = "";    // cached osu text
+    let lastModsKey = "";    // modSignature (SR recompute gate)
+    let lastCounts = null;   // last judgement counts (resultscreen retain)
+    let lastParse = null;    // cached OsuFileParser getParsedData (same map)
+    let lastSunny = null;    // cached Sunny result (same map+mods)
+    let runSeq = 0;          // async invalidation
+    let collapsed = false;   // second gate (debug.html layer gates first)
+    let lastRender = null;   // {error: string} or full result object
+
+    async function fetchCurrentBeatmap() {
+        const response = await fetch(`http://${socketHost}/files/beatmap/file`, {
+            method: "GET",
+            cache: "no-store",
+        });
+        if (!response.ok) {
+            throw new Error(`beatmap fetch failed: HTTP ${response.status}`);
+        }
+        const text = await response.text();
+        if (!text.trim()) {
+            throw new Error("beatmap fetch returned empty content");
+        }
+        return text;
+    }
+
+    function renderError(message) {
+        lastRender = { error: message };
+        render();
+    }
+
+    function render() {
+        const result = lastRender;
+        if (result == null) {
+            root.innerHTML = "<div class=\"estimator-debug-empty\">Waiting for map data.</div>";
+            return;
+        }
+        if (result.error) {
+            root.innerHTML = `<div class="estimator-debug-error">${result.error}</div>`;
+            return;
+        }
+        root.innerHTML = buildPanelHtml(result);
+    }
+
+    async function handleSocketPayload(data) {
+        if (collapsed) return;
+
+        const modData = getDebugModData(data);
+        const mapKey = buildMapIdentity(data);
+        if (!mapKey) return; // keep "Waiting for map data." until a real beatmap
+
+        const seq = runSeq;
+        const mapChanged = mapKey !== lastIdentity;
+        const modsChanged = modData.modSignature !== lastModsKey;
+        let needRecomputeSR = mapChanged || modsChanged;
+
+        // Beatmap changed (or no cached text): fetch + parse. Mods-only changes
+        // reuse the cached text/parse — parse results are mod-independent
+        // (modIN/HO conversion happens inside sunnyAlgorithm on a clone).
+        if (mapChanged || !lastOsuText) {
+            lastOsuText = "";
+            lastParse = null;
+            lastSunny = null;
+            runSeq += 1;
+            try {
+                const osuText = await fetchCurrentBeatmap();
+                if (seq !== runSeq) return;
+                lastOsuText = osuText;
+                const parser = new OsuFileParser(osuText);
+                parser.process();
+                const parsed = parser.getParsedData();
+                if (seq !== runSeq) return;
+                lastParse = parsed;
+                lastIdentity = mapKey;
+            } catch (error) {
+                renderError(error?.message || "beatmap fetch/parse failed");
+                return;
+            }
+        }
+
+        if (lastParse.status === "Fail" || lastParse.status === "NotMania") {
+            renderError(lastParse.status === "NotMania"
+                ? "beatmap mode is not mania"
+                : "beatmap parse failed");
+            return;
+        }
+
+        // Sunny SR — cached across identical map+mods; rerun when either changed.
+        let sunny = lastSunny;
+        if (needRecomputeSR) {
+            try {
+                sunny = runSunnyEstimatorFromText(lastOsuText, {
+                    speedRate: modData.speedRate,
+                    odFlag: modData.odFlag,
+                    cvtFlag: modData.cvtFlag,
+                    withPpMetrics: true,
+                    classicMod: modData.classic,
+                });
+            } catch (error) {
+                renderError(error?.message || "Sunny estimator failed");
+                return;
+            }
+            if (seq !== runSeq) return;
+            lastSunny = sunny;
+        }
+
+        const ppMetrics = sunny?.ppMetrics;
+        const stars = finiteNumber(sunny?.star);
+        if (stars == null || stars <= 0 || !ppMetrics
+            || !Number.isFinite(finiteNumber(ppMetrics.variety))
+            || !Number.isFinite(finiteNumber(ppMetrics.accScalar))
+            || !(finiteNumber(ppMetrics.totalNotes) > 0)) {
+            renderError("Sunny result unavailable (star/ppMetrics invalid)");
+            return;
+        }
+
+        // LN histogram from the raw parsed chart (map-time ms, not ÷clockRate).
+        const nObjects = lastParse.noteTypes.length;
+        const longNoteDurations = [];
+        for (let i = 0; i < nObjects; i += 1) {
+            if ((lastParse.noteTypes[i] & 128) !== 0) {
+                longNoteDurations.push(lastParse.noteEnds[i] - lastParse.noteStarts[i]);
+            }
+        }
+        const nLongNotes = longNoteDurations.length;
+        const lnBuckets = buildLnDurationBuckets(longNoteDurations);
+
+        const classic = modData.classic;
+        const unitsTotal = classic ? nObjects : nObjects + nLongNotes;
+
+        const resolved = resolveModeAndCounts(data, lastCounts, unitsTotal);
+        const { mode, source, counts, hitTotal, hits, isResult } = resolved;
+        // Retain counts on the results screen; track live hits otherwise.
+        // Fresh-play all-zero counts are legitimate — keep them.
+        if (isResult || hits) lastCounts = counts;
+
+        // Raw map OD from the parser (getParsedData exposes `.od`); the HR/EZ
+        // difficulty multiplier is applied inside buildHitWindows, so no
+        // pre-conversion here. Fall back to 8 when the map lacks OverallDifficulty.
+        const rawOd = finiteNumber(lastParse.od);
+        const odAvailable = rawOd != null && rawOd >= 0;
+        const od = odAvailable ? rawOd : 8;
+
+        const modCodes = modData.modCodes;
+        const pipeline = runSurfacePipeline({
+            od,
+            isConvert: Boolean(modData.cvtFlag),
+            classic,
+            hr: modCodes.includes("HR"),
+            ez: modCodes.includes("EZ"),
+            clockRate: modData.speedRate,
+            stars,
+            variety: ppMetrics.variety,
+            accScalar: ppMetrics.accScalar,
+            nObjects,
+            nLongNotes,
+            lnBuckets,
+            counts,
+            hitTotal,
+            unitsTotal,
+            totalNotes: ppMetrics.totalNotes,
+            noFail: modCodes.includes("NF"),
+            easy: modCodes.includes("EZ"),
+            model: SURFACE_TIMING_MODEL.ERROR_MODEL,
+        });
+
+        lastRender = {
+            mode,
+            source,
+            counts,
+            unitsTotal,
+            hitTotal,
+            od,
+            odAvailable,
+            classic,
+            isConvert: Boolean(modData.cvtFlag),
+            hr: modCodes.includes("HR"),
+            ez: modCodes.includes("EZ"),
+            clockRate: modData.speedRate,
+            windows: pipeline.windows,
+            mapWindows: pipeline.mapWindows,
+            expectedAcc: pipeline.expectedAcc,
+            mapFactorRes: pipeline.mapFactorRes,
+            scoreAdjRes: pipeline.scoreAdjRes,
+            ppRes: pipeline.ppRes,
+            rework: pipeline.rework,
+            deltaPct: pipeline.deltaPct,
+            timings: pipeline.timings,
+        };
+        lastModsKey = modData.modSignature;
+        render();
+    }
+
+    function setCollapsed(nextCollapsed) {
+        collapsed = Boolean(nextCollapsed);
+    }
+
+    render();
+
+    return {
+        handleSocketPayload,
+        setCollapsed,
+    };
+}

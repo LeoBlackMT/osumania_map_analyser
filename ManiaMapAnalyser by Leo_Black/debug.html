@@ -185,6 +185,50 @@
             padding: 12px;
             background: rgba(0, 0, 0, 0.28);
         }
+
+        details {
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.18);
+        }
+
+        summary {
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: inherit;
+            user-select: none;
+            padding: 2px 0;
+        }
+
+        summary:hover {
+            color: var(--text);
+        }
+
+        .module-body {
+            padding-top: 10px;
+        }
+
+        .kv {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 2px 12px;
+            font-size: 13px;
+        }
+
+        .kv dt {
+            color: var(--soft);
+        }
+
+        .kv dd {
+            margin: 0;
+            color: var(--text);
+        }
+
+        .kv dd strong {
+            color: var(--ok);
+        }
     </style>
 </head>
 
@@ -197,13 +241,25 @@
             <button id="pause-btn" type="button">Pause</button>
             <button id="clear-btn" type="button">Clear</button>
         </div>
-        <div id="estimator-debug-root"></div>
-        <pre id="payload">Waiting for websocket data...</pre>
+        <details id="module-estimator" open>
+            <summary>Estimator Compare</summary>
+            <div id="estimator-debug-root" class="module-body"></div>
+        </details>
+        <details id="module-surface">
+            <summary>Surface Timing Compare <span id="surface-version-badge" class="badge" hidden></span></summary>
+            <div id="surface-timing-root" class="module-body"></div>
+        </details>
+        <details id="module-payload">
+            <summary>Raw payload</summary>
+            <pre id="payload" class="module-body">Waiting for websocket data...</pre>
+        </details>
     </main>
 
     <script type="module">
         import WebSocketManager from "./js/app/socket.js";
         import { createEstimatorDebugPanel } from "./js/debug/estimatorDebugPanel.js";
+        import { createSurfaceTimingPanel } from "./js/debug/surfaceTimingPanel.js";
+        import { SURFACE_TIMING_MODEL } from "./js/debug/surfaceTimingCurve.js";
 
         const payloadEl = document.getElementById("payload");
         const connEl = document.getElementById("conn");
@@ -214,6 +270,48 @@
             root: document.getElementById("estimator-debug-root"),
             socketHost: "127.0.0.1:24050",
         });
+        // Surface Timing panel — real instance (S4), mounted at S5.
+        const surfacePanel = createSurfaceTimingPanel({
+            root: document.getElementById("surface-timing-root"),
+            socketHost: "127.0.0.1:24050",
+        });
+        const surfaceVersionBadge = document.getElementById("surface-version-badge");
+        surfaceVersionBadge.textContent = `v${SURFACE_TIMING_MODEL.VERSION}`;
+        surfaceVersionBadge.hidden = false;
+
+        const LAYOUT_KEY = "mma-debug-layout-v1";
+        const LAYOUT_KEYS = {
+            "module-estimator": "estimator",
+            "module-surface": "surface",
+            "module-payload": "payload",
+        };
+        const layout = { estimator: true, surface: false, payload: false };
+
+        try {
+            const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY));
+            if (saved && typeof saved === "object") {
+                for (const key of Object.keys(layout)) {
+                    if (typeof saved[key] === "boolean") {
+                        layout[key] = saved[key];
+                    }
+                }
+            }
+        } catch {
+            // Missing/corrupt stored layout: keep defaults.
+        }
+
+        for (const [id, key] of Object.entries(LAYOUT_KEYS)) {
+            const details = document.getElementById(id);
+            details.open = layout[key];
+            details.addEventListener("toggle", () => {
+                layout[key] = details.open;
+                try {
+                    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+                } catch {
+                    // Storage unavailable: layout persistence is best-effort.
+                }
+            });
+        }
 
         let paused = false;
         let messageCount = 0;
@@ -243,13 +341,13 @@
 
         socket.api_v2((data) => {
             setConnectionState("ok", "Connected");
-            estimatorPanel.handleSocketPayload(data);
-            if (paused) {
-                return;
+            if (layout.estimator) estimatorPanel.handleSocketPayload(data);
+            if (layout.surface && typeof surfacePanel?.handleSocketPayload === "function") surfacePanel.handleSocketPayload(data);
+            if (layout.payload && !paused) {
+                messageCount += 1;
+                updateCount();
+                payloadEl.textContent = JSON.stringify(data, null, 2);
             }
-            messageCount += 1;
-            updateCount();
-            payloadEl.textContent = JSON.stringify(data, null, 2);
         });
 
         window.addEventListener("error", (event) => {
