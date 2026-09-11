@@ -112,7 +112,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 | Etterna WASM | `js/app/analysis.js:152-159 buildEtternaAnalyzeOptions` | `musicRate: state.speedRate`（analysis.js:154） |
 | 估算器（Worker/主线程） | analysis.js:441-447 `estimatorOptions` | `speedRate: state.speedRate`（analysis.js:442），经 `runInWorker`/`runXxxEstimatorFromText` 透传 |
 | Interlude | analysis.js:590 `calculateInterludeStar(rawText, state.speedRate, state.cvtFlag)` → `js/interlude/index.js:14 calculateInterludeStar(source, rate, cvtFlag)` | 第二参数 rate |
-| 歌曲时间换算 | socketHandlers.js:54-60 | `liveTimeMs / speedRate` 得到谱面时间轴（beatmap time 是原速时间，需除速率还原） |
+| 歌曲时间换算 | socketHandlers.js:54-75 | `liveTimeMs / speedRate` 得到谱面时间轴（beatmap time 是原速时间，需除速率还原） |
 
 ## 5. odFlag / cvtFlag 语义
 

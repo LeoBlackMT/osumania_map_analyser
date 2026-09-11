@@ -19,6 +19,7 @@ import {
 } from "./modeLogic.js";
 import {
     addPauseMarker,
+    refreshGraphTimeline,
     resetPauseRuntime,
     updateGraphCursor,
 } from "./graph.js";
@@ -49,17 +50,29 @@ function extractCurrentSongTimeMs(data) {
 function updateSongTimeState(data) {
     const beatmapTime = data?.beatmap?.time;
     const liveTimeMs = extractCurrentSongTimeMs(data);
+
+    const speedRate = Number.isFinite(state.speedRate) && state.speedRate > 0 ? state.speedRate : 1;
+
+    // 谱面时间线的更新不依赖 live 时间：早期实现在无 live 时直接返回，
+    // 会连带丢掉 firstObject/lastObject，使图表 x 轴窗口永远按"未知时间线"渲染。
+    const firstObjectMs = Number(beatmapTime?.firstObject);
+    const lastObjectMs = Number(beatmapTime?.lastObject);
+    const previousSongStartMs = state.songStartMs;
+    state.songStartMs = Number.isFinite(firstObjectMs) ? firstObjectMs / speedRate : null;
+    state.songEndMs = Number.isFinite(lastObjectMs) ? lastObjectMs / speedRate : null;
+
+    // 图表 x 轴窗口按渲染时刻的 songStartMs 裁剪；tosu 常在首次渲染后才补全
+    // firstObject（选歌阶段为 0），此处补一次重建，避免前奏空档 + 进度线偏移
+    // 残留整首歌。未变化时 refreshGraphTimeline 立即返回。
+    if (state.songStartMs !== previousSongStartMs) {
+        refreshGraphTimeline();
+    }
+
     if (!Number.isFinite(liveTimeMs)) {
         return;
     }
 
-    const speedRate = Number.isFinite(state.speedRate) && state.speedRate > 0 ? state.speedRate : 1;
     const scaledLiveTimeMs = liveTimeMs / speedRate;
-
-    const firstObjectMs = Number(beatmapTime?.firstObject);
-    const lastObjectMs = Number(beatmapTime?.lastObject);
-    state.songStartMs = Number.isFinite(firstObjectMs) ? firstObjectMs / speedRate : null;
-    state.songEndMs = Number.isFinite(lastObjectMs) ? lastObjectMs / speedRate : null;
 
     if (state.pauseDetectionEnabled && state.isInPlayState && state.pauseMarkerTimes.length > 0) {
         let earliestPauseTimeMs = Number.POSITIVE_INFINITY;

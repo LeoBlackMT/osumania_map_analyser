@@ -284,7 +284,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | analysis.js:277-279/:230/:576 `setGraphLoading` / `clearDiffGraph` | graph.js:388/:341 | 加载/清除态 |
 | analysis.js:234/:553/:568/:572 `showDiffGraphError(...)` | graph.js:426 `showDiffGraphError` | 错误提示 |
 | socketHandlers.js:103 `addPauseMarker(...)` | graph.js:318 `addPauseMarker` | 暂停标记（暂停检测驱动：`game.paused` 上升沿） |
-| socketHandlers.js:62-72/:287 `resetPauseRuntime(...)` | graph.js:329 `resetPauseRuntime` | 暂停运行时重置 |
+| socketHandlers.js:77-87/:299 `resetPauseRuntime(...)` | graph.js:329 `resetPauseRuntime` | 暂停运行时重置 |
 
 ### hud.js（HUD 状态）
 
