@@ -129,6 +129,9 @@ export const state = {
     currentModeTag: "Mix",
     etternaTechnicalHidden: false,
     graphSeries: null,
+    // 未裁剪的归一化序列 + 渲染时用的谱面时间线：时间线补全后据此重画 x 轴窗口。
+    graphSeriesSource: null,
+    graphSeriesTimelineStartMs: null,
     pauseMarkerTimes: [],
     pauseCount: 0,
     isPaused: false,

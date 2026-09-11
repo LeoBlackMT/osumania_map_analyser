@@ -8,6 +8,8 @@
 
 难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
 
+**时间轴契约（重要）**：`rework.graph.times` 必须与 `state.songStartMs` / `state.songTimeMs` 同域，即**按 `speedRate` 缩放后的原始谱面时间**（`rawTime / speedRate`）。Sunny / Daniel / Azusa 天然如此；Roxy 的分析文本会被 `canonicalizeOsuTiming` 平移，因此它在返回前会把 `graph.times` 逆变换回原始时间轴（见 [roxy_algorithm.md](../roxy_algorithm.md) §4、§17）。**新增/修改估算器时若输出 graph，必须遵守该契约**——否则裁剪窗口、游标映射、暂停标记全部按错误的时间轴走。
+
 图表有**两处独立的显示位置**（双图结构），共用同一份数据与同一套渲染逻辑：
 
 | 视图 | DOM | 启用条件 | 显示位置 |
@@ -60,7 +62,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 1. `hasAnyGraphModeEnabled()` 为假直接返回 `false`（`graph.js:546`）。
 2. `normalizeGraphSeries(graphData, GRAPH_RESAMPLE_INTERVAL_MS)` 归一化（`graph.js:550`）；失败 → `graph.js:552 showDiffGraphError("Graph unavailable")`。
-3. `graph.js:558 trimSeriesStartToFirstObject(normalizedSeries)`（定义于 `graph.js:144`）：谱面首个物件（`state.songStartMs`）之前的点被裁剪，起点值经 `interpolateSeriesValue` 插值补出，避免图线从谱面开始前就画出来。
+3. `graph.js:164 trimSeriesStartToFirstObject(normalizedSeries)`：谱面首个物件（`state.songStartMs`）之前的点被裁剪，起点值经 `interpolateSeriesValue` 插值补出，避免图线从谱面开始前就画出来。裁剪用的时间线是**渲染时刻的快照**——tosu 常在首次渲染之后才补全 `beatmap.time.firstObject`（选歌阶段为 `0` / 缺失），未裁剪的归一化序列会存进 `state.graphSeriesSource`，时间线变化时由 `refreshGraphTimeline()` 按新时间线重画（见 §4.5）；否则整首歌都会保留前奏空档，进度线也随之偏移。
 4. 手工预分配 `lineParts`/`fillParts` 数组，逐点计算 viewBox 坐标：`x = xMin + (t - minTime) * tScale * xSpan`，`y = yMax - (v - minYValue) * vScale * ySpan`；坐标字符串用 `graph.js:541 f1`（一位小数，注释说明对 260px viewBox 足够且省 ~20% 字符串长度）；填充基线 `baseYs = yMax`（`graph.js:594`），闭合 `Z`（`graph.js:623`）。
 5. `graph.js:629 setGraphLoading(false)` 先撤掉加载态，然后用 `requestAnimationFrame` 把 DOM 更新**推迟到下一帧**（`graph.js:632`），保证加载骨架能先绘制一帧、避免闪烁。
 6. 下一帧回调内 `forEachEnabledGraphView`（`graph.js:633`）：
@@ -76,18 +78,34 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ### 4.2 加载态 setGraphLoading
 
-`graph.js:388 setGraphLoading(isLoading)`：仅在 `hasAnyGraphModeEnabled()` 时工作，只作用于启用视图（`graph.js:393`）。
+`graph.js:409 setGraphLoading(isLoading)`：仅在 `hasAnyGraphModeEnabled()` 时工作，只作用于启用视图（`graph.js:393`）。
 
-- 进入加载（`graph.js:398-418`）：`buildGraphLoadingPaths()`（`graph.js:92`，用 `APP_CONFIG.graph.loadingSampleCount` 个点 + `loadingBaseOffset` 画水平基线骨架）生成 line/fill path；`svgEl` 加 `loading` 类（触发 CSS 波浪动画）；`fillEl` **移除** `graph-unplayed`（`graph.js:404`，注释说明加载骨架不继承上一张图的暗化）；`resetPlayedFill(view)`；显示 "Graph loading..." 文本（`graph.js:406`，文本元素由 `graph.js:112 ensureGraphLoadingTextEl` 惰性创建，显示切换 `graph.js:136 setGraphLoadingTextVisible`）；隐藏游标与错误元素。
+- 进入加载（`graph.js:398-418`）：`buildGraphLoadingPaths()`（`graph.js:92`，用 `APP_CONFIG.graph.loadingSampleCount` 个点 + `loadingBaseOffset` 画水平基线骨架）生成 line/fill path；`svgEl` 加 `loading` 类（触发 CSS 波浪动画）；`fillEl` **移除** `graph-unplayed`（`graph.js:404`，注释说明加载骨架不继承上一张图的暗化）；`resetPlayedFill(view)`；显示 "Graph loading..." 文本（`graph.js:406`，文本元素由 `graph.js:112 ensureGraphLoadingTextEl` 惰性创建，显示切换 `graph.js:136 setGraphLoadingTextVisible`）；隐藏游标与错误元素。同时调用 `dropGraphSeriesSource()` 丢弃重建源——曲线即将被替换，此时若谱面时间线变化，不得把上一张图的曲线重画回加载骨架上。
 - 退出加载（`graph.js:421-422`）：移除 `loading` 类、隐藏加载文本。
 
 ### 4.3 错误态 showDiffGraphError
 
-`graph.js:426 showDiffGraphError(message)`：先 `setGraphLoading(false)`，置 `state.graphSeries = null`（`graph.js:432`），对启用视图清空 fill/line path、`resetPlayedFill`、隐藏游标、清空暂停标记（`graph.js:433-449`），最后在 `errorEl` 显示错误消息（默认 "Graph unavailable"，`graph.js:452`）。调用方：`analysis.js:568`（Unsupported Keys）与 `analysis.js:572`（渲染失败）。
+`graph.js:453 showDiffGraphError(message)`：先 `setGraphLoading(false)`，置 `state.graphSeries = null`（`graph.js:432`）并 `dropGraphSeriesSource()`，对启用视图清空 fill/line path、`resetPlayedFill`、隐藏游标、清空暂停标记（`graph.js:433-449`），最后在 `errorEl` 显示错误消息（默认 "Graph unavailable"，`graph.js:452`）。调用方：`analysis.js:568`（Unsupported Keys）与 `analysis.js:572`（渲染失败）。
 
 ### 4.4 图整体清空 clearDiffGraph
 
-`graph.js:341 clearDiffGraph()`：`state.graphSeries = null`；对**所有**视图（`forEachGraphView`）移除 `loading` 类、清除扫描动画、清空 fill/line path、`resetPlayedFill`、隐藏游标、隐藏错误、隐藏加载文本、清空暂停标记。`graph.js:704` 中当 `updateDiffTextVisibility` 发现无任何图表模式启用时也会调用它。
+`graph.js:359 clearDiffGraph()`：`state.graphSeries = null` 并 `dropGraphSeriesSource()`；对**所有**视图（`forEachGraphView`）移除 `loading` 类、清除扫描动画、清空 fill/line path、`resetPlayedFill`、隐藏游标、隐藏错误、隐藏加载文本、清空暂停标记。`graph.js:773` 中当 `updateDiffTextVisibility` 发现无任何图表模式启用时也会调用它。
+
+### 4.5 谱面时间线补全后的重建 refreshGraphTimeline
+
+x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObject / speedRate`）裁剪，但这个值**是异步补全的**：选歌阶段 tosu 可能给出 `firstObject: 0`（或字段缺失），真正载入谱面后才给出首个物件时间。设计谱面（长前奏）下若只在渲染时裁剪一次，整首歌都会保留前奏空档——曲线左段是贴底的 0 难度（视觉上空缺），进度线也随之偏移，直到用户改设置 / 换图触发重算才恢复。
+
+> 注意区分两类成因：本节处理的是"谱面时间线晚到"，而 [roxy_algorithm.md](../roxy_algorithm.md) §17 处理的是"图表序列时间轴与谱面时间线不同域"。后者（Roxy 的 canonical 时间轴）会让 `songStartMs` 超过被压缩后的 `maxTime`，游标被 clamp 钉死在最右侧且整首歌不动——本节的重建无法修复它，必须由估算器侧还原时间轴。
+
+重建链路：
+
+- `renderDiffGraph(graphData, options)`（`graph.js:587`）把**未裁剪**的归一化序列存进 `state.graphSeriesSource`，并在 DOM 写入那一帧记录 `state.graphSeriesTimelineStartMs = currentTimelineStartMs()`（渲染所用的时间线快照）。`options.animate !== false` 才播放入场动画（重建时传 `{ animate: false }`，避免播放中重放 400ms 扫描动画）。
+- `refreshGraphTimeline()`（`graph.js:712`）：无重建源、或任一图表模式未启用时直接返回 `false`；时间线快照与当前 `songStartMs` 相同时返回 `false`（该函数每个 api_v2 包都会被调用，必须廉价）；否则用重建源重新 `renderDiffGraph(source, { animate: false })`。
+- 调用点：`socketHandlers.js:68 updateSongTimeState()` 中 `state.songStartMs` 发生变化时触发。
+- 时间线取值经 `currentTimelineStartMs()`（`graph.js:148`）读取：显式把 `null` / `undefined` / `""` 判为"未知时间线"（`Number(null) === 0`，直接 `Number()` 会把未知当成 `firstObject = 0`）。
+- 重建源在 4 条路径上被丢弃（`dropGraphSeriesSource()`）：`clearDiffGraph`、`setGraphLoading(true)`、`showDiffGraphError`、`renderDiffGraph` 的归一化失败分支——保证被清空 / 失败 / 处于加载态的图不会被时间线变化"复活"。
+
+`state.songStartMs` 的更新本身不依赖 `live` 时间：`updateSongTimeState` 先写 `songStartMs` / `songEndMs` 再对 `liveTimeMs` 做 early-return（早期实现在无 `live` 时直接返回，会连带丢掉 `firstObject` / `lastObject`）。
 
 ## 5. 已玩/未玩双色填充（重点）
 
@@ -131,7 +149,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 - 重绘：`graph.js:305 redrawPauseMarkers()`——对启用视图逐视图重画。渲染完成（`graph.js:662`）、暂停开关变更（`settings.js:581`）、新增标记后（`graph.js:326`）都会触发。
 - 清除：`graph.js:246 clearPauseMarkersDom(view = null)`（带 view 清单个，否则清全部）；`graph.js:311 clearAllPauseMarkers()`（同时清空 `pauseMarkerTimes`、`pauseCount` 并刷新 HUD）；`graph.js:329 resetPauseRuntime(clearMarkers)` 在 `clearMarkers` 时调用前者。
 - 清空时机：`clearDiffGraph`（`graph.js:339`）、加载（`graph.js:388`）、错误（`graph.js:426`）、设置关闭（`settings.js:569-577` 清空数组）。
-- 联动：`socketHandlers.js:62-72` 在回退到最早暂停点之前时 `resetPauseRuntime(true)`，实现"重绕即清除旧暂停标记"。
+- 联动：`socketHandlers.js:77-87` 在回退到最早暂停点之前时 `resetPauseRuntime(true)`，实现"重绕即清除旧暂停标记"。
 
 ## 7. 常量（config.js graph 块）
 
@@ -155,7 +173,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ## 8. 其他入口与注意事项
 
-- **显示切换**：`graph.js:655 updateDiffTextVisibility()` 统一按 `state.diffText` 切换右上区域（Difficulty 文本 / header 图 / MSD 等右胶囊）的可见性：`Graph` 显示 header 图（`graph.js:658`），`Difficulty` 显示估计难度（`graph.js:657`），`MSD/Pattern/ReworkSR/InterludeSR` 显示右胶囊（`graph.js:659-662`）；`None` 时隐藏 caption（`graph.js:680`）。无任何图表模式启用时调用 `clearDiffGraph()`（`graph.js:704-705`）。
+- **显示切换**：`graph.js:723 updateDiffTextVisibility()` 统一按 `state.diffText` 切换右上区域（Difficulty 文本 / header 图 / MSD 等右胶囊）的可见性：`Graph` 显示 header 图（`graph.js:658`），`Difficulty` 显示估计难度（`graph.js:657`），`MSD/Pattern/ReworkSR/InterludeSR` 显示右胶囊（`graph.js:659-662`）；`None` 时隐藏 caption（`graph.js:680`）。无任何图表模式启用时调用 `clearDiffGraph()`（`graph.js:704-705`）。
 - **数值难度**：`graph.js:720 setNumericDifficultyValue(value, hint)` 写入 `state.numericDifficulty` / `numericDifficultyHint`；`graph.js:737 setForceHideNumericDifficulty(value)` 强制隐藏。两者仅在 `diffText === "Difficulty"` 时触发 caption 重渲染（`graph.js:732`、`graph.js:744`）。caption 文本由 `graph.js:199 formatEstimateDifficultyCaption()` 生成（含 `[实际算法]` 前缀、`RCxx|LNxx*` 双值格式）。
 - **游标可见性**：`graph.js:376 setGraphCursorVisible(visible)`——隐藏时对启用视图强制隐藏游标与游标点（`graph.js:378-385`），防止禁用视图残留游标。
 - **图表是否启用**：由 `state.diffText` 与 `contentBar` 共同判定（`hasAnyGraphModeEnabled`，见 §2.2），与缓存快照的 coverage 检查相关（详见 [result-cache.md](../pipeline/result-cache.md)）。

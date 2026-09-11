@@ -112,7 +112,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 | Etterna WASM | `js/app/analysis.js:152-159 buildEtternaAnalyzeOptions` | `musicRate: state.speedRate`（analysis.js:154） |
 | 估算器（Worker/主线程） | analysis.js:441-447 `estimatorOptions` | `speedRate: state.speedRate`（analysis.js:442），经 `runInWorker`/`runXxxEstimatorFromText` 透传 |
 | Interlude | analysis.js:590 `calculateInterludeStar(rawText, state.speedRate, state.cvtFlag)` → `js/interlude/index.js:14 calculateInterludeStar(source, rate, cvtFlag)` | 第二参数 rate |
-| 歌曲时间换算 | socketHandlers.js:54-60 | `liveTimeMs / speedRate` 得到谱面时间轴（beatmap time 是原速时间，需除速率还原） |
+| 歌曲时间换算 | socketHandlers.js:54-75 | `liveTimeMs / speedRate` 得到谱面时间轴（beatmap time 是原速时间，需除速率还原） |
 
 ## 5. odFlag / cvtFlag 语义
 
@@ -168,7 +168,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 ## 7. modSignature 在缓存键中的作用
 
-缓存键 = `star-v4|state.estimatorAlgorithm|state.lastBeatmapIdentity|state.modSignature`（`js/app/analysis.js:305`，`star-v4` 为星数统一语义的版本前缀；v4 起另作废 Etterna 难度前缀修复前的错误首块快照，见 result-cache.md §5）：
+缓存键 = `star-v6|state.estimatorAlgorithm|state.lastBeatmapIdentity|state.modSignature`（`js/app/analysis.js:395`，`star-v6` 为缓存语义版本前缀，沿革见 result-cache.md §5）：
 
 - mod 变化 → `modSignature` 变化 → 缓存键变化 → 旧快照 miss → 重新计算。同一谱面开 DT 与不开 DT 是**两个缓存条目**，互不污染。
 - 键的第三段就是 §3 的四元组签名（速率/OD/cvt/classic 任一变化即换键）。

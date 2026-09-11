@@ -119,6 +119,7 @@
 - **Mixed 低难段 RC 融合**：Azusa⊕Companella 0.5/0.5（scope=azusa<11 + star<9 门控，`onDisagree` 回落分支原赢家，详见 §3.6 与 difficulty-estimation.md §3.6）。
 - **Azusa LN 门控生效**：`rcLnRatioLimit=0.18` 在入口断言（此前只存在于文档，见 §3.5）。
 - **缓存键 bump star-v4 → star-v5**（低难 numeric/estDiff 语义变化）。
+- **缓存键 bump star-v5 → star-v6**（Roxy `graph` 时间轴从 canonical 还原为原始谱面时间；旧快照的 `times` 会导致图表 x 轴窗口与进度线错位——见 [graph-visualization.md](../features/graph-visualization.md) §4.5 与 roxy_algorithm.md）。
 
 Benchmark（harness harness before/after，746 行，官方 results 为旧代码口径不可直接对比）：
 

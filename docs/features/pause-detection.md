@@ -18,8 +18,8 @@
 
 `ManiaMapAnalyser by Leo_Black/js/app/socketHandlers.js:47` 的 `updateSongTimeState(data)` 是暂停检测的唯一驱动入口。每个 tosu 数据帧到达时：
 
-1. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:54-55`）。
-2. 记录 `state.songStartMs` / `state.songEndMs`（谱面第一个/最后一个物件的谱面时间，`socketHandlers.js:57-60`），作为判定时间轴边界。
+1. 记录 `state.songStartMs` / `state.songEndMs`（谱面第一个/最后一个物件的谱面时间，按 `state.speedRate` 缩放），作为判定时间轴边界。该步**不依赖 live 时间**，位于 `liveTimeMs` 的 early-return 之前（`socketHandlers.js:50-69`）；时间线变化还会触发 `refreshGraphTimeline()` 重建难度图表（见 [graph-visualization.md](graph-visualization.md) §4.5）。
+2. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:71-75`）；无 live 时间的帧到此为止。
 3. 读取 **tosu api_v2 原生暂停标志** `data?.game?.paused`（`socketHandlers.js:95`）——游戏是否暂停由 tosu 直接上报，**不再**通过"谱面时间冻结 ≥ 阈值"来推断。
 
 ### 2.2 状态转移（socketHandlers.js:91-116）
@@ -39,7 +39,7 @@
 
 **兼容性**：旧版 tosu 的 api_v2 若无 `game.paused` 字段（undefined），一律视为未暂停——暂停检测静默不可用，不影响其余功能；无需任何回退启发式。
 
-### 2.3 时间线回退清理（socketHandlers.js:62-72）
+### 2.3 时间线回退清理（socketHandlers.js:77-87）
 
 若已收集暂停标记，且当前谱面时间倒退到**最早标记之前**（`scaledLiveTimeMs + PAUSE_DETECT_EPSILON_MS < earliestPauseTimeMs`），说明时间线被重置（如重开本图），调用 `resetPauseRuntime(true)` 清空全部标记与计数。
 
@@ -111,8 +111,8 @@
 
 1. **不受游戏卡顿影响**：暂停判定基于 tosu 上报的 `game.paused` 原生标志，谱面时间帧间冻结（掉帧/卡顿）不会产生误判；原"卡顿误判需调高阈值"的问题因阈值移除而自然消失。
 2. **仅在游玩状态工作**：`socketHandlers.js:91` 要求 `state.isInPlayState` 为真，结算界面/选图界面不检测。
-3. **时间线回退清标记**：谱面时间倒退到最早标记之前（重开本图等）触发 `resetPauseRuntime(true)` 清空标记与计数（`socketHandlers.js:62-72`）。
+3. **时间线回退清标记**：谱面时间倒退到最早标记之前（重开本图等）触发 `resetPauseRuntime(true)` 清空标记与计数（`socketHandlers.js:77-87`）。
 4. **末尾缓冲**：进入谱面最后 500ms 后不再记录暂停标记（`atTimelineEnd`）；首物件之前同样不记录（`beforeStart`），避免谱面开始/结束的收尾帧产生无效标记。
 5. **旧版 tosu 兼容**：api_v2 无 `game.paused` 字段时（undefined）视为未暂停——暂停检测静默不可用，不报错、不影响其余功能。
-6. **倍速归一化**：标记时间基于倍速缩放后的谱面时间（`socketHandlers.js:54-55`），DT/HT 下标记位置与谱面时间轴一致。
+6. **倍速归一化**：标记时间基于倍速缩放后的谱面时间（`socketHandlers.js:71-75`），DT/HT 下标记位置与谱面时间轴一致。
 7. **禁用即清理**：关闭 `enablePauseDetection` 会立即清空已收集的标记与计数（`settings.js:569-577`），此后暂停检测不再运行。

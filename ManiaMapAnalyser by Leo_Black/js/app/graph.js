@@ -141,13 +141,33 @@ function setGraphLoadingTextVisible(view, visible) {
     loadingTextEl.hidden = !visible;
 }
 
+// 谱面时间线（tosu beatmap.time.firstObject）常晚于首次渲染才补全：选歌阶段
+// 该字段为 0 / 缺失，真正载入谱面后才给出首个物件的谱面时间。这里的裁剪只在
+// 渲染时快照一次，所以时间线变化必须触发 refreshGraphTimeline 重建（否则整首歌
+// 都会保留前奏空档，进度线也一起偏）。
+function currentTimelineStartMs() {
+    const raw = state.songStartMs;
+    // Number(null) === 0 —— 显式区分"未知时间线"，否则会被当成 firstObject=0 的历史值。
+    if (raw === null || raw === undefined || raw === "") {
+        return null;
+    }
+    const startTime = Number(raw);
+    return Number.isFinite(startTime) ? startTime : null;
+}
+
+/** 丢弃重建源：曲线被清空 / 进入加载态 / 渲染失败时，不再按新时间线重画旧数据。 */
+function dropGraphSeriesSource() {
+    state.graphSeriesSource = null;
+    state.graphSeriesTimelineStartMs = null;
+}
+
 function trimSeriesStartToFirstObject(series) {
     if (!series || !Array.isArray(series.times) || !Array.isArray(series.values)) {
         return null;
     }
 
-    const startTime = Number(state.songStartMs);
-    if (!Number.isFinite(startTime)) {
+    const startTime = currentTimelineStartMs();
+    if (startTime === null) {
         return series;
     }
 
@@ -338,6 +358,7 @@ export function resetPauseRuntime(clearMarkers = false) {
 
 export function clearDiffGraph() {
     state.graphSeries = null;
+    dropGraphSeriesSource();
 
     forEachGraphView((view) => {
         if (view.svgEl) {
@@ -390,6 +411,12 @@ export function setGraphLoading(isLoading) {
         return;
     }
 
+    if (isLoading) {
+        // 进入加载态 = 当前曲线即将被替换：丢弃重建源，避免正在分析时
+        // 时间线变化把上一张图的曲线重新画回加载骨架上。
+        dropGraphSeriesSource();
+    }
+
     forEachEnabledGraphView((view) => {
         if (!view.svgEl || !view.fillEl || !view.lineEl) {
             return;
@@ -430,6 +457,7 @@ export function showDiffGraphError(message) {
 
     setGraphLoading(false);
     state.graphSeries = null;
+    dropGraphSeriesSource();
     forEachEnabledGraphView((view) => {
         clearGraphScanEnter(view);
         if (view.cursorEl) {
@@ -556,16 +584,22 @@ function f1(v) {
     return Number.isFinite(v) ? v.toFixed(1) : "0";
 }
 
-export function renderDiffGraph(graphData) {
+export function renderDiffGraph(graphData, options = {}) {
     if (!hasAnyGraphModeEnabled()) {
         return false;
     }
+
+    const animate = options.animate !== false;
 
     const normalizedSeries = normalizeGraphSeries(graphData, GRAPH_RESAMPLE_INTERVAL_MS);
     if (!normalizedSeries) {
         showDiffGraphError("Graph unavailable");
         return false;
     }
+
+    // 未裁剪的归一化序列留作重建源：渲染时的时间线只是快照（见
+    // trimSeriesStartToFirstObject），refreshGraphTimeline 用它按新时间线重画。
+    state.graphSeriesSource = normalizedSeries;
 
     const { minYValue: preMinY, maxYValue: preMaxY } = normalizedSeries;
 
@@ -657,13 +691,33 @@ export function renderDiffGraph(graphData) {
         });
 
         state.graphSeries = { times, values, minTime, maxTime, minYValue, maxYValue };
+        state.graphSeriesTimelineStartMs = currentTimelineStartMs();
 
-        forEachEnabledGraphView((view) => { triggerGraphScanEnter(view); });
+        if (animate) {
+            forEachEnabledGraphView((view) => { triggerGraphScanEnter(view); });
+        }
         redrawPauseMarkers();
         updateGraphCursor();
     });
 
     return true;
+}
+
+/**
+ * 按当前谱面时间线重建图表。渲染时 songStartMs 可能尚未由 tosu 补全
+ * （选歌阶段为 0 / 缺失），x 轴窗口会被写成含前奏的整段；时间线补全后
+ * 必须重画，否则前奏空档与进度线偏移会保留整首歌。
+ * 时间线未变化时不做任何事（每包调用，必须廉价）。
+ */
+export function refreshGraphTimeline() {
+    const source = state.graphSeriesSource;
+    if (!source || !hasAnyGraphModeEnabled()) {
+        return false;
+    }
+    if (state.graphSeriesTimelineStartMs === currentTimelineStartMs()) {
+        return false;
+    }
+    return renderDiffGraph(source, { animate: false });
 }
 
 export function updateDiffTextVisibility() {
