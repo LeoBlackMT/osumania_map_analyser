@@ -85,6 +85,8 @@ The transform is applied to:
 
 After this step, using `speedRate = 1.3` on an original chart is intended to follow the same analysis path as an equivalent pre-speeded `1.3x` `.osu` file. Roxy uses `floor` for timestamp conversion because the benchmark pre-speeded `.osu` files follow floor-style integer conversion.
 
+The rewrite is an analysis-internal transform: all scalar outputs (`star`, `numericDifficulty`, `estDiff`) depend only on relative structure and are unaffected by the shift. The one output that is *not* shift-invariant is `graph.times`, which is restored to the caller's chart timeline before returning — see §17.
+
 ## 5. Row Model
 
 Rows are built from the canonicalized text. In the normal analysis path this means:
@@ -448,6 +450,16 @@ This prevents Roxy from displaying `Iota` or higher labels while still allowing 
 ## 17. Graph Output
 
 The numeric calculation uses Roxy's structural strain data. The returned `graph` field does not use Roxy's local strain series. When graph output is requested, Roxy returns the graph provided by the Azusa reference call, which currently resolves to Azusa/Sunny graph data.
+
+**Time axis.** That reference call runs on the *canonicalized* analysis text (§4), whose timeline is shifted so the first object sits at `canonicalFirstObjectMs = 1000`. Estimation only cares about relative structure, so the shift is invisible in `star` / `numericDifficulty` / `estDiff` — but `graph.times` is plotted point-by-point against the chart timeline, so returning it shifted would misplace the whole curve relative to the playhead. Every other estimator (Sunny / Daniel / Azusa) returns `graph.times` in the caller's chart timeline (`rawTime / speedRate`); Roxy therefore reverses the shift before returning:
+
+```
+restoredTime = canonicalTime + firstObjectTime / speedRate - canonicalFirstObjectMs
+```
+
+The inverse is applied only when the rewrite actually happened (`canonicalizeOsuTiming` reports `applied: true`), so an un-rewritten text passes through unchanged. Consumers (the plugin's difficulty graph, the benchmark runner) can rely on one timeline contract for every estimator.
+
+> Regression note (issue #68): before this restoration, a chart whose lead-in was longer than its playable section pushed `beatmap.time.firstObject / speedRate` past the shifted series' `maxTime`; the plugin clamps the progress cursor into the series window, so the cursor sat pinned at the far right and never moved for the whole play. Cache prefix bumped `star-v5` → `star-v6` (see [pipeline/result-cache.md](pipeline/result-cache.md) §5) to invalidate snapshots holding shifted `times`.
 
 ## 19. Marathon Duration Correction (Estimator-Embedded)
 

@@ -391,7 +391,9 @@ export async function fetchBeatmapFile(reason) {
     //   同 identity 的旧快照（错误的首块结果）必须失效。
     // star-v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控生效，
     //   低难图的 numeric/estDiff 语义变化 → 旧快照必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v5";
+    // star-v6：Roxy 的 graph 时间轴还原为原始谱面时间（此前是 canonicalizeOsuTiming
+    //   平移过的分析文本时间轴），旧快照里的 times 会让整张图的 x 轴窗口与进度线错位。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;

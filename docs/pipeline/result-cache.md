@@ -57,7 +57,7 @@ fetchBeatmapFile() → 查缓存（analysis.js:308-317）
 `analysis.js:305`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v4"; // 星数统一为 Sunny 原始 sr 后作废旧快照（v3→v4 见下）
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
@@ -65,7 +65,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v4` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:305） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废** |
+| `star-v6` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:394） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:88） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
 | `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
