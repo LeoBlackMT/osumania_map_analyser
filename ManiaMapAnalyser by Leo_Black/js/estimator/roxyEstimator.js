@@ -459,8 +459,32 @@ function canonicalizeOsuTiming(osuText, speedRate) {
     };
 }
 
-function buildTapRows(parsed, speedRate, toleranceMs) {
-    const taps = [];
+/**
+ * canonicalizeOsuTiming 把分析文本的时间轴整体平移成"首个物件 = ROXY_CANONICAL_FIRST_OBJECT_MS"。
+ * 估算只看相对结构，平移不影响星数；但 graph 是逐点按谱面时间绘制的，必须还原到调用方
+ * 传入的原始谱面时间轴（与 Sunny/Daniel/Azusa 同口径）。
+ * 否则图表 x 轴窗口与进度线都按被平移过的时间轴映射：前奏越长偏得越多，当前奏长于
+ * 可玩段时 songStartMs 会超过被压缩后的 maxTime，游标被钉死在最右侧且整首歌不动。
+ */
+function restoreGraphTimeline(graph, timing, speedRate) {
+    if (!graph || timing?.applied !== true || !Array.isArray(graph.times)) {
+        return graph;
+    }
+
+    // 逆变换：canonical = raw / rate - firstObject / rate + CANONICAL_FIRST_OBJECT_MS
+    const offset = Number(timing.firstTime) / speedRate - ROXY_CANONICAL_FIRST_OBJECT_MS;
+    if (!Number.isFinite(offset) || offset === 0) {
+        return graph;
+    }
+
+    const { times } = graph;
+    for (let i = 0; i < times.length; i += 1) {
+        times[i] += offset;
+    }
+    return graph;
+}
+
+function buildTapRows(parsed, speedRate, toleranceMs) {    const taps = [];
     const columns = Array.isArray(parsed.columns) ? parsed.columns : [];
     const starts = Array.isArray(parsed.noteStarts) ? parsed.noteStarts : [];
     const types = Array.isArray(parsed.noteTypes) ? parsed.noteTypes : [];
@@ -1613,7 +1637,9 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
             estDiff,
             numericDifficulty: finalNumeric,
             numericDifficultyHint: "roxy-meta-ridge-v3",
-            graph: options.withGraph === true ? (metaDetails.graph || null) : null,
+            graph: options.withGraph === true
+                ? restoreGraphTimeline(metaDetails.graph, timing, speedRate)
+                : null,
             rawNumericDifficulty: Number(numericDetails.rawNumeric.toFixed(4)),
             debug: {
                 notes: taps.length,

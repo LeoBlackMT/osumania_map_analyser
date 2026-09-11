@@ -8,6 +8,8 @@
 
 难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
 
+**时间轴契约（重要）**：`rework.graph.times` 必须与 `state.songStartMs` / `state.songTimeMs` 同域，即**按 `speedRate` 缩放后的原始谱面时间**（`rawTime / speedRate`）。Sunny / Daniel / Azusa 天然如此；Roxy 的分析文本会被 `canonicalizeOsuTiming` 平移，因此它在返回前会把 `graph.times` 逆变换回原始时间轴（见 [roxy_algorithm.md](../roxy_algorithm.md) §4、§17）。**新增/修改估算器时若输出 graph，必须遵守该契约**——否则裁剪窗口、游标映射、暂停标记全部按错误的时间轴走。
+
 图表有**两处独立的显示位置**（双图结构），共用同一份数据与同一套渲染逻辑：
 
 | 视图 | DOM | 启用条件 | 显示位置 |
@@ -91,7 +93,9 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ### 4.5 谱面时间线补全后的重建 refreshGraphTimeline
 
-x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObject / speedRate`）裁剪，但这个值**是异步补全的**：选歌阶段 tosu 常给出 `firstObject: 0`（或字段缺失），真正载入谱面后才给出首个物件时间。设计谱面（长前奏）下若只在渲染时裁剪一次，整首歌都会保留前奏空档——曲线左段是贴底的 0 难度（视觉上空缺），进度线也随之偏移，直到用户改设置 / 换图触发重算才恢复。
+x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObject / speedRate`）裁剪，但这个值**是异步补全的**：选歌阶段 tosu 可能给出 `firstObject: 0`（或字段缺失），真正载入谱面后才给出首个物件时间。设计谱面（长前奏）下若只在渲染时裁剪一次，整首歌都会保留前奏空档——曲线左段是贴底的 0 难度（视觉上空缺），进度线也随之偏移，直到用户改设置 / 换图触发重算才恢复。
+
+> 注意区分两类成因：本节处理的是"谱面时间线晚到"，而 [roxy_algorithm.md](../roxy_algorithm.md) §17 处理的是"图表序列时间轴与谱面时间线不同域"。后者（Roxy 的 canonical 时间轴）会让 `songStartMs` 超过被压缩后的 `maxTime`，游标被 clamp 钉死在最右侧且整首歌不动——本节的重建无法修复它，必须由估算器侧还原时间轴。
 
 重建链路：
 
