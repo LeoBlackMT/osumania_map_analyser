@@ -37,7 +37,7 @@ Malody（编辑器插件 WriteFile `<base>_mma_request.json` → 壳 ≤1Hz 扫 
   - L3 hold 只作用于当前源，他源新鲜事件无游玩态可抢占；窗口过期按 osu>Etterna>Malody 重选；
   - L3' 存活回窗（无窗口源时 tosu 在线 → osu）；
   - L4 全离线 → 无源（圆点灰空心）。
-- 切源 debounce 200ms，旧结果保留；源圆点（状态行末端）：三色实心（osu! #635bff / Etterna #0d9c5f / Malody #f5a623，与遥测 Client 饼图一致）或灰空心（无源）。
+- 切源 debounce 200ms，旧结果保留；源圆点（状态行末端）：三色实心（osu! #ff66aa / Etterna #a855f7 / Malody #3b82f6，各源品牌色）或灰空心（无源）。
 
 ## osu 败方门控
 
@@ -71,7 +71,7 @@ Technical document for AI readers. Human installation guides: `docs/shell-guide.
 Adds Etterna and Malody V as live data sources beside osu!mania/tosu, with automatic follow on game switch. **Zero algorithm-layer changes**: `.sm/.ssc/.mc` are converted to `.osu` text and enter the existing pipeline.
 
 - Converters: `js/parser/{smSscToOsuConverter,mcToOsuConverter}.js` (vendor simfile-parser MIT, STOPS/DELAYS baked, key-count from row width, LN tail fix; OD9/HP8/AR5; real samples and test scripts stay local-only).
-- Router: `js/app/sources/sourceManager.js` decision table L1–L4+L3' (play-state > 60s fresh-event window with hold/preempt > priority reselect > tosu-alive re-entry > none); forced `gameClient`; source dot colors match telemetry pie.
+- Router: `js/app/sources/sourceManager.js` decision table L1–L4+L3' (play-state > 60s fresh-event window with hold/preempt > priority reselect > tosu-alive re-entry > none); forced `gameClient`; source dot uses each game's brand color (osu! pink / Etterna purple / Malody blue).
 - osu gate: beatmap-state handler suspended while another source routes (signals exempt, buffered replay on return).
 - Bridge contract: `desktop/docs/CONTRACT.md` (v2).
 - Telemetry: analyze `client` field, dashboard Client pie with Version on its own row.

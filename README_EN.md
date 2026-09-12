@@ -23,7 +23,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution in the beatmap to help players understand its structure.
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
 - **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
-- **Etterna/Malody Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! blue / Etterna green / Malody orange).
+- **Etterna/Malody Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! pink / Etterna purple / Malody blue).
 - **Desktop Shell**: A standalone always-on-top/transparent/borderless mini window.
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 
