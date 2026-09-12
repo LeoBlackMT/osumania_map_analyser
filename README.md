@@ -36,6 +36,7 @@
 ## 难度估计算法基准测试
 - 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
 - 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
+- 受限于人工标注误差以及个人差异，目前在700+样本量下的难度估计准确度已经接近极限，如果你有兴趣参与，可以参与到算法的改进中来，帮助提升难度估计的准确性。
 - 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
 
 ## 注意事项
@@ -82,7 +83,7 @@
 - [greycsont](https://github.com/greycsont): 提供了部分功能。
 - [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式。
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
-- [未来lk](https://www.bilibili.com/space/419035379): 赞助了300M Token。
+- [未来lk](https://space.bilibili.com/419035379): 赞助了300M Token。
 
 ---------
 本页累计访问量，自2026/6/21起统计，感谢大家的支持！

@@ -38,6 +38,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 ## Estimator Algorithm Benchmark
 - The benchmark has been migrated to the separate repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and the results can be viewed [here](https://benchmark.leoblack.top/). The tests cover the performance of multiple algorithms across different types of beatmaps, helping players choose the one that suits them best.
 - It is important to note that while the benchmark provides a reference for algorithm performance, actual usage may be influenced by various factors such as beatmap characteristics and mod combinations. Players are encouraged to combine the benchmark results with their own gameplay experience for judgment.
+- Due to the limitations of manual annotation errors and individual differences, the current accuracy of difficulty estimation has approached its limit with over 700 samples. If you are interested in participating, you can contribute to the improvement of the algorithms to help enhance the accuracy of difficulty estimation.
 - You can download the beatmap data used for benchmarking [here](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z). However, please read the disclaimer and use the data responsibly.
 
 ## Notes
@@ -82,7 +83,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 - [greycsont](https://github.com/greycsont): Contributed several features.
 - [ZHAO20060708](https://github.com/ZHAO20060708): Provided the polished Lazer theme and Full mode design.
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): Provided the improved Sunny LN algorithm.
-- [未来lk](https://www.bilibili.com/space/419035379): Sponsored 300M Tokens.
+- [未来lk](https://space.bilibili.com/419035379): Sponsored 300M Tokens.
 
 ---------
 This page has been viewed since June 21, 2026, thanks for your support!
