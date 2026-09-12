@@ -21,13 +21,13 @@
 
 ## 2. 为什么：缓存键不含这些设置
 
-缓存键是版本前缀 + 三段（`analysis.js:305`）：
+缓存键是版本前缀 + 三段（`analysis.js:398`）：
 
 ```js
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-即 `star-v6|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v6 起因：Roxy `graph` 时间轴还原，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
+即 `star-v7|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v6 起因：Roxy `graph` 时间轴还原，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
 键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表 + 命中重派生。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 
@@ -103,7 +103,7 @@ if 块条件在 `settings.js:835-848`，`clearResultCache()` 调用在 `settings
 
 | # | 条件变量（settings.js:835-848） | 设置 | 为何影响计算结果 |
 | --- | --- | --- | --- |
-| 1 | `estimatorChanged` | estimatorAlgorithm | 算法选择。注：算法名已在缓存键中（`analysis.js:305` 第一段），失效属冗余保险（防未来键改动的 belt-and-suspenders） |
+| 1 | `estimatorChanged` | estimatorAlgorithm | 算法选择。注：算法名已在缓存键中（`analysis.js:398` 第一段），失效属冗余保险（防未来键改动的 belt-and-suspenders） |
 | 2 | `azusaSunnyReferenceHoChanged` | azusaSunnyReferenceHo | 改变 Azusa 的 Sunny 参考阈值 → 改变谱面被接受/回退的判定 → 改变实际结果与 `actualEstimatorAlgorithm` |
 | 3 | `etternaVersionChanged` | etternaVersion | 不同 MinaCalc 版本算出的 MSD 不同（快照含 `ettResult`） |
 | 4 | `companellaEtternaVersionChanged` | companellaEtternaVersion | Companella 自带 Ett 版本，同上影响 MSD |
@@ -220,15 +220,15 @@ const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(v
 }, { skip: isMetaDegraded });
 ```
 
-`isMetaDegraded` 在 `analysis.js:306` 判定（identity 以 `meta:` 开头）。meta 降级身份的快照**永不写入**：标题键碰撞风险、无 md5 无法检测文件替换（见 result-cache.md §8）。`skip:true` 时 `resultCache.put` 直接返回（`resultCache.js:35`），不写入、不占容量、不驱逐。**新写缓存代码必须带上这个 skip 参数**，漏了会让 meta 身份的快照污染 LRU。
+`isMetaDegraded` 在 `analysis.js:399` 判定（identity 以 `meta:` 开头）。meta 降级身份的快照**永不写入**：标题键碰撞风险、无 md5 无法检测文件替换（见 result-cache.md §8）。`skip:true` 时 `resultCache.put` 直接返回（`resultCache.js:35`），不写入、不占容量、不驱逐。**新写缓存代码必须带上这个 skip 参数**，漏了会让 meta 身份的快照污染 LRU。
 
-### 10.5 缓存键构造（`analysis.js:305`）
+### 10.5 缓存键构造（`analysis.js:398`）
 
 ```js
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-版本前缀 + 三段：缓存语义版本（`star-v6`，沿革见 result-cache.md §5）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:218-228）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+版本前缀 + 三段：缓存语义版本（`star-v7`，沿革见 result-cache.md §5）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:218-228）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
 
 ### 10.6 needComputed 推导与随快照保存（`analysis.js:775`、:322-340、:348-355）
 

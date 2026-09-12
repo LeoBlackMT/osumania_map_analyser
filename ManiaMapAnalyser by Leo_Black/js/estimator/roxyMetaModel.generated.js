@@ -47,6 +47,37 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * 退化修正项：只允许取「训练集实际覆盖到」的取值。
+ *
+ * corr_lowCj 在训练集中几乎没有变化，mean = 2.07e-4、std = 4.65e-3，而它在真实谱面上
+ * 触发时取值 0.011 ~ 0.39（实测某图 0.033 = 7σ，理论可达 84σ）。线性系数却是在特征
+ * 恒为常数的位置上拟合出来的（beta/scale = -134），所以 (f - mean) / scale 一旦落到
+ * 触发值上就会外推出极端离群项：不处理时某图被压低 4.34 分，标签从 Delta 级掉到 Beta low。
+ *
+ * 关键点：按「几个标准差」截断并不够。同一赛道上有两张几乎同源的图（同一时间轴、
+ * 90% 的行内音符数相同、98% 的音符能在对方里找到同列同刻的对应音符），只因为
+ * overlapRate 是 0.7772 对 0.7413——刚好跨过 lowCj 闸门的 0.75 下界——一张触发、
+ * 一张不触发。±3σ 截断下仍差 1.01 分（触发的那张被压低 1.86 分），而 Azusa(差 0.06)、
+ * Daniel(差 0.07) 与 Roxy 自己的 structural 层(差 0.10) 都认为两张图同难。
+ *
+ * 因此这里不按 σ 截断，而是把标准化取值限制在该特征「关闭状态」（f = 0）所能取到的
+ * 水平内：模型对「它被触发时会怎样」没有任何数据支撑，触发即视为回到训练集里的典型
+ * 谱面。这样既不丢掉它在 f ≈ mean 附近的常数贡献（+0.028，直接删除该维度会让全表整体
+ * 下移），也不会让一个训练集从未覆盖的取值决定一张图的难度。
+ *
+ * 为什么名单只有 corr_lowCj：其余 corr_* 项的病态程度低若干个量级。以 beta/scale 衡量，
+ * corr_lowCj 是 -134，corr_courseSustainLift 只有 21、corr_denseJsLift 只有 0.4，
+ * corr_handBiasLift / corr_courseBreakDamp 则恒为 0（训练集无方差，beta 本身就是 0）。
+ * 单独处理 corr_lowCj 就足以修掉报告的问题，且在 benchmark osu! 子集 746 行上不改变任何
+ * 已报出的数值；若把另外三项一并按 σ 截断则改动 7 行、其中 4 行变差（MAE 0.2424），
+ * 因为那几项在 benchmark 上携带的是有效信号。故名单按"每个特征的实际病态程度"取，
+ * 而不是按"训练统计量是否退化"一刀切。
+ */
+const ROXY_META_DEGENERATE_FEATURES = new Set([
+    "corr_lowCj",
+]);
+
 export function evaluateRoxyMetaModel(features) {
     if (!Array.isArray(features) || features.length !== ROXY_META_FEATURE_NAMES.length) {
         return Number.NaN;
@@ -54,7 +85,12 @@ export function evaluateRoxyMetaModel(features) {
     let value = ROXY_META_BETA[0];
     for (let i = 0; i < ROXY_META_FEATURE_NAMES.length; i += 1) {
         const scale = ROXY_META_SCALE[i] || 1;
-        value += ROXY_META_BETA[i + 1] * ((Number(features[i]) - ROXY_META_MEAN[i]) / scale);
+        let z = (Number(features[i]) - ROXY_META_MEAN[i]) / scale;
+        if (ROXY_META_DEGENERATE_FEATURES.has(ROXY_META_FEATURE_NAMES[i])) {
+            const offZ = Math.abs(ROXY_META_MEAN[i] / scale);
+            z = clamp(z, -offZ, offZ);
+        }
+        value += ROXY_META_BETA[i + 1] * z;
     }
     return clamp(value, -2, 30);
 }
