@@ -21,7 +21,7 @@
 - **键型分析**：分析谱面中的RC/LN键型分布，帮助玩家了解谱面结构。
 - **Rework PP**：提供Rework PP难度表现面板，显示Max PP/Live PP、Proportion及各乘子柱状图，游玩/结算时实时更新。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
-- **Etterna/Malody支持**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
+- **Etterna/Malody支持**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 粉 / Etterna 紫 / Malody 蓝）。
 - **桌面壳**：独立置顶/透明/无边框小窗口。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
 
