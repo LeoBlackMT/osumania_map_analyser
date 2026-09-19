@@ -7,7 +7,8 @@
 //    优先复用 options.precomputedSunnyResult，避免重复计算；
 //  - 只处理 4K；**输出只含 LN 难度**（形如 "LN 7 mid/high"，与区间表同一套 tier 词表），
 //    不拼接 RC 半；`numericDifficulty` 置 null（该算法不产出 RC 数值）；
-//  - 显式选定该算法时跳过源的 LN 候选门（forceLn=true），任意 4K 谱面都给出 LN 判决；
+//  - 只有通过源的 LN 候选门的谱面才有 LN 判决；不是候选（含 LN% ≈ 0 的纯 RC 图）时输出
+//    "Unknown difficulty"（胶囊仍为 aleju03，原因写在 aleju03Ln.reason）；
 //  - 非 4K、解析失败或特征提取失败时整体回退 Sunny，`actualEstimatorAlgorithm` 记为 "Sunny"，
 //    原因写在 `aleju03Ln.reason`。
 // 共享纯函数：禁止 window/document，禁止 import js/app/。
@@ -130,20 +131,7 @@ export function runAleju03EstimatorFromText(osuText, options = {}, parsed = null
     if (map.notes.length === 0) {
         return { ...fallback, aleju03Ln: { applied: false, reason: "no-notes" } };
     }
-
-    // LN% = 0（谱面完全不含长条）：参考邻域模型对这类谱面没有语义，回归兜底会给出误导性的
-    // 数字，因此显式返回 Unknown difficulty（选择本算法时 LN%=0 一律 Unknown）。
     const holdCount = map.notes.filter((note) => note.isHold).length;
-    if (holdCount === 0) {
-        return {
-            ...sunny,
-            estDiff: "Unknown difficulty",
-            numericDifficulty: null,
-            numericDifficultyHint: null,
-            actualEstimatorAlgorithm: "aleju03",
-            aleju03Ln: { applied: false, reason: "no-ln-content" },
-        };
-    }
 
     const starRating = Number(sunny?.star);
     let features = null;
@@ -164,14 +152,26 @@ export function runAleju03EstimatorFromText(osuText, options = {}, parsed = null
             rate,
             true,
             extractDanFeatures,
-            true,
         );
     } catch {
         return { ...fallback, aleju03Ln: { applied: false, reason: "ln-estimate-failed" } };
     }
 
     if (!estimate) {
-        return { ...fallback, aleju03Ln: { applied: false, reason: "not-an-ln-candidate" } };
+        // 不是 LN 候选（含 LN% ≈ 0 的纯 RC 图）：参考邻域模型对这类谱面没有语义，回归兜底给出的
+        // 数字只由 Sunny sr / NPS 决定，与谱面 LN 含量无关（实测高星纯 RC 图可到 LN 17），
+        // 因此一律 Unknown difficulty 而不是硬凑一个 LN 值。
+        return {
+            ...sunny,
+            estDiff: "Unknown difficulty",
+            numericDifficulty: null,
+            numericDifficultyHint: null,
+            actualEstimatorAlgorithm: "aleju03",
+            aleju03Ln: {
+                applied: false,
+                reason: holdCount === 0 ? "no-ln-content" : "not-an-ln-candidate",
+            },
+        };
     }
 
     const lnLabel = formatLnLabel(estimate);

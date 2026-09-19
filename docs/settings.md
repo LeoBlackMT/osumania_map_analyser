@@ -111,7 +111,7 @@
         - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
-        - aleju03: 面向4K LN的结构化估计算法，移植自 [Mania Tracker](https://github.com/aleju03/mania-hub) ，适用于4K LN谱面。选中后只显示 LN 难度；谱面完全不含长条（LN% = 0）时显示 Unknown difficulty。
+        - aleju03: 面向4K LN的结构化估计算法，移植自 [Mania Tracker](https://github.com/aleju03/mania-hub) ，适用于4K LN谱面。选中后只显示 LN 难度。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
@@ -254,7 +254,7 @@
         - Sunny: Maps directly to Dan star ratings using Suuny Rework. Compatible with LN and RC Dans for 4/6/7K.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
-        - aleju03: A structured 4K LN estimator, ported from [Mania Tracker](https://github.com/aleju03/mania-hub), compatible with 4K LN beatmaps. When selected it shows LN difficulty only; a beatmap with no hold objects at all (LN% = 0) shows Unknown difficulty.
+        - aleju03: A structured 4K LN estimator, ported from [Mania Tracker](https://github.com/aleju03/mania-hub), compatible with 4K LN beatmaps. When selected it shows LN difficulty only.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.
