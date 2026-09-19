@@ -676,7 +676,7 @@ function splitCourseComponents(map) {
     return splitComponentsByRawGaps(map);
 }
 
-function estimateLnCourseFromComponents(map, input, starRating, rate, extractDanFeatures) {
+function estimateLnCourseFromComponents(map, input, starRating, rate, extractDanFeatures, forceLn) {
     const components = splitCourseComponents(map);
     if (components.length < 3) return null;
 
@@ -692,6 +692,7 @@ function estimateLnCourseFromComponents(map, input, starRating, rate, extractDan
                 rate,
                 false,
                 extractDanFeatures,
+                forceLn,
             );
         })
         .filter((estimate) => estimate !== null);
@@ -710,12 +711,15 @@ function estimateLnCourseFromComponents(map, input, starRating, rate, extractDan
 /**
  * LN dan 估计主入口（源文件 `estimateLnDan`）。
  * `extractDanFeatures` 由调用方注入，避免本模块依赖 features.js 造成循环。
+ * `forceLn` 为本仓库新增开关（源实现没有）：显式选定 aleju03 时跳过 LN 候选门，
+ * 让任意 4K 谱面都能拿到 LN 判决（候选门不过则直接走回归兜底）；
+ * Mixed 的低段接管保持 forceLn=false，维持源的候选门语义。
  */
-export function estimateLnDan(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation = true, extractDanFeatures = null) {
-    return estimateLnDanInternal(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation, extractDanFeatures);
+export function estimateLnDan(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation = true, extractDanFeatures = null, forceLn = false) {
+    return estimateLnDanInternal(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation, extractDanFeatures, forceLn);
 }
 
-function estimateLnDanInternal(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation, extractDanFeatures) {
+function estimateLnDanInternal(map, input, metrics, starRating, durationMs, rate, allowCourseSegmentation, extractDanFeatures, forceLn = false) {
     const metadata = `${map.title ?? ""} ${map.version ?? ""} ${input.title ?? ""} ${input.version ?? ""}`
         .toLowerCase()
         .replace(/\s+/g, " ")
@@ -744,10 +748,11 @@ function estimateLnDanInternal(map, input, metrics, starRating, durationMs, rate
         && metrics.lnHoldDurationP90 >= 160
     );
     const lnCandidate = metadataLnSignal || chartLnSignal;
-    if (!lnCandidate) return null;
+    // forceLn：显式选择 aleju03 时不因候选门放弃（任意 4K 谱面都给 LN 判决）。
+    if (!lnCandidate && !forceLn) return null;
 
     if (allowCourseSegmentation && extractDanFeatures) {
-        const courseEstimate = estimateLnCourseFromComponents(map, input, starRating, rate, extractDanFeatures);
+        const courseEstimate = estimateLnCourseFromComponents(map, input, starRating, rate, extractDanFeatures, forceLn);
         if (courseEstimate) return courseEstimate;
     }
 

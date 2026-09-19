@@ -105,12 +105,13 @@
     - **Analyze LN Parts**: 按LN分析谱面成分。
         - 显示谱面中有多少部分属于LN/HB/Mix/RC，并显示在左下角谱面标签胶囊中。
     - **Estimator Algorithm**: 选择用于难度估计的算法。
-        - Mixed: (推荐)综合下方四个算法的混合算法，准确度相对较高。自动选择适配当前谱面的算法。
+        - Mixed: (推荐)综合下方若干算法的混合算法，准确度相对较高。自动选择适配当前谱面的算法。
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
         - Roxy: 面向4K RC的元结构估算器。使用结构分析对谱面进行建模，再通过GBDT元模型融合Azusa/Sunny/Daniel的参考预测。
         - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
+        - aleju03: 面向4K LN的结构化估计算法，移植自 [Mania Tracker](https://github.com/aleju03/mania-hub) ，适用于4K LN谱面。选中后只显示 LN 难度。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
@@ -247,12 +248,13 @@
     - **Analyze LN Parts**: Analyze LN Parts by LN
         - Display the percentage of beatmaps which are in LN/HB/Mix/RC parts, and show it in the bottom-left beatmap tag capsule.
     - **Estimator Algorithm**: Choose the algorithm used for difficulty estimation.
-        - Mixed: (Recommended) A hybrid algorithm combining the four below, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
+        - Mixed: (Recommended) A hybrid algorithm combining the following algorithms, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
         - Roxy: A 4K RC meta-structural estimator. It models the beatmap using structural analysis and then blends reference predictions from Azusa/Sunny/Daniel using a GBDT meta-model.
         - Sunny: Maps directly to Dan star ratings using Suuny Rework. Compatible with LN and RC Dans for 4/6/7K.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
+        - aleju03: A structured 4K LN estimator, ported from [Mania Tracker](https://github.com/aleju03/mania-hub), compatible with 4K LN beatmaps. When selected it shows LN difficulty only.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.

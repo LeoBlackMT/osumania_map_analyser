@@ -5,9 +5,11 @@
 //  - 入口签名 `runAleju03EstimatorFromText(osuText, options = {}, parsed = null)`（与其它估算器一致）；
 //  - 星数口径：沿用 Sunny 原始 sr（与 Mixed/Azusa/Roxy 的星数胶囊口径一致），
 //    优先复用 options.precomputedSunnyResult，避免重复计算；
-//  - 只处理 4K；RC 半保持 Sunny 原结果，**仅当算法给出 LN 判决时**替换 estDiff 的 LN 半；
-//  - 无 LN 判决（非 LN 谱面、结构候选门未通过、键数不符）时整体回退 Sunny，
-//    `actualEstimatorAlgorithm` 记为 "Sunny"，并在 `aleju03Ln` 里给出原因。
+//  - 只处理 4K；**输出只含 LN 难度**（形如 "LN 7 mid/high"，与区间表同一套 tier 词表），
+//    不拼接 RC 半；`numericDifficulty` 置 null（该算法不产出 RC 数值）；
+//  - 显式选定该算法时跳过源的 LN 候选门（forceLn=true），任意 4K 谱面都给出 LN 判决；
+//  - 非 4K、解析失败或特征提取失败时整体回退 Sunny，`actualEstimatorAlgorithm` 记为 "Sunny"，
+//    原因写在 `aleju03Ln.reason`。
 // 共享纯函数：禁止 window/document，禁止 import js/app/。
 
 import { OsuFileParser } from "../parser/osuFileParser.js";
@@ -77,14 +79,14 @@ function buildAlejuMap(parsedData) {
     };
 }
 
-function replaceLnHalf(estDiff, lnLabel) {
-    const parts = String(estDiff ?? "")
-        .split("||")
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0);
-    const rc = parts[0] ?? "";
-    if (!rc) return lnLabel;
-    return `${rc} || ${lnLabel}`;
+// aleju03 的变体后缀 → 区间表同款 tier 词表（low / mid-low / mid / mid-high / high），
+// 使标签与现有 "LN n tier" 格式完全一致：下游按 "||" 与 tier 词解析，无需任何特例分支。
+const LN_TIER_BY_VARIANT = { "++": "high", "+": "mid/high", "": "mid", "-": "mid/low", "--": "low" };
+
+function formatLnLabel(estimate) {
+    const level = String(estimate?.label ?? "").trim() || "1";
+    const tier = LN_TIER_BY_VARIANT[String(estimate?.variant ?? "")] ?? "mid";
+    return `LN ${level} ${tier}`;
 }
 
 /**
@@ -148,6 +150,7 @@ export function runAleju03EstimatorFromText(osuText, options = {}, parsed = null
             rate,
             true,
             extractDanFeatures,
+            true,
         );
     } catch {
         return { ...fallback, aleju03Ln: { applied: false, reason: "ln-estimate-failed" } };
@@ -157,15 +160,19 @@ export function runAleju03EstimatorFromText(osuText, options = {}, parsed = null
         return { ...fallback, aleju03Ln: { applied: false, reason: "not-an-ln-candidate" } };
     }
 
+    const lnLabel = formatLnLabel(estimate);
     return {
         ...sunny,
-        estDiff: replaceLnHalf(sunny?.estDiff, estimate.displayName),
+        estDiff: lnLabel,
+        numericDifficulty: null,
+        numericDifficultyHint: null,
         actualEstimatorAlgorithm: "aleju03",
         aleju03Ln: {
             applied: true,
             reason: estimate.reason,
             rawDan: Number(estimate.rawDan),
-            displayName: estimate.displayName,
+            displayName: lnLabel,
+            variant: estimate.variant ?? null,
             confidence: Number(estimate.confidence),
         },
     };

@@ -8,6 +8,7 @@
 - 该算法作为**可选算法**暴露：`settings.json` 的 `estimatorAlgorithm` options 与 `config.js` 的 `APP_CONFIG.options.estimatorAlgorithm` 均加入 `"aleju03"`。
 - 管线接入：`runAnalysisPipeline.js` 增加 `aleju03` 分派分支、把 `aleju03` 加入 `NORMALIZATION_ALGORITHMS`（星数口径恒为 Sunny 原始 sr）、并允许复用 `sharedSunnyResult`（不额外跑 Sunny）。
 - **Mixed 低段 LN 路由**（`mixedEstimator.js`）：当 4K 谱面的 LN 区间表读到下限（`intervalLookup` 返回以 `<` 开头的标签，例如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；aleju03 未产出 LN 判决时保留原表结果。RC 半、`numericDifficulty` 与其它档位完全不变。
+- **独立选择时的输出契约**：显式选择 `aleju03` 时，`estDiff` **只含 LN 难度**且使用区间表同款 tier 词表（`LN 7 mid/high`），不再拼接 RC 半；`numericDifficulty` / `numericDifficultyHint` 置 null（该算法不产出 RC 数值）；任意 4K 谱面都会给出 LN 判决——`lnReference.js` 的 `estimateLnDan` 新增 `forceLn` 形参（本仓库扩展，源实现没有），选中时跳过源的 LN 候选门，候选门不通过则直接走 `ln-pressure` 回归兜底。Mixed 的低段接管保持 `forceLn=false`（维持源的候选门语义）。
 
 ### 修改原因（Why）
 
@@ -24,13 +25,13 @@
 
 ### 兼容策略（Compat）
 
-- aleju03 无 LN 判决时**整体回退 Sunny**（RC 谱面、非 4K、结构候选门未通过），`actualEstimatorAlgorithm` 记为 `"Sunny"`，与 Azusa/Roxy 的既有回退语义一致；诊断字段 `aleju03Ln = { applied, reason, rawDan, displayName, confidence }` 供调试与遥测观察。
-- LN 标签格式沿用 `"RC || LN n…"`（`composeDifficultyFromRcLn` / `estDiff` 的既有约定），aleju03 的显示名（`LN 7+` 等）与区间表的 `LN 7 mid` 同构，下游 `||` 分割消费方无需改动。
+- aleju03 无 LN 判决时**整体回退 Sunny**（非 4K、解析失败、特征提取失败），`actualEstimatorAlgorithm` 记为 `"Sunny"`，与 Azusa/Roxy 的既有回退语义一致；诊断字段 `aleju03Ln = { applied, reason, rawDan, displayName, variant, confidence }` 供调试与遥测观察。
+- **标签格式与区间表一致**：aleju03 的变体后缀（`++`/`+`/无/`-`/`--`）在入口换算成 tier 词（`high`/`mid-high`/`mid`/`mid-low`/`low`），因此标签形如 `LN 7 mid/high`——与 `intervalLookup` 产出的 `LN 7 mid` 完全同构，下游（按 `||` 与 tier 词解析）不需要任何特例分支；`rcLabelToNumeric` 对 LN-only 标签返回 null，与 `numericDifficulty = null` 一致（Numeric Difficulty 只覆盖 RC 算法，这一行为既有文档已说明）。
 - 计算层为共享纯函数（无 `window`/`document`、未 import `js/app/`），浏览器、worker、Node benchmark runner 三端可用；`cvtFlag ∈ {IN, HO}` 时在 `cloneOsuParser` 拷贝上转换，共享 `parsed` 实例保持 pristine。
 
 ### 验证方式（Verification）
 
-- 合成冒烟（4K LN / 4K RC / 7K 三种输入，6 项断言）全部通过：LN 谱得到 aleju03 判决且 `actualEstimatorAlgorithm = "aleju03"`；RC 谱回退 Sunny 且 `estDiff` 与 Sunny 逐字相同；非 4K 以 `unsupported-keycount` 拒绝。
+- 合成冒烟（4K LN / 4K RC / 7K 三种输入，9 项断言）全部通过：LN 谱得到 aleju03 判决且 `actualEstimatorAlgorithm = "aleju03"`；标签匹配既有 LN 格式（`^LN \d+ (low|mid/low|mid|mid/high|high)$`）且不含 RC 半；4K RC 谱同样给出 LN-only 判决且 `numericDifficulty === null`；非 4K 以 `unsupported-keycount` 拒绝并保留 Sunny 标签。
 - LN 实测（benchmark 的 `osu.csv` 中 `pattern=ln` 的 102 张，倍速 1.0，Δ = expected − got）：
 
 | 方案 | MAE | RMSE | bias | ≤0.5 | ≤1.0 |
@@ -53,6 +54,7 @@
 - Exposed as a **selectable algorithm**: `"aleju03"` was added to `settings.json`'s `estimatorAlgorithm` options and to `APP_CONFIG.options.estimatorAlgorithm` in `config.js`.
 - Pipeline wiring: `runAnalysisPipeline.js` gains the `aleju03` dispatch branch, adds `aleju03` to `NORMALIZATION_ALGORITHMS` (star is always the raw Sunny SR) and allows reusing `sharedSunnyResult` (no extra Sunny pass).
 - **Mixed low-band LN routing** (`mixedEstimator.js`): when a 4K chart's LN interval table reads below its floor (`intervalLookup` returns a label starting with `<`, e.g. `< LN 5 mid`), the LN half is taken from aleju03 instead; if aleju03 yields no LN verdict the table result is kept. The RC half, `numericDifficulty` and every other tier are untouched.
+- **Output contract when selected standalone**: `estDiff` carries **LN difficulty only**, in the interval tables' own tier vocabulary (`LN 7 mid/high`), with no RC half; `numericDifficulty` / `numericDifficultyHint` are set to null (this estimator produces no RC numeric). Every 4K chart gets an LN verdict: `estimateLnDan` in `lnReference.js` gains a `forceLn` parameter (this repository's extension, absent upstream) that skips the source's LN candidate gate when the algorithm is selected explicitly, with the `ln-pressure` regression as the fallback when the gate would have failed. Mixed's low-band takeover keeps `forceLn=false`, i.e. the upstream candidate-gate semantics.
 
 ### Why
 
@@ -69,13 +71,13 @@
 
 ### Compatibility
 
-- When aleju03 has no LN verdict it **falls back to Sunny entirely** (RC charts, non-4K, structural candidate gate failed) and records `actualEstimatorAlgorithm = "Sunny"`, matching the existing Azusa/Roxy fallback semantics; the diagnostic field `aleju03Ln = { applied, reason, rawDan, displayName, confidence }` is available for debugging and telemetry.
-- LN labels keep the `"RC || LN n…"` shape used by `composeDifficultyFromRcLn`/`estDiff`; aleju03's display names (`LN 7+` etc.) are isomorphic to the table's `LN 7 mid`, so downstream `||` consumers need no change.
+- When aleju03 has no LN verdict it **falls back to Sunny entirely** (non-4K, parse failure, feature-extraction failure) and records `actualEstimatorAlgorithm = "Sunny"`, matching the existing Azusa/Roxy fallback semantics; the diagnostic field `aleju03Ln = { applied, reason, rawDan, displayName, variant, confidence }` is available for debugging and telemetry.
+- **Labels match the interval tables**: aleju03's variant suffix (`++`/`+`/none/`-`/`--`) is converted at the entry point into tier words (`high`/`mid-high`/`mid`/`mid-low`/`low`), so labels read `LN 7 mid/high` and are isomorphic to `intervalLookup`'s `LN 7 mid`; downstream consumers that split on `||` and read tier words need no special case. `rcLabelToNumeric` returns null for an LN-only label, consistent with `numericDifficulty = null` (Numeric Difficulty only covers RC algorithms, as the existing docs already state).
 - The calculation layer is shared and pure (no `window`/`document`, no `js/app/` imports) and works in the browser, the worker and the Node benchmark runner; with `cvtFlag ∈ {IN, HO}` conversion runs on a `cloneOsuParser` copy so the shared `parsed` instance stays pristine.
 
 ### Verification
 
-- Synthetic smoke (4K LN / 4K RC / 7K inputs, 6 assertions) passes: LN charts get an aleju03 verdict with `actualEstimatorAlgorithm = "aleju03"`; RC charts fall back to Sunny with a byte-identical `estDiff`; non-4K is rejected as `unsupported-keycount`.
+- Synthetic smoke (4K LN / 4K RC / 7K inputs, 9 assertions) passes: LN charts get an aleju03 verdict with `actualEstimatorAlgorithm = "aleju03"`; labels match the existing LN label format (`^LN \d+ (low|mid/low|mid|mid/high|high)$`) and carry no RC half; a 4K RC chart also yields an LN-only verdict with `numericDifficulty === null`; non-4K is rejected as `unsupported-keycount` and keeps the Sunny label.
 - LN measurement (benchmark `osu.csv`, `pattern=ln`, 102 charts, rate 1.0, Δ = expected − got):
 
 | Configuration | MAE | RMSE | bias | ≤0.5 | ≤1.0 |
