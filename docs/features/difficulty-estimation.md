@@ -30,6 +30,8 @@
 
 ## 3. 估算器分派机制
 
+> `Mixed` 的内部路由（模式判定、RC/LN 分支选择顺序、Companella 触发与融合、算法胶囊语义、为什么某张图没有用 Companella）另见 [mixed-routing.md](mixed-routing.md)。
+
 ### 3.1 Worker 分派（`js/app/worker/compute.worker.js`）
 
 Worker 内支持 **4 个 worker 估算器**：Sunny、Daniel、Azusa、Roxy（常量表 `compute.worker.js:15 ESTIMATORS`）。分派逻辑：
