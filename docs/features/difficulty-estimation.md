@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-插件提供 **6 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
+插件提供 **7 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Daniel、Companella、aleju03；其中 aleju03 只产出 4K 的 **LN** 判决，RC 半沿用 Sunny），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
 
 估算器内部依赖以下共享模块（这些模块同时被 Node benchmark runner 使用，不含任何浏览器 API）：
 
@@ -15,6 +15,7 @@
 | `js/ett/` | Etterna MinaCalc WASM（MSD 计算，Mixed/Companella 依赖） |
 | `js/patterns/` | RC/LN 键型分析（Interlude 算法 + LN 检测） |
 | `js/estimator/intervals/` | 段位区间表（`DAN_INDEX`） |
+| `js/estimator/aleju03/` | aleju03 的 4K LN 计算层（`features.js` 结构特征、`lnReference.js` 参考邻域估计器、`lnReferenceCharts.js` 参考数据、`math.js` 辅助数学） |
 
 ## 2. 估计算法总览
 
@@ -27,6 +28,7 @@
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:29-37`） |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:498` 以 `columnCount === 4` 决定是否触发）；高 LN 谱面在 analysis.js 层跳过（见 3.2） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:14 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:521-533`） |
+| **aleju03** | worker（pipeline） | `aleju03Estimator.js runAleju03EstimatorFromText` | **4K 的 LN**（移植 mania-hub 自研 LN 参考邻域估计器：10 维压力距离 + 127 行参考表 + 12 个结构 floor/2 个 compression + 课程分段） | 仅 4K：非 4K 返回 `unsupported-keycount` 并整体回退 Sunny；无 LN 判决（未通过 LN 候选门）时同样回退 Sunny 且 `actualEstimatorAlgorithm = "Sunny"`；不产出 `numericDifficulty`（保留 Sunny 的值）。诊断字段 `aleju03Ln = { applied, reason, rawDan, displayName, confidence }` |
 
 ## 3. 估算器分派机制
 
@@ -139,6 +141,7 @@ export const DAN_INDEX = {
 **不受影响**：
 
 - Azusa / Roxy 的最终段位标签（由各自算法内部产出，不经过 `estDiff` 的 extended 选择）；
+- **aleju03**：其判决来自参考邻域（不查区间表），`extendedEstimationRange` 对其无影响；Mixed 的低段 LN 接管（见 §9.6）同样不读该设置；
 - Mixed 仅经其 Sunny 基线间接受影响（`mixedEstimator.js:193` 的 `sunnyBaseline`）。
 
 ## 7. RC 标签格式（rcDifficultyFormat.js）
@@ -161,6 +164,7 @@ export const DAN_INDEX = {
 - **Azusa** → [docs/azusa_algorithm.md](../azusa_algorithm.md)（英文）
 - **Roxy** → [docs/roxy_algorithm.md](../roxy_algorithm.md)（英文）
 - **Sunny / Etterna / Daniel / Companella / Interlude** → [README.md 参考内容区](../../README.md#参考内容)（原文链接：Sunny Rework、Etterna、Daniel、Companella、Interlude 仓库）
+- **aleju03** → 移植自 [mania-hub（Mania Tracker）](https://mania-tracker.com) 的自研 4K LN 参考邻域估计器（本仓库只移植其 LN 计算层，不含其服务端/信用体系）
 
 ## 9. 注意事项
 
@@ -169,5 +173,7 @@ export const DAN_INDEX = {
 3. **LN 阈值**：`estDiff` 中 LN 标签仅在 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时展示，否则只返回 RC 标签（`reworkEstimatorUtils.js:103`）；SunnyWindow 用 `estDiff2` 以 LN 星数为准（`reworkEstimatorUtils.js:110`）。
 4. **标签结构**：RC/LN 复合标签以 `"RC || LN"` 形式返回（`reworkEstimatorUtils.js:107`），解析时按 `||` 分割。
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
+6. **aleju03 与 Mixed 的低段 LN 接管**：`mixedEstimator.js` 在算出 `sunnyParts.ln` 后判断该 LN 标签是否以 `<` 开头（`intervalLookup` 的下限标记，如 `< LN 5 mid`），是则调用 aleju03 并把其 `displayName`（`LN n±`）作为 LN 半；判定要求 `estDiff` 确实含 `||`（避免把 RC 侧的 `<` 边界误当 LN 下限）。aleju03 任何失败/无判决都保留原表结果；实测 102 张 LN 谱中 19 张触发、其余谱面逐字不变（详见 [breakings/2026-09-19](../breakings/2026-09-19-aleju03-ln-estimator-lowband-routing.md)）。
+7. **aleju03 的移植边界**：计算层逐字移植 mania-hub 的 `features.ts` / `ln.ts`（参考数据表 127 行程序化提取，未手工转录）；**未移植** `offGridRowShare`（需 timing 表，且 LN 路径的距离/floors/回归都不读它）；段落/动作学臂与该仓库的玩家信用体系不在移植范围内。该参考表末段含上游为评测标注谱面折入的锚点，且其结构 floor 使用了窄区间判据——因此它在本仓库只用于 LN 标签，且档位边界（`< LN 5`）之外的行为不做改动。
 6. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed 的 star 仅是内部口径，不作为显示值。
 7. **Etterna MSD 上限突破**：MinaCalc 内置 SSR 技能值上限 40.0 已通过 wasm 二进制等长替换（`f32.const 40.0` → `f32.const 100.0`）提升至 100.0（工具见 `tools/patch-minaclac-msd-cap.mjs`，`tools/README.md`）；显示刻度 `config.js:48 etterna.maxSkillValue = 45.0`（技能条宽度与 MSD 胶囊颜色映射按 45 标定）。浏览器加载 wasm 带 `?v=` cache-bust（`js/ett/constants.js WASM_ASSET_VERSION`，bump 时机：wasm 字节变更）。实测效果：技能值低于饱和区（Overall ≲ 37）的谱面输出逐位不变；处于饱和区（~37–40）的谱面数值随上限平滑上升；触顶谱面（技能值被钳在 40.000）突破 40/42 上限。`minaclac-68.0-unofficial.wasm` 未 patch（其 40.0 常量非技能上限，patch 会改变普通谱面输出）；0.70.0 的 Stream 技能值存在旧版独立的饱和行为（不在本 patch 常量内），其 Overall 与其余技能值正常突破。

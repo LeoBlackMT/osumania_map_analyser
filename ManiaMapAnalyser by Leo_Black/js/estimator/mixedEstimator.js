@@ -2,6 +2,7 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
+import { runAleju03EstimatorFromText } from "./aleju03Estimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 
@@ -102,6 +103,27 @@ function tryRunAzusaFallback(osuText, options, parsed) {
 function tryRunRoxyFallback(osuText, options, parsed) {
     try {
         return runRoxyEstimatorFromText(osuText, options, parsed);
+    } catch {
+        return null;
+    }
+}
+
+// LN 区间表的下限标记：intervalLookup 对低于表内首档的结果返回 "< LN 5 mid" 这类文本。
+// 只有 Sunny 的 estDiff 真的带 LN 半（含 "||"）时才认这个边界，否则 RC 侧的 "<" 会被误判。
+function isBelowLnTableFloor(estDiff, lnPart) {
+    if (typeof estDiff !== "string" || !estDiff.includes("||")) return false;
+    return String(lnPart ?? "").trim().startsWith("<");
+}
+
+// 低段 LN 接管：调用 aleju03（4K LN 参考邻域估计器），返回其 LN 显示名（如 "LN 7+"）。
+// 任何失败/未产出 LN 判决都返回 null，调用方保留原表结果。
+function tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) {
+    try {
+        const result = runAleju03EstimatorFromText(osuText, {
+            ...options,
+            precomputedSunnyResult: sunnyBaseline,
+        }, parsed);
+        return result?.aleju03Ln?.applied ? String(result.aleju03Ln.displayName) : null;
     } catch {
         return null;
     }
@@ -252,7 +274,13 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    const lnDifficulty = sunnyParts.ln;
+    // aleju03 低段接管：LN 区间表读到下限（"< LN 5 …"）时改用移植自 mania-hub 的
+    // 参考邻域估计器。表在 LN 1–4 会把所有图钳到同一个读数（低段系统性低估约 1.6 dan），
+    // 而参考邻域方案在该区间几乎零误差；其余档位保持原表结果不变。
+    // 仅当 Sunny 的 estDiff 确有 LN 半（含 "||"）时判定，避免把 RC 侧的 "<" 边界误当 LN 下限。
+    const lnDifficulty = isBelowLnTableFloor(sunnyBaseline.estDiff, sunnyParts.ln)
+        ? (tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) ?? sunnyParts.ln)
+        : sunnyParts.ln;
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
         return {
