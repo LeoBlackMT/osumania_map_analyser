@@ -75,7 +75,7 @@ import {
     setEffectiveContentBarForMap,
 } from "./settings.js";
 import { scheduleRecompute } from "./scheduler.js";
-import { detectVibro } from "./vibro.js";
+import { detectVibro } from "../patterns/chartVibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
 import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
@@ -490,6 +490,9 @@ export async function fetchBeatmapFile(reason) {
                     withEtterna: needComputed.ett,
                     withInterlude: needComputed.interlude,
                     withPpMetrics: needComputed.pp,
+                    // 整图 vibro（结构六档 + 元数据关键词）与 VibroDetection 设置同开关；
+                    // 只影响展示（隐藏数值难度 + 警告），不参与估算数值。
+                    withChartVibro: state.vibroDetection,
                     classicMod: state.classicMod === true,
                     etternaVersion: state.etternaVersion,
                     companellaEtternaVersion: state.companellaEtternaVersion,
@@ -641,6 +644,11 @@ export async function fetchBeatmapFile(reason) {
             state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm;
             state.ppMetrics = pipelineResult.ppMetrics || null;
             vibroEligible = pipelineResult.vibro.eligible;
+            // 整图 vibro：结构六档 + 元数据关键词直判（pipeline 内算好，与 Ett 无关），
+            // 命中即按既有行为隐藏数值难度并给出警告，其余不变。
+            if (state.vibroDetection && pipelineResult.vibro?.chart?.vibro) {
+                isVibroMap = true;
+            }
             errors.push(...pipelineResult.errors);
             if (isStaleRequest()) return;
 
@@ -816,7 +824,8 @@ export async function fetchBeatmapFile(reason) {
                     if (state.vibroDetection && vibroEligible) {
                         const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
                         if (isStaleRequest()) return;
-                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                        // 与 pipeline 带出的整图/关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
+                        isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
                     }
                 }
             } else {
@@ -832,7 +841,8 @@ export async function fetchBeatmapFile(reason) {
                     if (state.vibroDetection && vibroEligible) {
                         const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
                         if (isStaleRequest()) return;
-                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                        // 与 pipeline 带出的整图/关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
+                        isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
                     }
                 } catch (error) {
                     ettAnalysisError = error;
