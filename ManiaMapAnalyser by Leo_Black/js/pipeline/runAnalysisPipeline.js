@@ -21,12 +21,13 @@ import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
 import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
+import { runAleju03EstimatorFromText } from "../estimator/aleju03Estimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { detectChartVibro, notesFromParsedData } from "../patterns/chartVibro.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 
-const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed"]);
+const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed", "aleju03"]);
 
 // Sunny 结果的 numericDifficulty 恒为 null；Azusa/Roxy 无效回退后的 Sunny 结果同样如此。
 // 允许 null 通过可避免主线程冗余重算（与 analysis.js 旧 isValidEstimatorResult 一致）。
@@ -160,6 +161,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     const needsNormalization = NORMALIZATION_ALGORITHMS.has(estimatorAlgorithm);
     const canReuseSunny = needsNormalization
         && (estimatorAlgorithm === "Mixed"
+            || estimatorAlgorithm === "aleju03"
             || (estimatorAlgorithm === "Azusa" && options.forceSunnyReferenceHo === false));
     let sharedSunnyResult = null;
     if (canReuseSunny) {
@@ -190,6 +192,19 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
         if (!isValidResult(selectedRework)) {
             selectedRework = runSunnyEstimatorFromText(rawText, options, parser);
+            actualEstimatorAlgorithm = "Sunny";
+        }
+    } else if (estimatorAlgorithm === "aleju03") {
+        // aleju03：4K LN 参考邻域估计器（移植自 mania-hub 自研 LN）。
+        // 星数口径恒为 Sunny sr（可复用 sharedSunnyResult，避免重复计算）；
+        // 非 4K 或未给出 LN 判决时内部回退 Sunny。
+        const alejuOpts = sharedSunnyResult
+            ? { ...options, precomputedSunnyResult: sharedSunnyResult }
+            : options;
+        selectedRework = runAleju03EstimatorFromText(rawText, alejuOpts, parser);
+        actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
+        if (!isValidResult(selectedRework)) {
+            selectedRework = sharedSunnyResult || runSunnyEstimatorFromText(rawText, options, parser);
             actualEstimatorAlgorithm = "Sunny";
         }
     } else if (estimatorAlgorithm === "Mixed") {

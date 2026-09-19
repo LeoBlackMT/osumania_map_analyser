@@ -61,6 +61,7 @@
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明（管线派生段 → 估算器内嵌、按需前置 Ett 复用、perf 约束遵守、基准双口径） |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | 人类/AI | 多数据源与桌面壳破坏性说明（外部文本入口、缓存身份/速率签名、设置管线、遥测 client 维度、fetch 语义） |
+| [breakings/2026-09-19-aleju03-ln-estimator-ln-half-takeover.md](breakings/2026-09-19-aleju03-ln-estimator-ln-half-takeover.md) | 人类/AI | aleju03 与 Mixed 的 LN 半接管破坏性说明（移植 mania-hub 自研 4K LN 估计算法、Mixed 的 LN·Mix 树 LN 半整体改用它、失效回退、实测与逐行一致性） |
 
 # English
 
@@ -122,3 +123,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | Human/AI | Marathon correction architecture refactor breaking note (pipeline patch → estimator-embedded, on-demand pre-Ett reuse, perf constraints honored, two-tier benchmark semantics) |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | Human/AI | Multi-source & desktop shell breaking note (external text entry, cache identity/rate signature, settings pipeline, telemetry client dim, fetch semantics) |
+| [breakings/2026-09-19-aleju03-ln-estimator-ln-half-takeover.md](breakings/2026-09-19-aleju03-ln-estimator-ln-half-takeover.md) | Human/AI | aleju03 and the Mixed LN-half takeover breaking note (ported mania-hub in-house 4K LN estimator, Mixed taking the whole LN half of its LN/Mix tree from it, fallback behaviour, measurements and row-by-row agreement) |

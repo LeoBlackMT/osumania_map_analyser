@@ -144,7 +144,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 4.5 归一化与 vibro 顺序约束
 
-**归一化**（runAnalysisPipeline.js:177-185）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr）。
+**归一化**（runAnalysisPipeline.js:177-185）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed, aleju03}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr；aleju03 的 star 取自同一次 Sunny，复用后逐位一致）。
 
 **vibro 顺序约束（关键）**：
 
@@ -160,6 +160,7 @@ worker 端处理（compute.worker.js:23-37）：
 | Azusa, `forceSunnyReferenceHo=false` | `sunnyOptions = options` | 是 | 同上 |
 | Azusa, `forceSunnyReferenceHo=true` | `sunnyOptions = {...options, cvtFlag:"HO"}` | **否**（cvtFlag 不一致） | 独立计算；**不可**传 `precomputedSunnyResult`（会改变数值语义） |
 | Roxy | canonicalizeOsuTiming 改写文本 + `precomputedSunnyResult: null` 硬编码 | **否**（文本被改写） | 独立计算 |
+| aleju03 | `options.precomputedSunnyResult \|\| runSunnyEstimatorFromText(osuText, options, parsed)`（aleju03Estimator.js） | 是（同 options 同文本） | 预计算一份 Sunny 经 `precomputedSunnyResult` 喂入；星数即该 Sunny 的 sr，归一化段直接复用同一份结果（无第二次 Sunny） |
 | Sunny/Daniel/Companella | 无归一化 | 不适用 | 无 |
 
 决策表证据：task-11 实测记录 §2。

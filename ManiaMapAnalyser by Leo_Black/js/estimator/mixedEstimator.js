@@ -2,6 +2,7 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
+import { runAleju03EstimatorFromText } from "./aleju03Estimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 
@@ -102,6 +103,20 @@ function tryRunAzusaFallback(osuText, options, parsed) {
 function tryRunRoxyFallback(osuText, options, parsed) {
     try {
         return runRoxyEstimatorFromText(osuText, options, parsed);
+    } catch {
+        return null;
+    }
+}
+
+// LN 半接管：调用 aleju03（4K LN 参考邻域估计器），返回其 LN 显示名（如 "LN 7 mid/high"）。
+// 任何失败/未产出 LN 判决（非 4K、不是 LN 候选、抛错）都返回 null，调用方回退原表结果。
+function tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) {
+    try {
+        const result = runAleju03EstimatorFromText(osuText, {
+            ...options,
+            precomputedSunnyResult: sunnyBaseline,
+        }, parsed);
+        return result?.aleju03Ln?.applied ? String(result.aleju03Ln.displayName) : null;
     } catch {
         return null;
     }
@@ -252,7 +267,14 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    const lnDifficulty = sunnyParts.ln;
+    // aleju03 LN 半接管：LN·Mix 树（modeTag 为 LN 或 Mix，HB 谱面也落在其中）的 LN 半整体改用
+    // 移植自 mania-hub 的参考邻域估计器——实测它在 LN 语料上全面优于区间表（MAE 0.399 对 0.861），
+    // 且表在 LN 1–4 会把所有图钳到同一个读数。RC 半、胶囊与其它档位完全不变。
+    // 失效回退：aleju03 抛错、非 4K（unsupported-keycount）或不是 LN 候选时返回 null，此处保留原表值。
+    // RC 树不接管：RC 图的 LN 半因 lnRatio ≤ 0.15 本就不参与标签合成。
+    const lnDifficulty = mixedModeTag === "RC"
+        ? sunnyParts.ln
+        : (tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) ?? sunnyParts.ln);
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
         return {

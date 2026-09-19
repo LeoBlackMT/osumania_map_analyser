@@ -203,9 +203,9 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | --- | --- |
 | 1 解析一次 | `OsuFileParser` `process()` → 估算器/归一化/SunnyWindow/Interlude 共享同一实例（任务 9/10 已验证 parsed 路径逐位一致），输出 `parsedSummary {metadata, lnRatio, columnCount}` |
 | 1b 马拉松前置 Ett（按需） | `durationS > 300`（noteStarts 首尾差，未缩放）且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时，先算一次 Ett：注入 `options.marathonCorrection = {durationS, ettValues}` 供估算器内嵌修正，并复用于段 9/10（零重复 WASM）；其他情况零开销 |
-| 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`（白名单与回退语义同 compute.worker.js:17-54） |
+| 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Mixed/Companella/**aleju03** 全带 parsed；Azusa/Roxy/aleju03 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`（aleju03 自身在无 LN 判决时也已内部回退，分派层是兜底；白名单与回退语义同 compute.worker.js:17-54） |
 | 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0, chart}`；`options.withChartVibro === true` 时另算整图 vibro（`js/patterns/chartVibro.js`：rice 六档 + LN vibro + 元数据关键词直判，纯结构、不依赖 Ett），结果为 `chart {vibro, reasons}`，否则 `chart = null` |
-| 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文） |
+| 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed,aleju03}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文；aleju03 的 star 本就取自同一次 Sunny，复用后逐位一致） |
 | 5 SunnyWindow | `forceSunnyWindow` 时 `runSunnyWindowEstimatorFromText(rawText, {...options, enableAnalyzeLN}, parser)`（calculateSunny + calculateLN 均带 parsed），输出 `sunnyWindow` |
 | 6 派生 | `sixKConst`（`display6kLevel && columnCount===6` 时 `star*200/81+7/6` 2dp） |
 | 7 Interlude | `withInterlude` 时 `calculateInterludeStar(parser, speedRate, cvtFlag)`——**吃 sharedParsed**（chartBuilder.buildInterludeRows 支持已处理 parser 实例，cvtFlag IN/HO 时 clone-before-convert），输出 `interludeStar` |
