@@ -77,11 +77,11 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 | 序 | 条件（按顺序） | RC 半来源 | LN 半来源 | `actualEstimatorAlgorithm` | Companella 计划 |
 | --- | --- | --- | --- | --- | --- |
-| L1 | `columnCount === 4` 且 `star < 9` 且 `canUseRcResult(azusa)` | **Azusa** | Sunny 的 LN 半 | `"Azusa"` | `buildLowBandCompanellaPlan(azusa, lnRatio, ln, "companella")` → `fuseRc = true`、`onDisagree = "companella"` |
-| L2 | `columnCount === 4` 且 `star < 9` 且 Azusa **不可用** | （交给 Companella） | Sunny 的 LN 半 | `"Companella"` | `{ lnRatio, lnDifficulty }`（**无 `fuseRc`** → 主线程直接采用 Companella 的 RC 半与数值） |
-| L3 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 可用 | **Daniel** | Sunny 的 LN 半 | `"Daniel"` | 无 |
-| L4 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 不可用（或过低） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
-| L5 | `columnCount !== 4`（6K/7K） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
+| L1 | `columnCount === 4` 且 `star < 9` 且 `canUseRcResult(azusa)` | **Azusa** | Sunny 的 LN 半（`LN·Mix` 树统一由 aleju03 接管，见 §8；aleju03 失效时回退该表值） | `"Azusa"` | `buildLowBandCompanellaPlan(azusa, lnRatio, ln, "companella")` → `fuseRc = true`、`onDisagree = "companella"` |
+| L2 | `columnCount === 4` 且 `star < 9` 且 Azusa **不可用** | （交给 Companella） | Sunny 的 LN 半（`LN·Mix` 树统一由 aleju03 接管，见 §8；aleju03 失效时回退该表值） | `"Companella"` | `{ lnRatio, lnDifficulty }`（**无 `fuseRc`** → 主线程直接采用 Companella 的 RC 半与数值） |
+| L3 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 可用 | **Daniel** | Sunny 的 LN 半（`LN·Mix` 树统一由 aleju03 接管，见 §8；aleju03 失效时回退该表值） | `"Daniel"` | 无 |
+| L4 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 不可用（或过低） | Sunny | Sunny 的 LN 半（`LN·Mix` 树统一由 aleju03 接管，见 §8；aleju03 失效时回退该表值） | `"Sunny"` | 无 |
+| L5 | `columnCount !== 4`（6K/7K） | Sunny | Sunny 的 LN 半（`LN·Mix` 树统一由 aleju03 接管，见 §8；aleju03 失效时回退该表值） | `"Sunny"` | 无 |
 
 - Azusa 在 L1/L2 的调用参数：`forceSunnyReferenceHo: false` + `precomputedSunnyResult: sunnyBaseline`（星数口径与缓存复用）。
 - 最终标签 `estDiff = composeDifficultyFromRcLn(rc, ln, lnRatio)`：`lnRatio ≥ 0.15` 才有 `"RC || LN"`，否则只有 RC 段（`LN` 树必然 ≥ 0.90，`Mix` 树在 0.15–0.90 之间，故两者都会显示 LN 半）。
@@ -149,7 +149,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 - **SunnyWindow**（`forceSunnyWindow`）：在管道之后由 `analysis.js` 用 SunnyWindow 的 LN 段覆盖最终标签的 LN 半，并把新值写回 `pendingMixedCompanellaContext.lnDifficulty`（同时把 `lnRatio` 置 4e65 以强制显示 LN 段）→ 融合仍使用被覆盖后的 LN 半。
 - **马拉松时长修正**：pipeline 在 `durationS > 300 && 4K && 算法 ∈ {Azusa, Roxy, Mixed}` 时前置一次 Ett，并把 `marathonCorrection` 注入估算器；修正发生在 Mixed 路由**之前**，会改变 Roxy/Azusa 的数值，因此也可能改变 R1–R5 的胜负（详见 [marathon-correction.md](marathon-correction.md)）。
-- **aleju03 低段 LN 接管**（分支 `feat/aleju03-ln-estimator`）：`Sunny` 的 `estDiff` 含 LN 半且该半以 `<` 开头（表下限，如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；否则保持表值。该接管只影响 LN 半，RC 半与胶囊语义不变。临时测试分支 `temp/mixed-ln-aleju03` 则对非 RC 模式一律接管（用于对比测试）。
+- **aleju03 LN 半接管**（分支 `feat/aleju03-ln-estimator`）：`LN·Mix` 树（第 4 节 L1–L5，HB 谱面也在其中）的 LN 半**整体**改用 aleju03 的 LN 标签，不再区分档位；aleju03 抛错、非 4K（`unsupported-keycount`）或不是 LN 候选时**回退原表值**。该接管只作用于 LN 半，RC 半、胶囊与第 3 节的 RC 树语义不变（`RC` 树也不接管）。实测 benchmark 102 张 LN 谱的 Mixed LN 标签与 aleju03 独立运行逐行一致。
 - **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键第一段是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
 
 ---

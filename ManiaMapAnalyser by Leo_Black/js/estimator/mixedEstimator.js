@@ -108,15 +108,8 @@ function tryRunRoxyFallback(osuText, options, parsed) {
     }
 }
 
-// LN 区间表的下限标记：intervalLookup 对低于表内首档的结果返回 "< LN 5 mid" 这类文本。
-// 只有 Sunny 的 estDiff 真的带 LN 半（含 "||"）时才认这个边界，否则 RC 侧的 "<" 会被误判。
-function isBelowLnTableFloor(estDiff, lnPart) {
-    if (typeof estDiff !== "string" || !estDiff.includes("||")) return false;
-    return String(lnPart ?? "").trim().startsWith("<");
-}
-
-// 低段 LN 接管：调用 aleju03（4K LN 参考邻域估计器），返回其 LN 显示名（如 "LN 7+"）。
-// 任何失败/未产出 LN 判决都返回 null，调用方保留原表结果。
+// LN 半接管：调用 aleju03（4K LN 参考邻域估计器），返回其 LN 显示名（如 "LN 7 mid/high"）。
+// 任何失败/未产出 LN 判决（非 4K、不是 LN 候选、抛错）都返回 null，调用方回退原表结果。
 function tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) {
     try {
         const result = runAleju03EstimatorFromText(osuText, {
@@ -274,13 +267,14 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    // aleju03 低段接管：LN 区间表读到下限（"< LN 5 …"）时改用移植自 mania-hub 的
-    // 参考邻域估计器。表在 LN 1–4 会把所有图钳到同一个读数（低段系统性低估约 1.6 dan），
-    // 而参考邻域方案在该区间几乎零误差；其余档位保持原表结果不变。
-    // 仅当 Sunny 的 estDiff 确有 LN 半（含 "||"）时判定，避免把 RC 侧的 "<" 边界误当 LN 下限。
-    const lnDifficulty = isBelowLnTableFloor(sunnyBaseline.estDiff, sunnyParts.ln)
-        ? (tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) ?? sunnyParts.ln)
-        : sunnyParts.ln;
+    // aleju03 LN 半接管：LN·Mix 树（modeTag 为 LN 或 Mix，HB 谱面也落在其中）的 LN 半整体改用
+    // 移植自 mania-hub 的参考邻域估计器——实测它在 LN 语料上全面优于区间表（MAE 0.399 对 0.861），
+    // 且表在 LN 1–4 会把所有图钳到同一个读数。RC 半、胶囊与其它档位完全不变。
+    // 失效回退：aleju03 抛错、非 4K（unsupported-keycount）或不是 LN 候选时返回 null，此处保留原表值。
+    // RC 树不接管：RC 图的 LN 半因 lnRatio ≤ 0.15 本就不参与标签合成。
+    const lnDifficulty = mixedModeTag === "RC"
+        ? sunnyParts.ln
+        : (tryAleju03LnLabel(osuText, options, parsed, sunnyBaseline) ?? sunnyParts.ln);
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
         return {
