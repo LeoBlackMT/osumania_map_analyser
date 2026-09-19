@@ -16,6 +16,10 @@ export const APP_CONFIG = {
         modeTag: ["RC", "LN", "HB", "Mix", "SV"],
     },
 
+    // vibro 关键词直判：谱面元数据（标题或难度名）包含其中任一关键词即判定为 vibro，
+    // 大小写不敏感。判定实现见 js/patterns/chartVibro.js 的 detectVibroFromMetadata。
+    vibroKeywords: ["vibro"],
+
     starStops: {
         background: [
             [0.0, "#aaaaaa"],

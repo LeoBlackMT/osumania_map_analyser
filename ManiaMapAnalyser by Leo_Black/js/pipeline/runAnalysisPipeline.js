@@ -23,6 +23,7 @@ import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
 import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { runAleju03EstimatorFromText } from "../estimator/aleju03Estimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
+import { detectChartVibro, notesFromParsedData } from "../patterns/chartVibro.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 
@@ -226,9 +227,21 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     // 3. vibro 判定输入：归一化前的 star（与 analysis.js 旧 selectedRework?.star 顺序一致）。
     //    实际 isVibroMap 判定（detectVibro，浏览器专属）留在主线程，等 ettResult 就绪后执行。
     const vibroStar = Number(selectedRework?.star);
+    // 3b. 整图 vibro（options.withChartVibro 门控）：纯结构判定（rice 六档 + LN vibro）
+    //     加上元数据关键词直判，不依赖 Ett/WASM，因此在 pipeline 内一次算完；
+    //     worker 失败回退主线程时走的是同一个 pipelineInput，行为一致。
+    const chartVibro = options.withChartVibro === true
+        ? detectChartVibro({
+            notes: notesFromParsedData(parsedData),
+            keyCount: Number(parsedSummary.columnCount) || 0,
+            rate: Number(options.speedRate) || 1,
+            metaData: parsedData.metaData || null,
+        })
+        : null;
     const vibro = {
         star: vibroStar,
         eligible: Number.isFinite(vibroStar) && vibroStar > 5.0,
+        chart: chartVibro,
     };
 
     // 4. 归一化：Azusa/Roxy/Mixed 未回退时 star 统一为 Sunny 原始 sr（星数胶囊恒显 Sunny 口径；
