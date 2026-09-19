@@ -143,7 +143,7 @@ export const DAN_INDEX = {
 **不受影响**：
 
 - Azusa / Roxy 的最终段位标签（由各自算法内部产出，不经过 `estDiff` 的 extended 选择）；
-- **aleju03**：其判决来自参考邻域（不查区间表），`extendedEstimationRange` 对其无影响；Mixed 的低段 LN 接管（见 §9.6）同样不读该设置；
+- **aleju03**：其判决来自参考邻域（不查区间表），`extendedEstimationRange` 对其无影响；Mixed 的 LN 半接管（见 §9.8）同样不读该设置；
 - Mixed 仅经其 Sunny 基线间接受影响（`mixedEstimator.js:193` 的 `sunnyBaseline`）。
 
 ## 7. RC 标签格式（rcDifficultyFormat.js）
