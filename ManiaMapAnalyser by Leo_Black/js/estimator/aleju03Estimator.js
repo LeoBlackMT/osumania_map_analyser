@@ -131,6 +131,20 @@ export function runAleju03EstimatorFromText(osuText, options = {}, parsed = null
         return { ...fallback, aleju03Ln: { applied: false, reason: "no-notes" } };
     }
 
+    // LN% = 0（谱面完全不含长条）：参考邻域模型对这类谱面没有语义，回归兜底会给出误导性的
+    // 数字，因此显式返回 Unknown difficulty（选择本算法时 LN%=0 一律 Unknown）。
+    const holdCount = map.notes.filter((note) => note.isHold).length;
+    if (holdCount === 0) {
+        return {
+            ...sunny,
+            estDiff: "Unknown difficulty",
+            numericDifficulty: null,
+            numericDifficultyHint: null,
+            actualEstimatorAlgorithm: "aleju03",
+            aleju03Ln: { applied: false, reason: "no-ln-content" },
+        };
+    }
+
     const starRating = Number(sunny?.star);
     let features = null;
     try {
