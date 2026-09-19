@@ -28,7 +28,7 @@
 - 随后请参照下方「安装桥」章节安装 Etterna/Malody 桥文件。
 - 如有需要，请编辑 `mma-shell-config.json` 来对壳进行配置（游戏安装路径 `etternaRoot` / `malodyRoot`、快捷键 `hotkeys` 等）；离线模式 / 没有 tosu 时，也可编辑 `mma-settings.json` 配置卡片显示（见「配置」）。
 - 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 中选择编辑谱面，在编辑器中点击「MMA Analyze」按钮进行分析。
-- 数据源指示：卡片右上状态行末尾的小圆点——蓝色=osu!、绿色=Etterna、橙色=Malody、灰色空心=当前没有数据源。
+- 数据源指示：卡片右上状态行末尾的小圆点——粉色=osu!、紫色=Etterna、蓝色=Malody、灰色空心=当前没有数据源。
 
 ## 二、窗口操作说明
 
@@ -161,8 +161,8 @@ the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
   (see "Configuration").
 - Start the shell: select a song in Etterna to display, or select a chart in Malody V and click "MMA Analyze" in the
   editor.
-- Source indicator: the small dot at the end of the card's top status row — blue = osu!, green = Etterna,
-  orange = Malody, hollow grey = no data source.
+- Source indicator: the small dot at the end of the card's top status row — pink = osu!, purple = Etterna,
+  blue = Malody, hollow grey = no data source.
 
 ## Window controls
 

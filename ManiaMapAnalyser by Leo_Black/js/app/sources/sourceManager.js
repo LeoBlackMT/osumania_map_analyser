@@ -19,8 +19,8 @@ const FRESH_WINDOW_MS = 60000;
 const DEBOUNCE_MS = 200;
 const PRIORITY = ["osu", "etterna", "malody"];
 const LABELS = { osu: "osu!", etterna: "Etterna", malody: "Malody" };
-// 与遥测 Client 饼图段色一致（dashboard PALETTE 前 3 色）。
-const DOT_COLORS = { osu: "#635bff", etterna: "#0d9c5f", malody: "#f5a623" };
+// 各源品牌色（osu! 粉 / Etterna 紫 / Malody 蓝），与遥测 dashboard 的 PALETTE 无关。
+const DOT_COLORS = { osu: "#ff66aa", etterna: "#a855f7", malody: "#3b82f6" };
 
 let debounceTimer = 0;
 let activeSource = null; // 最近一次已应用的路由结果（null=无源）
@@ -167,9 +167,10 @@ function dotElement() {
 function syncDot(source) {
     const dot = dotElement();
     if (!dot) return;
-    // 空心 = 无来源；osu!/Etterna/Malody 各一实心色（蓝/绿/橙）。
+    // 空心 = 无来源；osu!/Etterna/Malody 各一实心色（粉/紫/蓝）。
     if (!source) {
         dot.className = "mma-source-dot off";
+        dot.style.background = ""; // 清除内联色，让 .off 的空心样式生效
         dot.title = "无数据源";
         return;
     }
