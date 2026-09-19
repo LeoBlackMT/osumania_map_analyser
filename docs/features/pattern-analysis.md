@@ -216,14 +216,19 @@
 
 1. **非 4/6/7K 谱面主体遵循内容设置**：卡片主体不再按键数强制回退为 Pattern（旧行为经 `setEffectiveContentBarForMap("Pattern")` 强制覆盖，已移除）。Graph 为 estimator 星数序列，任意键数均可渲染（`GRAPH_SUPPORTED_KEY_SET` 已随移除）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
 2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:798-806`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
-3. **vibro 检测的影响**：vibro 检测在 `js/app/vibro.js`——`detectVibro`（`vibro.js:16`，基于 Etterna 数值与 jack 速度比，`analysis.js:655-657`）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:824`）隐藏 Numeric Difficulty 显示。`config.js:107-108` 的 `LONGJACK_VIBRO_*` 阈值供 vibro 判定使用。**检测所用 Etterna MSD**：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
+3. **vibro 检测的影响**：vibro 检测分三条通道，命中后行为一致——**不直接改 Category**，只隐藏 Numeric Difficulty（`setForceHideNumericDifficulty(isVibroMap)`）并给出警告：
+   - **整图结构检测（新增，移植自 mania-hub）**：`js/patterns/chartVibro.js` 的 `detectChartVibro({ notes, keyCount, rate, metaData })` → `{ vibro, reasons }`。含 rice 六档（tier1 同列锤击 run ≥24 且列间隔 ≤92ms、该列占比 ≥25%；tier2 4K 慢和弦墙 ≤105ms/≥12 行/行占比 ≥3.5%/≤98ms 列占比 ≥32%；tier3 突发浸透 ≤100ms、8 连、≥4 段、覆盖 ≥20%；tier4 行密度 1 秒 ≥65 行；tier5 近满和弦墙 70ms 内占比 ≥2%；tier6 4K roll ≤70ms 列占比 ≥25% 且 ≤25ms 跨列行占比 ≥30%）、LN vibro（行 ≥150、hold ≥50%、行距 p75 ≤40ms×rate）与按速率臂（roll / 持续和弦 / 和弦墙占比 ≥50%）。**任何一档命中即判 vibro**；`reasons` 记录命中档位名。这些阈值与其语料实测依据逐字来自源实现；**段落模型（局部切除/整谱排除）与动作学臂未移植**，因此 4K rice 也直接走六档阶梯。
+   - **元数据关键词直判（新增）**：标题或难度名包含 `APP_CONFIG.vibroKeywords`（`config.js`，当前 `["vibro"]`）中任一关键词即判 vibro，**大小写不敏感，无独立开关**（与结构检测同受 `VibroDetection` 设置总开关控制）。
+   - **既有通道（保留不变）**：`detectVibro`（`js/app/vibro.js:16`，基于 Etterna 数值与 jack 速度比）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇），后者阈值见 `config.js` 的 `LONGJACK_VIBRO_*`。
+   - **执行位置**：整图结构检测与关键词直判在 `runAnalysisPipeline.js` 内计算（`options.withChartVibro` 门控，由 `analysis.js` 用 `state.vibroDetection` 传入），结果挂在 pipeline 返回值 `vibro.chart` 上；`analysis.js` 在消费 pipeline 结果时与 Ett 通道**取或**写入 `isVibroMap`。worker 失败回退主线程走同一 `pipelineInput`，行为一致。
+   - **检测所用 Etterna MSD**（仅既有通道需要）：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
 4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
 5. **共享模块约束**：`js/patterns/` 与 `js/parser/patternOsuParser.js` 在 Node benchmark runner 中也会加载，禁止引入 `window`/`document`；新增文件 import 必须带 `.js` 扩展名（浏览器解析习惯与 Node esm-loader 的要求）。
 6. **`rate` 参数未使用**：`service.js:4` 的 `rate` 目前被忽略（`void rate`），倍速换算由调用侧（`analysis.js` 传入原始文本）或显示层 `format(rate)`（`clustering.js:122`）处理。
 
 ## 10. 相关文件
 
-- 共享计算：`ManiaMapAnalyser by Leo_Black/js/patterns/`（service/summary/primitives/findPatterns/clustering/categorise/patternsDef/config/chart）、`ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js`
+- 共享计算：`ManiaMapAnalyser by Leo_Black/js/patterns/`（service/summary/primitives/findPatterns/clustering/categorise/patternsDef/config/chart/chartVibro）、`ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js`
 - 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js`、`js/app/display.js`、`js/app/hud.js`、`js/app/modeLogic.js`、`js/app/vibro.js`、`js/app/appContext.js`
 - 设置定义：`ManiaMapAnalyser by Leo_Black/settings.json`（`debugUseAmount` :405）、`js/parser/settingsParser.js`
 - 上游参考：Interlude (YAVSRG) RC 算法 → `ManiaMapAnalyser by Leo_Black/js/interlude/`

@@ -490,6 +490,9 @@ export async function fetchBeatmapFile(reason) {
                     withEtterna: needComputed.ett,
                     withInterlude: needComputed.interlude,
                     withPpMetrics: needComputed.pp,
+                    // 整图 vibro（结构六档 + 元数据关键词）与 VibroDetection 设置同开关；
+                    // 只影响展示（隐藏数值难度 + 警告），不参与估算数值。
+                    withChartVibro: state.vibroDetection,
                     classicMod: state.classicMod === true,
                     etternaVersion: state.etternaVersion,
                     companellaEtternaVersion: state.companellaEtternaVersion,
@@ -641,6 +644,11 @@ export async function fetchBeatmapFile(reason) {
             state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm;
             state.ppMetrics = pipelineResult.ppMetrics || null;
             vibroEligible = pipelineResult.vibro.eligible;
+            // 整图 vibro：结构六档 + 元数据关键词直判（pipeline 内算好，与 Ett 无关），
+            // 命中即按既有行为隐藏数值难度并给出警告，其余不变。
+            if (state.vibroDetection && pipelineResult.vibro?.chart?.vibro) {
+                isVibroMap = true;
+            }
             errors.push(...pipelineResult.errors);
             if (isStaleRequest()) return;
 
