@@ -149,7 +149,7 @@ worker 端处理（compute.worker.js:23-37）：
 **vibro 顺序约束（关键）**：
 
 1. **pipeline 内 vibro 判定用归一化前 star**（runAnalysisPipeline.js:169-175）：`vibroStar = Number(selectedRework?.star)`，`eligible = Number.isFinite(vibroStar) && vibroStar > 5.0`，与旧 analysis.js `selectedRework?.star` 顺序一致（算法自身 star，非归一化后口径）。
-2. **实际 isVibroMap 判定留在主线程**（analysis.js:664-667）：`isVibroMap = state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD)`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro`（js/app/vibro.js:16）是浏览器专属（`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。
+2. **Etterna 口径的 isVibroMap 判定留在主线程**（analysis.js）：`isVibroMap = isVibroMap || (state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD))`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro` 本身是共享纯函数（`js/patterns/chartVibro.js`，`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。注意这里是 **`||` 取或**：整图/关键词结论（见下条）不被覆盖，MSD 口径只做补充。
 3. **整图结构 vibro 在 pipeline 内算**（runAnalysisPipeline.js，`options.withChartVibro === true` 时）：`detectChartVibro({notes, keyCount, rate, metaData})`（`js/patterns/chartVibro.js`，共享纯函数）产出 `vibro.chart = {vibro, reasons}`。它不依赖 Ett，故与上面的 Etterna 路径**取或**：`analysis.js` 在消费 pipeline 结果时若 `pipelineResult.vibro?.chart?.vibro` 为真则直接置 `isVibroMap = true`（受同一 `state.vibroDetection` 开关控制，命中行为仍只是隐藏数值难度 + 警告）。worker 失败回退主线程时走同一 `pipelineInput`，语义一致。
 
 **归一化星数复用决策**（runAnalysisPipeline.js:109-127，仅性能优化，不改数值）：

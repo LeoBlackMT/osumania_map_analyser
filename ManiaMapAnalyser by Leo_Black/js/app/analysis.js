@@ -75,7 +75,7 @@ import {
     setEffectiveContentBarForMap,
 } from "./settings.js";
 import { scheduleRecompute } from "./scheduler.js";
-import { detectVibro } from "./vibro.js";
+import { detectVibro } from "../patterns/chartVibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
 import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
@@ -824,7 +824,8 @@ export async function fetchBeatmapFile(reason) {
                     if (state.vibroDetection && vibroEligible) {
                         const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
                         if (isStaleRequest()) return;
-                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                        // 与 pipeline 带出的整图/关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
+                        isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
                     }
                 }
             } else {
@@ -840,7 +841,8 @@ export async function fetchBeatmapFile(reason) {
                     if (state.vibroDetection && vibroEligible) {
                         const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
                         if (isStaleRequest()) return;
-                        isVibroMap = detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+                        // 与 pipeline 带出的整图/关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
+                        isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
                     }
                 } catch (error) {
                     ettAnalysisError = error;

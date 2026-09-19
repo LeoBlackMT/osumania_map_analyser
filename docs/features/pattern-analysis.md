@@ -219,7 +219,7 @@
 3. **vibro 检测的影响**：vibro 检测分三条通道，命中后行为一致——**不直接改 Category**，只隐藏 Numeric Difficulty（`setForceHideNumericDifficulty(isVibroMap)`）并给出警告：
    - **整图结构检测（新增，移植自 mania-hub）**：`js/patterns/chartVibro.js` 的 `detectChartVibro({ notes, keyCount, rate, metaData })` → `{ vibro, reasons }`。含 rice 六档（tier1 同列锤击 run ≥24 且列间隔 ≤92ms、该列占比 ≥25%；tier2 4K 慢和弦墙 ≤105ms/≥12 行/行占比 ≥3.5%/≤98ms 列占比 ≥32%；tier3 突发浸透 ≤100ms、8 连、≥4 段、覆盖 ≥20%；tier4 行密度 1 秒 ≥65 行；tier5 近满和弦墙 70ms 内占比 ≥2%；tier6 4K roll ≤70ms 列占比 ≥25% 且 ≤25ms 跨列行占比 ≥30%）、LN vibro（行 ≥150、hold ≥50%、行距 p75 ≤40ms×rate）与按速率臂（roll / 持续和弦 / 和弦墙占比 ≥50%）。**任何一档命中即判 vibro**；`reasons` 记录命中档位名。这些阈值与其语料实测依据逐字来自源实现；**段落模型（局部切除/整谱排除）与动作学臂未移植**，因此 4K rice 也直接走六档阶梯。
    - **元数据关键词直判（新增）**：标题或难度名包含 `APP_CONFIG.vibroKeywords`（`config.js`，当前 `["vibro"]`）中任一关键词即判 vibro，**大小写不敏感，无独立开关**（与结构检测同受 `VibroDetection` 设置总开关控制）。
-   - **既有通道（保留不变）**：`detectVibro`（`js/app/vibro.js:16`，基于 Etterna 数值与 jack 速度比）与 `detectVibroFromLongjackPattern`（`vibro.js:27`，基于 pattern report 的 Longjacks 簇），后者阈值见 `config.js` 的 `LONGJACK_VIBRO_*`。
+   - **既有通道（保留不变，已并入同一模块）**：`detectVibro`（`js/patterns/chartVibro.js`，Etterna `JackSpeed/Overall ≥ 0.95`）与 `detectVibroFromLongjackPattern`（同文件，pattern report 的 Longjacks 簇，阈值见 `config.js` 的 `LONGJACK_VIBRO_*`）。两者与整图结论**取或**（`isVibroMap = isVibroMap || …`），不再覆盖。
    - **执行位置**：整图结构检测与关键词直判在 `runAnalysisPipeline.js` 内计算（`options.withChartVibro` 门控，由 `analysis.js` 用 `state.vibroDetection` 传入），结果挂在 pipeline 返回值 `vibro.chart` 上；`analysis.js` 在消费 pipeline 结果时与 Ett 通道**取或**写入 `isVibroMap`。worker 失败回退主线程走同一 `pipelineInput`，行为一致。
    - **检测所用 Etterna MSD**（仅既有通道需要）：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
 4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
@@ -229,6 +229,6 @@
 ## 10. 相关文件
 
 - 共享计算：`ManiaMapAnalyser by Leo_Black/js/patterns/`（service/summary/primitives/findPatterns/clustering/categorise/patternsDef/config/chart/chartVibro）、`ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js`
-- 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js`、`js/app/display.js`、`js/app/hud.js`、`js/app/modeLogic.js`、`js/app/vibro.js`、`js/app/appContext.js`
+- 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js`、`js/app/display.js`、`js/app/hud.js`、`js/app/modeLogic.js`、`js/app/appContext.js`（vibro 纯函数统一在共享模块 `js/patterns/chartVibro.js`，原 `js/app/vibro.js` 已并入）
 - 设置定义：`ManiaMapAnalyser by Leo_Black/settings.json`（`debugUseAmount` :405）、`js/parser/settingsParser.js`
 - 上游参考：Interlude (YAVSRG) RC 算法 → `ManiaMapAnalyser by Leo_Black/js/interlude/`

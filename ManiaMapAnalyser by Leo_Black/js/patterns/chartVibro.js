@@ -481,3 +481,65 @@ export function detectChartVibro({ notes, keyCount, rate = 1, metaData = null } 
 
     return { vibro: reasons.length > 0, reasons };
 }
+
+// ─────────────── 既有判据（原 js/app/vibro.js，已合并进本共享模块） ───────────────
+// 这两个判据自插件早期就存在，随 vibro 检测统一收敛到共享模块（Node/浏览器同款纯函数），
+// 语义与阈值未改动；浏览器专属的 MSD 取值仍留在 js/app/analysis.js（resolveVibroMsdValues）。
+
+function pickNumber(obj, keys) {
+    if (!obj || typeof obj !== "object") {
+        return null;
+    }
+
+    for (const key of keys) {
+        const value = Number(obj[key]);
+        if (Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Etterna MSD 口径的 vibro 判据：JackSpeed / Overall ≥ threshold（插件默认 0.95）。
+ * 调用方负责提供 MSD values（浏览器侧 4K 固定用 0.72.3 基准，见 analysis.js 的 resolveVibroMsdValues）。
+ */
+export function detectVibro(values, threshold) {
+    const overall = pickNumber(values, ["Overall", "overall"]);
+    const jackSpeed = pickNumber(values, ["JackSpeed", "Jackspeed", "jackSpeed", "jackspeed"]);
+
+    if (!Number.isFinite(overall) || overall <= 0 || !Number.isFinite(jackSpeed)) {
+        return false;
+    }
+
+    return (jackSpeed / overall) >= threshold;
+}
+
+/**
+ * pattern report 口径的 vibro 判据：存在 BPM ≥ minBpm 且 Longjacks 占比 ≥ threshold 的簇。
+ */
+export function detectVibroFromLongjackPattern(patternReport, threshold, minBpm) {
+    if (!patternReport || !Array.isArray(patternReport.Clusters)) {
+        return false;
+    }
+
+    const bpmLimit = Number.isFinite(minBpm) && minBpm > 0 ? minBpm : 0;
+
+    for (const cluster of patternReport.Clusters) {
+        if (!Array.isArray(cluster.SpecificTypes)) {
+            continue;
+        }
+        const clusterBpm = Number(cluster.BPM);
+        if (!Number.isFinite(clusterBpm) || clusterBpm < bpmLimit) {
+            continue;
+        }
+        for (const [name, ratio] of cluster.SpecificTypes) {
+            if (name === "Longjacks" && Number.isFinite(ratio) && ratio >= threshold) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
