@@ -12,7 +12,7 @@
 | 文档或路径 | 目标 | 说明 |
 | --- | --- | --- |
 | [difficulty-estimation.md](difficulty-estimation.md) | AI | 难度估计功能文档（6 种估计算法、4/6/7K、LN/RC 段位） |
-| [mixed-routing.md](mixed-routing.md) | AI | Mixed 路由技术文档（模式判定、RC/LN 分支选择顺序、Companella 触发条件与融合规则、算法胶囊语义、常见误解速查） |
+| [mixed-routing.md](mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序：RC 树 R1–R7、LN/Mix 树 L1–L5、Companella 阶段 C1–C10；含精确阈值与常量、失败回退链、标签与算法胶囊取值、常见误解速查） |
 | [pattern-analysis.md](pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [graph-visualization.md](graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [pause-detection.md](pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
@@ -39,7 +39,7 @@
 | Document or Path | Target | Description |
 | --- | --- | --- |
 | [difficulty-estimation.md](difficulty-estimation.md) | AI | Difficulty estimation document (6 algorithms, 4/6/7K, LN/RC dan tiers) |
-| [mixed-routing.md](mixed-routing.md) | AI | Mixed routing document (mode gates, RC/LN branch order, Companella trigger conditions and fusion rules, algorithm capsule semantics, quick myth-check) |
+| [mixed-routing.md](mixed-routing.md) | AI | Mixed routing document (step-by-step decision order: RC tree R1-R7, LN/Mix tree L1-L5, Companella stage C1-C10, with exact thresholds and constants, fallback chains, label and capsule values, myth checklist) |
 | [pattern-analysis.md](pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [graph-visualization.md](graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
