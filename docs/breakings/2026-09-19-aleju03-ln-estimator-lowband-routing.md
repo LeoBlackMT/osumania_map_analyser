@@ -9,6 +9,8 @@
 - 管线接入：`runAnalysisPipeline.js` 增加 `aleju03` 分派分支、把 `aleju03` 加入 `NORMALIZATION_ALGORITHMS`（星数口径恒为 Sunny 原始 sr）、并允许复用 `sharedSunnyResult`（不额外跑 Sunny）。
 - **Mixed 低段 LN 路由**（`mixedEstimator.js`）：当 4K 谱面的 LN 区间表读到下限（`intervalLookup` 返回以 `<` 开头的标签，例如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；aleju03 未产出 LN 判决时保留原表结果。RC 半、`numericDifficulty` 与其它档位完全不变。
 - **独立选择时的输出契约**：显式选择 `aleju03` 时，`estDiff` **只含 LN 难度**且使用区间表同款 tier 词表（`LN 7 mid/high`），不再拼接 RC 半；`numericDifficulty` / `numericDifficultyHint` 置 null（该算法不产出 RC 数值）；任意 4K 谱面都会给出 LN 判决——`lnReference.js` 的 `estimateLnDan` 新增 `forceLn` 形参（本仓库扩展，源实现没有），选中时跳过源的 LN 候选门，候选门不通过则直接走 `ln-pressure` 回归兜底。Mixed 的低段接管保持 `forceLn=false`（维持源的候选门语义）。
+- **LN% = 0 的谱面显示 Unknown**：谱面完全不含长条（`holdCount === 0`）时，参考邻域模型对其没有语义、回归兜底会给出误导性数字，因此 `aleju03Estimator.js` 直接返回 `estDiff = "Unknown difficulty"`（`numericDifficulty` 为 null、胶囊仍为 `aleju03`、诊断 `aleju03Ln = { applied: false, reason: "no-ln-content" }`）。
+- **选择器别名（选择不生效的根因）**：`js/parser/settingsParser.js normalizeEstimatorAlgorithmValue` 是硬编码白名单——不认识的算法名返回 `null`，`parseEstimatorAlgorithmValue` 随即回退到默认的 `Mixed`，表现为"界面选了 aleju03 但实际仍在跑 Mixed（胶囊显示 Sunny/Azusa）"。现已补上 `aleju03` / `aleju` / `aleju-03`（大小写不敏感）。
 
 ### 修改原因（Why）
 
@@ -31,7 +33,7 @@
 
 ### 验证方式（Verification）
 
-- 合成冒烟（4K LN / 4K RC / 7K 三种输入，9 项断言）全部通过：LN 谱得到 aleju03 判决且 `actualEstimatorAlgorithm = "aleju03"`；标签匹配既有 LN 格式（`^LN \d+ (low|mid/low|mid|mid/high|high)$`）且不含 RC 半；4K RC 谱同样给出 LN-only 判决且 `numericDifficulty === null`；非 4K 以 `unsupported-keycount` 拒绝并保留 Sunny 标签。
+- 合成冒烟（4K LN / 4K RC / 7K / 设置解析器，13 项断言）全部通过：LN 谱得到 aleju03 判决且 `actualEstimatorAlgorithm = "aleju03"`；标签匹配既有 LN 格式（`^LN \d+ (low|mid/low|mid|mid/high|high)$`）且不含 RC 半；4K RC（LN% = 0）显示 `Unknown difficulty`、胶囊仍为 `aleju03`、`reason = "no-ln-content"`、`numericDifficulty === null`；`normalizeEstimatorAlgorithmValue("aleju03") === "aleju03"` 且既有算法名不受影响；非 4K 以 `unsupported-keycount` 拒绝并保留 Sunny 标签。
 - LN 实测（benchmark 的 `osu.csv` 中 `pattern=ln` 的 102 张，倍速 1.0，Δ = expected − got）：
 
 | 方案 | MAE | RMSE | bias | ≤0.5 | ≤1.0 |
@@ -55,6 +57,8 @@
 - Pipeline wiring: `runAnalysisPipeline.js` gains the `aleju03` dispatch branch, adds `aleju03` to `NORMALIZATION_ALGORITHMS` (star is always the raw Sunny SR) and allows reusing `sharedSunnyResult` (no extra Sunny pass).
 - **Mixed low-band LN routing** (`mixedEstimator.js`): when a 4K chart's LN interval table reads below its floor (`intervalLookup` returns a label starting with `<`, e.g. `< LN 5 mid`), the LN half is taken from aleju03 instead; if aleju03 yields no LN verdict the table result is kept. The RC half, `numericDifficulty` and every other tier are untouched.
 - **Output contract when selected standalone**: `estDiff` carries **LN difficulty only**, in the interval tables' own tier vocabulary (`LN 7 mid/high`), with no RC half; `numericDifficulty` / `numericDifficultyHint` are set to null (this estimator produces no RC numeric). Every 4K chart gets an LN verdict: `estimateLnDan` in `lnReference.js` gains a `forceLn` parameter (this repository's extension, absent upstream) that skips the source's LN candidate gate when the algorithm is selected explicitly, with the `ln-pressure` regression as the fallback when the gate would have failed. Mixed's low-band takeover keeps `forceLn=false`, i.e. the upstream candidate-gate semantics.
+- **LN% = 0 charts display Unknown**: when a chart contains no hold objects at all (`holdCount === 0`) the reference-neighbour model has no meaning for it and the regression fallback would produce a misleading number, so `aleju03Estimator.js` returns `estDiff = "Unknown difficulty"` (`numericDifficulty` null, capsule stays `aleju03`, diagnostic `aleju03Ln = { applied: false, reason: "no-ln-content" }`).
+- **Selector alias (the root cause of "selection does nothing")**: `js/parser/settingsParser.js normalizeEstimatorAlgorithmValue` is a hardcoded whitelist — an unrecognised algorithm name returns `null`, after which `parseEstimatorAlgorithmValue` falls back to the default `Mixed`, so the UI shows aleju03 selected while Mixed keeps running (capsule shows Sunny/Azusa). The aliases `aleju03` / `aleju` / `aleju-03` (case-insensitive) are now accepted.
 
 ### Why
 
@@ -77,7 +81,7 @@
 
 ### Verification
 
-- Synthetic smoke (4K LN / 4K RC / 7K inputs, 9 assertions) passes: LN charts get an aleju03 verdict with `actualEstimatorAlgorithm = "aleju03"`; labels match the existing LN label format (`^LN \d+ (low|mid/low|mid|mid/high|high)$`) and carry no RC half; a 4K RC chart also yields an LN-only verdict with `numericDifficulty === null`; non-4K is rejected as `unsupported-keycount` and keeps the Sunny label.
+- Synthetic smoke (4K LN / 4K RC / 7K / settings parser, 13 assertions) passes: LN charts get an aleju03 verdict with `actualEstimatorAlgorithm = "aleju03"`; labels match the existing LN label format (`^LN \d+ (low|mid/low|mid|mid/high|high)$`) and carry no RC half; a 4K RC chart (LN% = 0) shows `Unknown difficulty` with the capsule still on `aleju03`, `reason = "no-ln-content"` and `numericDifficulty === null`; `normalizeEstimatorAlgorithmValue("aleju03") === "aleju03"` while existing names keep working; non-4K is rejected as `unsupported-keycount` and keeps the Sunny label.
 - LN measurement (benchmark `osu.csv`, `pattern=ln`, 102 charts, rate 1.0, Δ = expected − got):
 
 | Configuration | MAE | RMSE | bias | ≤0.5 | ≤1.0 |
