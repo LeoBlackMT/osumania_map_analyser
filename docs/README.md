@@ -33,6 +33,7 @@
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（6 种估计算法、4/6/7K、LN/RC 段位） |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（模式判定、RC/LN 分支选择顺序、Companella 触发与融合规则、算法胶囊语义、速查表） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [features/pause-detection.md](features/pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
@@ -93,6 +94,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (6 algorithms, 4/6/7K, LN/RC dan tiers) |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (mode gates, RC/LN branch order, Companella trigger and fusion rules, algorithm capsule semantics, quick reference) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [features/pause-detection.md](features/pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
