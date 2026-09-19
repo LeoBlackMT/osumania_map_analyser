@@ -49,7 +49,7 @@ export function normalizeEstimatorAlgorithmValue(value) {
     if (lowered === "daniel") return "Daniel";
     if (lowered === "companella") return "Companella";
     if (lowered === "campanella") return "Companella";
-    if (lowered === "aleju03" || lowered === "aleju" || lowered === "aleju-03") return "aleju03";
+    if (lowered === "aleju03") return "aleju03";
     return null;
 }
 
