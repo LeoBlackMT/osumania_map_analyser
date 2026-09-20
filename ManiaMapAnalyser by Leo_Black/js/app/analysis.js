@@ -10,6 +10,8 @@ import { runInWorker } from "./worker/manager.js";
 import {
     analyzeEtternaFromText,
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
+    MINACALC_ABORT_CODE,
+    MINACALC_ABORT_MESSAGE,
 } from "../ett/index.js";
 import { PATTERNS_CONFIG } from "../patterns/config.js";
 import {
@@ -813,9 +815,15 @@ export async function fetchBeatmapFile(reason) {
             } else if (pipelineResult?.ettResult || pipelineResult?.ettError) {
                 if (pipelineResult.ettError) {
                     ettAnalysisError = new Error(pipelineResult.ettError);
+                    if (pipelineResult.ettErrorCode) {
+                        ettAnalysisError.code = pipelineResult.ettErrorCode;
+                    }
                     const isKeycountError = /unsupported keycount/i.test(pipelineResult.ettError);
+                    const isAbortError = pipelineResult.ettErrorCode === MINACALC_ABORT_CODE;
                     if (shouldReportEtternaError && !isKeycountError) {
-                        errors.push(`Etterna analyze failed: ${pipelineResult.ettError}`);
+                        errors.push(isAbortError
+                            ? `Etterna analyze failed: ${MINACALC_ABORT_MESSAGE}`
+                            : `Etterna analyze failed: ${pipelineResult.ettError}`);
                     }
                 } else {
                     ettResult = pipelineResult.ettResult;
@@ -847,8 +855,9 @@ export async function fetchBeatmapFile(reason) {
                 } catch (error) {
                     ettAnalysisError = error;
                     const isKeycountError = /unsupported keycount/i.test(String(error?.message ?? ""));
+                    const isAbortError = error?.code === MINACALC_ABORT_CODE;
                     if (shouldReportEtternaError && !isKeycountError) {
-                        errors.push(`Etterna analyze failed: ${error.message}`);
+                        errors.push(`Etterna analyze failed: ${isAbortError ? MINACALC_ABORT_MESSAGE : error.message}`);
                     }
                 }
             }
@@ -856,8 +865,18 @@ export async function fetchBeatmapFile(reason) {
             if (showsEtterna) {
                 if (!(await waitForBodyRenderReady())) return;
                 if (ettAnalysisError) {
-                    const isKeycountError = /unsupported keycount/i.test(String(ettAnalysisError?.message ?? ""));
-                    renderBodySectionError("Etterna", isKeycountError ? "Unsupported Keycount" : ettAnalysisError.message);
+                    const rawMessage = String(ettAnalysisError?.message ?? "");
+                    const isKeycountError = /unsupported keycount/i.test(rawMessage);
+                    const isAbortError = ettAnalysisError?.code === MINACALC_ABORT_CODE || /abort/i.test(rawMessage);
+                    renderBodySectionError(
+                        "Etterna",
+                        isKeycountError ? "Unsupported Keycount" : (isAbortError ? "Unsupported Chart" : rawMessage),
+                    );
+                    state.etternaTechnicalHidden = false;
+                    mainCardEl.classList.remove("bars-etterna-compact");
+                } else if (ettResult?.junkFile) {
+                    // MinaCalc 的 junk-file 判定返回全 0 技能值：这是"不可用"，不是"难度为 0"。
+                    renderBodySectionError("Etterna", "MSD unavailable (MinaCalc junk file)");
                     state.etternaTechnicalHidden = false;
                     mainCardEl.classList.remove("bars-etterna-compact");
                 } else {
@@ -946,6 +965,11 @@ export async function fetchBeatmapFile(reason) {
                         resolvedEstDiff = mixedAfterCompanella.estDiff;
                         resolvedNumericDifficulty = mixedAfterCompanella.numericDifficulty;
                         resolvedNumericDifficultyHint = mixedAfterCompanella.numericDifficultyHint;
+                        // 胶囊跟随真实来源：融合/采用成功时 Companella 已经改变了数值，
+                        // 此前只改数值不改胶囊，会出现"数值含 Companella 但胶囊写着 Azusa"。
+                        if (mixedAfterCompanella.companellaCapsule) {
+                            state.actualEstimatorAlgorithm = mixedAfterCompanella.companellaCapsule;
+                        }
                         pendingMixedCompanellaContext = null;
                     }
                 } catch (error) {
@@ -1141,16 +1165,18 @@ export async function fetchBeatmapFile(reason) {
 
         setLeftCapsuleUnitBadge(leftCapsuleUnit);
 
+        // junk file（MinaCalc 全 0 技能值）时 MSD 不可用：用 NaN 让胶囊与分隔符显示 "--"，
+        // 而不是把一个假的 0.00 当作读数。
+        const ettOverallValue = ettResult?.junkFile ? Number.NaN : Number(ettResult?.values?.Overall);
         renderRightCapsule(
             state.diffText,
             Number(rework?.star),
             patternReport?.Category || "-",
-            Number(ettResult?.values?.Overall),
+            ettOverallValue,
             Number(interludeStar),
         );
 
-        const overallValue = Number(ettResult?.values?.Overall);
-        renderFullModeSeparators(overallValue);
+        renderFullModeSeparators(ettOverallValue);
 
         if (isVibroMap && state.diffText === "Difficulty") {
             setEstimateDifficultyText("VIBRO");

@@ -61,6 +61,7 @@
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明（管线派生段 → 估算器内嵌、按需前置 Ett 复用、perf 约束遵守、基准双口径） |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | 人类/AI | 多数据源与桌面壳破坏性说明（外部文本入口、缓存身份/速率签名、设置管线、遥测 client 维度、fetch 语义） |
+| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | 人类/AI | Etterna 错误体验与 Companella 胶囊破坏性说明（MinaCalc abort 友好化 + wasm 模块回收、junk file 显式化、融合后胶囊跟随真实来源、新增 `ettErrorCode`/`junkFile`/`Azusa+Companella` 字段与取值） |
 
 # English
 
@@ -122,3 +123,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | Human/AI | Marathon correction architecture refactor breaking note (pipeline patch → estimator-embedded, on-demand pre-Ett reuse, perf constraints honored, two-tier benchmark semantics) |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | Human/AI | Multi-source & desktop shell breaking note (external text entry, cache identity/rate signature, settings pipeline, telemetry client dim, fetch semantics) |
+| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | Human/AI | Etterna error UX and Companella capsule breaking note (readable MinaCalc aborts plus wasm module recycling, explicit junk-file handling, capsule following the real fusion source, new `ettErrorCode` / `junkFile` / `Azusa+Companella` fields and value) |

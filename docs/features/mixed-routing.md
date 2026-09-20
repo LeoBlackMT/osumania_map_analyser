@@ -105,7 +105,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C7 | 同上但 `onDisagree === "azusa"` | — | **保持 Mixed 原结果不变**（Azusa 胜出；Companella 不改变结论） |
 | C8 | `plan.fuseRc` 且 `rcNumeric < 11` | — | RC 数值 = `rcNumeric × 0.5 + companellaNumeric × 0.5`（`RC_AZUSA_COMPANELLA_FUSION_WEIGHT = 0.5`），标签由 `numericToRcLabel(fused)` 重新派生，LN 半仍用 `plan.lnDifficulty` |
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
-| C10 | 胶囊 | — | **C6/C8/C9 均不更新 `state.actualEstimatorAlgorithm`**（已知显示问题，见第 7 节） |
+| C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
@@ -129,7 +129,9 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L4/L5 | `Sunny` |
 | 用户直接选择 Companella 且 `lnRatio ≤ 0.18` | `Companella` |
 | 用户直接选择 Companella 但 `lnRatio > 0.18` | `Sunny`（被 C2 改回） |
-| C6/C8/C9 融合成功 | **不更新**（保持融合前的 `Azusa`/`Roxy`） |
+| C6/C9 融合成功（Companella 值被采用） | `Companella` |
+| C8 融合成功（0.5/0.5 混合） | `Azusa+Companella` |
+| C7 融合未通过门控（保留 Azusa） | 保持原值（`Azusa`） |
 | 缓存命中 | 由快照恢复，不重算 |
 
 ---
@@ -137,7 +139,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 ## 7. 常见误解速查
 
 1. **"LN 主体图为什么永远不用 Companella？"** → C2：`lnRatio > 0.18` 主动跳过（Companella 是 RC 模型），且 LN·Mix 树中还要求 `star < 9`。
-2. **"数值里有 Companella 但胶囊写着 Azusa？"** → C10：融合成功不更新胶囊（已知显示问题，非算法失效）。
+2. **"数值里有 Companella 但胶囊写着 Azusa？"** → 已在 C10 修复：融合采用（C6/C9）后胶囊显示 `Companella`，0.5/0.5 混合（C8）显示 `Azusa+Companella`；只有门控未通过、数值未被改变时（C7）才保持 `Azusa`。
 3. **"选了 Mixed 却显示 `[Sunny]`？"** → 非 4/6/7K、RC 且非 4K、`star ≥ 9` 且 Daniel 不可用、或 R6/R7 都会落到 Sunny 基线，属设计行为。
 4. **"同一张 LN 图开 HO 后换了算法？"** → P4：`HO` 强制走 RC 树。
 5. **"6K/7K 为什么没有 Mixed 的效果？"** → P2 允许 6/7K，但 RC 树早退、LN·Mix 树的 L1–L4 都要求 4K，因此 6/7K 实际恒为 Sunny 基线。

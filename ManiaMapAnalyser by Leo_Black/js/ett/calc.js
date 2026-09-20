@@ -6,6 +6,10 @@ import {
 } from "./versions/index.js";
 
 const DEFAULT_SCORE_GOAL = 0.93;
+// Etterna abort 的错误标识与用户可读文案：展示层据此把 MinaCalc 中止渲染成
+// "Unsupported Chart"，而不是把 Emscripten 的原始 abort 文本抛给用户。
+const MINACALC_ABORT_CODE = "minacalc-aborted";
+const MINACALC_ABORT_MESSAGE = "MinaCalc aborted on this chart (structure or density out of range)";
 const OFFICIAL_OUTPUT_ORDER = [
     "Overall",
     "Stream",
@@ -152,6 +156,33 @@ function makeZeroValues() {
     return out;
 }
 
+// MinaCalc 的 junk-file 守卫：对"荒唐密度"的谱面（例如 1 秒 150+ 行）它不报错，而是打印
+// "skipping junk file" 并返回全 0 技能值。这里把它识别出来交给展示层，避免界面显示成 0.00。
+// 门槛取 32 行：极短谱（<32 行）本来就可能算出 0，不当作 junk。
+const JUNK_FILE_MIN_ROWS = 32;
+
+function isJunkFileResult(rowCount, values) {
+    if (!Number.isFinite(rowCount) || rowCount < JUNK_FILE_MIN_ROWS) {
+        return false;
+    }
+    if (!values || typeof values !== "object") {
+        return false;
+    }
+    for (const name of DISPLAY_SKILLSET_ORDER) {
+        if (Number(values[name]) !== 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Emscripten abort（例如 "Aborted(). Build with -sASSERTIONS for more info."）不是可读错误：
+// 它表示 MinaCalc 在异常输入上主动中止（18K 超高密度谱实测触发）。abort 之后该 wasm 实例
+// 已不可用，必须丢弃缓存重新实例化，否则后续谱面会连续失败。
+function isMinaCalcAbort(error) {
+    return /abort/i.test(String(error?.message ?? error));
+}
+
 async function getWasmModule(requestedVersion = DEFAULT_ETTERNA_VERSION, keycount = null) {
     const {
         requestedVersion: normalizedRequestedVersion,
@@ -257,13 +288,25 @@ export async function analyzeEtternaFromText(osuText, {
     }
 
     const moduleInfo = await getWasmModule(etternaVersion, keycount);
-    const values = runOfficialWasm(moduleInfo.module, {
-        keycount,
-        musicRate,
-        scoreGoal,
-        rowMasks: masks,
-        rowTimes: seconds,
-    });
+    let values;
+    try {
+        values = runOfficialWasm(moduleInfo.module, {
+            keycount,
+            musicRate,
+            scoreGoal,
+            rowMasks: masks,
+            rowTimes: seconds,
+        });
+    } catch (error) {
+        if (isMinaCalcAbort(error)) {
+            wasmModulePromiseByVersion.delete(moduleInfo.version);
+            const friendly = new Error(MINACALC_ABORT_MESSAGE);
+            friendly.code = MINACALC_ABORT_CODE;
+            friendly.cause = String(error?.message ?? error);
+            throw friendly;
+        }
+        throw error;
+    }
 
     return {
         keycount,
@@ -272,6 +315,8 @@ export async function analyzeEtternaFromText(osuText, {
         requestedEtternaVersion: moduleInfo.requestedVersion,
         etternaVersion: moduleInfo.version,
         etternaVersionFallbackReason: moduleInfo.fallbackReason,
+        rowCount: masks.length,
+        junkFile: isJunkFileResult(masks.length, values),
         values,
     };
 }
@@ -279,4 +324,6 @@ export async function analyzeEtternaFromText(osuText, {
 export {
     DEFAULT_SCORE_GOAL,
     DISPLAY_SKILLSET_ORDER,
+    MINACALC_ABORT_CODE,
+    MINACALC_ABORT_MESSAGE,
 };
