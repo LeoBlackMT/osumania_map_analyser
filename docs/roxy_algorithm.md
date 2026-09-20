@@ -320,6 +320,56 @@ The generated meta head is a standardized ridge linear model. It is intentionall
 
 The Sunny feature slots remain in the schema for compatibility with the generated feature list, but the live Sunny prediction is set unavailable before feature construction. Those slots therefore carry fallback values plus `has_Sunny = 0`, not a live Sunny vote.
 
+### 11.1 Degenerate meta features (issue #70)
+
+`corr_lowCj` has its standardized value clamped to the range the feature occupies when it is **off** (`f = 0`), i.e. `|z| <= |mean / scale|`. Every other feature — including the four other `corr_*` terms — is used unchanged.
+
+During training this term was almost always constant, so its stored `mean` and `std` are tiny relative to the values it reaches on real charts: `mean = 2.07e-4`, `std = 4.65e-3`, while the gate behind it can only be non-zero when `overlapRate > 0.75` and `chordRate > 0.48`, where the term spans `0.011 ~ 0.39`. A chart sitting just inside that gate scores `0.033`, which standardizes to `z = 6.99` — and the fitted coefficient is `beta / scale = -134`, so that single dimension subtracted `4.34` from the meta value and `2.49` from the final numeric of the reported chart.
+
+**Why a plain `±Nσ` clamp is not enough.** Issue #70 reported two charts that are near-identical rather than merely similar. Aligning them at `±2 ms`:
+
+| | `2808336` (practice-pack edit) | `3630235` (original) |
+|---|---|---|
+| notes / rows / LNs | `2063` / `794` / `101` | `2314` / `892` / `46` |
+| time span | `106266 ms` | `106266 ms` (identical) |
+| rows of the left chart found in the right one | `794 / 794` | — |
+| rows with an identical note count | `715 / 794` (`90.1%`) | — |
+| notes with a same-column, `±2 ms` counterpart | `2027 / 2063` (`98.3%`) | — |
+| `overlapRate` | `0.7772` | `0.7413` |
+| `corr_lowCj` | `0.0327` | `0` |
+| Azusa / Daniel reference | `14.48` / `14.62` | `14.42` / `14.55` |
+| Roxy structural | `9.77` | `9.87` |
+
+The right-hand chart is the left one plus `251` notes (`98` new rows, `77` rows thickened), and every reference layer agrees they are equally hard. The only thing separating them is that `overlapRate` straddles the `lowCj` gate's lower bound of `0.75`: a `3.6` percentage-point difference decides whether a `1.8`-point penalty applies. A `±3σ` clamp still left the pair `1.01` apart (the triggering chart was suppressed by `1.86`), because `3σ` is itself an extrapolation of `3 * 134` scale units for a coefficient that was fitted where the feature never moved. Clamping to the feature-off value removes the extrapolation instead of shrinking it, and the pair lands `0.05` apart at the same label.
+
+**Why clamp `corr_lowCj` rather than remove it.** Dropping the term entirely also drops its constant contribution at `f ≈ mean` (`+0.028`), which shifts every chart down. That variant changes `474` of the `746` benchmark rows for no gain. The clamp keeps that contribution and only bounds the tail.
+
+**Why only `corr_lowCj` and not the other four.** The other terms are degenerate in the same statistical sense but by orders of magnitude less pathological. Measured as `beta / scale`:
+
+| feature | `beta / scale` |
+|---|---|
+| `corr_lowCj` | `-134` |
+| `corr_courseSustainLift` | `21` |
+| `corr_denseJsLift` | `0.4` |
+| `corr_handBiasLift` | `0` (no training variance, `beta = 0`) |
+| `corr_courseBreakDamp` | `0` (no training variance, `beta = 0`) |
+
+Handling `corr_lowCj` alone fixes the reported chart without touching any other benchmark value. Clamping the other three as well — which a blanket "degenerate training statistics" rule would have selected — changes `7` rows, of which `4` get worse (MAE `0.2424`), because those terms carry real signal on the benchmark. Corroborating evidence: on a structural-distance check over the affected benchmark charts, handling `corr_lowCj` is neutral-or-helpful (1 chart closer to its structural score, 0 further), whereas clamping all five pushes 6 of 9 affected charts *further* from the structural score than the unclamped value. The feature list is therefore chosen per feature by its actual pathology, not by a blanket rule.
+
+The reported chart's `metaNumeric` moves `9.60 -> 13.92` (structural `9.77`), taking its final numeric from `11.65` to `14.19` and its label from `Beta low` to `Delta mid/high`; its Azusa (`14.48`) and Daniel (`14.62`) references are unchanged, so the meta head was the only layer disagreeing.
+
+**Corpus-wide measurement (231,780 random `.osu` files, 21,459 of them mania 4K).** The `corr_lowCj` contribution depends only on the structural layer, so it is computable for every chart without running the reference estimators. Over the 13,028 charts Roxy analyses, `corr_lowCj` alone moves 10 charts by more than `0.05`, with `|z|` up to `25.3` and up to `15.73` of suppression before clamping (chart `5058397`, structural `3.74`, was pinned at the `-2` output clamp).
+
+Because a warped meta value also crosses the `ROXY_SCOPE_MIN`/`MAX` boundaries, the bug could additionally flip which algorithm answers: on the 88 charts with any degenerate dimension beyond `3σ`, 5 flipped scope (4 became `< Alpha Low`, so Mixed routed away from Roxy). The clamp recovers those routings where the unwarped value belongs in scope.
+
+For reference, the wider set of five degenerate dimensions affects 66 charts (0.51%) by `>= 0.05` and 36 (0.28%) by `>= 0.25`, driven mostly by `corr_courseSustainLift` (27 charts, all over-estimated, `|z|` up to `119.5`). Those are **not** clamped here, because on the benchmark they carry signal and the corpus measurement alone cannot separate signal from noise without labelled difficulty. `corr_courseSustainLift` stays a known open item: if it is ever confirmed to misfire on real charts, the proper fix is a variance floor at training time rather than another inference-side clamp.
+
+**Benchmark impact.** On the osu! subset none of the already-reported values change — every one of those rows keeps exactly the same error. The only row that moves is `I Love It(lynessa)` (`jack / high chordjack`, expected `10.5`), which the `lowCj` term had pinned below the scope floor and which now reports `11.65`; that this term was suppressing a *high* chordjack chart is a direct illustration of the mis-firing, and the single newly-valid row is what takes MAE from `0.2414` to `0.2432`. Mixed reaches Roxy through its low-difficulty fallback, so the same chart moves there too (`11.54 -> 11.65`, Mixed MAE `0.4219 -> 0.4221`); no other Mixed row changes. `results/Roxy.csv` also moved on 26 further rows when regenerated, but those come from other plugin commits landed since that file was last produced on 2026-08-30, not from this change.
+
+If the meta head is ever retrained, the proper fix is a variance floor at training time; the inference-side clamp exists because the training script (`temp/retrain_upper.py`) is not in the repository.
+
+Cache prefix bumped `star-v6` → `star-v7` because Roxy `numeric`/`estDiff` change semantics.
+
 After meta evaluation, a structural backstop prevents the calibrated value from falling slightly below Roxy's own structural score. The backstop is gated from structural numeric `12.25` to `14.0`, targets `structuralNumeric - 0.15`, and only applies when the gap is positive but no larger than `0.35`. This keeps it from acting as a broad high-difficulty special case.
 
 After OD correction and the high-reference structural floor, Roxy applies a very small reference-gap residual correction only when no explicit OD override is present. The correction compares the current unguarded output with Azusa, Daniel, and the structural score:

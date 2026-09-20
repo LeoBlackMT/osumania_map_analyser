@@ -54,10 +54,10 @@ fetchBeatmapFile() → 查缓存（analysis.js:308-317）
 
 ## 5. 缓存键
 
-`analysis.js:305`：
+`analysis.js:398`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v7"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
@@ -65,7 +65,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v6` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:394） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位** |
+| `star-v7` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:399） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:88） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
 | `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
@@ -142,7 +142,7 @@ if (identityParts.length === 0 && hasMetadataIdentity) {
 
 处理链：
 
-1. `analysis.js:306 isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:")`——在 fetchBeatmapFile 开头判定。
+1. `analysis.js:399 isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:")`——在 fetchBeatmapFile 开头判定。
 2. 查询侧：`analysis.js:308` 只要 identity 存在就会尝试查缓存（`meta:` 键也可能命中——但如果从未写入过，实际永远 miss）。
 3. 写入侧：`analysis.js:776` `{ skip: isMetaDegraded }` → `put({skip:true})`（§3），**meta 降级快照永不进入缓存**。
 

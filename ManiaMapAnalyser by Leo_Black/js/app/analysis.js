@@ -393,7 +393,10 @@ export async function fetchBeatmapFile(reason) {
     //   低难图的 numeric/estDiff 语义变化 → 旧快照必须失效。
     // star-v6：Roxy 的 graph 时间轴还原为原始谱面时间（此前是 canonicalizeOsuTiming
     //   平移过的分析文本时间轴），旧快照里的 times 会让整张图的 x 轴窗口与进度线错位。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6";
+    // star-v7：Roxy meta 头对退化修正项 corr_lowCj 改用「特征关闭状态取值」截断——该系数
+    //   是在特征恒为常数处拟合的，遇到正常触发值即外推出极端离群项（实测压低 4.34 分），
+    //   Roxy 的 numeric/estDiff 语义变化 → 旧快照必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v7";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;

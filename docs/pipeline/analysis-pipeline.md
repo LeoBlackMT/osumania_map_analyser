@@ -90,7 +90,7 @@ if (!nextBeatmapIdentity) return;                                // :253 空身�
 ```
 
 - **md5 免疫文件替换**：`hash:` 段来自 `beatmap?.md5 || beatmap?.checksum`（:196），谱面文件内容变化 → md5 变 → identity 变 → 缓存键变，天然免疫文件替换（这是缓存键安全性的基石，见 result-cache.md §5）。
-- **meta: 降级**：仅当 tosu 同时缺少 id/hash/path 时发生（:248）。此时身份只有标题元数据（artist::title::version::mapper 小写拼接，:198-203）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js:306 isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
+- **meta: 降级**：仅当 tosu 同时缺少 id/hash/path 时发生（:248）。此时身份只有标题元数据（artist::title::version::mapper 小写拼接，:198-203）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js:399 isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
 - 归一化：id 取正整数（`normalizeNumberText` :187-193，`Math.trunc` 去小数）；path 反斜杠转正斜杠、折叠重复斜杠、小写（:181-185）；hash 小写（:196）。
 - `socketHandlers.js:290-292 lastBeatmapIdentitySource`：记录身份是 composite（≥2 段）还是单段来源，供展示层区分。
 
@@ -138,7 +138,7 @@ state.pendingChangeKind = changeKind;   // :286
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:257-261 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:172-173）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:395` 缓存键 = `star-v6|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v6` 是缓存语义版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:395` 缓存键 = `star-v7|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v7` 是缓存语义版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -171,8 +171,8 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:334；Companella/Mixed 需要 ett 与 interlude，:333、:337-338；`contentBarShows("ReworkPP")` 需要 pp，:339）。
-- `analysis.js:305 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v6` + 三段，modSignature 四段含 classic）。
-- `analysis.js:306 isMetaDegraded`：identity 以 `meta:` 开头。
+- `analysis.js:398 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v7` + 三段，modSignature 四段含 classic）。
+- `analysis.js:399 isMetaDegraded`：identity 以 `meta:` 开头。
 - `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
 
 ### 7.2 fetch .osu

@@ -120,6 +120,7 @@
 - **Azusa LN 门控生效**：`rcLnRatioLimit=0.18` 在入口断言（此前只存在于文档，见 §3.5）。
 - **缓存键 bump star-v4 → star-v5**（低难 numeric/estDiff 语义变化）。
 - **缓存键 bump star-v5 → star-v6**（Roxy `graph` 时间轴从 canonical 还原为原始谱面时间；旧快照的 `times` 会导致图表 x 轴窗口与进度线错位——见 [graph-visualization.md](../features/graph-visualization.md) §4.5 与 roxy_algorithm.md）。
+- **缓存键 bump star-v6 → star-v7**（Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断，即 `|z| <= |mean/scale|`——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分、标签从 Delta 级掉到 Beta low，见 roxy_algorithm.md §11.1；报告图的 `metaNumeric` 由 `9.60 → 13.92`，最终数值 `11.65 → 14.19`，标签 `Beta low → Delta mid/high`，其 Azusa(14.48)/Daniel(14.62) 参考未变）。**为什么不是按 σ 截断**：issue #70 的两张参考图几乎同源（同一时间轴、90.1% 的行内音符数相同、98.3% 的音符能在对方里找到同列同刻的对应音符），只因为 `overlapRate` 是 0.7772 对 0.7413——刚好跨过 lowCj 闸门的 0.75 下界——一张触发一张不触发；±3σ 截断下仍差 1.01 分（触发的那张仍被压低 1.86 分），而 Azusa(差 0.06)/Daniel(差 0.07)/Roxy structural(差 0.10) 都认为两张同难。改成关闭状态截断后两图差 0.05、标签一致。**名单只含 `corr_lowCj`**：其余 corr_* 项病态程度低 1~3 个量级（`corr_courseSustainLift` 的 beta/scale 仅 21、`corr_denseJsLift` 仅 0.4、另两项 beta 恒为 0），且在 benchmark 上携带有效信号——一并按 σ 截断会改动 7 行、其中 4 行变差（MAE `0.2424`），只处理 `corr_lowCj` 则不改变任何已报出数值。对照的"直接删除该特征"方案会连带丢掉它在 `f ≈ mean` 处的常数贡献（+0.028），使全表整体下移（实测改动 474/746 行）。
 
 Benchmark（harness harness before/after，746 行，官方 results 为旧代码口径不可直接对比）：
 
