@@ -97,7 +97,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | 序 | 判定 | 条件 | 结果 |
 | --- | --- | --- | --- |
 | C1 | 是否需要跑 | `shouldRunCompanella = Number(rework.columnCount) === 4 && (pendingCompanellaEstimate \|\| pendingMixedCompanellaContext != null)` | `pendingCompanellaEstimate` 来自"用户直接选择 Companella"；`pendingMixedCompanellaContext` 来自 L1/R4' 的计划 |
-| C2 | **高 LN 跳过** | `companellaLnRatio = Number(rework.lnRatio ?? parsedInfo.lnRatio) > 0.18` | 清空两个 pending；若胶囊当前是 `"Companella"` 则改回 `"Sunny"`。**这是 LN 主体图（含 vibro 包）在 Mixed 下显示 `[Sunny]` 的直接原因** |
+| C2 | **（已移除）高 LN 跳过** | 曾经是 `companellaLnRatio > 0.18` 直接跳过 Companella 并把胶囊改回 `"Sunny"`（2026-09-01 `48256a0` 引入） | 该门本是 Azusa/Roxy 的算法作用域约束，套用到 Mixed 路径后使 LN 主体谱"设成 Companella → 计划被丢弃 → 胶囊回到 Sunny"（与 v2.0.0 时期行为不一致），已于 2026-09-20 移除；现在 LN 主体谱与其他谱面一样执行 Companella 推理 |
 | C3 | 输入 MSD | 默认用管道的 `ettResult.values`；`state.companellaEtternaVersion !== state.etternaVersion` 时用 `pipelineResult.companellaEttResult`（缺省则主线程补算，失败仅 `console.warn` 并回退主版本） | 传给 `classifyCompanellaDifficulty({ msdValues, interludeStar, sunnyStar: rework.star })` |
 | C4 | 直接选择（`pendingCompanellaEstimate`） | 推理成功 | `resolvedEstDiff/numeric/hint` 全部换成 Companella 的结果（胶囊在管道里就已是 `"Companella"`） |
 | C5 | 直接选择但推理失败 | `catch` | 胶囊改回 `"Sunny"`，保留已算出的 star/estDiff（不产生 No data） |
@@ -105,7 +105,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C7 | 同上但 `onDisagree === "azusa"` | — | **保持 Mixed 原结果不变**（Azusa 胜出；Companella 不改变结论） |
 | C8 | `plan.fuseRc` 且 `rcNumeric < 11` | — | RC 数值 = `rcNumeric × 0.5 + companellaNumeric × 0.5`（`RC_AZUSA_COMPANELLA_FUSION_WEIGHT = 0.5`），标签由 `numericToRcLabel(fused)` 重新派生，LN 半仍用 `plan.lnDifficulty` |
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
-| C10 | 胶囊 | — | **C6/C8/C9 均不更新 `state.actualEstimatorAlgorithm`**（已知显示问题，见第 7 节） |
+| C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
@@ -127,17 +127,18 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L2 Azusa 不可用 | `Companella` |
 | L3 Daniel 可用 | `Daniel` |
 | L4/L5 | `Sunny` |
-| 用户直接选择 Companella 且 `lnRatio ≤ 0.18` | `Companella` |
-| 用户直接选择 Companella 但 `lnRatio > 0.18` | `Sunny`（被 C2 改回） |
-| C6/C8/C9 融合成功 | **不更新**（保持融合前的 `Azusa`/`Roxy`） |
+| 用户直接选择 Companella（任意 `lnRatio`） | `Companella` |
+| C6/C9 融合成功（Companella 值被采用） | `Companella` |
+| C8 融合成功（0.5/0.5 混合） | `Azusa+Companella` |
+| C7 融合未通过门控（保留 Azusa） | 保持原值（`Azusa`） |
 | 缓存命中 | 由快照恢复，不重算 |
 
 ---
 
 ## 7. 常见误解速查
 
-1. **"LN 主体图为什么永远不用 Companella？"** → C2：`lnRatio > 0.18` 主动跳过（Companella 是 RC 模型），且 LN·Mix 树中还要求 `star < 9`。
-2. **"数值里有 Companella 但胶囊写着 Azusa？"** → C10：融合成功不更新胶囊（已知显示问题，非算法失效）。
+1. **"LN 主体图为什么（曾经）永远不用 Companella？"** → 那是已移除的 C2：2026-09-01 `48256a0` 加的 `lnRatio > 0.18` 跳过。现在 LN 主体谱也会执行 Companella 推理；仍受 LN·Mix 树自身的 `star < 9` 条件与 L2 路径限制。
+2. **"数值里有 Companella 但胶囊写着 Azusa？"** → 已在 C10 修复：融合采用（C6/C9）后胶囊显示 `Companella`，0.5/0.5 混合（C8）显示 `Azusa+Companella`；只有门控未通过、数值未被改变时（C7）才保持 `Azusa`。
 3. **"选了 Mixed 却显示 `[Sunny]`？"** → 非 4/6/7K、RC 且非 4K、`star ≥ 9` 且 Daniel 不可用、或 R6/R7 都会落到 Sunny 基线，属设计行为。
 4. **"同一张 LN 图开 HO 后换了算法？"** → P4：`HO` 强制走 RC 树。
 5. **"6K/7K 为什么没有 Mixed 的效果？"** → P2 允许 6/7K，但 RC 树早退、LN·Mix 树的 L1–L4 都要求 4K，因此 6/7K 实际恒为 Sunny 基线。
@@ -169,6 +170,6 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | `buildLowBandCompanellaPlan` | 同上 | 低难融合计划（`fuseRc` / `onDisagree` / `rcNumeric`） |
 | `applyCompanellaToMixedResult` | 同上 | C6–C9 的采用/保持/加权融合 |
 | `LOW_BAND_COMPANELLA_STAR_MAX` (9) / `RC_FUSION_LOW_BAND_MAX` (11) / `RC_AZUSA_COMPANELLA_FUSION_WEIGHT` (0.5) | 同上 | 融合阈值与权重 |
-| `shouldRunCompanella` / `companellaLnRatio > 0.18` | `js/app/analysis.js` | C1/C2 执行门与高 LN 跳过 |
+| `shouldRunCompanella` | `js/app/analysis.js` | C1 执行门（C2 的 `lnRatio > 0.18` 跳过已于 2026-09-20 移除） |
 | `formatEstimateDifficultyCaption` | `js/app/graph.js` | 胶囊渲染（仅回退时加 `[算法]` 前缀） |
 | `state.actualEstimatorAlgorithm` | `js/app/appContext.js` | 胶囊状态（缓存命中由快照恢复） |

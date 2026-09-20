@@ -10,6 +10,8 @@ import { runInWorker } from "./worker/manager.js";
 import {
     analyzeEtternaFromText,
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
+    MINACALC_ABORT_CODE,
+    MINACALC_ABORT_MESSAGE,
 } from "../ett/index.js";
 import { PATTERNS_CONFIG } from "../patterns/config.js";
 import {
@@ -393,7 +395,7 @@ export async function fetchBeatmapFile(reason) {
     //   低难图的 numeric/estDiff 语义变化 → 旧快照必须失效。
     // star-v6：Roxy 的 graph 时间轴还原为原始谱面时间（此前是 canonicalizeOsuTiming
     //   平移过的分析文本时间轴），旧快照里的 times 会让整张图的 x 轴窗口与进度线错位。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6";
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v7";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -813,9 +815,15 @@ export async function fetchBeatmapFile(reason) {
             } else if (pipelineResult?.ettResult || pipelineResult?.ettError) {
                 if (pipelineResult.ettError) {
                     ettAnalysisError = new Error(pipelineResult.ettError);
+                    if (pipelineResult.ettErrorCode) {
+                        ettAnalysisError.code = pipelineResult.ettErrorCode;
+                    }
                     const isKeycountError = /unsupported keycount/i.test(pipelineResult.ettError);
+                    const isAbortError = pipelineResult.ettErrorCode === MINACALC_ABORT_CODE;
                     if (shouldReportEtternaError && !isKeycountError) {
-                        errors.push(`Etterna analyze failed: ${pipelineResult.ettError}`);
+                        errors.push(isAbortError
+                            ? `Etterna analyze failed: ${MINACALC_ABORT_MESSAGE}`
+                            : `Etterna analyze failed: ${pipelineResult.ettError}`);
                     }
                 } else {
                     ettResult = pipelineResult.ettResult;
@@ -847,17 +855,35 @@ export async function fetchBeatmapFile(reason) {
                 } catch (error) {
                     ettAnalysisError = error;
                     const isKeycountError = /unsupported keycount/i.test(String(error?.message ?? ""));
+                    const isAbortError = error?.code === MINACALC_ABORT_CODE;
                     if (shouldReportEtternaError && !isKeycountError) {
-                        errors.push(`Etterna analyze failed: ${error.message}`);
+                        errors.push(`Etterna analyze failed: ${isAbortError ? MINACALC_ABORT_MESSAGE : error.message}`);
                     }
                 }
+            }
+
+            // junk file 必须在 metadata 处可见：卡片主体可能不是 Etterna 段，只看主体
+            // 用户不知道发生了什么。放进 errors[]（metadata 红字走这条通道）。
+            // 注意：errors 非空会命中缓存写门 → junk 谱不写缓存（降级快照不应落盘）。
+            if (!cached && ettResult?.junkFile && shouldReportEtternaError) {
+                errors.push("Etterna MSD unavailable (MinaCalc junk file)");
             }
 
             if (showsEtterna) {
                 if (!(await waitForBodyRenderReady())) return;
                 if (ettAnalysisError) {
-                    const isKeycountError = /unsupported keycount/i.test(String(ettAnalysisError?.message ?? ""));
-                    renderBodySectionError("Etterna", isKeycountError ? "Unsupported Keycount" : ettAnalysisError.message);
+                    const rawMessage = String(ettAnalysisError?.message ?? "");
+                    const isKeycountError = /unsupported keycount/i.test(rawMessage);
+                    const isAbortError = ettAnalysisError?.code === MINACALC_ABORT_CODE || /abort/i.test(rawMessage);
+                    renderBodySectionError(
+                        "Etterna",
+                        isKeycountError ? "Unsupported Keycount" : (isAbortError ? "Unsupported Chart" : rawMessage),
+                    );
+                    state.etternaTechnicalHidden = false;
+                    mainCardEl.classList.remove("bars-etterna-compact");
+                } else if (ettResult?.junkFile) {
+                    // MinaCalc 的 junk-file 判定返回全 0 技能值：这是"不可用"，不是"难度为 0"。
+                    renderBodySectionError("Etterna", "MSD unavailable (MinaCalc junk file)");
                     state.etternaTechnicalHidden = false;
                     mainCardEl.classList.remove("bars-etterna-compact");
                 } else {
@@ -883,16 +909,10 @@ export async function fetchBeatmapFile(reason) {
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
 
             if (shouldRunCompanella && !cached) {
-                // Companella 是 RC 模型：高 LN 谱面（>18%，同 Azusa/Roxy 门控）不适用，
-                // 跳过 Companella 直接使用 pipeline 已归一化的 Sunny 基线（避免严重偏离）。
-                const companellaLnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio);
-                if (companellaLnRatio > 0.18) {
-                    pendingCompanellaEstimate = false;
-                    pendingMixedCompanellaContext = null;
-                    if (state.actualEstimatorAlgorithm === "Companella") {
-                        state.actualEstimatorAlgorithm = "Sunny";
-                    }
-                } else {
+                // 不按 LN 比例跳过 Companella：`lnRatio > 0.18` 这道门（48256a0 引入）本是
+                // Azusa/Roxy 的算法作用域约束，却被套用到 Mixed/Companella 路径上，后果是
+                // LN 主体谱先被设成 Companella、计划旋即丢弃、胶囊再改回 Sunny——用户看不到
+                // 任何 Companella 结果，旧版（v2.0.0 时期）则正常显示。此处已移除该门。
                 let companellaMsdValues = ettResult?.values;
                 const companellaEtternaVersion = String(
                     state.companellaEtternaVersion || state.etternaVersion,
@@ -946,6 +966,11 @@ export async function fetchBeatmapFile(reason) {
                         resolvedEstDiff = mixedAfterCompanella.estDiff;
                         resolvedNumericDifficulty = mixedAfterCompanella.numericDifficulty;
                         resolvedNumericDifficultyHint = mixedAfterCompanella.numericDifficultyHint;
+                        // 胶囊跟随真实来源：融合/采用成功时 Companella 已经改变了数值，
+                        // 此前只改数值不改胶囊，会出现"数值含 Companella 但胶囊写着 Azusa"。
+                        if (mixedAfterCompanella.companellaCapsule) {
+                            state.actualEstimatorAlgorithm = mixedAfterCompanella.companellaCapsule;
+                        }
                         pendingMixedCompanellaContext = null;
                     }
                 } catch (error) {
@@ -959,7 +984,6 @@ export async function fetchBeatmapFile(reason) {
                     }
                     pendingCompanellaEstimate = false;
                     pendingMixedCompanellaContext = null;
-                }
                 }
             }
 
@@ -1101,7 +1125,9 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "SR";
             }
         } else if (state.srText === "MSD") {
-            const overallValue = Number(ettResult?.values?.Overall);
+            // junk file 时 MSD 不可用：不显示 0.00，回退到星数胶囊（与"无 Ett 结果"一致），
+            // 具体原因由 metadata 红字与 Etterna 段提示给出。
+            const overallValue = ettResult?.junkFile ? Number.NaN : Number(ettResult?.values?.Overall);
             if (Number.isFinite(overallValue)) {
                 showMsdValue(overallValue);
                 leftCapsuleUnit = "MSD";
@@ -1141,16 +1167,18 @@ export async function fetchBeatmapFile(reason) {
 
         setLeftCapsuleUnitBadge(leftCapsuleUnit);
 
+        // junk file（MinaCalc 全 0 技能值）时 MSD 不可用：用 NaN 让胶囊与分隔符显示 "--"，
+        // 而不是把一个假的 0.00 当作读数。
+        const ettOverallValue = ettResult?.junkFile ? Number.NaN : Number(ettResult?.values?.Overall);
         renderRightCapsule(
             state.diffText,
             Number(rework?.star),
             patternReport?.Category || "-",
-            Number(ettResult?.values?.Overall),
+            ettOverallValue,
             Number(interludeStar),
         );
 
-        const overallValue = Number(ettResult?.values?.Overall);
-        renderFullModeSeparators(overallValue);
+        renderFullModeSeparators(ettOverallValue);
 
         if (isVibroMap && state.diffText === "Difficulty") {
             setEstimateDifficultyText("VIBRO");

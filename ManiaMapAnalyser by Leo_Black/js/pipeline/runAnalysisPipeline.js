@@ -333,6 +333,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     //    若马拉松前置已算过（>300s 的 4K RC 候选），直接复用其结果，避免二次 WASM 计算（perf 约束）。
     let ettResult = null;
     let ettError = null;
+    let ettErrorCode = null;
     if (options.withEtterna) {
         if (marathonEttReuse) {
             if (marathonEttReuse.result) {
@@ -350,6 +351,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
                 });
             } catch (err) {
                 ettError = String(err?.message || err);
+                ettErrorCode = typeof err?.code === "string" ? err.code : null;
             }
         }
     }
@@ -394,6 +396,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         patternError,
         ettResult,
         ettError,
+        ettErrorCode,
         interludeStar,
         interludeError,
         companellaEttResult,
