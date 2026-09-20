@@ -129,7 +129,7 @@ worker 端处理（compute.worker.js:23-37）：
 | `patternReport` | object \| null | 纯数据子集（§4.4） |
 | `patternTopFiveClusters` | array \| null | 前 5 cluster |
 | `patternError` | string \| null | 软失败文本 |
-| `ettResult` | object \| null | `{ values, keycount, rowCount, junkFile, ... }`；`junkFile = true` 表示 MinaCalc 的 junk-file 守卫返回了全 0 技能值（不可用，不是"难度 0"） |
+| `ettResult` | object \| null | `{ values, keycount, rowCount, junkFile, ... }`；`junkFile = true` 表示 MinaCalc 的 junk-file 守卫返回了"显示为 0.00"的技能值（所有展示技能值 < 0.005，且行数 ≥32）——是不可用，不是"难度 0" |
 | `ettError` | string \| null | 软失败文本 |
 | `ettErrorCode` | string \| null | 软失败错误码（当前仅 `minacalc-aborted`：MinaCalc 在异常谱面上主动 abort）；展示层用它把卡片渲染成 "Unsupported Chart" |
 | `interludeStar` | number | 软失败时为 NaN |

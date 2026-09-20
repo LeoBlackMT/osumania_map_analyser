@@ -159,7 +159,10 @@ function makeZeroValues() {
 // MinaCalc 的 junk-file 守卫：对"荒唐密度"的谱面（例如 1 秒 150+ 行）它不报错，而是打印
 // "skipping junk file" 并返回全 0 技能值。这里把它识别出来交给展示层，避免界面显示成 0.00。
 // 门槛取 32 行：极短谱（<32 行）本来就可能算出 0，不当作 junk。
+// 判定用 JUNK_FILE_EPSILON：任何"四舍五入到 0.00"的读数（< 0.005）都算不可用，
+// 因为显示层保留两位小数，0.004 与 0 对用户没有区别。
 const JUNK_FILE_MIN_ROWS = 32;
+const JUNK_FILE_EPSILON = 0.005;
 
 function isJunkFileResult(rowCount, values) {
     if (!Number.isFinite(rowCount) || rowCount < JUNK_FILE_MIN_ROWS) {
@@ -169,7 +172,8 @@ function isJunkFileResult(rowCount, values) {
         return false;
     }
     for (const name of DISPLAY_SKILLSET_ORDER) {
-        if (Number(values[name]) !== 0) {
+        const value = Math.abs(Number(values[name]));
+        if (!Number.isFinite(value) || value >= JUNK_FILE_EPSILON) {
             return false;
         }
     }
