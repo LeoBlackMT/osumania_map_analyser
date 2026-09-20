@@ -48,7 +48,7 @@ Mixed 与 Companella 不经过 Worker：
 - **Mixed**：在 `analysis.js:500 runMixedEstimatorFromText(rawText, estimatorOptions)` 直接同步执行；结果中的 `mixedCompanellaPlan`（`mixedEstimator.js:310`）触发后续 Companella 异步估算，完成后经 `mixedEstimator.js:314 applyCompanellaToMixedResult` 合并回结果。
 - **Companella**：先同步跑 Sunny 作为兜底（`analysis.js:494`），置 `pendingCompanellaEstimate` 标志（`analysis.js:498`），随后异步执行 ONNX 推理（`companellaEstimator.js:209-222`：`getOrtNamespace()` + `getModelSession()` 并行加载）。
 - **Companella 的 LN 相关门控已于 2026-09-20 移除**：历史上（2026-09-01 `48256a0`）这里有一条 `lnRatio > 0.18` 的跳过规则（与 Azusa/Roxy 的 RC 作用域阈值同值），导致 LN 主体谱先被设成 `Companella`、计划随即丢弃、胶囊又改回 `"Sunny"`——用户完全看不到 Companella 结果，与 v2.0.0 时期行为不一致。该门属于把算法作用域约束误用到 Mixed 路径，现已删除；Azusa/Roxy **自身**的入口门控（`rcLnRatioLimit: 0.18`）不受影响。
-  - ONNX 推理抛错时同样回退 Sunny 基线（`pendingCompanellaEstimate` 复位），不产生 No data；pipeline 本身也失败时走主错误路径（`errors` 已含 Rework failed）。
+- ONNX 推理抛错时同样回退 Sunny 基线（`pendingCompanellaEstimate` 复位），不产生 No data；pipeline 本身也失败时走主错误路径（`errors` 已含 Rework failed）。
 
 ### 3.3 实际执行者追踪
 
