@@ -395,7 +395,7 @@ export async function fetchBeatmapFile(reason) {
     //   低难图的 numeric/estDiff 语义变化 → 旧快照必须失效。
     // star-v6：Roxy 的 graph 时间轴还原为原始谱面时间（此前是 canonicalizeOsuTiming
     //   平移过的分析文本时间轴），旧快照里的 times 会让整张图的 x 轴窗口与进度线错位。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v6";
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v7";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -862,6 +862,13 @@ export async function fetchBeatmapFile(reason) {
                 }
             }
 
+            // junk file 必须在 metadata 处可见：卡片主体可能不是 Etterna 段，只看主体
+            // 用户不知道发生了什么。放进 errors[]（metadata 红字走这条通道）。
+            // 注意：errors 非空会命中缓存写门 → junk 谱不写缓存（降级快照不应落盘）。
+            if (!cached && ettResult?.junkFile && shouldReportEtternaError) {
+                errors.push("Etterna MSD unavailable (MinaCalc junk file)");
+            }
+
             if (showsEtterna) {
                 if (!(await waitForBodyRenderReady())) return;
                 if (ettAnalysisError) {
@@ -902,16 +909,10 @@ export async function fetchBeatmapFile(reason) {
                 && (pendingCompanellaEstimate || pendingMixedCompanellaContext != null);
 
             if (shouldRunCompanella && !cached) {
-                // Companella 是 RC 模型：高 LN 谱面（>18%，同 Azusa/Roxy 门控）不适用，
-                // 跳过 Companella 直接使用 pipeline 已归一化的 Sunny 基线（避免严重偏离）。
-                const companellaLnRatio = Number(rework?.lnRatio ?? parsedInfo.lnRatio);
-                if (companellaLnRatio > 0.18) {
-                    pendingCompanellaEstimate = false;
-                    pendingMixedCompanellaContext = null;
-                    if (state.actualEstimatorAlgorithm === "Companella") {
-                        state.actualEstimatorAlgorithm = "Sunny";
-                    }
-                } else {
+                // 不按 LN 比例跳过 Companella：`lnRatio > 0.18` 这道门（48256a0 引入）本是
+                // Azusa/Roxy 的算法作用域约束，却被套用到 Mixed/Companella 路径上，后果是
+                // LN 主体谱先被设成 Companella、计划旋即丢弃、胶囊再改回 Sunny——用户看不到
+                // 任何 Companella 结果，旧版（v2.0.0 时期）则正常显示。此处已移除该门。
                 let companellaMsdValues = ettResult?.values;
                 const companellaEtternaVersion = String(
                     state.companellaEtternaVersion || state.etternaVersion,
@@ -983,7 +984,6 @@ export async function fetchBeatmapFile(reason) {
                     }
                     pendingCompanellaEstimate = false;
                     pendingMixedCompanellaContext = null;
-                }
                 }
             }
 
@@ -1125,7 +1125,9 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "SR";
             }
         } else if (state.srText === "MSD") {
-            const overallValue = Number(ettResult?.values?.Overall);
+            // junk file 时 MSD 不可用：不显示 0.00，回退到星数胶囊（与"无 Ett 结果"一致），
+            // 具体原因由 metadata 红字与 Etterna 段提示给出。
+            const overallValue = ettResult?.junkFile ? Number.NaN : Number(ettResult?.values?.Overall);
             if (Number.isFinite(overallValue)) {
                 showMsdValue(overallValue);
                 leftCapsuleUnit = "MSD";
