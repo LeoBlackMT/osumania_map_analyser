@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 2 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 3 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 2;
+pub const CONTRACT_VERSION: u32 = 3;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -61,6 +61,7 @@ pub struct HelloFrame {
 pub struct SourcesFrame {
     pub etterna: EtternaSource,
     pub malody: MalodySource,
+    pub malody4: Malody4Source,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -75,6 +76,20 @@ pub struct EtternaSource {
 #[serde(rename_all = "camelCase")]
 pub struct MalodySource {
     pub alive: bool,
+}
+
+/// Malody 4.3.7 原生源的状态位（`reason` 为闭集字面量，健康/空闲时为空串 → 不出现在帧里）。
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Malody4Source {
+    pub alive: bool,
+    pub playing: bool,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub screen: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge: Option<char>,
 }
 
 #[derive(Serialize, Clone)]
@@ -102,6 +117,9 @@ pub struct SongMeta {
     pub version: String,
     pub keys: u64,
     pub dev_msd8: Vec<f64>,
+    /// Malody 4 源的判定档字母（`A`~`E`）；缺省表示未知（页面回落 C 档）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge: Option<char>,
 }
 
 #[derive(Serialize, Clone)]

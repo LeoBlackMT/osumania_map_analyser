@@ -11,7 +11,7 @@ use crate::config::{self, TosuInfo};
 use crate::frames::*;
 use std::collections::HashMap;
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -40,6 +40,8 @@ pub struct Shared {
     pub shell_errors: Mutex<Vec<String>>,
     /// Etterna 桥状态（poller 更新）。
     pub etterna: Mutex<crate::etterna::EtternaStatus>,
+    /// Malody 4.3.7 原生源状态（poller 更新；形状与 `EtternaStatus` 同角色）。
+    pub malody4: Mutex<crate::malody4::Malody4Status>,
     /// 主窗口控制句柄（契约 v2 control 帧；无窗口模式为 None）。
     pub window: Mutex<Option<tauri::WebviewWindow>>,
 }
@@ -71,6 +73,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
+        malody4: Mutex::new(crate::malody4::Malody4Status::default()),
         window: Mutex::new(None),
     })
 }
@@ -88,7 +91,13 @@ pub fn broadcast(shared: &Shared, frame_type: &str, payload: Option<serde_json::
     }
 }
 
-fn state_frame(shared: &Shared) -> serde_json::Value {
+/// state 帧的薄封装：**先全部克隆再组装**，组装本身在 `malody4::build_state_frame`
+/// 里用 `frames::SourcesFrame` 结构体完成（字段不漏；既有两个源的语义不变）。
+///
+/// `pub(crate)`：poller 在 `alive`/`playing` 跳变时要即时推送一次 state。
+/// **调用方不得持有 `shared.malody4` 的 `MutexGuard` 跨越本函数**——本函数会再 lock
+/// 同一字段，std `Mutex` 不可重入，跨调用持锁会自死锁。
+pub(crate) fn state_frame(shared: &Shared) -> serde_json::Value {
     let tosu_online = *shared.tosu_online.lock().unwrap();
     let errors = shared.shell_errors.lock().unwrap().clone();
     let etterna = shared.etterna.lock().unwrap().clone();
@@ -96,18 +105,8 @@ fn state_frame(shared: &Shared) -> serde_json::Value {
         Some(at) if at.elapsed() < Duration::from_secs(60) => true,
         _ => false,
     };
-    serde_json::json!({
-        "tosuOnline": tosu_online,
-        "errors": errors,
-        "sources": {
-            "etterna": {
-                "alive": etterna.alive,
-                "playing": etterna.playing,
-                "playingExpireAt": etterna.playing_expire_at,
-            },
-            "malody": { "alive": malody_alive },
-        },
-    })
+    let malody4 = shared.malody4.lock().unwrap().clone();
+    crate::malody4::build_state_frame(tosu_online, &errors, &etterna, malody_alive, &malody4)
 }
 
 pub fn hello_frame(shared: &Shared) -> Envelope {
@@ -123,15 +122,14 @@ pub fn hello_frame(shared: &Shared) -> Envelope {
     )
 }
 
-pub fn md5_hex(input: &str) -> String {
+/// 按字节哈希（十六进制拼接的唯一实现，复用 `malody4::model::hex16`）。
+pub fn md5_hex_bytes(bytes: &[u8]) -> String {
     use md5::{Digest, Md5};
-    let mut hasher = Md5::new();
-    hasher.update(input.as_bytes());
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect()
+    crate::malody4::model::hex16(Md5::digest(bytes).as_slice())
+}
+
+pub fn md5_hex(input: &str) -> String {
+    md5_hex_bytes(input.as_bytes())
 }
 
 pub fn json_error(text: &str) -> String {
@@ -227,6 +225,59 @@ pub fn malody_root(shared: &Shared) -> Option<PathBuf> {
     config::detect_malody_root()
 }
 
+/// Malody 4.3.7 根目录解析链（**唯一权威顺序**）：
+///
+/// 1. `process_exe` 所在目录（poller 从 `anchor::find_target()` 取得；只要求同目录下存在
+///    `malody.exe`，**不做版本校验**——这样"版本不符"才会由 `anchor::open()` 如实产生
+///    `target-mismatch:…`，而不是被伪装成"找不到进程"）；
+/// 2. `MMA_MALODY4_ROOT`；
+/// 3. 壳配置 `malody4Root`（`mma-shell-config.json`）；
+/// 4. tosu 设置同键；
+/// 5. 启发候选列表（`config::detect_malody4_root`——**唯一做版本校验的一级**，因为它可能
+///    撞上 MalodyV / Maupdate 目录）。
+///
+/// 前四级一律"非空即采纳"，不做任何存在性/版本校验：用户把 `malody4Root` 指到错目录时，
+/// 失败会如实落到下游的 `process-not-found` / `chart-not-indexed`，而不是被伪装成"你没配"。
+/// `root-not-configured` **只表示整条链走完仍为 `None`**。
+pub fn malody4_root(shared: &Shared, process_exe: Option<&Path>) -> Option<PathBuf> {
+    if let Some(dir) = process_exe.and_then(|exe| exe.parent()) {
+        if dir.join("malody.exe").exists() {
+            return Some(dir.to_path_buf());
+        }
+    }
+    if let Ok(over) = std::env::var("MMA_MALODY4_ROOT") {
+        if !over.is_empty() {
+            return Some(PathBuf::from(config::normalize_path(&over)));
+        }
+    }
+    let offline = shared
+        .offline_settings
+        .lock()
+        .unwrap()
+        .get("malody4Root")
+        .cloned();
+    if let Some(v) = offline.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return config::config_path(&serde_json::json!({"malody4Root": v}), "malody4Root");
+        }
+    }
+    let value = if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
+        shared
+            .tosu
+            .as_ref()
+            .map(|info| config::read_tosu_settings(info).get("malody4Root").cloned())
+            .flatten()
+    } else {
+        None
+    };
+    if let Some(v) = value.as_ref().and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            return config::config_path(&serde_json::json!({"malody4Root": v}), "malody4Root");
+        }
+    }
+    config::detect_malody4_root(process_exe)
+}
+
 const PING_INTERVAL: Duration = Duration::from_secs(15);
 const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -295,6 +346,23 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     post::spawn_post(shared.clone(), post_listener);
     spawn_timers(shared.clone());
     crate::etterna::spawn_poller(shared.clone());
-    crate::malody::spawn_malody_poller(shared.clone());
+    crate::malodyv::spawn_malody_poller(shared.clone());
+    crate::malody4::spawn_poller(shared.clone());
     shared
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{md5_hex, md5_hex_bytes};
+
+    #[test]
+    fn md5_hex_of_empty_string_is_unchanged() {
+        assert_eq!(md5_hex(""), "d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    #[test]
+    fn md5_hex_bytes_matches_md5_hex_for_ascii() {
+        assert_eq!(md5_hex_bytes(b"abc"), md5_hex("abc"));
+        assert_eq!(md5_hex_bytes(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
+    }
 }

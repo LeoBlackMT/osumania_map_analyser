@@ -3,5 +3,6 @@
 pub mod config;
 pub mod etterna;
 pub mod frames;
-pub mod malody;
+pub mod malodyv;
+pub mod malody4;
 pub mod server;
