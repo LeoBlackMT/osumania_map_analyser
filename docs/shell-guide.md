@@ -6,18 +6,19 @@
 
 ## 这是什么
 
-桌面壳（mma-shell）是一个可选的小窗口程序，用来：把分析卡片显示在**独立的置顶小窗口**里（可以盖在游戏/浏览器上）；在**不启动 tosu** 的情况下，让卡片接收来自 Etterna 或 Malody V 编辑器的数据。浏览器旧用法（tosu 插件）不受影响，可以正常使用。
+桌面壳（mma-shell）是一个可选的小窗口程序，用来：把分析卡片显示在**独立的置顶小窗口**里（可以盖在游戏/浏览器上）；在**不启动 tosu** 的情况下，让卡片接收来自 Etterna、Malody V 编辑器或 Malody 4.3.7 原生客户端的数据。浏览器旧用法（tosu 插件）不受影响，可以正常使用。
 
 - 系统要求：Windows / Linux（桥安装器为 PowerShell 脚本，仅 Windows；Linux 按下文手动步骤安装）。
-- Etterna/Malody 数据源需要安装对应游戏的桥文件（见下文「安装桥」）。
-- 最低游戏版本：**Etterna 0.70+**（Linux 需 0.75+ 官方 Linux 版）；**Malody V 6.6.43+**（无 Linux 版，该源仅 Windows）。
+- Etterna 与 Malody V 数据源需要安装对应游戏的桥文件（见下文「安装桥」）；**Malody 4.3.7 不需要任何游戏侧文件**——它是零注入只读观察，安装器只记录路径。
+- 最低游戏版本：**Etterna 0.70+**（Linux 需 0.75+ 官方 Linux 版）；**Malody V 6.6.43+**（无 Linux 版，该源仅 Windows）；**Malody 4.3.7 原生客户端**（仅 Windows，且只支持 4.3.7 这一个版本）。
 - 支持的谱面类型：`.mc` `.ssc` `.sm`。
 
 > 注意：
 > - 本子项目受[DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)启发，感谢 DanielEtterna 的作者提供的思路与部分代码。
 > - 壳是实验性功能，可能存在未知问题。请在使用中遇到问题时及时反馈。
-> - 受限于 Malody V 的 API，Malody 数据源仅在编辑器中可用，无法在游玩时使用。请在 Malody V 编辑器中使用「MMA Analyze」功能来查看谱面分析。
-> - 转换后默认为 OD9（ `.sm` / `.ssc` / `.mc` 转换谱面）。
+> - 受限于 Malody V 的 API，Malody V 数据源仅在编辑器中可用，无法在游玩时使用。请在 Malody V 编辑器中使用「MMA Analyze」功能来查看谱面分析。
+> - Malody 4.3.7 数据源相反：**在游戏内选曲与游玩时自动跟随**（只读观察游戏高亮的谱面），游戏侧无需安装任何东西；它只支持 4.3.7 这一个版本，版本不符时该源不可用并给出原因，其余三个源不受影响。
+> - 转换后默认为 OD9（ `.sm` / `.ssc` / `.mc` 转换谱面）；**例外**是 Malody 4.3.7 源：它的 OD 由游戏内判定档（A~E）与速率档共同决定（星级会随之变化）。
 
 ## 一、快速开始
 
@@ -25,10 +26,10 @@
   - **压缩包**：已包含插件目录、`mma-shell.exe` 与 `bridges/`，整体解压到 tosu 插件目录（`tosu/static/`）即可。
   - **单独 exe**：请放进插件目录 `ManiaMapAnalyser by Leo_Black` 内，放好后双击运行。
   - 如果你不使用 tosu，直接解压到你喜欢的位置即可。
-- 随后请参照下方「安装桥」章节安装 Etterna/Malody 桥文件。
-- 如有需要，请编辑 `mma-shell-config.json` 来对壳进行配置（游戏安装路径 `etternaRoot` / `malodyRoot`、快捷键 `hotkeys` 等）；离线模式 / 没有 tosu 时，也可编辑 `mma-settings.json` 配置卡片显示（见「配置」）。
-- 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 中选择编辑谱面，在编辑器中点击「MMA Analyze」按钮进行分析。
-- 数据源指示：卡片右上状态行末尾的小圆点——粉色=osu!、紫色=Etterna、蓝色=Malody、灰色空心=当前没有数据源。
+- 随后请参照下方「安装桥」章节安装 Etterna 与 Malody V 的桥文件（Malody 4.3.7 无需安装任何游戏侧文件，安装器会替你记录路径即可）。
+- 如有需要，请编辑 `mma-shell-config.json` 来对壳进行配置（游戏安装路径 `etternaRoot` / `malodyRoot` / `malody4Root`、快捷键 `hotkeys` 等）；离线模式 / 没有 tosu 时，也可编辑 `mma-settings.json` 配置卡片显示（见「配置」）。
+- 启动壳，然后在 Etterna 中选歌即可显示；或者在 Malody V 中选择编辑谱面，在编辑器中点击「MMA Analyze」按钮进行分析；或者直接打开 Malody 4.3.7，在游戏里选歌/游玩即自动跟随。
+- 数据源指示：卡片右上状态行末尾的小圆点——粉色=osu!、紫色=Etterna、亮青色=Malody 4、蓝色=Malody V、灰色空心=当前没有数据源。
 
 ## 二、窗口操作说明
 
@@ -52,6 +53,7 @@
 - 探测失败时可从图形对话框「浏览选择」，或手动输入路径（`/`、`\`、`\\`、包裹引号与尾部斜杠均能兼容归一化）。
 - 默认安装到 Etterna 的 Rebirth 主题（安装前有主题结构预检；Rebirth 不存在时列出可安装主题供选择）。
 - 自动把游戏路径写入 `mma-shell-config.json`。
+- 选择第三个游戏项 **Malody 4** 时**不会复制任何文件**：只把 `malody4Root` 写进 `mma-shell-config.json`（游戏侧无需任何操作）；卸载时也只清空这个键。
 - 卸载时优先使用配置中记录的游戏目录，会询问卸载哪个主题，只移除自身注入行，与其他脚本（如 DanOverlay）共存。
 - 高级参数与完整行为说明见 [bridges/README.md](../bridges/README.md)（`-Game` `-Uninstall` `-Chinese` `-Yes` `-Root` `-Theme` `-ConfigPath`）。
 
@@ -84,6 +86,12 @@ return t
 - 或者在游戏编辑器左上角点击按钮 → 插件管理 → 导入。
 - 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。
 
+### Malody 4.3.7（无需安装）
+
+- **游戏侧不需要任何操作**：不复制文件、不装插件、不改游戏设置。安装器里选 **Malody 4** 只会把游戏目录写进 `mma-shell-config.json` 的 `malody4Root`（也可以手动填，例如 `D:\\Games\\Malody-4.3.7`）。
+- 之后开着壳启动游戏，在游戏里选歌/游玩即自动跟随；游戏高亮的谱面若不在索引范围内（该源只索引 `beatmap/` 下的 `.mc` Key 谱面），卡片会保留上一张并给出原因。
+- 想彻底关掉该源：把环境变量 `MMA_MALODY4_ROOT` 指到一个不存在的路径（留空配置**不会**关断，见下文）。
+
 ## 四、配置
 
 壳有两份独立配置，都在 **exe 旁**（首次启动自动生成骨架），与 tosu 设置无关（tosu 侧只服务 osu! 来源）：
@@ -95,15 +103,16 @@ return t
   "gameClient": "Auto",
   "etternaRoot": "",
   "malodyRoot": "",
+  "malody4Root": "",
   "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
   "logLevel": "info"
 }
 ```
 
 - **gameClient**：
-  - `Auto`（推荐，按游玩中 > 近期活动 > osu!>Etterna>Malody 自动跟随）
-  - 可锁定为某个来源（`Osu!` / `Etterna` / `Malody`）。
-- **etternaRoot / malodyRoot**：游戏安装路径。**路径可写正斜杠或双反斜杠**（如 `D:/Games/Etterna` 或 `D:\\Games\\Etterna`——单反斜杠 `D:\Games` 在 JSON 里是非法转义，请用 `/` 或 `\\`）；
+  - `Auto`（推荐，按游玩中 > 近期活动 > osu!>Etterna>Malody 4>Malody 自动跟随）
+  - 可锁定为某个来源（`Osu!` / `Etterna` / `Malody` / `Malody 4`）。
+- **etternaRoot / malodyRoot / malody4Root**：游戏安装路径。`malody4Root` 由安装器的 **Malody 4** 选项自动写入（Malody 4.3.7 游戏侧无需任何操作）；**留空不等于关断**——壳的启发探测可能仍会采纳一个通过的目录，要关断请把环境变量 `MMA_MALODY4_ROOT` 指向不存在的路径。**路径可写正斜杠或双反斜杠**（如 `D:/Games/Etterna` 或 `D:\\Games\\Etterna`——单反斜杠 `D:\Games` 在 JSON 里是非法转义，请用 `/` 或 `\\`）；
 - **hotkeys**：窗口快捷键。默认 `Ctrl+Shift+T` 置顶 / `Ctrl+Shift+C` 穿透 / `Ctrl+Q` 关闭；若与系统冲突可改（支持 Ctrl/Shift/Alt/Win + 单个字母键 A–Z）。快捷键只在启动时注册，改动后需**重启壳**生效。
 - **logLevel**：日志级别。`debug` / `info` / `warn` / `error` / `off`（默认 info）。
 
@@ -112,7 +121,7 @@ return t
 - 考虑到用户可能不使用 tosu，壳提供了**离线模式**，允许用户直接编辑 `mma-settings.json` 来配置卡片显示。修改后**约 30 秒内自动生效**（壳会周期性重读配置并推送，无需重启；壳未运行时则下次启动生效）。
   - 如果**tosu 设置文件可用**（tosu 安装目录的 `settings/<插件目录名>.values.json`）时，壳**优先使用它**（在线只读 / 离线读文件），不生成也不使用 mma-settings.json。
   - 如果**找不到 tosu 设置文件**时进入本地模式：存在 `mma-settings.json` 则直接使用；不存在则由壳按插件的 `settings.json` 生成默认骨架。
-- 设置键与 tosu 设置界面完全一致；只改 `gameClient/etternaRoot/malodyRoot` 的用户**不需要碰它**（这三个在 mma-shell-config.json）。
+- 设置键与 tosu 设置界面完全一致；只改 `gameClient/etternaRoot/malodyRoot/malody4Root` 的用户**不需要碰它**（这四个在 mma-shell-config.json）。
 - 受限于框架和操作复杂度，**暂不提供图形化设置界面**，目前折中的方案是直接编辑 JSON 文件。请对照[settings.md](settings.md)的说明来修改。
 
 配置填错/JSON损坏将自动回落默认并在日志中警告。
@@ -123,7 +132,8 @@ return t
 
 ## 六、常见问题/已知问题
 
-- **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装、壳在运行。
+- **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装（Malody 4.3.7 不需要桥）、壳在运行。
+- **Malody 4.3.7 不跟随**：把 `logLevel` 设为 `debug` 看壳日志——日志会给出原因（进程没找到 / 版本不符 / 没有权限 / 该谱不在索引里等）；常见成因是游戏版本不是 4.3.7、或游戏目录设错、或谱面不是 `beatmap/` 下的 `.mc` Key 谱面。
 - **Malody 编辑器点了没反应/报超时**：壳没在运行，或窗口还没加载完（先开壳，等几秒再点）。
 - **窗口是黑/白的闪一下**：透明白闪为已知小抖动；不影响使用。
 - **卡片主体偶尔显示No Data**：对于Etterna，切成另一张谱面再切回来即可。对于Malody，请重新点击 MMA Analyze。
@@ -133,20 +143,21 @@ return t
 ## What this is
 
 mma-shell is an optional small window program that: shows the analysis card in a **standalone always-on-top mini
-window** (can overlay games/browsers); and, **without tosu running**, lets the card receive data from **Etterna** or
-the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
+window** (can overlay games/browsers); and, **without tosu running**, lets the card receive data from **Etterna**, the
+**Malody V editor** or the **Malody 4.3.7 native client**. The classic browser usage (tosu plugin) is unaffected.
 
 - System requirements: Windows / Linux (the bridge installer is a PowerShell script, Windows-only; on Linux follow the manual steps below). 
-- Etterna/Malody data sources need their game bridge files installed (see "Bridges" below). 
-- Minimum game versions: **Etterna 0.70+** (Linux needs the official 0.75+ Linux build); **Malody V 6.6.43+** (no Linux version — this source is Windows-only). 
+- Etterna and Malody V data sources need their game bridge files installed (see "Bridges" below); **Malody 4.3.7 needs no game-side files at all** — it is read-only observation with zero injection, and the installer only records its path. 
+- Minimum game versions: **Etterna 0.70+** (Linux needs the official 0.75+ Linux build); **Malody V 6.6.43+** (no Linux version — this source is Windows-only); the **Malody 4.3.7 native client** (Windows only, and only that exact version). 
 - Supported chart types: `.mc`, `.ssc`, `.sm`.
 
 > Note:
 > - This subproject is inspired by [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna); thanks to its author for the ideas and parts of the code.
 > - The shell is experimental — unknown issues may exist. Please report anything you find.
-> - Due to Malody V API limitations, the Malody source only works in the editor, not during gameplay. Use the
+> - Due to Malody V API limitations, the Malody V source only works in the editor, not during gameplay. Use the
 >   "MMA Analyze" button in the Malody V editor to view a chart's analysis.
-> - Default OD after conversion is 9 (`.sm` / `.ssc` / `.mc` charts).
+> - The Malody 4.3.7 source is the opposite: it **follows the highlighted chart automatically during selection and gameplay** (read-only observation), with nothing to install on the game side. It supports the 4.3.7 version only; on a version mismatch this source becomes unavailable with a reason while the other three data sources keep working.
+> - Default OD after conversion is 9 (`.sm` / `.ssc` / `.mc` charts); the **exception** is the Malody 4.3.7 source, whose OD comes from the in-game judge level (A–E) together with the speed mod (star ratings move accordingly).
 
 ## Quick start
 
@@ -155,14 +166,14 @@ the **Malody V editor**. The classic browser usage (tosu plugin) is unaffected.
     plugin folder (`tosu/static/`) as a whole.
   - **Standalone exe**: place it inside the `ManiaMapAnalyser by Leo_Black` plugin folder and double-click to run.
   - If you don't use tosu, just extract it wherever you like.
-- Then install the Etterna/Malody bridge files per the "Bridges" section below.
-- If needed, edit `mma-shell-config.json` to configure the shell (game install paths `etternaRoot` / `malodyRoot`,
+- Then install the Etterna and Malody V bridge files per the "Bridges" section below (Malody 4.3.7 needs no game-side files — the installer merely records its path).
+- If needed, edit `mma-shell-config.json` to configure the shell (game install paths `etternaRoot` / `malodyRoot` / `malody4Root`,
   `hotkeys`, etc.). In offline mode / without tosu you can also edit `mma-settings.json` for the card display
   (see "Configuration").
 - Start the shell: select a song in Etterna to display, or select a chart in Malody V and click "MMA Analyze" in the
-  editor.
+  editor, or simply open Malody 4.3.7 and select/play a chart to have the card follow it.
 - Source indicator: the small dot at the end of the card's top status row — pink = osu!, purple = Etterna,
-  blue = Malody, hollow grey = no data source.
+  cyan = Malody 4, blue = Malody V, hollow grey = no data source.
 
 ## Window controls
 
@@ -191,6 +202,7 @@ and the game from the menu:
 - If detection finds nothing: pick the folder from a browse dialog or type a path (`/`, `\`, `\\`, wrapping quotes and trailing slashes are all normalized).
 - Installs into the Etterna Rebirth theme by default (theme-structure pre-check; installable themes are listed when Rebirth is missing).
 - Writes the game paths into `mma-shell-config.json` for you.
+- Picking the third game option, **Malody 4**, copies **no files at all**: it only writes `malody4Root` into `mma-shell-config.json` (nothing to do on the game side), and uninstall clears just that key.
 - On uninstall it reuses the game folder recorded in the config and asks which theme to remove,
   touching only its own injection lines — other scripts (e.g. DanOverlay) coexist.
 - Full flags & behavior: [bridges/README.md](../bridges/README.md) (`-Game` `-Uninstall` `-Chinese` `-Yes` `-Root` `-Theme` `-ConfigPath`).
@@ -229,6 +241,12 @@ return t
 - Or, in the game editor's top-left, open the plugin manager and import the file.
 - Open `mma-shell-config.json` next to the plugin and fill in `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`).
 
+### Malody 4.3.7 (nothing to install)
+
+- **No action on the game side**: no files copied, no plugin installed, no game setting changed. Choosing **Malody 4** in the installer only records the game folder as `malody4Root` in `mma-shell-config.json` (you may also fill it in by hand, e.g. `D:\\Games\\Malody-4.3.7`).
+- Afterwards, keep the shell running and start the game: selecting/playing a chart makes the card follow it. If the highlighted chart is not in the indexed set (this source indexes only `.mc` Key charts under `beatmap/`), the card keeps the previous chart and reports the reason.
+- To switch the source off completely, point the `MMA_MALODY4_ROOT` environment variable at a nonexistent path (leaving the config empty does **not** disable it — see "Configuration").
+
 ## Configuration
 
 The shell has two independent config files, both **next to the exe** (auto-created on first run), independent of tosu
@@ -241,15 +259,16 @@ settings (the tosu side only serves the osu! source):
   "gameClient": "Auto",
   "etternaRoot": "",
   "malodyRoot": "",
+  "malody4Root": "",
   "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
   "logLevel": "info"
 }
 ```
 
 - **gameClient**:
-  - `Auto` (recommended; play state > recent activity > osu!>Etterna>Malody auto-follow)
-  - or lock to one source (`Osu!` / `Etterna` / `Malody`).
-- **etternaRoot / malodyRoot**: game install paths. Use forward slashes or double backslashes
+  - `Auto` (recommended; play state > recent activity > osu!>Etterna>Malody 4>Malody auto-follow)
+  - or lock to one source (`Osu!` / `Etterna` / `Malody` / `Malody 4`).
+- **etternaRoot / malodyRoot / malody4Root**: game install paths. `malody4Root` is written by the installer's **Malody 4** option (nothing to do on the Malody 4.3.7 game side); leaving it empty does **not** disable the source, because the shell's heuristic may still adopt a passing folder — to disable it, point the `MMA_MALODY4_ROOT` environment variable at a nonexistent path. Use forward slashes or double backslashes
   (`D:/Games/Etterna` or `D:\\Games\\Etterna` — a single `\` is invalid JSON escaping).
 - **hotkeys**: window shortcuts. Defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Q` close.
   Change if they conflict with your system (Ctrl/Shift/Alt/Win + single letter A–Z). Hotkeys register at startup
@@ -266,7 +285,7 @@ settings (the tosu side only serves the osu! source):
     `mma-settings.json`.
   - Without a tosu settings file, local mode kicks in: existing `mma-settings.json` is used as-is; otherwise the
     shell generates a default skeleton from the plugin's `settings.json`.
-- Keys match the tosu settings UI exactly; users who only change `gameClient` / `etternaRoot` / `malodyRoot` never
+- Keys match the tosu settings UI exactly; users who only change `gameClient` / `etternaRoot` / `malodyRoot` / `malody4Root` never
   touch this file (those live in `mma-shell-config.json`).
 - No GUI settings panel is provided for now (framework/effort tradeoff); the pragmatic approach is editing the JSON
   files directly. Refer to [settings.md](settings.md) for the key meanings.
@@ -282,7 +301,8 @@ first.
 
 ## Troubleshooting / known issues
 
-- **Hollow grey dot / frozen card**: game not running, bridge not installed, or shell not running.
+- **Hollow grey dot / frozen card**: game not running, bridge not installed (Malody 4.3.7 needs no bridge), or shell not running.
+- **Malody 4.3.7 not following**: set `logLevel` to `debug` and read the shell log — it reports the reason (process not found / version mismatch / access denied / chart not indexed, and so on). Common causes are a game version other than 4.3.7, a wrong game folder, or a chart that is not an `.mc` Key chart under `beatmap/`.
 - **Malody editor no reaction / timeout**: shell not running, or the window hasn't finished loading (start the shell
   first, wait a few seconds, then trigger).
 - **White/black flash on open**: known cosmetic quirk of transparency; doesn't affect use.

@@ -21,7 +21,7 @@
 - **键型分析**：分析谱面中的RC/LN键型分布，帮助玩家了解谱面结构。
 - **Rework PP**：提供Rework PP难度表现面板，显示Max PP/Live PP、Proportion及各乘子柱状图，游玩/结算时实时更新。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
-- **Etterna/Malody支持**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 粉 / Etterna 紫 / Malody 蓝）。
+- **Etterna、Malody V、Malody 4 支持**：除 osu!mania 外可接收来自 Etterna、Malody V、Malody 4.3.7 原生客户端（后三者需桌面壳）的数据，状态行圆点实时指示（osu! 粉 / Etterna 紫 / Malody 4 亮青 / Malody V 蓝）。
 - **桌面壳**：独立置顶/透明/无边框小窗口。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
 
@@ -63,8 +63,9 @@
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
-## Malody V 编辑器 / Etterna 支持
-- Malody V 编辑器和 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。
+## Malody V 编辑器 / Malody 4.3.7 / Etterna 支持
+- Malody V 编辑器、Malody 4.3.7 原生客户端与 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器、Malody 4.3.7 或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。
+- Malody V 与 Etterna 需要在游戏侧安装桥文件；**Malody 4.3.7 不需要在游戏里安装任何东西**：它由桌面壳从进程外只读观察接入（不写游戏目录、不注入），在游戏内选曲/游玩时自动跟随。它只支持 4.3.7 这一个版本，且仅 Windows 可用。
 - 该功能仍处于实验阶段，可能存在未知问题。请在使用过程中遇到问题时及时反馈。
 
 ## 贡献指南

@@ -23,7 +23,7 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution in the beatmap to help players understand its structure.
 - **Rework PP**: Provides the Rework PP performance panel with Max PP/Live PP, Proportion, and multiplier bars, updating in real-time during play and results.
 - **Preset System**: Provides system and custom presets to apply or save the whole configuration with one click, with automatic follow mode for manual changes.
-- **Etterna/Malody Support**: Besides osu!mania, the card can receive data from Etterna and Malody V (desktop shell required); a status-dot indicator shows the current source (osu! pink / Etterna purple / Malody blue).
+- **Etterna, Malody V and Malody 4 Support**: Besides osu!mania, the card can receive data from Etterna, Malody V and the Malody 4.3.7 native client (the latter three require the desktop shell); a status-dot indicator shows the current source (osu! pink / Etterna purple / Malody 4 cyan / Malody V blue).
 - **Desktop Shell**: A standalone always-on-top/transparent/borderless mini window.
 - **Highly Customizable**: Offers a wealth of customization options to meet the needs of different players.
 
@@ -63,8 +63,9 @@ For the preset system tutorial, see [docs/presets-guide.md](docs/presets-guide.m
 - Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
 - Azusa builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
 
-## Malody V Editor / Etterna Support
-- Malody V editor and Etterna support require the desktop shell (mma-shell). The shell is a standalone mini window that receives data from the Malody V editor or Etterna even when tosu is not running, and shows the analysis result in a standalone always-on-top window. See [docs/shell-guide.md](docs/shell-guide.md) for details.
+## Malody V Editor / Malody 4.3.7 / Etterna Support
+- Malody V editor, Malody 4.3.7 native client and Etterna support require the desktop shell (mma-shell). The shell is a standalone mini window that receives data from the Malody V editor, Malody 4.3.7 or Etterna even when tosu is not running, and shows the analysis result in a standalone always-on-top window. See [docs/shell-guide.md](docs/shell-guide.md) for details.
+- Malody V and Etterna need their bridge files installed on the game side; **Malody 4.3.7 needs nothing installed in the game** — the shell attaches through read-only observation from outside the process (no game-folder writes, no injection) and follows the chart you select or play. It supports the 4.3.7 version only and is Windows-only.
 - This feature is still experimental — unknown issues may exist. Please report anything you find.
 
 # Contribution Guide
