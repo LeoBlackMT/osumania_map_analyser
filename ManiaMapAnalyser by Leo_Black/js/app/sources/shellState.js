@@ -9,10 +9,23 @@
 // `state.malody4Alive` 由 selection 帧的新鲜度派生，**绝不被 30s 周期的 state 帧覆盖**。
 
 import { state } from "../appContext.js";
-import { notifySourceEvent, reEvaluate } from "./sourceManager.js";
+import { setStatus } from "../hud.js";
+import { currentRoute, notifySourceEvent, reEvaluate } from "./sourceManager.js";
 
 /** 心跳 2s + 容忍丢一拍 → 6s 未见 selection 帧即视为本源离场。 */
 const MALODY4_ALIVE_WINDOW_MS = 6000;
+
+/** 壳 `reason` 闭集里"这个身份键查过、重建尝试也用完仍解析不出来"的字面量。 */
+const UNKNOWN_IDENTITY_REASON = "chart-unknown-identity";
+
+/**
+ * 状态行提示：卡片**为什么**停在上一张谱面上（`chart-unknown-identity`）。
+ *
+ * 文本不写 md5、不用术语：用户看到的现象就是"卡片没跟着换谱"，这里只说清两件事——
+ * 这张谱不在本地谱面库里、卡片仍是上一张。卡片本身不隐藏、不门控，提示只是把沉默补上。
+ */
+const UNKNOWN_IDENTITY_NOTICE =
+    "Malody 4: this chart is not in the local beatmap library — the card still shows the previous chart.";
 
 /**
  * 应用壳 state 帧（shell → 页）。
@@ -33,7 +46,29 @@ export function applyShellState(payload) {
     state.malody4Judge = malody4.judge || null;
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
     // 30s 周期帧写它会把心跳之间的在线状态冲成假离线。
+    syncUnknownIdentityNotice();
     reEvaluate();
+}
+
+/**
+ * `chart-unknown-identity` → 状态行提示（去重与清理都只看 `state.statusText`，不另设标志位）。
+ *
+ * - 只在**当前路由就是 malody4** 时提示：这时卡面正是 malody4 在供数据，提示才不会张冠李戴；
+ * - 已经是这条提示 → 什么都不做（state 帧 30s 一条，且 malody4 alive/playing 变化也会推帧）；
+ * - 原因消失/换路由（壳清空：换到可解析的谱面、游戏空闲）→ **只收自己写的那一条**：当前状态若
+ *   已被分析流程改写（`analysis.js` 的 "Loading beatmap file…" 或元信息行），那是更新的权威，
+ *   绝不覆盖。提示因而自我清除：换一张能解析的谱面时状态行会被分析流程重写。
+ */
+function syncUnknownIdentityNotice() {
+    if (state.malody4Reason === UNKNOWN_IDENTITY_REASON && currentRoute() === "malody4") {
+        if (state.statusText !== UNKNOWN_IDENTITY_NOTICE) {
+            setStatus(UNKNOWN_IDENTITY_NOTICE, "error");
+        }
+        return;
+    }
+    if (state.statusText === UNKNOWN_IDENTITY_NOTICE) {
+        setStatus("", "ok");
+    }
 }
 
 /**

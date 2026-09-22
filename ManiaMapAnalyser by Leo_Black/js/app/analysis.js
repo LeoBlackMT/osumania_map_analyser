@@ -307,6 +307,22 @@ export function resetReworkDisplay() {
     setLeftCapsuleUnitBadge("");
 }
 
+// 遥测值域（后端 backend/internal/store/aggregate.go 按 actualAlgorithm 的字符串直接分桶，
+// 任何非算法名都会上报成一条假算法行）：合法值只有真实子算法名，且永不含 "Mixed"。
+const TELEMETRY_ACTUAL_ALGORITHMS = Object.freeze(["Sunny", "Daniel", "Azusa", "Roxy", "Companella"]);
+// 显示胶囊 → 遥测算法名：低难段 0.5/0.5 融合的胶囊 "Azusa+Companella" 只是卡片文案
+// （docs/features/mixed-routing.md C8），它的 RC 数值以 Azusa 的估算结果为基准
+// （mixedEstimator 的 plan.rcNumeric/rcEstDiff 取自 Azusa），故遥测归入 Azusa。
+const TELEMETRY_CAPSULE_ALIASES = Object.freeze({ "Azusa+Companella": "Azusa" });
+
+// 载荷边界的值域守卫：已知胶囊映射回真实算法名，其余只放行真实算法名；
+// 未知标签返回 null（调用方据此不发送该字段——宁缺勿假，后端按空值跳过）。
+export function toTelemetryActualAlgorithm(value) {
+    const text = String(value ?? "").trim();
+    const name = TELEMETRY_CAPSULE_ALIASES[text] ?? text;
+    return TELEMETRY_ACTUAL_ALGORITHMS.includes(name) ? name : null;
+}
+
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
@@ -425,13 +441,18 @@ export async function fetchBeatmapFile(reason) {
             }
             setEffectiveContentBarForMap(null);
         };
+        // 外部源（Etterna/Malody）注入文本的取用点：无论本轮走不走缓存都先取走并清槽。
+        // 旧写法只在非缓存分支消费——缓存命中的那轮会把文本留在槽里，下一张图
+        // （含切回 osu）可能误用上一张图的外部文本。externalText 同时作为"本轮补跑
+        // 可复用的本地文本"，供下方 auto profile 段回填（见那里的注释）。
+        const externalText = state.pendingSourceText;
+        state.pendingSourceText = null;
         if (cached) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
-        } else if (state.pendingSourceText) {
-            // 外部源（Etterna/Malody）：文本已由 externalSource 转换并注入，跳过 tosu 抓取。
-            rawText = state.pendingSourceText;
-            state.pendingSourceText = null;
+        } else if (externalText) {
+            // 文本已由 externalSource 转换并注入，跳过 tosu 抓取。
+            rawText = externalText;
             if (isStaleRequest()) return;
             if (!rawText || !rawText.trim()) {
                 throw new Error("Empty external beatmap content.");
@@ -1090,12 +1111,22 @@ export async function fetchBeatmapFile(reason) {
                 || state.useSvDetection
             ) && !needPatternAnalysis;
 
-            if (!sourceRequestId && profileChanged && ((missingEtterna || missingPattern)
+            if (profileChanged && ((missingEtterna || missingPattern)
                 || state.contentBar !== beforeContent
                 || state.srText !== beforeSrText)) {
-                // 外部源请求跳过二次 recompute：其自动补跑依赖 osu 的缓存兜底
-                // （identity 相同第二次命中快照）；外部源第二次会走 tosu 抓取而
-                // 失败，且会吞掉第一次请求的 result 帧（stale）。
+                // 外部源同样要补跑：它们没有 osu 那种"第二次抓同一张图/命中快照"的兜底，
+                // 但本轮用过的文本本来就在本地（externalText，不经 tosu 抓取）——把同一份
+                // 文本回填待用槽，二次派发即可直接重算，无需任何网络步骤（旧注释担心的
+                // "第二次走 tosu 抓取必然失败"对本类源不成立，故不再按 sourceRequestId 跳过）。
+                // 仅在本轮仍是当前请求时回填：新帧会在自己的处理里同步推高
+                // analysisRequestSeq（scheduleRecompute 是同步派发），旧图的文本绝不会
+                // 喂给下一张图；二次派发随即取走该槽，槽位不会滞留。
+                if (externalText && !isStaleRequest()) {
+                    state.pendingSourceText = externalText;
+                }
+                // 二次派发沿用"衍生重算"语义：requestId 已在本函数开头清空，故不会
+                // 再发一帧 result（壳按首帧 requestId 关联）；首帧 result 由下方
+                // finally 无条件发出，stale 不影响 result 帧。
                 scheduleRecompute("auto profile switched", false);
                 return;
             }
@@ -1216,9 +1247,12 @@ export async function fetchBeatmapFile(reason) {
                 && Number.isFinite(resolvedNumericDifficulty)
                 ? resolvedNumericDifficulty
                 : rcLabelToNumeric(resolvedEstDiff);
+            // 值域守卫：state.actualEstimatorAlgorithm 是**显示**口径（可含融合胶囊），
+            // 载荷只能带真实算法名（见 toTelemetryActualAlgorithm）。
+            const telemetryActualAlgorithm = toTelemetryActualAlgorithm(state.actualEstimatorAlgorithm);
             const payload = {
                 algorithm: state.estimatorAlgorithm,
-                actualAlgorithm: state.actualEstimatorAlgorithm,
+                ...(telemetryActualAlgorithm ? { actualAlgorithm: telemetryActualAlgorithm } : {}),
                 client: state.activeSource || "osu",
                 keycount: Number(rework.columnCount),
                 mods: state.modCodes || [],
