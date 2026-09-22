@@ -1,22 +1,25 @@
 // Malody 4.3.7（旧原生 32 位客户端）数据源：纯逻辑层 + 壳侧 poller。
 //
-// - anchor：版本表（RVA / PE 时间戳 / 文件大小）、身份键解析、PE 版本校验
+// - anchor：版本表（RVA / PE 时间戳 / 文件大小）、身份键解析、PE 版本校验、
+//   设置单例（判定档 / 变速位）的内存读取
 // - config：config.json 只读解析（只取 user_mods / user_judge_level）
 // - gamelog：日志场景行解析（switch to N）+ 日志目录枚举（`latest_log`）
-// - library：<root>/beatmap/** 索引（流式 md5 + 有界前缀 meta 提取）——后台构建线程独占写入
+// - library：<root>/beatmap/** 索引（流式 md5 + 有界前缀 meta 提取）+ 树指纹（只读元数据的
+//   变更探测）——后台构建线程独占写入
 // - model：Screen / ModFlags / JudgeLevel / Selection / UnavailableReason
 // - selection：selection 状态机（防抖 + 心跳 + 不可用原因）
 //
 // 本模块的阈值全部集中在这里，任何子模块都不得各写一份数字。
 //
 // poller 的 tick 顺序（对应 Step 4 的伪码，逐条见 `.omo/evidence/malody4-source/task-4-loop.txt`）：
-//   ① attach（惰性，2s 重试）→ ② 根目录解析链 → ③ 60s 重建请求 → ④ 日志尾随取 screen
+//   ① attach（惰性，2s 重试）→ ② 根目录解析链 → ③ 库变更同步（`content_revision`，放开
+//   "本会话不可解析"的身份键）→ ④ 日志尾随取 screen
 //   → ⑤ 锚点读取（硬失败立即 detach；软失败容忍 `SOFT_READ_TOLERANCE` 次）→ ⑥ 索引 lookup
-//   → ⑦ config（rate/judge）→ ⑧ selection.fold → ⑨ dispatch_plan 发帧
-//   → ⑩ 状态更新（跳变时即时推 state 帧）。
+//   → ⑦ 判定档 / 变速位（**内存优先**，config.json 兜底）→ ⑧ selection.fold
+//   → ⑨ dispatch_plan 发帧 → ⑩ 状态更新（跳变时即时推 state 帧）。
 //
-// 主循环内**不做文件系统遍历**：日志目录枚举在 `gamelog::latest_log`、索引遍历在
-// `library::rebuild`（后台构建线程），本文件只调用它们。
+// 主循环内**不做文件系统遍历**：日志目录枚举在 `gamelog::latest_log`、索引遍历与周期重扫的
+// 指纹扫描都在后台构建线程（`library::rebuild` / `library::rescan_change`），本文件只调用它们。
 
 pub mod anchor;
 pub mod config;
@@ -31,13 +34,13 @@ use crate::frames::{
 };
 use crate::server::log::log_at;
 use crate::server::{broadcast, Shared};
-use self::anchor::{AnchorError, IdentityKey};
+use self::anchor::{AnchorError, IdentityKey, MemoryProbe, MemorySource, RawSettings};
 use self::config::GameConfig;
 use self::gamelog::SceneTracker;
-use self::library::{ChartLibrary, ChartMeta, LibraryEntry, LibraryStats};
+use self::library::{ChartLibrary, ChartMeta, LibraryEntry, LibraryFingerprint, LibraryStats};
 use self::model::{Screen, Selection, UnavailableReason};
 use self::selection::{Action, Availability, SelectionState};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -56,7 +59,7 @@ pub const HEARTBEAT: Duration = Duration::from_secs(2);
 pub const TICK: Duration = POLL_INTERVAL;
 /// 速率比较的容差（`|Δ| < RATE_EPS` 视为同一速率）。
 pub const RATE_EPS: f64 = 1e-5;
-/// 索引周期重建间隔。
+/// 索引周期重扫间隔（判定走 `library::rescan_change` 的元数据指纹，只有树真的变了才重建）。
 pub const INDEX_RESCAN: Duration = Duration::from_secs(60);
 /// 同一失败原因的日志节流窗口。
 pub const ACTION_LOG_THROTTLE: Duration = Duration::from_secs(30);
@@ -64,6 +67,15 @@ pub const ACTION_LOG_THROTTLE: Duration = Duration::from_secs(30);
 pub const ATTACH_RETRY: Duration = Duration::from_secs(2);
 /// 索引 miss 触发的重建请求节流（全局）。
 pub const INDEX_REBUILD_THROTTLE: Duration = Duration::from_secs(5);
+/// 同一个 md5 允许的重建尝试次数（用完即判"本会话不可解析"，不再请求重建、不再记日志）。
+///
+/// 为什么封顶：实测现场 25 个身份键里只有 6 个在盘上，剩下 19 个永远查不到；旧行为只受
+/// `INDEX_REBUILD_THROTTLE` 节流、**永不放弃**，于是整库（~22 MB）每 5s 被重哈希一次
+/// （一个会话刷出 22 代索引，日志里全是 `index miss ... rebuild requested` + `index built`）。
+/// 为什么是 2 而不是 1：第 2 次尝试覆盖"文件在第 1 次重建之后、下一次周期重扫之前落盘"
+/// （最长 60s）的窗口；库**真的**变了时预算会整体重置（见 `MissRebuildTracker::reset`），
+/// 因此 2 不会被浪费在"树根本没变"的重哈希上耗光。
+pub const MISS_REBUILD_ATTEMPTS: u32 = 2;
 /// `playing` 的新鲜窗口：场景为 Playing 且最后一次场景切换在此窗口内。
 pub const PLAYING_FRESH: Duration = Duration::from_secs(10);
 /// `user_mods` 的 FAIR 判定模组位（桌面版 `JudgeKeyFair`）。
@@ -85,6 +97,148 @@ pub const SOFT_READ_TOLERANCE: u32 = 10;
 /// `user_mods` 是否置了 FAIR 判定模组位（纯函数，便于单测）。
 pub fn fair_judge_mod(user_mods: u64) -> bool {
     user_mods & MOD_JUDGE_KEY_FAIR != 0
+}
+
+/// 附着成功后用于"内存 vs `config.json`"交叉校验的窗口。
+///
+/// `config.json` 的这两个键正是从内存里那两个偏移写出去的，因此**刚附着**时两者应当一致；
+/// 本局中途改判定造成的分歧正是本次改动的理由。这个窗口只决定"要不要记一条诊断告警"，
+/// **绝不是门**：窗口内的分歧也不拒绝、不覆盖内存值（见 `note_file_cross_check`）。
+pub const SETTINGS_CROSS_CHECK: Duration = Duration::from_secs(30);
+/// `S` / `P` 两条链连续不一致多少拍才记那条一次性告警（"> 两拍"）。
+///
+/// 取 3 而不是 1：判定档设置器把两个对象写在相隔 4 条指令处，而壳读它们要走两次独立的
+/// `ReadProcessMemory`，单拍的不一致可能只是"两次系统调用之间游戏真的改了一次设置"。
+pub const CHAIN_DISAGREE_POLLS: u32 = 3;
+
+// --------------------------------------------- 判定档 / 变速位：取值来源 --
+
+/// 本 tick 判定档与变速位的**来源**（诊断与日志用；不进任何帧）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsOrigin {
+    /// 游戏进程内存：`S`（用户设置单例）优先，`S` 读不到时用 `P`（本局 play-config）。
+    Memory,
+    /// `config.json` 兜底（内存这条链现在读不到）。
+    ConfigJson,
+}
+
+impl SettingsOrigin {
+    /// 稳定短字面量（进壳日志，不进任何帧）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SettingsOrigin::Memory => "memory",
+            SettingsOrigin::ConfigJson => "config.json",
+        }
+    }
+}
+
+/// 本 tick 实际使用的判定档 / 速率 / `user_mods`（纯函数 `effective_settings` 的产物）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EffectiveSettings {
+    pub source: SettingsOrigin,
+    /// 判定档字母；`None` = 判定未知（song 帧 withhold，既有行为不变）。
+    pub judge: Option<char>,
+    /// 变速位换算出的速率。
+    pub rate: f64,
+    /// `user_mods` 位掩码（FAIR 位判定用）：未知位原样带过来，不裁剪。
+    pub user_mods: u64,
+}
+
+/// 取值优先级（纯函数）：**内存读到就赢**（游戏里改判定 / 改变速位立即生效），
+/// 否则回落 `config.json`。
+///
+/// 内存读数在 `anchor` 里已经过完所有 fail-closed 校验——指针为 0 / 不对齐 / 超出 32 位用户
+/// 地址空间 / 对象块短读 / 判定档越界 / `P` 的子集不变量不成立，都会让对应的链读不出来——
+/// 到这里要么是一个校验过的值，要么是 `None`。本函数**不再二次猜测**，也绝不把两条链拼起来用。
+///
+/// 两个来源都给不出值 → `judge = None`（song 帧 withhold 的既有路径）、速率 1.0。
+pub fn effective_settings(
+    memory: Option<(MemorySource, RawSettings)>,
+    file: Option<&GameConfig>,
+) -> EffectiveSettings {
+    if let Some((_, raw)) = memory {
+        // 内存里的判定档 / `user_mods` 与 config.json 是**同一组设置**（该文件正是从这两个偏移
+        // 写出去的），因此直接复用 `GameConfig` 的解释路径：判定档 → JudgeLevel → 字母，
+        // 位掩码 → ModFlags → 速率。未知位一律不解释（`ModFlags` 只看三个变速位）。
+        let view = GameConfig {
+            user_mods: u64::from(raw.user_mods),
+            user_judge_level: u64::from(raw.judge),
+        };
+        return EffectiveSettings {
+            source: SettingsOrigin::Memory,
+            judge: view.judge_letter(),
+            rate: view.mod_flags().speed_rate(),
+            user_mods: view.user_mods,
+        };
+    }
+    match file {
+        Some(config) => EffectiveSettings {
+            source: SettingsOrigin::ConfigJson,
+            judge: config.judge_letter(),
+            rate: config.mod_flags().speed_rate(),
+            user_mods: config.user_mods,
+        },
+        None => EffectiveSettings {
+            source: SettingsOrigin::ConfigJson,
+            judge: None,
+            rate: 1.0,
+            user_mods: 0,
+        },
+    }
+}
+
+/// 判定档的诊断文本（`None` = 判定未知）。
+fn judge_text(judge: Option<char>) -> String {
+    judge
+        .map(|letter| letter.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// **info** 诊断行的文案（纯函数）：来源 + 判定字母 + 速率。
+/// 用户据此确认"游戏里一改就生效"（不必看十六进制转储），也是"值从哪来"的唯一落点。
+fn settings_log(effective: &EffectiveSettings) -> String {
+    format!(
+        "malody4 settings: source={} judge={} speed_rate={:.2}",
+        effective.source.as_str(),
+        judge_text(effective.judge),
+        effective.rate
+    )
+}
+
+/// `S` / `P` 持续不一致的一次性告警文案（纯函数；两边的原始值都给出来便于定位）。
+fn chain_disagreement_warning(user: RawSettings, play: RawSettings, polls: u32) -> String {
+    format!(
+        "malody4 settings chains disagree for {polls} consecutive polls: user-settings judge={} user_mods={:#x} vs play-config judge={} user_mods={:#x} — publishing the user-settings value",
+        user.judge, user.user_mods, play.judge, play.user_mods
+    )
+}
+
+/// 内存值与 `config.json` 不一致时的一次性告警文案（纯函数；两边都给出来）。
+fn file_cross_check_warning(effective: &EffectiveSettings, file: &GameConfig) -> String {
+    format!(
+        "malody4 settings cross-check: memory judge={} speed_rate={:.2} vs config.json judge={} speed_rate={:.2} — keeping the memory value (the file is only rewritten at game start/exit)",
+        judge_text(effective.judge),
+        effective.rate,
+        judge_text(file.judge_letter()),
+        file.mod_flags().speed_rate()
+    )
+}
+
+/// info 行（`settings_log`）的去重键：来源 + 判定档 + 速率。**同值不记**（绝不逐 tick 刷）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SettingsLogKey {
+    source: SettingsOrigin,
+    judge: Option<char>,
+    rate: f64,
+}
+
+impl SettingsLogKey {
+    /// 速率按 `RATE_EPS` 容差比较（来源与判定档精确比较）。
+    fn matches(&self, other: &Self) -> bool {
+        self.source == other.source
+            && self.judge == other.judge
+            && (self.rate - other.rate).abs() < RATE_EPS
+    }
 }
 
 // ---------------------------------------------------- 锚点读取：硬失败 / 软失败 --
@@ -297,12 +451,16 @@ fn song_frame_due(
 /// poller 与索引构建线程之间的私有共享。
 ///
 /// **不进 `Shared`**（`Shared` 只持有 `Malody4Status`）：`idx.lib` 的唯一写者是构建线程，
-/// poller 只读且不持锁做别的事。60s 周期重建与 miss 触发的重建都**只置位**，
+/// poller 只读且不持锁做别的事。重建请求只置位、周期重扫与指纹扫描都在构建线程里做，
 /// 200ms 主循环绝不遍历文件系统。
 pub struct IndexShared {
     pub lib: Mutex<ChartLibrary>,
     pub rebuild_requested: AtomicBool,
     pub generation: AtomicU64,
+    /// "库真的变了"的修订号：只在**周期重扫判定为变化**或**根目录换了**（旧索引整体作废）
+    /// 时 +1。miss 触发的重建**不**计数——它消耗的是重试预算，不是"库变了"的证据。
+    /// poller 据此放开此前判定"本会话不可解析"的身份键（见 `MissRebuildTracker::reset`）。
+    pub content_revision: AtomicU64,
 }
 
 impl IndexShared {
@@ -311,6 +469,7 @@ impl IndexShared {
             lib: Mutex::new(empty_library()),
             rebuild_requested: AtomicBool::new(false),
             generation: AtomicU64::new(0),
+            content_revision: AtomicU64::new(0),
         }
     }
 }
@@ -326,6 +485,7 @@ fn empty_library() -> ChartLibrary {
         by_md5: HashMap::new(),
         meta: HashMap::new(),
         built_at: Instant::now(),
+        fingerprint: LibraryFingerprint::default(),
         stats: LibraryStats::default(),
     }
 }
@@ -351,10 +511,26 @@ fn indexed_count(idx: &IndexShared) -> usize {
     idx.lib.lock().map(|lib| lib.stats.indexed).unwrap_or(0)
 }
 
+/// 当前索引的树指纹（克隆，不持锁做别的事）：周期重扫拿它当"变了没有"的基准。
+fn index_fingerprint(idx: &IndexShared) -> LibraryFingerprint {
+    idx.lib
+        .lock()
+        .map(|lib| lib.fingerprint.clone())
+        .unwrap_or_default()
+}
+
 /// 索引构建线程：`idx.lib` 的唯一写者；根目录由 poller 经 channel 送达。
+///
+/// 两条重建理由：
+/// - **请求**（`rebuild_requested`，只由 miss 置位）：强制执行。miss 是"指纹可能看不见变化"
+///   的唯一实证（盲区见 `library::LibraryFingerprint`），故不吃指纹这一关；次数由 poller 的
+///   `MISS_REBUILD_ATTEMPTS` 预算封顶。
+/// - **周期**（每 `INDEX_RESCAN`）：只走一遍**元数据**指纹（`library::rescan_change`），与上次
+///   构建一致就完全不动（不哈希、不计入 `generation`、不发 `index built`），只记一条 debug。
 fn index_build_loop(idx: Arc<IndexShared>, root_rx: mpsc::Receiver<PathBuf>) {
     let mut root: Option<PathBuf> = None;
     let mut built_root: Option<PathBuf> = None;
+    let mut last_rescan: Option<Instant> = None;
     loop {
         match root_rx.recv_timeout(POLL_INTERVAL) {
             Ok(new_root) => root = Some(new_root),
@@ -369,7 +545,26 @@ fn index_build_loop(idx: Arc<IndexShared>, root_rx: mpsc::Receiver<PathBuf>) {
         let Some(dir) = root.clone() else { continue };
         // 首次拿到根目录、或根目录换了（旧索引整体作废）→ 立即建一次
         let stale = built_root.as_deref() != Some(dir.as_path());
-        if !requested && !stale {
+        let rescan_due = last_rescan
+            .map(|at| at.elapsed() >= INDEX_RESCAN)
+            .unwrap_or(true);
+        // 到点且没有别的重建理由 → 只读元数据地判定"树变了没有"（绝不在这里哈希）
+        let scanned = rescan_due && !stale && !requested;
+        let changed = scanned && library::rescan_change(&dir, &index_fingerprint(&idx)).is_some();
+        if rescan_due {
+            last_rescan = Some(Instant::now());
+        }
+        if !requested && !stale && !changed {
+            if scanned {
+                // 每个重扫周期一条（60s），不是每 tick 一条：库没变就不该有重建噪声
+                log_at(
+                    "debug",
+                    &format!(
+                        "malody4 index rescan: root={} unchanged (metadata fingerprint identical) — rebuild skipped",
+                        dir.display()
+                    ),
+                );
+            }
             continue;
         }
         let started = Instant::now();
@@ -377,15 +572,22 @@ fn index_build_loop(idx: Arc<IndexShared>, root_rx: mpsc::Receiver<PathBuf>) {
         let stats = rebuilt.stats.clone();
         *idx.lib.lock().unwrap() = rebuilt;
         let generation = idx.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        // 树确实变了（周期重扫检出 / 根目录换了）→ 放开此前判定"不可解析"的身份键：
+        // 它们可能正是这次新增的文件。miss 触发的重建不在此列（见 `content_revision`）。
+        if changed || stale {
+            idx.content_revision.fetch_add(1, Ordering::Relaxed);
+        }
         // stats 全字段：用于区分"库里没有这张谱"与"被过滤掉了"。
         // info 级（默认 logLevel=info 可见）：这是判断索引是否建成、收了多少张的唯一现场证据。
         log_at(
             "info",
             &format!(
-                "malody4 index built: root={} indexed={} skipped_non_key={} skipped_junk={} skipped_ext={} skipped_unparsed={} duplicate_md5={} elapsed_ms={} generation={}",
+                "malody4 index built: root={} indexed={} skipped_non_key={} skipped_osu_not_mania={} skipped_osu_no_keys={} skipped_junk={} skipped_ext={} skipped_unparsed={} duplicate_md5={} elapsed_ms={} generation={}",
                 dir.display(),
                 stats.indexed,
                 stats.skipped_non_key,
+                stats.skipped_osu_not_mania,
+                stats.skipped_osu_no_keys,
                 stats.skipped_junk,
                 stats.skipped_ext,
                 stats.skipped_unparsed,
@@ -538,6 +740,80 @@ impl ReasonLog {
     }
 }
 
+/// 一个身份键的重建尝试簿（纯逻辑、无 IO；住在 `Runtime` 里）。
+///
+/// 旧行为：miss 只受全局 `INDEX_REBUILD_THROTTLE`（5s）节流、**永不放弃**——真机 25 个身份键里
+/// 只有 6 个在盘上，剩下 19 个会让整库（~22 MB）每 5s 被重哈希一次（实测一个会话 22 代索引）。
+/// 现在每个 md5 各有 `MISS_REBUILD_ATTEMPTS` 次重建预算；用完即判"本会话不可解析"：不再请求、
+/// 也不再记日志（判定那一次记一条 info，且只记一次）。
+#[derive(Debug, Default)]
+struct MissRebuildTracker {
+    /// md5 → 已经用掉的重建次数。
+    used: HashMap<String, u32>,
+    /// 已判定本会话不可解析的 md5。
+    unresolvable: HashSet<String>,
+}
+
+impl MissRebuildTracker {
+    /// 该 md5 是否已判定不可解析（判定后调用方直接跳过：不请求、不记日志）。
+    fn is_unresolvable(&self, md5: &str) -> bool {
+        self.unresolvable.contains(md5)
+    }
+
+    /// 该 md5 的对外不可用原因：预算已耗尽（结论已定）→ `Some(ChartUnknownIdentity)`。
+    ///
+    /// 预算还没用完的 miss 返回 `None`：那只是"结果未定"（库可能仍在建、文件可能刚落地），
+    /// 本 tick 不设 blocker，`chart-not-indexed` 仍由 selection 状态机按既有路径给出——线上
+    /// 形态与改动前一字不差。两者的语义分界见 `model::UnavailableReason`。
+    fn unavailable_reason(&self, md5: &str) -> Option<UnavailableReason> {
+        self.is_unresolvable(md5)
+            .then_some(UnavailableReason::ChartUnknownIdentity)
+    }
+
+    /// 已用掉的重建次数（诊断与单测）。
+    #[cfg(test)]
+    fn attempts(&self, md5: &str) -> u32 {
+        self.used.get(md5).copied().unwrap_or(0)
+    }
+
+    /// 记一次重建尝试；预算用完返回 `false`，并就此把该 md5 记为不可解析。
+    ///
+    /// 调用方只在**真的要置重建位**时调用（全局节流窗口内不算一次尝试）：预算计的是"重建了
+    /// 几次"，不是"miss 了几个 tick"——否则一次 200ms 的连续 miss 会在重建还没跑完时就把预算烧光。
+    fn spend(&mut self, md5: &str) -> bool {
+        let used = self.used.entry(md5.to_string()).or_insert(0);
+        if *used >= MISS_REBUILD_ATTEMPTS {
+            self.unresolvable.insert(md5.to_string());
+            return false;
+        }
+        *used += 1;
+        true
+    }
+
+    /// 库**真的**变了（周期重扫检出变化 / 根目录换了）→ 清空预算与放弃记录。
+    ///
+    /// 为什么放开：这些结论是从"上一份索引快照"推出来的，而快照的依据（树的内容）已经变了；
+    /// 此前不可解析的 md5 可能正是这次新增的文件。miss 自己触发的重建**不**走这里——那种重建
+    /// 消耗的是预算，不是"库变了"的证据（否则预算永远清不空，等于没封顶）。
+    fn reset(&mut self) {
+        self.used.clear();
+        self.unresolvable.clear();
+    }
+}
+
+/// 判定"本会话不可解析"那一刻的 **info** 日志文案（纯函数，便于单测逐字钉住）。
+///
+/// 这是用户要的"明确指示"：只靠 `reason` 字面量读者看不出卡片为什么停在上一张谱面上，
+/// 所以这一行把**后果**说出来（卡片不会被门控或隐藏——那是明确排除的范围）。
+/// 调用点只在预算耗尽的那一次（`MissRebuildTracker::spend` 返回 `false` 的那个 tick），
+/// 同一个 md5 之后走 `is_unresolvable` 短路，**一整个会话只有这一行**（库真的变了会重置预算，
+/// 那时允许再记一次）。
+fn unresolvable_chart_log(md5: &str, generation: u64, indexed: usize) -> String {
+    format!(
+        "malody4 chart cannot be identified from the local library: md5={md5} (generation={generation}, indexed={indexed}) — {MISS_REBUILD_ATTEMPTS} rebuild attempts exhausted, no further rebuilds for this identity; the previous chart stays on screen"
+    )
+}
+
 /// poller 的运行时状态（私有；`IndexShared` 是它与构建线程之间的共享）。
 struct Runtime {
     idx: Arc<IndexShared>,
@@ -554,8 +830,11 @@ struct Runtime {
     selection: SelectionState,
     dispatch: SongDispatchState,
     reason_log: ReasonLog,
-    last_rescan: Option<Instant>,
     last_rebuild_request: Option<Instant>,
+    /// 每个身份键的 miss 重试预算（用完即本会话不再为它重建）。
+    miss_tracker: MissRebuildTracker,
+    /// 上次同步过的 `IndexShared::content_revision`（变大 = 库真的变了 → 放开不可解析记录）。
+    seen_content_revision: u64,
     last_miss: Option<(String, u64)>,
     last_hit: Option<(String, String)>,
     last_selection_log: Option<(String, String, f64, &'static str)>,
@@ -563,11 +842,22 @@ struct Runtime {
     reason: String,
     /// FAIR 判定模组的一次性提示是否已发（进程内只发一次）。
     fair_logged: bool,
+    /// 附着成功时刻 = "内存 vs config.json"交叉校验窗口的起点（未附着为 `None`）。
+    attached_at: Option<Instant>,
+    /// 交叉校验是否已经做过（每个附着窗口只做一次，无论结论如何）。
+    settings_cross_checked: bool,
+    /// `S` / `P` 连续不一致的拍数（一致或读不到就清零）。
+    chain_disagree: u32,
+    /// 两条链持续不一致的告警是否已记（**进程内只记一次**）。
+    chain_disagree_logged: bool,
+    /// 上一次记过的有效值（来源 / 判定 / 速率）：只有变化时才再记 info。
+    last_settings: Option<SettingsLogKey>,
     song_seq: u64,
 }
 
 impl Runtime {
     fn new(idx: Arc<IndexShared>, root_tx: mpsc::Sender<PathBuf>) -> Self {
+        let seen_content_revision = idx.content_revision.load(Ordering::Relaxed);
         Runtime {
             idx,
             root_tx,
@@ -582,13 +872,19 @@ impl Runtime {
             selection: SelectionState::new(),
             dispatch: SongDispatchState::default(),
             reason_log: ReasonLog::default(),
-            last_rescan: None,
             last_rebuild_request: None,
+            miss_tracker: MissRebuildTracker::default(),
+            seen_content_revision,
             last_miss: None,
             last_hit: None,
             last_selection_log: None,
             reason: String::new(),
             fair_logged: false,
+            attached_at: None,
+            settings_cross_checked: false,
+            chain_disagree: 0,
+            chain_disagree_logged: false,
+            last_settings: None,
             song_seq: 0,
         }
     }
@@ -614,15 +910,10 @@ impl Runtime {
             }
         }
 
-        // ③ 60s 周期重建：只置请求位（主循环绝不遍历文件系统）。
-        if self
-            .last_rescan
-            .map(|at| now.duration_since(at) >= INDEX_RESCAN)
-            .unwrap_or(true)
-        {
-            request_rebuild(&self.idx);
-            self.last_rescan = Some(now);
-        }
+        // ③ 索引侧同步：周期重扫（60s）已下沉到构建线程——指纹扫描要在那里跟 `idx.lib` 比对，
+        //    且主循环绝不遍历文件系统。这里只把"库真的变了"的修订号同步过来，放开此前判定
+        //    不可解析的身份键（它们可能正是这次新增的文件）。
+        self.sync_content_revision();
 
         // ④ 场景：尾随最新日志（目录枚举与字节读取分别在 gamelog / LogTail 里）。
         let screen = match root.as_ref() {
@@ -668,7 +959,10 @@ impl Runtime {
             );
         }
 
-        // ⑥ 索引 lookup：未就绪 → NoLibrary；miss → 置重建请求（节流）+ 记一次带 md5 的日志。
+        // ⑥ 索引 lookup：未就绪 → NoLibrary；miss → 置重建请求（受预算 + 节流约束）+ 记一次带
+        //    md5 的日志。miss 分两种对外原因：预算还没用完 = **结果未定**，不设 blocker，
+        //    `chart-not-indexed` 仍由 selection 状态机按既有路径给出（线上形态一字不变）；
+        //    预算已耗尽 = **结论已定**，这里置 blocker 换成 `chart-unknown-identity`。
         let mut entry: Option<LibraryEntry> = None;
         if blocker.is_none() {
             if let Some(identity) = key.as_ref() {
@@ -678,28 +972,35 @@ impl Runtime {
                     entry = lookup(&self.idx, &identity.md5);
                     match entry.as_ref() {
                         Some(found) => self.log_hit(&identity.md5, &found.path),
-                        None => self.request_miss_rebuild(&identity.md5, now),
+                        None => {
+                            self.request_miss_rebuild(&identity.md5, now);
+                            blocker = self.miss_tracker.unavailable_reason(&identity.md5);
+                        }
                     }
                 }
             }
         }
 
-        // ⑦ config.json：变速位 → rate；判定档 → judge（按字节内容缓存，(mtime, 长度) 仅作提示）。
-        let game_config = match root.as_ref() {
-            Some(root) => self.game_config.read(&root.join("config.json")),
+        // ⑦ 判定档 / 变速位：**进程内存优先**（游戏里一改立刻生效），config.json 兜底。
+        //    游戏只在开局与退出时重写 config.json（实测 mtime 全程不动），它永远反映不了本局
+        //    中途的改动 —— 所以内存这条链是主路径，文件只在内存读不到时顶上（含"判定未知"）。
+        let file_config = match root.as_ref() {
+            Some(root) => self.game_config.read(&root.join("config.json")).cloned(),
             None => None,
         };
-        let rate = game_config
-            .map(|config| config.mod_flags().speed_rate())
-            .unwrap_or(1.0);
-        let judge = game_config.and_then(|config| config.judge_letter());
-        // FAIR 判定模组（`user_mods` bit 0x400）：首次读到 `user_mods` 时检测一次，命中即
-        // 记一条 warning（进程内只记一次）。`user_mods` 从不进任何帧，这是该局限唯一的提示通道。
-        if let Some(config) = game_config {
-            if fair_judge_mod(config.user_mods) && !self.fair_logged {
-                self.fair_logged = true;
-                log_at("warn", FAIR_JUDGE_WARNING);
-            }
+        let probe = self.read_memory_settings(now);
+        self.note_chain_disagreement(&probe);
+        let effective = effective_settings(probe.published(), file_config.as_ref());
+        self.note_file_cross_check(&effective, file_config.as_ref(), now);
+        self.log_settings_change(&effective);
+        let rate = effective.rate;
+        let judge = effective.judge;
+        // FAIR 判定模组（`user_mods` bit 0x400）：内存值与 config.json 值都能触发；首次读到置了
+        // 该位的 `user_mods` 时记一条 warning（进程内只记一次）。`user_mods` 从不进任何帧，
+        // 这是该局限唯一的提示通道。
+        if fair_judge_mod(effective.user_mods) && !self.fair_logged {
+            self.fair_logged = true;
+            log_at("warn", FAIR_JUDGE_WARNING);
         }
 
         // ⑧ selection 状态机（难度名取自索引的 ChartMeta，不重读谱面）。
@@ -722,13 +1023,13 @@ impl Runtime {
             now,
         );
 
-        // 判定不可确定（config.json 缺失/未解析）→ 本 tick 的 song 帧被保守 withhold，
+        // 判定不可确定（内存与 config.json 都没给出判定）→ 本 tick 的 song 帧被保守 withhold，
         // 只记一条节流日志；`malody4_selection` 的 2s 心跳不受影响。
         if judge.is_none() && matches!(action, Action::Emit(_)) && self.reason_log.due("judge-unknown", now)
         {
             log_at(
                 "warn",
-                "malody4: judge level unknown (config.json missing or unparsable) — song frame withheld this tick",
+                "malody4: judge level unknown (not readable from game memory and config.json missing or unparsable) — song frame withheld this tick",
             );
         }
 
@@ -788,6 +1089,10 @@ impl Runtime {
                     );
                     self.attached = Some(Attached { target, attachment });
                     self.attach_error = None;
+                    // 新的附着窗口：交叉校验重新开一次（窗口内的分歧才值得提示）
+                    self.attached_at = Some(now);
+                    self.settings_cross_checked = false;
+                    self.chain_disagree = 0;
                     return;
                 }
                 Err(err) => unavailable_from_anchor(err),
@@ -815,6 +1120,8 @@ impl Runtime {
         self.attach_error = Some(reason.clone());
         self.last_attach_try = Some(now);
         self.soft_reads.reset();
+        self.attached_at = None;
+        self.chain_disagree = 0;
         if self.reason_log.due(&reason.as_str(), now) {
             log_at(
                 "warn",
@@ -826,6 +1133,100 @@ impl Runtime {
             );
         }
         reason
+    }
+
+    /// 读一次内存设置（`S` 发布 + `P` 旁证）：未附着 → 空探针；硬失败 → 空探针 + 一条节流 debug。
+    ///
+    /// 空探针 = "现在读不到"，与"读到 0"同档语义：调用方回落 `config.json`，**不 latch**。
+    /// 这里**不 detach**：通道健康由锚点身份读取那条路径判定（硬失败即时 detach），
+    /// 两条路径各 detach 一次只会把同一件事记两遍。
+    fn read_memory_settings(&mut self, now: Instant) -> MemoryProbe {
+        let Some(attached) = self.attached.as_ref() else {
+            return MemoryProbe::default();
+        };
+        match anchor::read_settings(&attached.attachment) {
+            Ok(probe) => probe,
+            Err(err) => {
+                if self.reason_log.due("settings-read", now) {
+                    log_at(
+                        "debug",
+                        &format!("malody4 settings read failed: {err:?} — using config.json this tick"),
+                    );
+                }
+                MemoryProbe::default()
+            }
+        }
+    }
+
+    /// `S` / `P` 是否**持续**不一致：判定档设置器把两个对象写在相隔 4 条指令处，正常同值；
+    /// 连续 `CHAIN_DISAGREE_POLLS` 拍仍不一致 ⇒ 其中一条链的偏移理解有误 → 记**一次** warn
+    /// （进程内只此一次）。发布值不受影响：仍按 `S`。
+    fn note_chain_disagreement(&mut self, probe: &MemoryProbe) {
+        match probe.disagreement() {
+            Some((user, play)) => {
+                self.chain_disagree = self.chain_disagree.saturating_add(1);
+                if self.chain_disagree >= CHAIN_DISAGREE_POLLS && !self.chain_disagree_logged {
+                    self.chain_disagree_logged = true;
+                    log_at(
+                        "warn",
+                        &chain_disagreement_warning(user, play, self.chain_disagree),
+                    );
+                }
+            }
+            // 一致，或有一条 / 两条读不到 → 清零（只判"持续"）
+            None => self.chain_disagree = 0,
+        }
+    }
+
+    /// 交叉校验（**软信号，绝不是门**）：`config.json` 的这两个键正是从内存里这两个偏移写出去的，
+    /// 所以**刚附着**时两者应当一致。本局中途改判定造成的分歧正是本次改动的理由 —— 分歧
+    /// **不拒绝、不覆盖**内存值，只在附着后的 `SETTINGS_CROSS_CHECK` 窗口内记一条 warn
+    /// （每个附着窗口最多一条）。返回是否记了这条告警（便于单测）。
+    fn note_file_cross_check(
+        &mut self,
+        effective: &EffectiveSettings,
+        file: Option<&GameConfig>,
+        now: Instant,
+    ) -> bool {
+        if self.settings_cross_checked {
+            return false;
+        }
+        let Some(attached_at) = self.attached_at else {
+            return false;
+        };
+        if now.duration_since(attached_at) > SETTINGS_CROSS_CHECK {
+            // 窗口过了就不再比；flag 立起来，省掉之后每 tick 的时间比较
+            self.settings_cross_checked = true;
+            return false;
+        }
+        // 发布的**就是** config.json 的值（内存没读到）→ 没有可交叉校验的对象
+        let (Some(file), SettingsOrigin::Memory) = (file, effective.source) else {
+            return false;
+        };
+        self.settings_cross_checked = true;
+        if file.judge_letter() != effective.judge
+            || (file.mod_flags().speed_rate() - effective.rate).abs() >= RATE_EPS
+        {
+            log_at("warn", &file_cross_check_warning(effective, file));
+            return true;
+        }
+        false
+    }
+
+    /// 有效值**变化**时记一条 info（来源 / 判定字母 / 速率）；同值一律不记（绝不逐 tick 刷）。
+    /// 返回是否记了（便于单测）。
+    fn log_settings_change(&mut self, effective: &EffectiveSettings) -> bool {
+        let key = SettingsLogKey {
+            source: effective.source,
+            judge: effective.judge,
+            rate: effective.rate,
+        };
+        if self.last_settings.as_ref().map(|last| last.matches(&key)) == Some(true) {
+            return false;
+        }
+        log_at("info", &settings_log(effective));
+        self.last_settings = Some(key);
+        true
     }
 
     /// 命中：`md5 → path` 每次变化只记一条 **info** 日志（诊断工具在"不跟随"时的唯一来源；
@@ -841,30 +1242,59 @@ impl Runtime {
         }
     }
 
-    /// miss：置重建请求（全局 `INDEX_REBUILD_THROTTLE` 节流）+ 每个 `(md5, generation)`
-    /// 记一次 **info** 日志（同一 md5 去重；重建完成、代数变化后再记一次，便于定位）。
-    /// 连当前 `stats.indexed` 一起记：读者据此区分"库里没有这张谱"与"库是空的 / 还没建起来"。
+    /// 库真的变了（周期重扫检出变化 / 根目录换了）→ 放开所有"本会话不可解析"的记录。
+    ///
+    /// 修订号由构建线程在**非 miss 触发**的重建上 +1；poller 每 tick 同步一次。
+    fn sync_content_revision(&mut self) {
+        let revision = self.idx.content_revision.load(Ordering::Relaxed);
+        if revision != self.seen_content_revision {
+            self.seen_content_revision = revision;
+            self.miss_tracker.reset();
+        }
+    }
+
+    /// miss：在预算内为这个 md5 置一次重建请求位（仍受全局 `INDEX_REBUILD_THROTTLE` 节流）。
+    ///
+    /// 每个 `(md5, generation)` 记一次 **info** 命中现场（同一 md5 去重；重建完成、代数变化后
+    /// 再记一次，便于定位）。连当前 `stats.indexed` 一起记：读者据此区分"库里没有这张谱"与
+    /// "库是空的 / 还没建起来"。
+    ///
+    /// 预算用完时记**唯一一次** info 说明"本会话不会再为它重建"与**用户可见的后果**（卡片保留
+    /// 上一张谱面），此后对同一 md5 完全沉默（真机 19/25 个身份键永远查不到，旧行为每 5s
+    /// 重哈希一次整库）。这一次也是该身份键的对外原因从 `chart-not-indexed` 换成
+    /// `chart-unknown-identity` 的时刻（见 `MissRebuildTracker::unavailable_reason`）。
     fn request_miss_rebuild(&mut self, md5: &str, now: Instant) {
+        if self.miss_tracker.is_unresolvable(md5) {
+            return;
+        }
+        // 全局节流：窗口内什么都不做——上一次请求还在被构建线程服务（或刚服务完），
+        // 它整库重建一次就同时回答了这段时间里的所有 miss。
+        if self
+            .last_rebuild_request
+            .map(|at| now.duration_since(at) < INDEX_REBUILD_THROTTLE)
+            .unwrap_or(false)
+        {
+            return;
+        }
         let generation = self.idx.generation.load(Ordering::Relaxed);
+        if !self.miss_tracker.spend(md5) {
+            log_at(
+                "info",
+                &unresolvable_chart_log(md5, generation, indexed_count(&self.idx)),
+            );
+            return;
+        }
+        request_rebuild(&self.idx);
+        self.last_rebuild_request = Some(now);
         if self.last_miss.as_ref() != Some(&(md5.to_string(), generation)) {
             log_at(
                 "info",
                 &format!(
-                    "malody4 index miss md5={} (generation={}, indexed={}) — rebuild requested",
-                    md5,
-                    generation,
+                    "malody4 index miss md5={md5} (generation={generation}, indexed={}) — rebuild requested",
                     indexed_count(&self.idx)
                 ),
             );
             self.last_miss = Some((md5.to_string(), generation));
-        }
-        if self
-            .last_rebuild_request
-            .map(|at| now.duration_since(at) >= INDEX_REBUILD_THROTTLE)
-            .unwrap_or(true)
-        {
-            request_rebuild(&self.idx);
-            self.last_rebuild_request = Some(now);
         }
     }
 
@@ -1009,8 +1439,9 @@ fn max_conn_id(shared: &Shared) -> Option<u64> {
 ///
 /// 优先级：附着/根目录/索引层面的成因（`blocker`）→ 状态机给出的隐藏成因（如
 /// `chart-not-indexed`，它在 `selection` 里判定，只有这里能让它在线上可见）→ 健康时清空。
-/// `NoSelection`（游戏在跑但没选中谱面）是正常态 → 空串。心跳之间的 `Action::None`
-/// 沿用上一 tick 的值，避免 state 帧每 200ms 闪一次 reason 的有无。
+/// `chart-unknown-identity` 由本文件的 miss 预算判定（见 `MissRebuildTracker::unavailable_reason`），
+/// 以 `blocker` 的形态走第一条分支。`NoSelection`（游戏在跑但没选中谱面）是正常态 → 空串。
+/// 心跳之间的 `Action::None` 沿用上一 tick 的值，避免 state 帧每 200ms 闪一次 reason 的有无。
 fn wire_reason(blocker: Option<&UnavailableReason>, action: &Action, previous: &str) -> String {
     if let Some(blocker) = blocker {
         return blocker.as_str();
@@ -1040,8 +1471,9 @@ mod tests {
     use std::io::Write as _;
 
     /// 契约 §8 的 `reason` 闭集（逐字）。
-    const REASON_CLOSED_SET: [&str; 12] = [
+    const REASON_CLOSED_SET: [&str; 13] = [
         "chart-not-indexed",
+        "chart-unknown-identity",
         "process-not-found",
         "multiple-instances",
         "access-denied",
@@ -1194,6 +1626,7 @@ mod tests {
         let causes = [
             UnavailableReason::NoSelection,
             UnavailableReason::ChartNotIndexed,
+            UnavailableReason::ChartUnknownIdentity,
             UnavailableReason::ProcessNotFound,
             UnavailableReason::MultipleInstances,
             UnavailableReason::AccessDenied,
@@ -1465,6 +1898,309 @@ mod tests {
         assert!(FAIR_JUDGE_WARNING.contains("FAIR judge mod detected"));
     }
 
+    // ---- 判定档 / 变速位：内存优先，config.json 兜底 ----
+
+    fn raw(judge: u8, mods: u32) -> RawSettings {
+        RawSettings {
+            judge,
+            user_mods: mods,
+        }
+    }
+
+    /// 内存读到就赢：同一 tick 内游戏里改的值必须立刻压过文件里的旧值（本特性的全部意义）。
+    #[test]
+    fn effective_settings_prefers_the_memory_value_over_config_json() {
+        // 文件：RUSH + 判定 B（游戏开局时写下的旧值）；内存：SLOW + 判定 E（刚在游戏里改的）
+        let file = GameConfig {
+            user_mods: 0x20,
+            user_judge_level: 1,
+        };
+        let memory = raw(4, 0x100);
+        let effective = effective_settings(Some((MemorySource::UserSettings, memory)), Some(&file));
+        assert_eq!(effective.source, SettingsOrigin::Memory);
+        assert_eq!(effective.source.as_str(), "memory");
+        assert_eq!(effective.judge, Some('E'));
+        assert_eq!(effective.rate, 0.8);
+        assert_eq!(effective.user_mods, 0x100);
+        // `S` 读不到、由 `P` 顶上时同样是内存来源（发布链不同不改来源语义）
+        let from_play = effective_settings(Some((MemorySource::PlayConfig, memory)), Some(&file));
+        assert_eq!(from_play, effective);
+    }
+
+    /// 内存"现在读不到"（指针 0 / 不变量不成立 / 短读 → `None`）→ 用文件值，绝不发半份。
+    #[test]
+    fn effective_settings_falls_back_to_config_json_when_memory_is_not_ready() {
+        let file = GameConfig {
+            user_mods: 0x10,
+            user_judge_level: 2,
+        };
+        let effective = effective_settings(None, Some(&file));
+        assert_eq!(effective.source, SettingsOrigin::ConfigJson);
+        assert_eq!(effective.source.as_str(), "config.json");
+        assert_eq!(effective.judge, Some('C'));
+        assert_eq!(effective.rate, 1.2);
+        assert_eq!(effective.user_mods, 0x10);
+    }
+
+    /// 两个来源都给不出值 → 判定未知（走既有的 song 帧 withhold 路径），速率 1.0。
+    #[test]
+    fn effective_settings_without_any_source_is_unknown_judge_and_unity_rate() {
+        let effective = effective_settings(None, None);
+        assert_eq!(effective.judge, None);
+        assert_eq!(effective.rate, 1.0);
+        assert_eq!(effective.user_mods, 0);
+        assert_eq!(effective.source, SettingsOrigin::ConfigJson);
+    }
+
+    /// 端到端：内存原始值 → `JudgeLevel` / `ModFlags` → 有效值 → song 帧签名
+    /// `(identity, rate, judge)`。判定或速率一变就必须重发 song 帧（页面据此重算 OD）。
+    #[test]
+    fn a_memory_change_moves_the_judge_letter_the_rate_and_the_song_signature() {
+        // 文件里是 RUSH + B：内存值必须盖过它
+        let file = GameConfig {
+            user_mods: 0x20,
+            user_judge_level: 1,
+        };
+        let mut state = SongDispatchState::default();
+        let before = effective_settings(Some((MemorySource::UserSettings, raw(1, 0x20))), Some(&file));
+        assert_eq!((before.judge, before.rate), (Some('B'), 1.5));
+        assert_eq!(
+            songs(&dispatch_plan(
+                &emit("A", before.rate, "selection", "anchor-changed"),
+                &mut state,
+                Some(5),
+                before.judge
+            )),
+            1
+        );
+
+        // 只改判定 B → D（判定档 UI 处理器写的就是内存里的这两个偏移）
+        let judge_only = effective_settings(Some((MemorySource::UserSettings, raw(3, 0x20))), Some(&file));
+        assert_eq!((judge_only.judge, judge_only.rate), (Some('D'), 1.5));
+        assert_eq!(
+            songs(&dispatch_plan(
+                &emit("A", judge_only.rate, "selection", "heartbeat"),
+                &mut state,
+                Some(5),
+                judge_only.judge
+            )),
+            1,
+            "判定变化必须重发 song 帧（签名里就有 judge）"
+        );
+
+        // 只改变速位 RUSH → SLOW
+        let rate_only = effective_settings(Some((MemorySource::UserSettings, raw(3, 0x100))), Some(&file));
+        assert_eq!((rate_only.judge, rate_only.rate), (Some('D'), 0.8));
+        assert_eq!(
+            songs(&dispatch_plan(
+                &emit("A", rate_only.rate, "selection", "heartbeat"),
+                &mut state,
+                Some(5),
+                rate_only.judge
+            )),
+            1,
+            "速率变化同样在签名里"
+        );
+        assert_eq!(
+            state.last_signature,
+            Some(("mdy4:ab".to_string(), 0.8, Some('D')))
+        );
+
+        // 同值再来一次：不重发（签名路径不需要任何改动）
+        assert_eq!(
+            songs(&dispatch_plan(
+                &emit("A", rate_only.rate, "selection", "heartbeat"),
+                &mut state,
+                Some(5),
+                rate_only.judge
+            )),
+            0
+        );
+    }
+
+    /// 内存来源的 FAIR 位（0x400）同样触发那条一次性 warning；未知位不干扰。
+    #[test]
+    fn the_fair_bit_is_honoured_from_the_memory_value_too() {
+        let memory = effective_settings(Some((MemorySource::UserSettings, raw(2, 0x400 | 0x8))), None);
+        assert!(fair_judge_mod(memory.user_mods), "内存值里的 FAIR 位必须能触发提示");
+        assert_eq!(memory.rate, 1.0, "FAIR 位与未知位都不是变速位");
+        // 只置 FAIR 位时文件路径的口径不变
+        let file = effective_settings(
+            None,
+            Some(&GameConfig {
+                user_mods: 0x400,
+                user_judge_level: 0,
+            }),
+        );
+        assert!(fair_judge_mod(file.user_mods));
+    }
+
+    /// info 行的逐字文案：来源 + 判定字母 + 速率（用户靠它确认"改了立刻生效"）。
+    #[test]
+    fn settings_log_names_the_source_the_judge_and_the_rate() {
+        assert_eq!(
+            settings_log(&effective_settings(
+                Some((MemorySource::UserSettings, raw(3, 0x100))),
+                None
+            )),
+            "malody4 settings: source=memory judge=D speed_rate=0.80"
+        );
+        assert_eq!(
+            settings_log(&effective_settings(
+                None,
+                Some(&GameConfig {
+                    user_mods: 0x20,
+                    user_judge_level: 0
+                })
+            )),
+            "malody4 settings: source=config.json judge=A speed_rate=1.50"
+        );
+        assert_eq!(
+            settings_log(&effective_settings(None, None)),
+            "malody4 settings: source=config.json judge=unknown speed_rate=1.00"
+        );
+    }
+
+    /// **只有变化才记**：同值（含 `RATE_EPS` 容差内的同值）一律不记 —— 绝不逐 tick 刷。
+    #[test]
+    fn the_settings_log_is_deduplicated_on_source_judge_and_rate() {
+        let (_, mut runtime) = runtime_for_tests();
+        let first = effective_settings(Some((MemorySource::UserSettings, raw(1, 0x20))), None);
+        assert!(runtime.log_settings_change(&first), "首次取值要记一条");
+        assert_eq!(
+            runtime.last_settings,
+            Some(SettingsLogKey {
+                source: SettingsOrigin::Memory,
+                judge: Some('B'),
+                rate: 1.5
+            })
+        );
+        assert!(
+            !runtime.log_settings_change(&first),
+            "同值不记（200ms 一拍，逐 tick 记会淹掉日志）"
+        );
+        // 浮点容差内的"同值"同样不记
+        let noisy = EffectiveSettings {
+            rate: first.rate + 1e-9,
+            ..first
+        };
+        assert!(!runtime.log_settings_change(&noisy));
+
+        // 判定变了 → 记
+        let changed = effective_settings(Some((MemorySource::UserSettings, raw(2, 0x20))), None);
+        assert!(runtime.log_settings_change(&changed));
+        // 来源变了（同样的数字，但从内存变成文件）→ 也记：来源本身就是诊断信息
+        let from_file = effective_settings(
+            None,
+            Some(&GameConfig {
+                user_mods: 0x20,
+                user_judge_level: 2,
+            }),
+        );
+        assert!(runtime.log_settings_change(&from_file));
+        assert_eq!(
+            runtime.last_settings.map(|key| key.source),
+            Some(SettingsOrigin::ConfigJson)
+        );
+    }
+
+    /// 两条链持续不一致（> 两拍）才记一次 warn；一致时计数清零；发布值不受影响。
+    #[test]
+    fn the_chain_disagreement_warning_needs_several_consecutive_polls_and_fires_once() {
+        let (_, mut runtime) = runtime_for_tests();
+        let user = raw(1, 0x20);
+        let play = raw(4, 0x100);
+        let disagree = MemoryProbe {
+            user_settings: Some(user),
+            play_config: Some(play),
+        };
+        let agree = MemoryProbe {
+            user_settings: Some(user),
+            play_config: Some(user),
+        };
+        assert!(CHAIN_DISAGREE_POLLS >= 3, "阈值必须严于两拍");
+        for step in 1..CHAIN_DISAGREE_POLLS {
+            runtime.note_chain_disagreement(&disagree);
+            assert_eq!(runtime.chain_disagree, step);
+            assert!(!runtime.chain_disagree_logged, "未到阈值不得告警");
+        }
+        runtime.note_chain_disagreement(&disagree);
+        assert!(runtime.chain_disagree_logged, "连续到阈值 → 记一次");
+        // 一致一次 → 计数清零（只判"持续"）
+        runtime.note_chain_disagreement(&agree);
+        assert_eq!(runtime.chain_disagree, 0);
+        // 只有一条链读不到时也清零，且不告警
+        runtime.note_chain_disagreement(&MemoryProbe {
+            user_settings: Some(user),
+            play_config: None,
+        });
+        assert_eq!(runtime.chain_disagree, 0);
+        // 告警文案：两边都给出来，并说明发布的是哪一边
+        let line = chain_disagreement_warning(user, play, CHAIN_DISAGREE_POLLS);
+        assert!(line.starts_with("malody4 settings chains disagree"), "{line}");
+        assert!(line.contains("consecutive polls"), "{line}");
+        assert!(line.contains("judge=1") && line.contains("judge=4"), "{line}");
+        assert!(line.contains("0x20") && line.contains("0x100"), "{line}");
+        assert!(line.contains("publishing the user-settings value"), "{line}");
+    }
+
+    /// 与 `config.json` 的交叉校验是**软信号**：只在附着窗口内比一次，分歧照用内存值。
+    #[test]
+    fn the_file_cross_check_is_soft_and_runs_once_inside_the_attach_window() {
+        let (_, mut runtime) = runtime_for_tests();
+        let file = GameConfig {
+            user_mods: 0x20,
+            user_judge_level: 1,
+        };
+        let now = Instant::now();
+        let memory = effective_settings(Some((MemorySource::UserSettings, raw(4, 0x100))), Some(&file));
+
+        // 未附着 → 不比、不立 flag
+        assert!(!runtime.note_file_cross_check(&memory, Some(&file), now));
+        assert!(!runtime.settings_cross_checked);
+
+        // 窗口内：分歧 → 记一条，且不再比
+        runtime.attached_at = Some(now);
+        assert!(runtime.note_file_cross_check(&memory, Some(&file), now));
+        assert!(runtime.settings_cross_checked);
+        assert!(
+            !runtime.note_file_cross_check(&memory, Some(&file), now),
+            "每个附着窗口最多一条"
+        );
+
+        // 文案里两个数字都给出来，且明确"用内存值、不是拒绝它"
+        let line = file_cross_check_warning(&memory, &file);
+        assert!(line.contains("memory judge=E speed_rate=0.80"), "{line}");
+        assert!(line.contains("config.json judge=B speed_rate=1.50"), "{line}");
+        assert!(line.contains("keeping the memory value"), "{line}");
+
+        // 一致时静默（同样的比较口径：判定 + 速率）
+        let (_, mut agree_runtime) = runtime_for_tests();
+        agree_runtime.attached_at = Some(now);
+        let agree = effective_settings(Some((MemorySource::UserSettings, raw(1, 0x20))), Some(&file));
+        assert_eq!(agree.judge, file.judge_letter());
+        assert_eq!(agree.rate, file.mod_flags().speed_rate());
+        assert!(!agree_runtime.note_file_cross_check(&agree, Some(&file), now));
+        assert!(agree_runtime.settings_cross_checked, "比过一次就不再比");
+
+        // 窗口外（附着 30s 之后）：直接判过，不记
+        let (_, mut late) = runtime_for_tests();
+        late.attached_at = Some(now);
+        assert!(!late.note_file_cross_check(
+            &memory,
+            Some(&file),
+            now + SETTINGS_CROSS_CHECK + Duration::from_millis(1)
+        ));
+        assert!(late.settings_cross_checked);
+
+        // 内存没读到（发布的**就是**文件值）→ 没有可交叉校验的对象，flag 不立
+        let (_, mut fallback) = runtime_for_tests();
+        fallback.attached_at = Some(now);
+        let from_file = effective_settings(None, Some(&file));
+        assert!(!fallback.note_file_cross_check(&from_file, Some(&file), now));
+        assert!(!fallback.settings_cross_checked);
+    }
+
     // ---- 锚点读取：硬失败 / 软失败 ----
 
     /// 一次"软失败"读取：指针槽位读到了、内容当前不是身份键。
@@ -1638,7 +2374,249 @@ mod tests {
 
     // ---- IndexShared / 日志尾随 ----
 
+    // ---- miss 的重建预算 ----
+
+    /// 现场日志里那个查不到的身份键（真机 25 个身份键中 19 个不在盘上）。
+    const MISSING_MD5: &str = "5a6d5fe073b0b2a8fe5bac4167cff5c8";
+
+    fn runtime_for_tests() -> (Arc<IndexShared>, Runtime) {
+        let idx = Arc::new(IndexShared::new());
+        let (root_tx, _root_rx) = mpsc::channel::<PathBuf>();
+        (idx.clone(), Runtime::new(idx, root_tx))
+    }
+
+    /// 持续 miss 的身份键最多只置 `MISS_REBUILD_ATTEMPTS` 次重建位，之后**永远**不再请求
+    /// （旧行为：只受 5s 节流、永不放弃 → 整库每 5s 重哈希一次）。
+    #[test]
+    fn a_persistent_miss_requests_rebuilds_at_most_the_attempt_budget() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let start = Instant::now();
+        let mut requested = 0u32;
+        // 30 分钟 @200ms 的连续 miss（远超节流窗口，预算若没封顶会一直置位）
+        for step in 0..9000u32 {
+            // 模拟构建线程把请求位消费掉
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, start + POLL_INTERVAL * step);
+            if idx.rebuild_requested.load(Ordering::Relaxed) {
+                requested += 1;
+            }
+        }
+        assert_eq!(
+            requested, MISS_REBUILD_ATTEMPTS,
+            "同一个 md5 的重建请求次数必须封顶在 MISS_REBUILD_ATTEMPTS"
+        );
+        assert_eq!(MISS_REBUILD_ATTEMPTS, 2, "预算取小值：2 次重建 ≈ 10s 内试完就沉默");
+        assert!(runtime.miss_tracker.is_unresolvable(MISSING_MD5));
+        assert_eq!(
+            runtime.miss_tracker.attempts(MISSING_MD5),
+            MISS_REBUILD_ATTEMPTS
+        );
+    }
+
+    /// 预算在两次请求之间必须**隔着节流窗口**：一次 200ms 的连续 miss 不能把预算烧光
+    /// （否则重建还没跑完，身份键就被误判成"本会话不可解析"）。
+    #[test]
+    fn the_budget_is_spent_at_the_throttled_cadence_not_per_tick() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let start = Instant::now();
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, start);
+        assert!(idx.rebuild_requested.load(Ordering::Relaxed));
+        // 节流窗口内的 24 个 tick：一次都不算尝试，也不置位
+        for step in 1..25u32 {
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, start + POLL_INTERVAL * step);
+            assert!(
+                !idx.rebuild_requested.load(Ordering::Relaxed),
+                "节流窗口内不得重复请求"
+            );
+        }
+        assert_eq!(runtime.miss_tracker.attempts(MISSING_MD5), 1);
+        // 窗口一过：第 2 次（也是最后一次）尝试
+        runtime.request_miss_rebuild(MISSING_MD5, start + INDEX_REBUILD_THROTTLE);
+        assert!(idx.rebuild_requested.load(Ordering::Relaxed));
+        assert_eq!(runtime.miss_tracker.attempts(MISSING_MD5), MISS_REBUILD_ATTEMPTS);
+    }
+
+    /// 预算与放弃记录**按 md5 各自独立**；命中（lookup 成功）不碰它们，也不会解开
+    /// 已判定不可解析的身份键——只有"库真的变了"才放开。
+    #[test]
+    fn the_budget_is_per_identity_and_a_hit_never_unblocks_it() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let other = "0123456789abcdef0123456789abcdef";
+        let start = Instant::now();
+        // 先用光 MISSING_MD5 的预算
+        let mut now = start;
+        for _ in 0..MISS_REBUILD_ATTEMPTS + 1 {
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, now);
+            now += INDEX_REBUILD_THROTTLE;
+        }
+        assert!(runtime.miss_tracker.is_unresolvable(MISSING_MD5));
+
+        // 另一个 md5 有独立的预算：不会被前者的放弃状态牵连
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(other, now);
+        assert!(
+            idx.rebuild_requested.load(Ordering::Relaxed),
+            "另一个身份键仍应拿到自己的第 1 次重建"
+        );
+        assert_eq!(runtime.miss_tracker.attempts(other), 1);
+
+        // 命中一张在库里的谱面：不碰预算、不解开任何放弃状态
+        runtime.log_hit(other, Path::new("D:/Games/Malody-4.3.7/beatmap/x/0/x.mc"));
+        assert!(runtime.miss_tracker.is_unresolvable(MISSING_MD5));
+        assert_eq!(runtime.miss_tracker.attempts(MISSING_MD5), MISS_REBUILD_ATTEMPTS);
+        assert_eq!(runtime.miss_tracker.attempts(other), 1);
+
+        // 库真的变了（周期重扫检出变化 / 根目录换了）→ 放开：预算与放弃记录一起清空
+        idx.content_revision.fetch_add(1, Ordering::Relaxed);
+        runtime.sync_content_revision();
+        assert!(!runtime.miss_tracker.is_unresolvable(MISSING_MD5));
+        assert_eq!(runtime.miss_tracker.attempts(MISSING_MD5), 0);
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, now + INDEX_REBUILD_THROTTLE);
+        assert!(
+            idx.rebuild_requested.load(Ordering::Relaxed),
+            "库变了之后，此前不可解析的身份键要重新拿到尝试机会"
+        );
+        // 同修订号再同步一次不得重复清空（否则预算等于没有）
+        assert_eq!(runtime.miss_tracker.attempts(MISSING_MD5), 1);
+        runtime.sync_content_revision();
+        assert_eq!(
+            runtime.miss_tracker.attempts(MISSING_MD5),
+            1,
+            "修订号没变 ⇒ 不清空预算"
+        );
+
+        // miss 路径自己绝不改修订号：只有构建线程在"树真的变了"的重建上 +1
+        assert_eq!(
+            idx.content_revision.load(Ordering::Relaxed),
+            1,
+            "整个用例里只手工 bump 过一次（模拟周期重扫检出变化）"
+        );
+    }
+
+    #[test]
+    fn miss_rebuild_tracker_spends_a_bounded_budget_per_identity() {
+        let mut tracker = MissRebuildTracker::default();
+        assert!(!tracker.is_unresolvable(MISSING_MD5));
+        for _ in 0..MISS_REBUILD_ATTEMPTS {
+            assert!(tracker.spend(MISSING_MD5), "预算内的尝试应当被批准");
+        }
+        assert!(!tracker.spend(MISSING_MD5), "预算用完后一律拒绝");
+        assert!(tracker.is_unresolvable(MISSING_MD5));
+        assert_eq!(tracker.attempts(MISSING_MD5), MISS_REBUILD_ATTEMPTS);
+        // 别的 md5 不受影响
+        assert!(tracker.spend("00ff"));
+        tracker.reset();
+        assert!(!tracker.is_unresolvable(MISSING_MD5));
+        assert_eq!(tracker.attempts(MISSING_MD5), 0);
+        assert!(tracker.spend(MISSING_MD5));
+    }
+
     // ---- 线上 reason ----
+
+    /// **刚 miss**（重建预算还没用完）的身份键不设 blocker：本 tick 的 `chart-not-indexed`
+    /// 仍由 selection 状态机按既有路径给出——改动前后线上形态一字不变。
+    #[test]
+    fn a_fresh_miss_still_reports_chart_not_indexed() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let start = Instant::now();
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, start);
+        assert_eq!(
+            runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+            None,
+            "预算还没用完 ⇒ 结果未定，不报 chart-unknown-identity"
+        );
+
+        let mut state = SelectionState::new();
+        let action = state.fold(
+            Some(IdentityKey {
+                md5: MISSING_MD5.to_string(),
+                slot: 3,
+            }),
+            None,
+            Screen::Selection,
+            "",
+            1.0,
+            Availability::Ready,
+            start,
+        );
+        assert_eq!(action, Action::Hidden(UnavailableReason::ChartNotIndexed));
+        assert_eq!(wire_reason(None, &action, ""), "chart-not-indexed");
+    }
+
+    /// 预算耗尽的身份键：对外原因换成 `chart-unknown-identity`，且**本 tick 就设 blocker**
+    /// （state 帧立刻可见，不必等 2s 的 hidden 心跳），此后每 tick 稳定同一个原因。
+    #[test]
+    fn an_exhausted_identity_reports_chart_unknown_identity() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let mut now = Instant::now();
+        // 用光预算（每次尝试之间隔开全局节流窗口）
+        for _ in 0..MISS_REBUILD_ATTEMPTS {
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, now);
+            now += INDEX_REBUILD_THROTTLE;
+        }
+        assert_eq!(runtime.miss_tracker.unavailable_reason(MISSING_MD5), None);
+
+        // 预算耗尽的那一次 miss：判定"本会话不可解析"
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, now);
+        let reason = runtime
+            .miss_tracker
+            .unavailable_reason(MISSING_MD5)
+            .expect("预算耗尽必须给出对外原因");
+        assert_eq!(reason, UnavailableReason::ChartUnknownIdentity);
+        assert_eq!(reason.as_str(), "chart-unknown-identity");
+        assert_ne!(reason.as_str(), UnavailableReason::ChartNotIndexed.as_str());
+        assert!(
+            REASON_CLOSED_SET.contains(&reason.as_str().as_str()),
+            "新原因必须在契约 §8 的闭集里"
+        );
+        // blocker 优先于状态机给出的原因：state 帧本 tick 就是这个字面量
+        assert_eq!(
+            wire_reason(Some(&reason), &Action::None, "chart-not-indexed"),
+            "chart-unknown-identity"
+        );
+
+        // 之后的每一 tick 都在 `is_unresolvable` 处短路：不再请求重建 ⇒ 那行 info 也不会再记
+        for step in 1..=20u32 {
+            runtime.request_miss_rebuild(MISSING_MD5, now + INDEX_REBUILD_THROTTLE * step);
+            assert!(
+                !idx.rebuild_requested.load(Ordering::Relaxed),
+                "判定之后绝不重启重建"
+            );
+            assert_eq!(
+                runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+                Some(UnavailableReason::ChartUnknownIdentity),
+                "原因稳定，不是只报一次"
+            );
+        }
+    }
+
+    /// "本会话不可解析"那一行 **info** 日志：点名 md5、说明查不出来的事实与**用户可见的后果**
+    /// （卡片保留上一张谱面），且是单行。去重由预算保证（判定那一次之后走 `is_unresolvable`
+    /// 短路），不需要另加节流。
+    #[test]
+    fn the_unresolvable_notice_names_the_md5_and_the_visible_consequence() {
+        let line = unresolvable_chart_log(MISSING_MD5, 7, 6);
+        assert!(line.starts_with("malody4 "), "日志前缀统一：{line}");
+        assert!(line.contains(MISSING_MD5), "必须点名 md5：{line}");
+        assert!(
+            line.contains("cannot be identified from the local library"),
+            "必须说清查不出来的事实：{line}"
+        );
+        assert!(
+            line.contains("the previous chart stays on screen"),
+            "必须说清用户可见的后果：{line}"
+        );
+        assert!(line.contains("generation=7"), "带索引代数便于定位：{line}");
+        assert!(line.contains("indexed=6"), "带条目数便于区分空库：{line}");
+        assert!(!line.contains('\n'), "一条日志就是一行：{line}");
+    }
 
     #[test]
     fn wire_reason_covers_every_closed_set_branch() {

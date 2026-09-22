@@ -127,7 +127,16 @@ impl Selection {
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnavailableReason {
     NoSelection,
+    /// 索引里**暂时**没有这张谱：还没有（或还没试完）重建尝试，库可能仍在建、文件可能刚落地。
     ChartNotIndexed,
+    /// 这个身份键**已查过、且重建尝试已耗尽仍解析不出来**（本次会话不会再为它重建）。
+    ///
+    /// 与 `ChartNotIndexed` 的分界是"试完没有"，不是"查没查过"：
+    /// - `ChartNotIndexed` = 结果未定（还在重试窗口内，或索引尚未就绪）；
+    /// - `ChartUnknownIdentity` = 结论已定（实测现场 25 个身份键里 19 个在盘上根本没有对应文件）。
+    /// 两者对页面的**行为完全相同**（hidden 帧、卡片保留上一张谱面）；这一区分只让"这张谱不在你的
+    /// 库里"与"索引还没建好"在诊断面上可分辨。
+    ChartUnknownIdentity,
     ProcessNotFound,
     MultipleInstances,
     AccessDenied,
@@ -147,6 +156,7 @@ impl UnavailableReason {
         match self {
             UnavailableReason::NoSelection => String::new(),
             UnavailableReason::ChartNotIndexed => "chart-not-indexed".to_string(),
+            UnavailableReason::ChartUnknownIdentity => "chart-unknown-identity".to_string(),
             UnavailableReason::ProcessNotFound => "process-not-found".to_string(),
             UnavailableReason::MultipleInstances => "multiple-instances".to_string(),
             UnavailableReason::AccessDenied => "access-denied".to_string(),
@@ -277,6 +287,10 @@ mod tests {
     fn unavailable_reason_literals() {
         assert_eq!(UnavailableReason::NoSelection.as_str(), "");
         assert_eq!(UnavailableReason::ChartNotIndexed.as_str(), "chart-not-indexed");
+        assert_eq!(
+            UnavailableReason::ChartUnknownIdentity.as_str(),
+            "chart-unknown-identity"
+        );
         assert_eq!(UnavailableReason::ProcessNotFound.as_str(), "process-not-found");
         assert_eq!(UnavailableReason::MultipleInstances.as_str(), "multiple-instances");
         assert_eq!(UnavailableReason::AccessDenied.as_str(), "access-denied");
@@ -284,6 +298,21 @@ mod tests {
         assert_eq!(UnavailableReason::RootNotConfigured.as_str(), "root-not-configured");
         assert_eq!(UnavailableReason::NoLibrary.as_str(), "no-library");
         assert_eq!(UnavailableReason::PlatformUnsupported.as_str(), "platform-unsupported");
+    }
+
+    /// 新原因的字面量逐字钉死，且与"暂时没查到"的 `chart-not-indexed` 是两个不同的串；
+    /// `NoSelection` 仍返回空串（正常态靠空串清 `reason`，这一条不得被新原因带偏）。
+    #[test]
+    fn chart_unknown_identity_literal_is_exact_and_distinct() {
+        assert_eq!(
+            UnavailableReason::ChartUnknownIdentity.as_str(),
+            "chart-unknown-identity"
+        );
+        assert_ne!(
+            UnavailableReason::ChartUnknownIdentity.as_str(),
+            UnavailableReason::ChartNotIndexed.as_str()
+        );
+        assert_eq!(UnavailableReason::NoSelection.as_str(), "");
     }
 
     #[test]

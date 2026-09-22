@@ -35,6 +35,150 @@ impl ClientSpec {
     }
 }
 
+// ==================== 设置单例（判定档 / 变速位）的构建专用 RVA 与偏移 ====================
+//
+// 下面这些常量**只对 `KNOWN_CLIENTS` 里那一个构建成立**（4.3.7，`TimeDateStamp 0x5D79AC91`、
+// 文件大小 4,750,848）：它们来自对该构建的反汇编。取证的 disassembly 与用户本机那份
+// `malody.exe` 不是同一个文件（大小与 SHA256 都不同、时间戳相同），但两者 `.text` 逐字节相同、
+// config 键字符串的虚拟地址也相同，故同一条链对用户本机构建成立。
+//
+// 为什么放在这里：RVA / 字段偏移是"版本的一部分"，与 `KNOWN_CLIENTS` 同处一个文件——全仓库
+// 只有这一处字面量，消费者一律按**名字**引用。将来遇到别的构建 → 版本门（`validate_pe_header`）
+// 直接 fail closed，绝不按偏移量猜着读。
+//
+// 链条（两个独立对象，都在惰性单例后面，拆解路径会把指针清零 ⇒ **每 tick 都要重读指针**）：
+//
+//     module_base + 0x8311C4  →  S（用户设置单例）      judge = *(i32*)(S + 0x9C)   mods = *(u32*)(S + 0xD0)
+//     module_base + 0x8310C4  →  P（本局 play-config）  judge = *(i32*)(P + 0x14)   mods = *(u32*)(P + 0x00)
+//
+// - `S` 就是 config 加载器（`0x5FA400`）与保存器（`0x5FBB00`）逐键读写的那个对象，所以
+//   `config.json` 里的 `user_judge_level` / `user_mods` 正是从这里写出去的；判定档的 UI 处理器
+//   把**两个**对象写在相隔 4 条指令处——这就是"游戏里一改立刻生效"的依据。
+// - `P` 在首个场景**之前为 0**（惰性单例）：读到 0 只表示"现在读不到"，既不是错误也不 latch。
+// - 这里只读、不写：本源是零注入的只读观察，这几个偏移同样只用于 `ReadProcessMemory`。
+
+/// `S`（用户设置单例）的槽位 RVA：`module_base + rva` 处是 4 字节指针。
+pub const USER_SETTINGS_RVA: u32 = 0x8311C4;
+/// `S + 0x9C`：`user_judge_level`（i32，合法 `0..=4`）。
+pub const USER_SETTINGS_JUDGE_OFF: u32 = 0x9C;
+/// `S + 0xD0`：`user_mods`（u32 位掩码）。
+pub const USER_SETTINGS_MODS_OFF: u32 = 0xD0;
+/// `P`（本局 play-config 单例）的槽位 RVA：**首个场景前为 0**。
+pub const PLAY_CONFIG_RVA: u32 = 0x8310C4;
+/// `P + 0x00`：本局的 `user_mods`（创建时从 `S + 0xD0` 复制）。
+pub const PLAY_CONFIG_MODS_OFF: u32 = 0x00;
+/// `P + 0x04`：由 `P + 0x00` 复制后**只清位**得来的派生掩码 ⇒ `P+0x04 & !P+0x00 == 0` 恒成立。
+/// 这是 `P` 的**免费身份证明**（见 `decode_play_config`）。
+pub const PLAY_CONFIG_DERIVED_OFF: u32 = 0x04;
+/// `P + 0x14`：本局的判定档（创建时从 `S + 0x9C` 复制）。
+pub const PLAY_CONFIG_JUDGE_OFF: u32 = 0x14;
+/// 一次读入的对象块长度：覆盖两条链里最靠后的字段（`S + 0xD0`）再加 4 字节。
+pub const SETTINGS_BLOCK_LEN: usize = 0xD8;
+/// 32 位进程用户地址空间下界：Windows 保留最低 64 KiB ⇒ 低于它的"指针"必是垃圾。
+pub const USER_ADDR_MIN: u32 = 0x0001_0000;
+/// 32 位用户地址空间上界（4 字节对齐的最后一个地址）。
+///
+/// 刻意**不**收紧到 `0x7FFF_FFFF`：带 `LARGEADDRESSAWARE` 的 32 位进程能在 2 GiB 以上分配堆，
+/// 收紧只会把合法指针挡掉、让本特性静默退回 `config.json`（行为仍正确，但功能失效）。
+pub const USER_ADDR_MAX: u32 = 0xFFFF_FFFC;
+/// 判定档的合法上界（`0..=4` → `A`~`E`）；越界 ⇒ 整份读数作废、回落 `config.json`。
+pub const MAX_JUDGE_LEVEL: u8 = 4;
+
+/// 内存里读到的一对设置（判定档 + `user_mods` 位掩码）：**已过全部 fail-closed 校验**，未作解释。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawSettings {
+    /// 判定档，已校验 `0..=MAX_JUDGE_LEVEL`（越界的读数在解码阶段就整份作废）。
+    pub judge: u8,
+    /// `user_mods` 位掩码**原值**：未知位一律原样保留（只有变速位与 FAIR 位被解释，绝不裁剪）。
+    pub user_mods: u32,
+}
+
+/// 发布取值的来源链（诊断与日志用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemorySource {
+    /// `S`：用户设置单例——玩家在设置里设的值，首个场景之前就存在。
+    UserSettings,
+    /// `P`：本局 play-config 单例——本局会用的值，首个场景之前为 0。
+    PlayConfig,
+}
+
+/// 一次内存采样的产物：两条链各自的读数（`None` = 该链本 tick 不可确定）。
+///
+/// `Default` = 两条链都读不到（未附着 / 指针为 0 / 校验没过 / 短读）⇒ 调用方回落 `config.json`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MemoryProbe {
+    pub user_settings: Option<RawSettings>,
+    pub play_config: Option<RawSettings>,
+}
+
+impl MemoryProbe {
+    /// 发布取值：**优先 `S`**，`S` 读不到时才退到 `P`；两条都读不到 → `None`。
+    ///
+    /// 为什么发布 `S`：`config.json` 的加载器 / 保存器读写的就是 `S`，判定档 UI 处理器也同时写它，
+    /// 它语义上就是"玩家设的值"，而且在首个场景之前就存在（那时 `P` 还是 0）。`P` 是本局创建时
+    /// 的副本，语义是"这一局会用到的值"——正常情况下两者相同，因此 `P` 只当**旁证**
+    /// （见 `disagreement`），并只在 `S` 读不到时顶上。
+    pub fn published(&self) -> Option<(MemorySource, RawSettings)> {
+        match (self.user_settings, self.play_config) {
+            (Some(raw), _) => Some((MemorySource::UserSettings, raw)),
+            (None, Some(raw)) => Some((MemorySource::PlayConfig, raw)),
+            (None, None) => None,
+        }
+    }
+
+    /// 两条链都读到、但判定档或 `user_mods` 不一致 → `Some((S, P))`（调用方据此记**一次**告警）。
+    ///
+    /// 不一致说明其中一条链的偏移理解有误。单拍的不一致可能只是"两次 `ReadProcessMemory` 之间
+    /// 游戏真的改了一次设置"，所以判定"持续不一致"是调用方的事（见 `mod.rs` 的连续计数）。
+    pub fn disagreement(&self) -> Option<(RawSettings, RawSettings)> {
+        let (user, play) = (self.user_settings?, self.play_config?);
+        (user != play).then_some((user, play))
+    }
+}
+
+/// 块内取 4 字节小端 u32（越界 → `None`）。
+fn read_u32_at(block: &[u8], off: u32) -> Option<u32> {
+    let at = off as usize;
+    let bytes = block.get(at..at.checked_add(4)?)?;
+    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+/// 判定档：按 i32 读、按 `0..=MAX_JUDGE_LEVEL` 校验（负数以 u32 表示必然越界）。
+/// 越界 → `None`：整份读数作废，**绝不猜档位**、绝不发布一个可能错的判定。
+fn valid_judge(raw: u32) -> Option<u8> {
+    let level = u8::try_from(raw).ok()?;
+    (level <= MAX_JUDGE_LEVEL).then_some(level)
+}
+
+/// `S` 的纯解码（合成缓冲即可测）：判定档 @0x9C、`user_mods` @0xD0。
+/// 任一处读不出来、或判定档越界 → `None`。
+pub fn decode_user_settings(block: &[u8]) -> Option<RawSettings> {
+    let judge = valid_judge(read_u32_at(block, USER_SETTINGS_JUDGE_OFF)?)?;
+    let user_mods = read_u32_at(block, USER_SETTINGS_MODS_OFF)?;
+    Some(RawSettings { judge, user_mods })
+}
+
+/// `P` 的纯解码（合成缓冲即可测）：先过**身份证明**，再取 `P+0x00` / `P+0x14`。
+///
+/// 证明：`P+0x04` 是由 `P+0x00` 复制后**只清位**得来的 ⇒ `P+0x04 & !P+0x00 == 0` 必须恒成立。
+/// 不成立说明这个地址上的东西不是我们以为的那个对象 → `None`（绝不用它发布任何数字）。
+pub fn decode_play_config(block: &[u8]) -> Option<RawSettings> {
+    let user_mods = read_u32_at(block, PLAY_CONFIG_MODS_OFF)?;
+    let derived = read_u32_at(block, PLAY_CONFIG_DERIVED_OFF)?;
+    if derived & !user_mods != 0 {
+        return None;
+    }
+    let judge = valid_judge(read_u32_at(block, PLAY_CONFIG_JUDGE_OFF)?)?;
+    Some(RawSettings { judge, user_mods })
+}
+
+/// 指针可用性（纯函数）：非 0、4 字节对齐、落在 32 位用户地址空间内。
+///
+/// 0 是"现在读不到"的正常取值（惰性单例），由调用方与"不可信指针"区分开（两者都走回落）。
+pub fn plausible_pointer(ptr: u32) -> bool {
+    ptr & 3 == 0 && (USER_ADDR_MIN..=USER_ADDR_MAX).contains(&ptr)
+}
+
 /// 锚点内存里的身份键：`<md5>_<slot>`。
 ///
 /// `slot` 只作诊断（进 `LibraryEntry.slot`、日志与工具输出），不参与 `path` /
@@ -375,6 +519,193 @@ mod tests {
             }
         }
         assert_eq!(AnchorError::TargetMismatch("custom").reason(), "custom");
+    }
+
+    // ---- 设置单例：偏移常量与纯解码（全部用合成缓冲，不碰任何进程） ----
+
+    /// `S` 的合成块：判定档与 `user_mods` 摆在反汇编给出的偏移上。
+    fn s_block(judge: u32, mods: u32) -> Vec<u8> {
+        let mut block = vec![0u8; SETTINGS_BLOCK_LEN];
+        block[USER_SETTINGS_JUDGE_OFF as usize..][..4].copy_from_slice(&judge.to_le_bytes());
+        block[USER_SETTINGS_MODS_OFF as usize..][..4].copy_from_slice(&mods.to_le_bytes());
+        block
+    }
+
+    /// `P` 的合成块：`mods@0x00`、派生掩码 `@0x04`、判定档 `@0x14`。
+    fn p_block(mods: u32, derived: u32, judge: u32) -> Vec<u8> {
+        let mut block = vec![0u8; SETTINGS_BLOCK_LEN];
+        block[PLAY_CONFIG_MODS_OFF as usize..][..4].copy_from_slice(&mods.to_le_bytes());
+        block[PLAY_CONFIG_DERIVED_OFF as usize..][..4].copy_from_slice(&derived.to_le_bytes());
+        block[PLAY_CONFIG_JUDGE_OFF as usize..][..4].copy_from_slice(&judge.to_le_bytes());
+        block
+    }
+
+    #[test]
+    fn settings_chain_constants_are_pinned_to_the_4_3_7_build() {
+        // 这些数字是**构建专用**的：改动它们等于换一个二进制，必须重新取证（见文件头注释）。
+        assert_eq!(USER_SETTINGS_RVA, 0x8311C4);
+        assert_eq!(USER_SETTINGS_JUDGE_OFF, 0x9C);
+        assert_eq!(USER_SETTINGS_MODS_OFF, 0xD0);
+        assert_eq!(PLAY_CONFIG_RVA, 0x8310C4);
+        assert_eq!(PLAY_CONFIG_MODS_OFF, 0x00);
+        assert_eq!(PLAY_CONFIG_DERIVED_OFF, 0x04);
+        assert_eq!(PLAY_CONFIG_JUDGE_OFF, 0x14);
+        assert_eq!(MAX_JUDGE_LEVEL, 4);
+        // 块长必须盖住两条链里最靠后的字段（S + 0xD0 起 4 字节）
+        assert!(SETTINGS_BLOCK_LEN >= USER_SETTINGS_MODS_OFF as usize + 4);
+        assert!(SETTINGS_BLOCK_LEN >= PLAY_CONFIG_JUDGE_OFF as usize + 4);
+        // 地址空间边界
+        assert_eq!(USER_ADDR_MIN, 0x0001_0000);
+        assert_eq!(USER_ADDR_MAX, 0xFFFF_FFFC);
+    }
+
+    #[test]
+    fn decode_user_settings_reads_judge_and_mods() {
+        // 合法判定档 0..=4 逐个都能读出来（0..=4 → A~E 的字母映射在 model.rs 里单测）
+        for judge in 0u32..=u32::from(MAX_JUDGE_LEVEL) {
+            let got = decode_user_settings(&s_block(judge, 0x20)).unwrap();
+            assert_eq!(got.judge, judge as u8);
+            assert_eq!(got.user_mods, 0x20);
+        }
+        // 未知位一律原样保留（只有变速位与 FAIR 位被解释；这里不做任何裁剪）
+        let raw = decode_user_settings(&s_block(1, 0xFFFF_FFFF)).unwrap();
+        assert_eq!(raw.user_mods, 0xFFFF_FFFF);
+        assert_eq!(raw.judge, 1);
+        // 变速位与 FAIR 位同时置上时也照原样读出来
+        assert_eq!(decode_user_settings(&s_block(4, 0x400 | 0x10)).unwrap().user_mods, 0x410);
+    }
+
+    #[test]
+    fn decode_user_settings_rejects_out_of_range_judge() {
+        // 越界（含负数：按 u32 表示必然超界）→ 整份读数作废，绝不猜档位
+        for raw in [5u32, 6, 255, 256, u32::MAX, 0x8000_0000, 0xFFFF_FFFF] {
+            assert_eq!(
+                decode_user_settings(&s_block(raw, 0x20)),
+                None,
+                "judge={raw:#x} 必须判为不可用"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_user_settings_rejects_blocks_that_are_too_short() {
+        let block = s_block(2, 0x10);
+        let judge_at = USER_SETTINGS_JUDGE_OFF as usize;
+        let mods_at = USER_SETTINGS_MODS_OFF as usize;
+        // 截到判定档之前 / 判定档差 1 字节 / mods 之前 / mods 差 1 字节
+        for len in [0usize, 4, judge_at, judge_at + 3, mods_at, mods_at + 3] {
+            assert_eq!(
+                decode_user_settings(&block[..len]),
+                None,
+                "len={len} 的块不得解出设置"
+            );
+        }
+        // 恰好盖住最后一个字段（0xD0 + 4）即可解出
+        assert!(decode_user_settings(&block[..mods_at + 4]).is_some());
+        assert!(decode_user_settings(&block).is_some());
+    }
+
+    #[test]
+    fn decode_play_config_reads_judge_and_mods() {
+        let got = decode_play_config(&p_block(0x100, 0x100, 3)).unwrap();
+        assert_eq!(got, RawSettings { judge: 3, user_mods: 0x100 });
+        // 派生掩码 = 0（清掉了所有位）同样满足子集不变量
+        assert_eq!(
+            decode_play_config(&p_block(0x400, 0, 0)).unwrap(),
+            RawSettings { judge: 0, user_mods: 0x400 }
+        );
+        // 派生掩码 = 原值的子集（清位）也合法
+        assert_eq!(
+            decode_play_config(&p_block(0xF0, 0x30, 4)).unwrap(),
+            RawSettings { judge: 4, user_mods: 0xF0 }
+        );
+    }
+
+    #[test]
+    fn decode_play_config_rejects_a_broken_subset_invariant() {
+        // P+0x04 & !P+0x00 != 0 ⇒ 这个地址上的东西不是我们以为的那个对象
+        for (mods, derived) in [(0x10u32, 0x20u32), (0, 1), (0xFFFF_FFFE, 0xFFFF_FFFF)] {
+            assert_eq!(
+                decode_play_config(&p_block(mods, derived, 1)),
+                None,
+                "mods={mods:#x} derived={derived:#x} 必须判为不可用"
+            );
+        }
+        // 判定档越界的 P 同样作废
+        for raw in [5u32, u32::MAX, 0x8000_0001] {
+            assert_eq!(decode_play_config(&p_block(0x10, 0x10, raw)), None);
+        }
+        // 块太短（连不变量都读不全）→ 不可用
+        assert_eq!(decode_play_config(&[0u8; 4]), None);
+        assert_eq!(
+            decode_play_config(&p_block(0x10, 0x10, 2)[..PLAY_CONFIG_JUDGE_OFF as usize + 3]),
+            None
+        );
+    }
+
+    #[test]
+    fn plausible_pointer_rejects_null_misaligned_and_out_of_space() {
+        // 0 = "现在读不到"（惰性单例），不可信指针里第一类
+        assert!(!plausible_pointer(0));
+        // 对齐：非 4 字节对齐一律不可信
+        assert!(!plausible_pointer(1));
+        assert!(!plausible_pointer(2));
+        assert!(!plausible_pointer(0x1002));
+        assert!(!plausible_pointer(0xFFFF_FFFE));
+        // 地址空间：低于用户下界（含被误读成指针的小整数）与高于上界都不可信
+        assert!(!plausible_pointer(0x0000_FFFC));
+        assert!(plausible_pointer(0x0001_0000));
+        assert!(plausible_pointer(0x0040_0000));
+        assert!(plausible_pointer(0x7FFF_FFFC));
+        assert!(plausible_pointer(0x8000_0000), "LAA 32 位进程可在 2 GiB 以上分配");
+        assert!(plausible_pointer(0xFFFF_FFFC));
+    }
+
+    #[test]
+    fn published_prefers_user_settings_and_falls_back_to_play_config() {
+        let s = RawSettings { judge: 1, user_mods: 0x20 };
+        let p = RawSettings { judge: 4, user_mods: 0x100 };
+
+        let both = MemoryProbe { user_settings: Some(s), play_config: Some(p) };
+        assert_eq!(both.published(), Some((MemorySource::UserSettings, s)));
+
+        // P 在首个场景之前是 0/null ⇒ 只有 S
+        let only_s = MemoryProbe { user_settings: Some(s), play_config: None };
+        assert_eq!(only_s.published(), Some((MemorySource::UserSettings, s)));
+
+        // S 读不到（旧构建 / 拆解中）⇒ 退到 P
+        let only_p = MemoryProbe { user_settings: None, play_config: Some(p) };
+        assert_eq!(only_p.published(), Some((MemorySource::PlayConfig, p)));
+
+        // 两条都没有 ⇒ "现在不可确定"，由调用方回落 config.json
+        assert_eq!(MemoryProbe::default().published(), None);
+    }
+
+    #[test]
+    fn disagreement_needs_both_chains_and_a_real_difference() {
+        let s = RawSettings { judge: 1, user_mods: 0x20 };
+        let same = MemoryProbe { user_settings: Some(s), play_config: Some(s) };
+        assert_eq!(same.disagreement(), None, "两条链一致时没有告警");
+
+        let judge_differs = MemoryProbe {
+            user_settings: Some(s),
+            play_config: Some(RawSettings { judge: 2, user_mods: 0x20 }),
+        };
+        assert_eq!(
+            judge_differs.disagreement(),
+            Some((s, RawSettings { judge: 2, user_mods: 0x20 }))
+        );
+
+        let mods_differ = MemoryProbe {
+            user_settings: Some(s),
+            play_config: Some(RawSettings { judge: 1, user_mods: 0x100 }),
+        };
+        assert!(mods_differ.disagreement().is_some());
+
+        // 只有一条链时谈不上"不一致"（S 优先，本来就只用 S）
+        assert_eq!(MemoryProbe { user_settings: Some(s), play_config: None }.disagreement(), None);
+        assert_eq!(MemoryProbe { user_settings: None, play_config: Some(s) }.disagreement(), None);
+        assert_eq!(MemoryProbe::default().disagreement(), None);
     }
 }
 
@@ -766,6 +1097,70 @@ pub fn read_identity(at: &Attachment) -> Result<Option<IdentityKey>, AnchorError
     }
 }
 
+/// 读一条设置链：指针槽位（`base + rva`）→ 指针 → 对象块 → 纯解码。
+///
+/// 除了"指针槽位本身读失败"之外，**一切不顺都是 `Ok(None)`**（现在不可确定，不是错误、
+/// 不 latch、调用方回落 `config.json`）：
+/// - 指针为 0（`P` 在首个场景之前就是 0）；
+/// - 指针不可信（不对齐 / 不在 32 位用户地址空间内）；
+/// - 对象块读不出来或**只读到一部分**；
+/// - 解码不过（判定档越界 / `P` 的子集不变量不成立）。
+#[cfg(windows)]
+fn read_chain(
+    handle: Handle,
+    base_u32: u32,
+    rva: u32,
+    decode: fn(&[u8]) -> Option<RawSettings>,
+) -> Result<Option<RawSettings>, AnchorError> {
+    let slot = base_u32 as u64 + u64::from(rva);
+    let mut ptr_buf = [0u8; 4];
+    // 指针必须 4 字节全读到：短读的指针是垃圾；此处失败即"进程 / 模块 / 句柄已不在"
+    if read_bytes(handle, slot, &mut ptr_buf)? != ptr_buf.len() {
+        return Err(AnchorError::BadRead);
+    }
+    let ptr = u32::from_le_bytes(ptr_buf);
+    if !plausible_pointer(ptr) {
+        return Ok(None);
+    }
+    let mut block = [0u8; SETTINGS_BLOCK_LEN];
+    match read_bytes(handle, u64::from(ptr), &mut block) {
+        // **必须整块读到**：短读留下的零会把"没读到的字段"伪装成 0（判定 A、无 mod），
+        // 那正是本特性最不该发生的错误 —— 宁可不发布，也不发布一个错的。
+        Ok(got) if got == block.len() => Ok(decode(&block)),
+        // 指针槽位已读成功 ⇒ 进程与模块仍在：陈旧 / 半写的指针只是"现在不可确定"
+        _ => Ok(None),
+    }
+}
+
+/// 采样设置单例：`S`（发布源）+ `P`（旁证）。
+///
+/// **每 tick 都重新读指针、绝不缓存**：两个对象都在惰性单例后面，拆解路径会把指针清零；
+/// 缓存指针会把"上一局的设置"当成现役值。
+///
+/// `S` 的指针槽位读失败 → `Err`（进程 / 模块已不在）；`P` 只是旁证，整条链读失败不影响
+/// 发布 `S`（用 `.ok().flatten()` 吞掉）。
+#[cfg(windows)]
+pub fn read_settings(at: &Attachment) -> Result<MemoryProbe, AnchorError> {
+    let user_settings = read_chain(
+        at.handle,
+        at.base_u32,
+        USER_SETTINGS_RVA,
+        decode_user_settings,
+    )?;
+    let play_config = read_chain(
+        at.handle,
+        at.base_u32,
+        PLAY_CONFIG_RVA,
+        decode_play_config,
+    )
+    .ok()
+    .flatten();
+    Ok(MemoryProbe {
+        user_settings,
+        play_config,
+    })
+}
+
 // --------------------------------------------------- 非 Windows（同名桩） --
 
 /// 目标进程（非 Windows 桩：可构造、字段同签名，本源恒不可用）。
@@ -804,6 +1199,12 @@ pub fn read_identity(_at: &Attachment) -> Result<Option<IdentityKey>, AnchorErro
 
 #[cfg(not(windows))]
 pub fn read_identity_classified(_at: &Attachment) -> Result<IdentityRead, AnchorError> {
+    Err(AnchorError::PlatformUnsupported)
+}
+
+/// 非 Windows：内存通道整条不可用（本源本身也 `PlatformUnsupported`）。
+#[cfg(not(windows))]
+pub fn read_settings(_at: &Attachment) -> Result<MemoryProbe, AnchorError> {
     Err(AnchorError::PlatformUnsupported)
 }
 
