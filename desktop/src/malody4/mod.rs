@@ -208,7 +208,7 @@ fn settings_log(effective: &EffectiveSettings) -> String {
 /// `S` / `P` 持续不一致的一次性告警文案（纯函数；两边的原始值都给出来便于定位）。
 fn chain_disagreement_warning(user: RawSettings, play: RawSettings, polls: u32) -> String {
     format!(
-        "malody4 settings chains disagree for {polls} consecutive polls: user-settings judge={} user_mods={:#x} vs play-config judge={} user_mods={:#x} — publishing the user-settings value",
+        "malody4 settings chains disagree for {polls} consecutive polls: user-settings judge={} user_mods={:#x} vs play-config judge={} user_mods={:#x} — publishing the play-config value",
         user.judge, user.user_mods, play.judge, play.user_mods
     )
 }
@@ -362,6 +362,24 @@ pub fn build_state_frame(
         },
     };
     serde_json::to_value(frame).unwrap_or(serde_json::Value::Null)
+}
+
+/// state 帧的**立即补发**判定（纯函数）：页面消费的有效值里任一变化 → `true`。
+///
+/// `alive` / `playing` 之外必须逐字段比：兜底的周期帧是 30s 一次（`server::spawn_timers` 里
+/// `TOSU_PROBE_INTERVAL` 那一拍），页面等不起。`reason` 尤其
+/// ——`chart-unknown-identity`（本地库里查不到这张谱）既不改 `alive` 也不改 `playing`，只比后两者时
+/// 页面要等下一次周期帧才知道，用户坐在卡片上什么提示都看不到（真机复测就是这个形态）。
+/// `screen` / `judge` 同样进帧，页面按它们切卡片内容，一并纳入。
+///
+/// 逐字段比较 ⇒ 不变的 tick 返回 `false`：**绝不每 tick 广播**（`broadcast` 要 clone 整帧并推给
+/// 每个 WS sink）。字段表必须与 `build_state_frame` 实际输出的字段保持一致。
+fn state_push_due(prev: &Malody4Status, next: &Malody4Status) -> bool {
+    prev.alive != next.alive
+        || prev.playing != next.playing
+        || prev.screen != next.screen
+        || prev.reason != next.reason
+        || prev.judge != next.judge
 }
 
 // -------------------------------------------------------------- 帧分派（纯） --
@@ -760,14 +778,21 @@ impl MissRebuildTracker {
         self.unresolvable.contains(md5)
     }
 
-    /// 该 md5 的对外不可用原因：预算已耗尽（结论已定）→ `Some(ChartUnknownIdentity)`。
+    /// 该 md5 的对外不可用原因（**两档**）：
+    /// - 预算已耗尽（结论已定）→ `ChartUnknownIdentity`；
+    /// - 否则 → `ChartUnresolved`：**第一拍就给**的临时原因（重建请求已发出 / 重试仍在窗口内）。
     ///
-    /// 预算还没用完的 miss 返回 `None`：那只是"结果未定"（库可能仍在建、文件可能刚落地），
-    /// 本 tick 不设 blocker，`chart-not-indexed` 仍由 selection 状态机按既有路径给出——线上
-    /// 形态与改动前一字不差。两者的语义分界见 `model::UnavailableReason`。
-    fn unavailable_reason(&self, md5: &str) -> Option<UnavailableReason> {
-        self.is_unresolvable(md5)
-            .then_some(UnavailableReason::ChartUnknownIdentity)
+    /// 为什么第一拍就要给：miss 在 200ms 内就能测出来，而结论要等完 `INDEX_REBUILD_THROTTLE`（5s）×
+    /// `MISS_REBUILD_ATTEMPTS`（2）≈ 10s 的重试窗口——那段窗口里页面**必须已经有话说**，否则用户
+    /// 看到的就是"高亮了一张谱、卡片纹丝不动、一句提示都没有"（真机复测：提示要 9~10s 才出现）。
+    /// 临时原因只是把"结果未定"这件事说到线上，**不动重试预算**（重试是"游戏里刚导入的谱能被
+    /// 重新扫到"的唯一途径，不缩短也不取消）。两者的语义分界见 `model::UnavailableReason`。
+    fn unavailable_reason(&self, md5: &str) -> UnavailableReason {
+        if self.is_unresolvable(md5) {
+            UnavailableReason::ChartUnknownIdentity
+        } else {
+            UnavailableReason::ChartUnresolved
+        }
     }
 
     /// 已用掉的重建次数（诊断与单测）。
@@ -960,9 +985,9 @@ impl Runtime {
         }
 
         // ⑥ 索引 lookup：未就绪 → NoLibrary；miss → 置重建请求（受预算 + 节流约束）+ 记一次带
-        //    md5 的日志。miss 分两种对外原因：预算还没用完 = **结果未定**，不设 blocker，
-        //    `chart-not-indexed` 仍由 selection 状态机按既有路径给出（线上形态一字不变）；
-        //    预算已耗尽 = **结论已定**，这里置 blocker 换成 `chart-unknown-identity`。
+        //    md5 的日志。miss 的对外原因是**两档**（都由这里当拍设 blocker ⇒ state 帧立即带着它走，
+        //    见 `state_push_due`）：预算还没用完 = **结果未定** → `chart-unresolved`（重试仍在进行）；
+        //    预算已耗尽 = **结论已定** → `chart-unknown-identity`。
         let mut entry: Option<LibraryEntry> = None;
         if blocker.is_none() {
             if let Some(identity) = key.as_ref() {
@@ -974,7 +999,7 @@ impl Runtime {
                         Some(found) => self.log_hit(&identity.md5, &found.path),
                         None => {
                             self.request_miss_rebuild(&identity.md5, now);
-                            blocker = self.miss_tracker.unavailable_reason(&identity.md5);
+                            blocker = Some(self.miss_tracker.unavailable_reason(&identity.md5));
                         }
                     }
                 }
@@ -1046,20 +1071,26 @@ impl Runtime {
         // ⑩ 状态更新：**先在独立作用域里改完并 drop guard**，再广播 state 帧。
         //    `state_frame` 会再 lock 同一字段；std Mutex 不可重入，跨调用持锁会自死锁（
         //    这会把 L1 抢占延迟从 ~300ms 变成壳的 30s 周期）。
+        //    补发条件见 `state_push_due`：`alive` / `playing` 之外还包括 `reason`（未知身份这类
+        //    只在 reason 上体现的跳变必须当拍推给页面）、`screen`、`judge`。
         let alive = root.is_some() && read_ok;
         let reason = wire_reason(blocker.as_ref(), &action, &self.reason);
-        let raised = {
+        let next = Malody4Status {
+            alive,
+            screen: screen.as_str().to_string(),
+            playing,
+            reason: reason.clone(),
+            judge,
+        };
+        let due = {
             let mut status = shared.malody4.lock().unwrap();
-            let raised = status.alive != alive || status.playing != playing;
-            status.alive = alive;
-            status.playing = playing;
-            status.screen = screen.as_str().to_string();
-            status.reason = reason.clone();
-            status.judge = judge;
-            raised
+            let due = state_push_due(&status, &next);
+            *status = next;
+            // guard 随本作用域结束 drop —— 下面的 `broadcast` 在锁外（它要再 lock 同一字段）
+            due
         };
         self.reason = reason;
-        if raised {
+        if due {
             broadcast(shared, "state", Some(crate::server::state_frame(shared)));
         }
     }
@@ -1135,7 +1166,7 @@ impl Runtime {
         reason
     }
 
-    /// 读一次内存设置（`S` 发布 + `P` 旁证）：未附着 → 空探针；硬失败 → 空探针 + 一条节流 debug。
+    /// 读一次内存设置（`P` 发布 + `S` 兜底与旁证）：未附着 → 空探针；硬失败 → 空探针 + 一条节流 debug。
     ///
     /// 空探针 = "现在读不到"，与"读到 0"同档语义：调用方回落 `config.json`，**不 latch**。
     /// 这里**不 detach**：通道健康由锚点身份读取那条路径判定（硬失败即时 detach），
@@ -1158,9 +1189,10 @@ impl Runtime {
         }
     }
 
-    /// `S` / `P` 是否**持续**不一致：判定档设置器把两个对象写在相隔 4 条指令处，正常同值；
-    /// 连续 `CHAIN_DISAGREE_POLLS` 拍仍不一致 ⇒ 其中一条链的偏移理解有误 → 记**一次** warn
-    /// （进程内只此一次）。发布值不受影响：仍按 `S`。
+    /// `P` / `S` 是否**持续**不一致：判定档设置器把两个对象写在一起，正常同值；连续
+    /// `CHAIN_DISAGREE_POLLS` 拍仍不一致 ⇒ 其中一条链的偏移理解有误 → 记**一次** warn
+    /// （进程内只此一次）。发布值不受影响：仍按 `P`（`S` 只是兜底与旁证；mods 面板只写 `P`，
+    /// 那里的分歧本来就可能持续存在）。
     fn note_chain_disagreement(&mut self, probe: &MemoryProbe) {
         match probe.disagreement() {
             Some((user, play)) => {
@@ -1261,7 +1293,7 @@ impl Runtime {
     ///
     /// 预算用完时记**唯一一次** info 说明"本会话不会再为它重建"与**用户可见的后果**（卡片保留
     /// 上一张谱面），此后对同一 md5 完全沉默（真机 19/25 个身份键永远查不到，旧行为每 5s
-    /// 重哈希一次整库）。这一次也是该身份键的对外原因从 `chart-not-indexed` 换成
+    /// 重哈希一次整库）。这一次也是该身份键的对外原因从临时态 `chart-unresolved` 换成结论态
     /// `chart-unknown-identity` 的时刻（见 `MissRebuildTracker::unavailable_reason`）。
     fn request_miss_rebuild(&mut self, md5: &str, now: Instant) {
         if self.miss_tracker.is_unresolvable(md5) {
@@ -1439,8 +1471,9 @@ fn max_conn_id(shared: &Shared) -> Option<u64> {
 ///
 /// 优先级：附着/根目录/索引层面的成因（`blocker`）→ 状态机给出的隐藏成因（如
 /// `chart-not-indexed`，它在 `selection` 里判定，只有这里能让它在线上可见）→ 健康时清空。
-/// `chart-unknown-identity` 由本文件的 miss 预算判定（见 `MissRebuildTracker::unavailable_reason`），
-/// 以 `blocker` 的形态走第一条分支。`NoSelection`（游戏在跑但没选中谱面）是正常态 → 空串。
+/// `chart-unknown-identity` 与它的临时态 `chart-unresolved` 都由本文件判定
+/// （见 `MissRebuildTracker::unavailable_reason`），以 `blocker` 的形态走第一条分支。
+/// `NoSelection`（游戏在跑但没选中谱面）是正常态 → 空串。
 /// 心跳之间的 `Action::None` 沿用上一 tick 的值，避免 state 帧每 200ms 闪一次 reason 的有无。
 fn wire_reason(blocker: Option<&UnavailableReason>, action: &Action, previous: &str) -> String {
     if let Some(blocker) = blocker {
@@ -1471,8 +1504,9 @@ mod tests {
     use std::io::Write as _;
 
     /// 契约 §8 的 `reason` 闭集（逐字）。
-    const REASON_CLOSED_SET: [&str; 13] = [
+    const REASON_CLOSED_SET: [&str; 14] = [
         "chart-not-indexed",
+        "chart-unresolved",
         "chart-unknown-identity",
         "process-not-found",
         "multiple-instances",
@@ -1621,11 +1655,57 @@ mod tests {
         assert_eq!(value["sources"]["malody4"]["playing"], serde_json::json!(false));
     }
 
+    // ---- state_push_due（state 帧的立即补发判定） ----
+
+    /// 基线状态：通道健康、已选中谱面、判定已知。
+    fn settled_state() -> Malody4Status {
+        Malody4Status {
+            alive: true,
+            screen: "playing".to_string(),
+            playing: true,
+            reason: String::new(),
+            judge: Some('B'),
+        }
+    }
+
+    /// 真机缺陷复现：`chart-unknown-identity` 既不改 `alive` 也不改 `playing`，只比较后两者时
+    /// 页面要等 30s 周期帧才知道"这张谱无法识别"——用户坐在卡片上什么也看不到。判定必须当拍为真。
+    /// 同时钉死反方向：**完全不变的 tick 必须为假**（否则就是每 tick 广播）。
+    #[test]
+    fn state_push_due_fires_on_a_reason_change_and_not_on_an_unchanged_tick() {
+        let base = settled_state();
+        let same = base.clone();
+        // 不变的 tick：不发
+        assert!(!state_push_due(&base, &same), "同值不得补发");
+        // 只有 reason 变了（身份键在本库里查不到）→ 必须当拍补发
+        let unknown = Malody4Status {
+            reason: UnavailableReason::ChartUnknownIdentity.as_str().to_string(),
+            ..base.clone()
+        };
+        assert_eq!(unknown.reason, "chart-unknown-identity");
+        assert!(state_push_due(&base, &unknown), "reason 变化必须补发");
+        // 反向：reason 从有到无（提示要消失）同样是变化
+        assert!(state_push_due(&unknown, &base), "reason 清空必须补发");
+        // 其余进帧的字段：逐个改一次都必须命中（字段表漏一个就会重演同一个缺陷）
+        let variants = [
+            Malody4Status { alive: !base.alive, ..base.clone() },
+            Malody4Status { playing: !base.playing, ..base.clone() },
+            Malody4Status { screen: "result".to_string(), ..base.clone() },
+            Malody4Status { reason: "chart-not-indexed".to_string(), ..base.clone() },
+            Malody4Status { judge: None, ..base.clone() },
+        ];
+        for (index, variant) in variants.iter().enumerate() {
+            assert!(state_push_due(&base, variant), "字段 {index} 变化必须补发");
+            assert!(!state_push_due(variant, variant), "字段 {index} 不变不得补发");
+        }
+    }
+
     #[test]
     fn every_unavailable_reason_is_a_member_of_the_contract_closed_set() {
         let causes = [
             UnavailableReason::NoSelection,
             UnavailableReason::ChartNotIndexed,
+            UnavailableReason::ChartUnresolved,
             UnavailableReason::ChartUnknownIdentity,
             UnavailableReason::ProcessNotFound,
             UnavailableReason::MultipleInstances,
@@ -1916,15 +1996,16 @@ mod tests {
             user_judge_level: 1,
         };
         let memory = raw(4, 0x100);
-        let effective = effective_settings(Some((MemorySource::UserSettings, memory)), Some(&file));
+        // 正常情形：发布链是 `P`（本局 play-config）
+        let effective = effective_settings(Some((MemorySource::PlayConfig, memory)), Some(&file));
         assert_eq!(effective.source, SettingsOrigin::Memory);
         assert_eq!(effective.source.as_str(), "memory");
         assert_eq!(effective.judge, Some('E'));
         assert_eq!(effective.rate, 0.8);
         assert_eq!(effective.user_mods, 0x100);
-        // `S` 读不到、由 `P` 顶上时同样是内存来源（发布链不同不改来源语义）
-        let from_play = effective_settings(Some((MemorySource::PlayConfig, memory)), Some(&file));
-        assert_eq!(from_play, effective);
+        // `P` 读不到、由 `S` 顶上时同样是内存来源（发布链不同不改来源语义）
+        let from_user = effective_settings(Some((MemorySource::UserSettings, memory)), Some(&file));
+        assert_eq!(from_user, effective);
     }
 
     /// 内存"现在读不到"（指针 0 / 不变量不成立 / 短读 → `None`）→ 用文件值，绝不发半份。
@@ -2141,7 +2222,7 @@ mod tests {
         assert!(line.contains("consecutive polls"), "{line}");
         assert!(line.contains("judge=1") && line.contains("judge=4"), "{line}");
         assert!(line.contains("0x20") && line.contains("0x100"), "{line}");
-        assert!(line.contains("publishing the user-settings value"), "{line}");
+        assert!(line.contains("publishing the play-config value"), "{line}");
     }
 
     /// 与 `config.json` 的交叉校验是**软信号**：只在附着窗口内比一次，分歧照用内存值。
@@ -2517,38 +2598,108 @@ mod tests {
 
     // ---- 线上 reason ----
 
-    /// **刚 miss**（重建预算还没用完）的身份键不设 blocker：本 tick 的 `chart-not-indexed`
-    /// 仍由 selection 状态机按既有路径给出——改动前后线上形态一字不变。
+    /// **刚 miss**（重建预算还没用完）的身份键：当拍就给出**临时**原因 `chart-unresolved`
+    /// （重试仍在进行），而不是等 ~10s 的重试窗口走完才第一次给提示。
     #[test]
-    fn a_fresh_miss_still_reports_chart_not_indexed() {
+    fn a_fresh_miss_reports_the_provisional_chart_unresolved() {
         let (idx, mut runtime) = runtime_for_tests();
         let start = Instant::now();
         idx.rebuild_requested.store(false, Ordering::Relaxed);
         runtime.request_miss_rebuild(MISSING_MD5, start);
+        let provisional = runtime.miss_tracker.unavailable_reason(MISSING_MD5);
+        assert_eq!(provisional, UnavailableReason::ChartUnresolved);
+        assert_eq!(provisional.as_str(), "chart-unresolved");
+        assert!(
+            REASON_CLOSED_SET.contains(&provisional.as_str().as_str()),
+            "临时原因也必须在契约 §8 的闭集里"
+        );
+        // 第一拍（预算还没花）与结论态是两个不同的字面量：页面据此分"正在解析"与"最终结论"
+        assert_ne!(
+            provisional.as_str(),
+            UnavailableReason::ChartUnknownIdentity.as_str()
+        );
+        assert_ne!(
+            provisional.as_str(),
+            UnavailableReason::ChartNotIndexed.as_str()
+        );
+        // blocker 当拍就设 ⇒ state 帧本 tick 立刻带上它（不必等状态机的 hidden 心跳）
         assert_eq!(
-            runtime.miss_tracker.unavailable_reason(MISSING_MD5),
-            None,
-            "预算还没用完 ⇒ 结果未定，不报 chart-unknown-identity"
+            wire_reason(Some(&provisional), &Action::None, ""),
+            "chart-unresolved"
         );
-
-        let mut state = SelectionState::new();
-        let action = state.fold(
-            Some(IdentityKey {
-                md5: MISSING_MD5.to_string(),
-                slot: 3,
-            }),
-            None,
-            Screen::Selection,
-            "",
-            1.0,
-            Availability::Ready,
-            start,
-        );
-        assert_eq!(action, Action::Hidden(UnavailableReason::ChartNotIndexed));
-        assert_eq!(wire_reason(None, &action, ""), "chart-not-indexed");
     }
 
-    /// 预算耗尽的身份键：对外原因换成 `chart-unknown-identity`，且**本 tick 就设 blocker**
+    /// **两档提示的完整转变**：第一拍 miss ⇒ 临时原因；重试窗口内 ⇒ 仍是临时原因；预算耗尽 ⇒
+    /// `chart-unknown-identity`；命中（库里其实有这张谱）⇒ 线上原因清空。
+    ///
+    /// 这也是"~200ms 有话说、~10s 给结论"的机器可验证形态：临时态在**第一次** miss 就成立。
+    #[test]
+    fn the_miss_notice_is_two_tier_provisional_then_final_and_clears_on_a_hit() {
+        let (idx, mut runtime) = runtime_for_tests();
+        let start = Instant::now();
+
+        // 第一拍：miss 刚发生（重建请求已置位）→ 临时原因
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, start);
+        assert!(idx.rebuild_requested.load(Ordering::Relaxed), "第一拍就要请求重建");
+        assert_eq!(
+            runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+            UnavailableReason::ChartUnresolved,
+            "第一拍就要给临时原因（用户等不起 ~10s）"
+        );
+
+        // 重试窗口内的后续 tick（全局节流挡住、连重建请求都不再置位）→ 临时原因稳定不变
+        for step in 1..=(INDEX_REBUILD_THROTTLE.as_millis() / POLL_INTERVAL.as_millis()) as u32 {
+            let tick = start + POLL_INTERVAL * step;
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, tick);
+            assert_eq!(
+                runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+                UnavailableReason::ChartUnresolved,
+                "重试窗口内原因不得跳变（也不得提前下结论）"
+            );
+        }
+
+        // 走完预算（每次尝试之间隔开全局节流窗口）→ 结论已定
+        let mut now = start;
+        for _ in 0..MISS_REBUILD_ATTEMPTS {
+            idx.rebuild_requested.store(false, Ordering::Relaxed);
+            runtime.request_miss_rebuild(MISSING_MD5, now);
+            now += INDEX_REBUILD_THROTTLE;
+        }
+        idx.rebuild_requested.store(false, Ordering::Relaxed);
+        runtime.request_miss_rebuild(MISSING_MD5, now);
+        assert_eq!(
+            runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+            UnavailableReason::ChartUnknownIdentity,
+            "预算耗尽 ⇒ 最终原因"
+        );
+
+        // 命中：库里其实有这张谱 → 线上原因清空（state 帧由 `state_push_due` 当拍补发）
+        let hit = emit("C:/lib/now-in-library.mc", 1.0, "selection", "anchor-changed");
+        assert!(matches!(hit, Action::Emit(_)), "命中走 Emit 路径（卡片换成这张谱）");
+        let final_reason = UnavailableReason::ChartUnknownIdentity.as_str();
+        assert_eq!(
+            wire_reason(None, &hit, final_reason.as_str()),
+            "",
+            "命中必须清空 reason"
+        );
+        assert!(
+            state_push_due(
+                &Malody4Status {
+                    reason: final_reason,
+                    ..settled_state()
+                },
+                &Malody4Status {
+                    reason: String::new(),
+                    ..settled_state()
+                }
+            ),
+            "清空也要当拍推给页面（提示必须收掉）"
+        );
+    }
+
+    /// 预算耗尽的身份键：对外原因从临时态换成 `chart-unknown-identity`，且**本 tick 就设 blocker**
     /// （state 帧立刻可见，不必等 2s 的 hidden 心跳），此后每 tick 稳定同一个原因。
     #[test]
     fn an_exhausted_identity_reports_chart_unknown_identity() {
@@ -2560,25 +2711,27 @@ mod tests {
             runtime.request_miss_rebuild(MISSING_MD5, now);
             now += INDEX_REBUILD_THROTTLE;
         }
-        assert_eq!(runtime.miss_tracker.unavailable_reason(MISSING_MD5), None);
+        assert_eq!(
+            runtime.miss_tracker.unavailable_reason(MISSING_MD5),
+            UnavailableReason::ChartUnresolved,
+            "预算用光之前一直是临时态（重试仍在进行）"
+        );
 
         // 预算耗尽的那一次 miss：判定"本会话不可解析"
         idx.rebuild_requested.store(false, Ordering::Relaxed);
         runtime.request_miss_rebuild(MISSING_MD5, now);
-        let reason = runtime
-            .miss_tracker
-            .unavailable_reason(MISSING_MD5)
-            .expect("预算耗尽必须给出对外原因");
+        let reason = runtime.miss_tracker.unavailable_reason(MISSING_MD5);
         assert_eq!(reason, UnavailableReason::ChartUnknownIdentity);
         assert_eq!(reason.as_str(), "chart-unknown-identity");
         assert_ne!(reason.as_str(), UnavailableReason::ChartNotIndexed.as_str());
+        assert_ne!(reason.as_str(), UnavailableReason::ChartUnresolved.as_str());
         assert!(
             REASON_CLOSED_SET.contains(&reason.as_str().as_str()),
             "新原因必须在契约 §8 的闭集里"
         );
         // blocker 优先于状态机给出的原因：state 帧本 tick 就是这个字面量
         assert_eq!(
-            wire_reason(Some(&reason), &Action::None, "chart-not-indexed"),
+            wire_reason(Some(&reason), &Action::None, "chart-unresolved"),
             "chart-unknown-identity"
         );
 
@@ -2591,7 +2744,7 @@ mod tests {
             );
             assert_eq!(
                 runtime.miss_tracker.unavailable_reason(MISSING_MD5),
-                Some(UnavailableReason::ChartUnknownIdentity),
+                UnavailableReason::ChartUnknownIdentity,
                 "原因稳定，不是只报一次"
             );
         }
@@ -2624,7 +2777,10 @@ mod tests {
         let no_selection = Action::Hidden(UnavailableReason::NoSelection);
         let not_indexed = Action::Hidden(UnavailableReason::ChartNotIndexed);
 
-        // 未收录：blocker 为空时由状态机给出（否则该成因在线上不可见）
+        // 未收录：blocker 为空时由状态机给出（否则该成因在线上不可见）。
+        // 注意：轮询器现在对 miss **当拍就设 blocker**（临时态 `chart-unresolved` / 结论态
+        // `chart-unknown-identity`），所以线上不会再走到这一支——这里钉的是纯函数的优先级口径
+        // （`chart-not-indexed` 仍是闭集里的合法取值，仍是状态机的内部成因）。
         assert_eq!(wire_reason(None, &not_indexed, ""), "chart-not-indexed");
         // 未选中 = 正常态 → 清空
         assert_eq!(wire_reason(None, &no_selection, "chart-not-indexed"), "");

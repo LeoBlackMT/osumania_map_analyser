@@ -107,9 +107,12 @@
 - `playing` 判定：gameplay 桥 playing 标志 + 外壳推过期——`playingExpireAt = 桥文件 lastWrite + total_seconds/rate×1.2 + 30s 裕量`；过期视为离开游玩态（防崩溃残留永驻 L1）；文档标注取舍：马拉松+长暂停可致误判离场，接受。
 - `malody.alive` = 最近 POST/song 时间仍在 60s 窗口内。
 - `malody4`（v3 新增）：`alive` = 本 tick 是否成功附着到唯一 `malody.exe` 并读到锚点；`playing` = 场景号 3（游玩）且新鲜（≤10s）；`screen` = 游戏场景名（`selection` / `playing` / `result` / `other`，仅在已知时出现）；`reason` = 不可用原因（正常/健康时**不出现**，闭集见下）；`judge` = 判定档字母（`A`~`E`，未知则不出现）。
-- `malody4.reason` 闭集（逐字）：`chart-not-indexed`、`chart-unknown-identity`、`process-not-found`、`multiple-instances`、`access-denied`、`bad-read`、`target-mismatch:pe_timestamp_mismatch`、`target-mismatch:file_size_mismatch`、`target-mismatch:pe_header_out_of_range`、`target-mismatch:unknown`、`root-not-configured`、`no-library`、`platform-unsupported`。
+- `malody4.reason` 闭集（逐字）：`chart-not-indexed`、`chart-unresolved`、`chart-unknown-identity`、`process-not-found`、`multiple-instances`、`access-denied`、`bad-read`、`target-mismatch:pe_timestamp_mismatch`、`target-mismatch:file_size_mismatch`、`target-mismatch:pe_header_out_of_range`、`target-mismatch:unknown`、`root-not-configured`、`no-library`、`platform-unsupported`。
   - `chart-unknown-identity`（2026-09-22 追加，**契约版本仍为 v3**）：这是本闭集的**向后兼容扩展**——`reason` 对页面是**不透明诊断串**（页面只把它存进诊断位 `state.malody4Reason`，不按取值分支），加值不改变任何页面行为，故不升 `CONTRACT_VERSION`。语义：这个身份键**已查过、且重建尝试（`MISS_REBUILD_ATTEMPTS`）已耗尽仍解析不出来**（本次会话不再为它重建）。相应地 `chart-not-indexed` 只表示**尚未试完**的未命中（库可能仍在建、文件可能刚落地）。
-  - 两者对**帧形态与卡片行为完全相同**（hidden 记录、卡片保留上一张谱面）：`chart-unknown-identity` 只让壳日志与页面状态行多一句说明，绝不门控或隐藏卡片；区别只在诊断面能否分辨"库里没有这张谱"与"索引还没建好"。
+  - `chart-unresolved`（2026-09-22 追加，**契约版本仍为 v3**，同上：加值、不透明串、不改帧形态）：**两档提示的临时态**——高亮的这张谱**已经查过、当前查不到，但重试还没试完**（重建请求已发出 / 仍在 `INDEX_REBUILD_THROTTLE` × `MISS_REBUILD_ATTEMPTS` ≈ 10s 的重试窗口内）。存在的理由纯粹是**时间**：miss 在 200ms 内就能测出来，而结论要等窗口走完，中间这 ~10s 页面必须已经有话说（真机复测：旧行为下卡片提示要 9~10s 才出现）。页面对它显示"正在解析"这类临时提示，结论出来后才换成 `chart-unknown-identity`。重试本身不缩短、不取消（那是"游戏里刚导入的谱能被重新扫到"的唯一途径）。
+  - `chart-not-indexed`：语义仍是"身份键在、索引里没有对应条目"（未试完/库可能仍在建）。轮询器自 `chart-unresolved` 起**不再自己发这个字面量**（miss 窗口被临时态覆盖）；它仍是选源状态机（`selection.rs`）在该情形下的内部成因、也仍是本闭集的合法取值（保留以便向后兼容与诊断）。
+  - 三者（`chart-not-indexed` / `chart-unresolved` / `chart-unknown-identity`）对**帧形态与卡片行为完全相同**（hidden 记录、卡片保留上一张谱面）：它们只让壳日志与页面状态行给出不同的说明，绝不门控或隐藏卡片；区别只在诊断面能否分辨"库里没有这张谱"（结论）、"还在给你找"（临时）与"索引还没建好"。
+- `malody4.reason` **变化即刻推 state 帧**（与 `alive` / `playing` / `screen` / `judge` 的变化一样）：不依赖 30s 周期帧，否则卡片上的临时提示与最终提示都要等下一拍周期才出现（真机复测的原始缺陷）。每 tick 值不变则**不**广播。
 - `errors[]`：壳侧推送错误面（如 payload 超限被丢弃提示），页面 status 行展示。
 - tosu 探测：`GET {ip}:{port}/` 健康探测，30s 周期重探测并推 state。
 

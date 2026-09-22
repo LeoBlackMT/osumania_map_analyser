@@ -52,8 +52,12 @@ impl ClientSpec {
 //     module_base + 0x8310C4  →  P（本局 play-config）  judge = *(i32*)(P + 0x14)   mods = *(u32*)(P + 0x00)
 //
 // - `S` 就是 config 加载器（`0x5FA400`）与保存器（`0x5FBB00`）逐键读写的那个对象，所以
-//   `config.json` 里的 `user_judge_level` / `user_mods` 正是从这里写出去的；判定档的 UI 处理器
-//   把**两个**对象写在相隔 4 条指令处——这就是"游戏里一改立刻生效"的依据。
+//   `config.json` 里的 `user_judge_level` / `user_mods` 正是从这里写出去的。
+// - `P` 是本局的 play-config：开局从 `S` 复制，此后**局内改动只落在 `P` 上**——反汇编里
+//   `user_mods` 的全部写入点就是 `S` 的构造函数、开局那次 `S + 0xD0 → P + 0x00` 的提交、
+//   以及 `P + 0x00` 自身（mods 面板改的是 `P`）；判定档的 UI 处理器倒是把**两个**对象都写
+//   （写在相隔 4 条指令处），所以判定档两边恒等。发布取 `P`（见 `MemoryProbe::published`）：
+//   它才是游戏真正会用到的值，`S` 要等下一次提交才跟上。
 // - `P` 在首个场景**之前为 0**（惰性单例）：读到 0 只表示"现在读不到"，既不是错误也不 latch。
 // - 这里只读、不写：本源是零注入的只读观察，这几个偏移同样只用于 `ReadProcessMemory`。
 
@@ -96,9 +100,9 @@ pub struct RawSettings {
 /// 发布取值的来源链（诊断与日志用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemorySource {
-    /// `S`：用户设置单例——玩家在设置里设的值，首个场景之前就存在。
+    /// `S`：用户设置单例——`config.json` 的读写对象，**兜底**（`P` 不可用时）与**旁证**。
     UserSettings,
-    /// `P`：本局 play-config 单例——本局会用的值，首个场景之前为 0。
+    /// `P`：本局 play-config 单例——本局真正会用的值（**发布源**），首个场景之前为 0。
     PlayConfig,
 }
 
@@ -112,18 +116,29 @@ pub struct MemoryProbe {
 }
 
 impl MemoryProbe {
-    /// 发布取值：**优先 `S`**，`S` 读不到时才退到 `P`；两条都读不到 → `None`。
+    /// 发布取值：**优先 `P`**（本局 play-config），`P` 读不到时才退到 `S`；两条都读不到 → `None`。
     ///
-    /// 为什么发布 `S`：`config.json` 的加载器 / 保存器读写的就是 `S`，判定档 UI 处理器也同时写它，
-    /// 它语义上就是"玩家设的值"，而且在首个场景之前就存在（那时 `P` 还是 0）。`P` 是本局创建时
-    /// 的副本，语义是"这一局会用到的值"——正常情况下两者相同，因此 `P` 只当**旁证**
-    /// （见 `disagreement`），并只在 `S` 读不到时顶上。
+    /// 为什么发布 `P`（真机复测修正，旧实现发布 `S`）：`P` 才是"这一局真正会用的值"——游戏读的是
+    /// `P + 0x04`（由 `P + 0x00` 只清位得来的派生速率）。反汇编里 `user_mods` 的写入点只有三处：
+    /// `S` 的构造函数、开局时把 `S + 0xD0` 抄进 `P + 0x00` 的那次提交、以及 `P + 0x00` 自身
+    /// ——**mods 面板改的是 `P`**，`S` 要等下一次提交才跟上。真机复测正是这个形态：判定档在游戏里
+    /// 一改日志立刻跟着变（该 UI 处理器两个对象都写），而改变速位时日志里的 `speed_rate` 一直停在
+    /// `1.00`（旧实现只发布 `S`，看不到 `P` 上的新值）。
+    ///
+    /// 守卫不在这里，也不该在这里：能进 `MemoryProbe` 的值都已经在 `read_chain` / `decode_user_settings`
+    /// / `decode_play_config` 里过完全部 fail-closed 校验（指针为 0 / 不对齐 / 超出 32 位用户地址空间 /
+    /// 块短读 / 判定档越界 / `P` 的子集不变量不成立），`None` 就表示"这条链本 tick 不可确定"。
+    /// 因此这里选择的是**整条链的值**，绝不把两条链的字段拼起来（判定档两边恒等，`user_mods` 以 `P`
+    /// 为准；拼装只会在两条链不一致时造出一个谁都没读到的组合）。
+    ///
+    /// `S` 的角色降为兜底与旁证：`P` 在首个场景之前是 0 ⇒ 那时读到的是 `S`（与旧行为一致）；
+    /// 两条链同时读到时的一致性检查仍在 `disagreement`。
     pub fn published(&self) -> Option<(MemorySource, RawSettings)> {
-        match (self.user_settings, self.play_config) {
-            (Some(raw), _) => Some((MemorySource::UserSettings, raw)),
-            (None, Some(raw)) => Some((MemorySource::PlayConfig, raw)),
-            (None, None) => None,
+        if let Some(raw) = self.play_config {
+            return Some((MemorySource::PlayConfig, raw));
         }
+        self.user_settings
+            .map(|raw| (MemorySource::UserSettings, raw))
     }
 
     /// 两条链都读到、但判定档或 `user_mods` 不一致 → `Some((S, P))`（调用方据此记**一次**告警）。
@@ -662,23 +677,28 @@ mod tests {
     }
 
     #[test]
-    fn published_prefers_user_settings_and_falls_back_to_play_config() {
+    fn published_prefers_play_config_and_falls_back_to_user_settings() {
         let s = RawSettings { judge: 1, user_mods: 0x20 };
         let p = RawSettings { judge: 4, user_mods: 0x100 };
 
+        // 两条链都读到 ⇒ 发布 `P`（即使与 `S` 不同）：`P` 才是本局真正会用的值，
+        // mods 面板只写 `P`，`S` 要等开局那次提交才跟上
         let both = MemoryProbe { user_settings: Some(s), play_config: Some(p) };
-        assert_eq!(both.published(), Some((MemorySource::UserSettings, s)));
+        assert_eq!(both.published(), Some((MemorySource::PlayConfig, p)));
 
-        // P 在首个场景之前是 0/null ⇒ 只有 S
+        // `P` 在首个场景之前是 0/null ⇒ 退到 `S`（与旧行为一致）
         let only_s = MemoryProbe { user_settings: Some(s), play_config: None };
         assert_eq!(only_s.published(), Some((MemorySource::UserSettings, s)));
 
-        // S 读不到（旧构建 / 拆解中）⇒ 退到 P
+        // `P` 读不到（旧构建 / 拆解中 / 不变量不成立）⇒ 由 `S` 顶上
         let only_p = MemoryProbe { user_settings: None, play_config: Some(p) };
         assert_eq!(only_p.published(), Some((MemorySource::PlayConfig, p)));
 
         // 两条都没有 ⇒ "现在不可确定"，由调用方回落 config.json
         assert_eq!(MemoryProbe::default().published(), None);
+
+        // 反向对照：本测试必须能区分新旧优先级（旧实现发布 `S`，这里会失败）
+        assert_ne!(both.published(), Some((MemorySource::UserSettings, s)));
     }
 
     #[test]
@@ -702,7 +722,7 @@ mod tests {
         };
         assert!(mods_differ.disagreement().is_some());
 
-        // 只有一条链时谈不上"不一致"（S 优先，本来就只用 S）
+        // 只有一条链时谈不上"不一致"（发布的是 `P`，但缺了另一条就没有可比对象）
         assert_eq!(MemoryProbe { user_settings: Some(s), play_config: None }.disagreement(), None);
         assert_eq!(MemoryProbe { user_settings: None, play_config: Some(s) }.disagreement(), None);
         assert_eq!(MemoryProbe::default().disagreement(), None);
@@ -1132,26 +1152,27 @@ fn read_chain(
     }
 }
 
-/// 采样设置单例：`S`（发布源）+ `P`（旁证）。
+/// 采样设置单例：`P`（发布源）+ `S`（兜底与旁证）。
 ///
 /// **每 tick 都重新读指针、绝不缓存**：两个对象都在惰性单例后面，拆解路径会把指针清零；
 /// 缓存指针会把"上一局的设置"当成现役值。
 ///
-/// `S` 的指针槽位读失败 → `Err`（进程 / 模块已不在）；`P` 只是旁证，整条链读失败不影响
-/// 发布 `S`（用 `.ok().flatten()` 吞掉）。
+/// `P` 的指针槽位读失败 → `Err`（进程 / 模块已不在）；`S` 只是兜底与旁证，整条链读失败不影响
+/// 发布 `P`（用 `.ok().flatten()` 吞掉）。两个槽位（`0x8311C4` / `0x8310C4`）在同一模块映像的
+/// 同一页里，实际不会一个读得到一个读不到——这里只是让"发布链必须可读"这条口径成立。
 #[cfg(windows)]
 pub fn read_settings(at: &Attachment) -> Result<MemoryProbe, AnchorError> {
-    let user_settings = read_chain(
-        at.handle,
-        at.base_u32,
-        USER_SETTINGS_RVA,
-        decode_user_settings,
-    )?;
     let play_config = read_chain(
         at.handle,
         at.base_u32,
         PLAY_CONFIG_RVA,
         decode_play_config,
+    )?;
+    let user_settings = read_chain(
+        at.handle,
+        at.base_u32,
+        USER_SETTINGS_RVA,
+        decode_user_settings,
     )
     .ok()
     .flatten();

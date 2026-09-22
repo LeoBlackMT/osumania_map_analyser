@@ -128,14 +128,24 @@ impl Selection {
 pub enum UnavailableReason {
     NoSelection,
     /// 索引里**暂时**没有这张谱：还没有（或还没试完）重建尝试，库可能仍在建、文件可能刚落地。
+    ///
+    /// 轮询器不再自己发这个字面量：miss 窗口改由下面的 `ChartUnresolved` 覆盖（页面对临时态要有
+    /// 话说）。它仍是 selection 状态机"身份键在、条目不在"的成因，也仍是契约闭集里的合法取值。
     ChartNotIndexed,
+    /// 这个身份键**已经查过、当前查不到，但重试还没试完**（重建请求已发出 / 仍在窗口内）。
+    ///
+    /// 临时态，存在的理由是**时间**：miss 在 200ms 内就能测出来，而"库里根本没有这张谱"的结论要等
+    /// `INDEX_REBUILD_THROTTLE`（5s）× `MISS_REBUILD_ATTEMPTS`（2）≈ 10s 的重试窗口走完才知道
+    /// （真机复测：卡片上的提示要 9~10s 才出现）。页面对它显示"正在解析"这类临时提示，用户第一
+    /// 时间就有话说；结论出来后才换成 `ChartUnknownIdentity`。重试本身不受影响（不缩短、不取消）。
+    ChartUnresolved,
     /// 这个身份键**已查过、且重建尝试已耗尽仍解析不出来**（本次会话不会再为它重建）。
     ///
-    /// 与 `ChartNotIndexed` 的分界是"试完没有"，不是"查没查过"：
-    /// - `ChartNotIndexed` = 结果未定（还在重试窗口内，或索引尚未就绪）；
+    /// 与 `ChartNotIndexed` / `ChartUnresolved` 的分界是"试完没有"，不是"查没查过"：
+    /// - `ChartNotIndexed` / `ChartUnresolved` = 结果未定（还在重试窗口内，或索引尚未就绪）；
     /// - `ChartUnknownIdentity` = 结论已定（实测现场 25 个身份键里 19 个在盘上根本没有对应文件）。
-    /// 两者对页面的**行为完全相同**（hidden 帧、卡片保留上一张谱面）；这一区分只让"这张谱不在你的
-    /// 库里"与"索引还没建好"在诊断面上可分辨。
+    /// 三者对页面的**行为完全相同**（hidden 帧、卡片保留上一张谱面）；这一区分只让"这张谱不在你的
+    /// 库里"（结论）与"还在给你找"（临时）在提示文案上可分辨。
     ChartUnknownIdentity,
     ProcessNotFound,
     MultipleInstances,
@@ -156,6 +166,7 @@ impl UnavailableReason {
         match self {
             UnavailableReason::NoSelection => String::new(),
             UnavailableReason::ChartNotIndexed => "chart-not-indexed".to_string(),
+            UnavailableReason::ChartUnresolved => "chart-unresolved".to_string(),
             UnavailableReason::ChartUnknownIdentity => "chart-unknown-identity".to_string(),
             UnavailableReason::ProcessNotFound => "process-not-found".to_string(),
             UnavailableReason::MultipleInstances => "multiple-instances".to_string(),
@@ -287,6 +298,7 @@ mod tests {
     fn unavailable_reason_literals() {
         assert_eq!(UnavailableReason::NoSelection.as_str(), "");
         assert_eq!(UnavailableReason::ChartNotIndexed.as_str(), "chart-not-indexed");
+        assert_eq!(UnavailableReason::ChartUnresolved.as_str(), "chart-unresolved");
         assert_eq!(
             UnavailableReason::ChartUnknownIdentity.as_str(),
             "chart-unknown-identity"
@@ -313,6 +325,24 @@ mod tests {
             UnavailableReason::ChartNotIndexed.as_str()
         );
         assert_eq!(UnavailableReason::NoSelection.as_str(), "");
+    }
+
+    /// 两档提示的字面量互不相同（页面对它们显示不同的提示：临时态"正在解析"、结论态"这张谱不在
+    /// 本地库里"），且都不与 `chart-not-indexed` 撞车。
+    #[test]
+    fn the_two_tier_chart_reasons_are_distinct_literals() {
+        let provisional = UnavailableReason::ChartUnresolved.as_str();
+        let final_reason = UnavailableReason::ChartUnknownIdentity.as_str();
+        assert_eq!(provisional, "chart-unresolved");
+        assert_ne!(provisional, final_reason);
+        assert_ne!(provisional, UnavailableReason::ChartNotIndexed.as_str());
+        assert!(!provisional.is_empty());
+        for text in [provisional.as_str(), final_reason.as_str()] {
+            assert!(
+                text.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+                "闭集字面量一律小写连字符：{text}"
+            );
+        }
     }
 
     #[test]

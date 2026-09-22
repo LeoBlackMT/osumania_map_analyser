@@ -17,15 +17,27 @@ const MALODY4_ALIVE_WINDOW_MS = 6000;
 
 /** 壳 `reason` 闭集里"这个身份键查过、重建尝试也用完仍解析不出来"的字面量。 */
 const UNKNOWN_IDENTITY_REASON = "chart-unknown-identity";
+/** 闭集里"刚查过、重建尝试还在进行中"的**临时**字面量（首次未命中即上报）。 */
+const UNRESOLVED_CHART_REASON = "chart-unresolved";
+/** 状态行里属于"谱面未解析"这类提示的文本集合（清理时只收自己写的这几条）。 */
+const SPECTATOR_NOTICES = new Set();
 
 /**
- * 状态行提示：卡片**为什么**停在上一张谱面上（`chart-unknown-identity`）。
+ * 状态行提示：卡片**为什么**停在上一张谱面上。
  *
- * 文本不写 md5、不用术语：用户看到的现象就是"卡片没跟着换谱"，这里只说清两件事——
- * 这张谱不在本地谱面库里、卡片仍是上一张。卡片本身不隐藏、不门控，提示只是把沉默补上。
+ * 分两层，因为壳的判定本身分两层：首次未命中（约 0.2s）就报临时原因，重建重试用尽（约 10s）
+ * 才报确定结论。只报后者会让用户先盯着毫无反应的卡片等十秒 —— 那正是实测反馈的问题。
+ *
+ * 文本不写 md5、不用术语：用户看到的现象就是"卡片没跟着换谱"，这里只说清两件事——这张谱
+ * 为什么没换、卡片仍是上一张。卡片本身不隐藏、不门控，提示只是把沉默补上。
+ * 两条文案都导出，供本地冒烟脚本引用（测试不重抄字面量，改文案时不会假失败）。
  */
-const UNKNOWN_IDENTITY_NOTICE =
+export const UNRESOLVED_CHART_NOTICE =
+    "Malody 4: looking up this chart in the local beatmap library — the card still shows the previous chart.";
+export const UNKNOWN_IDENTITY_NOTICE =
     "Malody 4: this chart is not in the local beatmap library — the card still shows the previous chart.";
+SPECTATOR_NOTICES.add(UNRESOLVED_CHART_NOTICE);
+SPECTATOR_NOTICES.add(UNKNOWN_IDENTITY_NOTICE);
 
 /**
  * 应用壳 state 帧（shell → 页）。
@@ -51,22 +63,31 @@ export function applyShellState(payload) {
 }
 
 /**
- * `chart-unknown-identity` → 状态行提示（去重与清理都只看 `state.statusText`，不另设标志位）。
+ * 两层"谱面未解析"提示 → 状态行（去重与清理都只看 `state.statusText`，不另设标志位）。
  *
  * - 只在**当前路由就是 malody4** 时提示：这时卡面正是 malody4 在供数据，提示才不会张冠李戴；
- * - 已经是这条提示 → 什么都不做（state 帧 30s 一条，且 malody4 alive/playing 变化也会推帧）；
- * - 原因消失/换路由（壳清空：换到可解析的谱面、游戏空闲）→ **只收自己写的那一条**：当前状态若
+ * - `chart-unresolved`（临时，首次未命中）与 `chart-unknown-identity`（确定，重试用尽）各自
+ *   对应一句话；已经是该句 → 什么都不做（state 帧按原因变化推送，不再等 30s）；
+ * - 原因消失/换路由（壳清空：换到可解析的谱面、游戏空闲）→ **只收自己写的那几条**：当前状态若
  *   已被分析流程改写（`analysis.js` 的 "Loading beatmap file…" 或元信息行），那是更新的权威，
  *   绝不覆盖。提示因而自我清除：换一张能解析的谱面时状态行会被分析流程重写。
  */
 function syncUnknownIdentityNotice() {
-    if (state.malody4Reason === UNKNOWN_IDENTITY_REASON && currentRoute() === "malody4") {
-        if (state.statusText !== UNKNOWN_IDENTITY_NOTICE) {
-            setStatus(UNKNOWN_IDENTITY_NOTICE, "error");
+    let notice = null;
+    if (currentRoute() === "malody4") {
+        if (state.malody4Reason === UNRESOLVED_CHART_REASON) {
+            notice = UNRESOLVED_CHART_NOTICE;
+        } else if (state.malody4Reason === UNKNOWN_IDENTITY_REASON) {
+            notice = UNKNOWN_IDENTITY_NOTICE;
+        }
+    }
+    if (notice) {
+        if (state.statusText !== notice) {
+            setStatus(notice, "error");
         }
         return;
     }
-    if (state.statusText === UNKNOWN_IDENTITY_NOTICE) {
+    if (SPECTATOR_NOTICES.has(state.statusText)) {
         setStatus("", "ok");
     }
 }
