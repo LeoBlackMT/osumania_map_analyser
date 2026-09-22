@@ -18,7 +18,7 @@
 
 - 只改**展示层与错误语义**：交给下游的技能值/星数/数值难度输入输出不变（junk 谱依旧把全 0 值传给 vibro 与 Companella，与改动前一致）。
 - pipeline 契约**新增**字段：`ettErrorCode`（string|null）、`ettResult.junkFile`（boolean）、`ettResult.rowCount`（number）；既有字段语义未变。
-- `actualEstimatorAlgorithm` **新增取值** `"Azusa+Companella"`：胶囊与遥测的 `actualAlgorithm` 维度都会出现该值（后端按字符串分桶）。
+- `actualEstimatorAlgorithm` **新增取值** `"Azusa+Companella"`，但它是**胶囊专有**的：遥测的 `actualAlgorithm` 维度不会出现该值——载荷边界（`analysis.js` 的 `toTelemetryActualAlgorithm`）把它映射回真实算法名 `"Azusa"`（后端按字符串分桶），白名单之外的标签则整个字段都不发送。
 - 未 bump 插件版本（`index.js` `_VERSION` 与 `metadata.txt` `Version` 仍为 2.1.0）；缓存快照会保存新的胶囊值，命中时原样恢复。
 
 ### 兼容策略（Compat）
@@ -54,7 +54,7 @@
 
 - Display and error semantics only: the skillset/star/numeric inputs handed downstream are unchanged (junk charts still pass all-zero values to vibro and Companella exactly as before).
 - Additive pipeline contract fields: `ettErrorCode` (string|null), `ettResult.junkFile` (boolean), `ettResult.rowCount` (number); existing field semantics are untouched.
-- `actualEstimatorAlgorithm` gains one value, `"Azusa+Companella"`, which therefore also appears in the capsule and in the telemetry `actualAlgorithm` dimension (the backend buckets by raw string).
+- `actualEstimatorAlgorithm` gains one value, `"Azusa+Companella"`, but it is **capsule-only**: the telemetry `actualAlgorithm` dimension never carries it, because the payload boundary (`toTelemetryActualAlgorithm` in `analysis.js`) maps it back to the real algorithm name `"Azusa"` (the backend buckets by raw string), and a label outside the whitelist is not sent at all.
 - No version bump (`index.js` `_VERSION` and `metadata.txt` `Version` stay 2.1.0); cached snapshots store the new capsule value and restore it on a hit.
 
 ### Compatibility

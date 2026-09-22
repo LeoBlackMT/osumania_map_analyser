@@ -107,7 +107,9 @@
 - `playing` 判定：gameplay 桥 playing 标志 + 外壳推过期——`playingExpireAt = 桥文件 lastWrite + total_seconds/rate×1.2 + 30s 裕量`；过期视为离开游玩态（防崩溃残留永驻 L1）；文档标注取舍：马拉松+长暂停可致误判离场，接受。
 - `malody.alive` = 最近 POST/song 时间仍在 60s 窗口内。
 - `malody4`（v3 新增）：`alive` = 本 tick 是否成功附着到唯一 `malody.exe` 并读到锚点；`playing` = 场景号 3（游玩）且新鲜（≤10s）；`screen` = 游戏场景名（`selection` / `playing` / `result` / `other`，仅在已知时出现）；`reason` = 不可用原因（正常/健康时**不出现**，闭集见下）；`judge` = 判定档字母（`A`~`E`，未知则不出现）。
-- `malody4.reason` 闭集（逐字）：`chart-not-indexed`、`process-not-found`、`multiple-instances`、`access-denied`、`bad-read`、`target-mismatch:pe_timestamp_mismatch`、`target-mismatch:file_size_mismatch`、`target-mismatch:pe_header_out_of_range`、`target-mismatch:unknown`、`root-not-configured`、`no-library`、`platform-unsupported`。
+- `malody4.reason` 闭集（逐字）：`chart-not-indexed`、`chart-unknown-identity`、`process-not-found`、`multiple-instances`、`access-denied`、`bad-read`、`target-mismatch:pe_timestamp_mismatch`、`target-mismatch:file_size_mismatch`、`target-mismatch:pe_header_out_of_range`、`target-mismatch:unknown`、`root-not-configured`、`no-library`、`platform-unsupported`。
+  - `chart-unknown-identity`（2026-09-22 追加，**契约版本仍为 v3**）：这是本闭集的**向后兼容扩展**——`reason` 对页面是**不透明诊断串**（页面只把它存进诊断位 `state.malody4Reason`，不按取值分支），加值不改变任何页面行为，故不升 `CONTRACT_VERSION`。语义：这个身份键**已查过、且重建尝试（`MISS_REBUILD_ATTEMPTS`）已耗尽仍解析不出来**（本次会话不再为它重建）。相应地 `chart-not-indexed` 只表示**尚未试完**的未命中（库可能仍在建、文件可能刚落地）。
+  - 两者对**帧形态与卡片行为完全相同**（hidden 记录、卡片保留上一张谱面）：`chart-unknown-identity` 只让壳日志与页面状态行多一句说明，绝不门控或隐藏卡片；区别只在诊断面能否分辨"库里没有这张谱"与"索引还没建好"。
 - `errors[]`：壳侧推送错误面（如 payload 超限被丢弃提示），页面 status 行展示。
 - tosu 探测：`GET {ip}:{port}/` 健康探测，30s 周期重探测并推 state。
 
