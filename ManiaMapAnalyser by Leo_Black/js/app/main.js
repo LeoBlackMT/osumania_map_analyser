@@ -14,7 +14,7 @@ import "./presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "./telemetry.js";
 import { initBridgeClient } from "./sources/bridgeClient.js";
 import { handleSongFrame } from "./sources/externalSource.js";
-import { applyShellState } from "./sources/shellState.js";
+import { applyShellState, applyMalody4Selection } from "./sources/shellState.js";
 import { initSourceManager } from "./sources/sourceManager.js";
 import { setupSocketListener, resumeBufferedOsuState } from "./socketHandlers.js";
 
@@ -41,6 +41,7 @@ export async function initialize() {
     initBridgeClient({
         onState: applyShellState,
         onSong: handleSongFrame,
+        onMalody4Selection: applyMalody4Selection,
         onSettings: applySettingsPayload,
         onHello: () => {
             // 离线配置拉取：壳按优先级链（tosu 设置文件 > mma-settings.json > 默认）
