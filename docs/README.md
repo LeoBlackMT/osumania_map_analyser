@@ -41,7 +41,7 @@
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
-| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档E（tterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
+| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v3、窗口操控、构建发布） |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
 | [features/malody4-od.md](features/malody4-od.md) | 人类/AI | Malody 4 判定档 → 等效 osu!mania OD（PC 表 20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 与 Malody V 的局限） |
@@ -61,9 +61,9 @@
 | [learnings/README.md](learnings/README.md) | AI | 知识与教训文档类别索引（难度估计算法调优经验、失败记录、方法论） |
 | [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | 人类/AI | 难度估计算法调优知识与教训（量化/序数校准/路由规则经验、历史探针结论、方法论） |
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
-| [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明E管线派生段 → 估算器内嵌、按需前置 （tt 复用、perf 约束遵守、基准双口径） |
+| [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明（管线派生段 → 估算器内嵌、按需前置 Ett 复用、perf 约束遵守、基准双口径） |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | 人类/AI | 多数据源与桌面壳破坏性说明（外部文本入口、缓存身份/速率签名、设置管线、遥测 client 维度、fetch 语义） |
-| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | 人类/AI | Etterna 错误体验与 Companella 胶囊破坏性说明EMinaCalc abort 友好化 + wasm 模块回收、junk file 显式化、融合后胶囊跟随真实来源、新增 `ett（rrorCode`/`junkFile`/`Azusa+Companella` 字段与取值） |
+| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | 人类/AI | Etterna 错误体验与 Companella 胶囊破坏性说明（MinaCalc abort 友好化 + wasm 模块回收、junk file 显式化、融合后胶囊跟随真实来源、新增 `ettErrorCode`/`junkFile`/`Azusa+Companella` 字段与取值） |
 | [breakings/2026-09-21-malody4-native-source.md](breakings/2026-09-21-malody4-native-source.md) | 人类/AI | Malody 4.3.7 第四数据源破坏性说明（零注入只读观察、`mdy4:` 身份、桥契约版本 2→3 与八型帧、`malody4Root`、路由与第四圆点色、插件版本冻结 2.1.0 的后果） |
 | [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | 人类/AI | Malody 4 动态判定 OD 破坏性说明（写死 OD 9 → 判定档 × 速率 `-4.56~16.42`、`modSignature` 4 段扩 5 段即自动失效、仅 `malody4` 源受影响） |
 
