@@ -12,6 +12,14 @@
          compile items would otherwise sweep it into this assembly. -->
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
+    <!-- Bit-reproducible artifact. `Deterministic` alone is not enough: without
+         `ContinuousIntegrationBuild` the compiler still embeds the building machine's
+         absolute source/PDB paths, and the injected MVID changes run to run, so the same
+         source produces a different SHA256. With both set plus a PathMap, two clean
+         builds of the same sources are byte-identical — which is what makes the shipped
+         DLL checkable against the source instead of merely asserted to match. -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildProjectDirectory)=/mma-plugin</PathMap>
     <BepInExDir Condition="'$(BepInExDir)' == ''">$(MSBuildThisFileDirectory)..\.tools\bepinex\BepInEx</BepInExDir>
     <GameInteropDir Condition="'$(GameInteropDir)' == ''">$(BepInExDir)\interop</GameInteropDir>
   </PropertyGroup>
