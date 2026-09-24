@@ -99,11 +99,11 @@ pwsh -File bridges/malody/bepinex/plugin/build.ps1 `
 `.csproj` 里同时设了 `Deterministic`（SDK 默认）、**`ContinuousIntegrationBuild=true`** 与 **`PathMap`**。三者缺一不可：
 
 - 只靠 `Deterministic=true` 时，编译器仍会把**构建机器的绝对源码/PDB 路径**写进程序集，且注入的 **MVID 每次构建都会变** —— 同一份源码两次构建得到**不同的 SHA256**，于是"产物与源码一致"只能是口头断言，无法核对。
-- 加上 `ContinuousIntegrationBuild=true` 与 `PathMap`（把项目目录映射成固定前缀）后，**两次干净构建逐字节相同**：实测 `618ADF82524165980E375AF01EA4193C882EB749965E4AC54050DE2FCCAFE6A3`（72,704 字节，连续两次清空 `obj/`+`bin/` 后重建同值）。
+- 加上 `ContinuousIntegrationBuild=true` 与 `PathMap`（把项目目录映射成固定前缀）后，**同一份源码的干净构建是稳定的**：实测**连续五次**从清空的 `obj/`+`bin/` 重建（其中一次是在跑过离线断言工程之后）**得到同一哈希** —— **72,704 字节 / `36542CB095726B5F975ACB41A14BED7FF255971BD3581542BB67A40EB8B18DD9`**，且与仓库里那份 `plugin/MMAMalodySelection.dll` 逐字节相同。
 
 所以核对方式很直接：清空 `obj/`、`bin/` 后重新构建，哈希应与下表一致；不一致即说明源码或构建环境变了。
 
-历史值（**均已不适用于当前源码**，留作记录）：T1 为 50,688 字节 / `DB9DAA598FF629390618311CE6CB9272C591E54E4BDC59468318458268A2DD57`（8 字段）；T2 为 71,168 字节 / `C3DD44165C5ECA19B041E93F27C2D4237F4A439E030294C28412ACDD977BF438`（11 字段）；T2b 为 72,704 字节 / `800DCDE39335DBB697F29E5C381F4C43CD40709D50382375E237230DEC5C8C99`（**这两次是在开启 `ContinuousIntegrationBuild` 之前构建的，因此不可复现**）。<br>**当前（可复现）**：72,704 字节 / `618ADF82524165980E375AF01EA4193C882EB749965E4AC54050DE2FCCAFE6A3`。
+历史值（**均已不适用于当前源码**，留作记录）：T1 为 50,688 字节 / `DB9DAA598FF629390618311CE6CB9272C591E54E4BDC59468318458268A2DD57`（8 字段）；T2 为 71,168 字节 / `C3DD44165C5ECA19B041E93F27C2D4237F4A439E030294C28412ACDD977BF438`（11 字段）；T2b 为 72,704 字节 / `800DCDE39335DBB697F29E5C381F4C43CD40709D50382375E237230DEC5C8C99`（**这几次构建都在开启 `ContinuousIntegrationBuild` 之前，因此不可复现**）。<br>**当前（可复现）**：72,704 字节 / `36542CB095726B5F975ACB41A14BED7FF255971BD3581542BB67A40EB8B18DD9`。
 
 ### 源码 → 产物一致性的复算方法
 
