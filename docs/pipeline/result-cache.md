@@ -206,9 +206,11 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - **Node 环境**：`resultCache.js` 无 import，benchmark runner 的 `smoke-result-cache.mjs` 直接 `import` 它跑 8 个冒烟用例，修改本模块后建议跑一遍该用例保持 Node 侧兼容。
 ## 多数据源（外部源）补充
 
-外部源（`ett:`/`mdy:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
+外部源（`ett:` / `mdy:` / `mdy4:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
 
-- identity 含**内容摘要 md5**（壳对谱面原文计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
-- modSignature 由 externalSource **直构**（`speedRate|none|none|0`，speedRate 段 = 桥 rate 派生）——同图不同 rate 缓存独立；额外部源不走 modData 派生、与 client 无关。
-- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot`/`malodyRoot` 不影响键值。
+- identity 含**内容摘要 md5**（壳对谱面原文或谱面文件字节计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
+- 三个前缀分属**三个不同源**、互不命中：Etterna `ett:`、Malody V `mdy:`、Malody 4 `mdy4:{md5}`。`mdy4:` 的 md5 是**游戏自身的身份键**（谱面文件字节摘要），因此**免疫改名与曲名变动**：同一张谱换文件名/改曲名仍是同一个缓存条目。
+- modSignature 由 externalSource **直构**：`speedRate|odFlag|cvtFlag|classic|judge`（**5 段**，第 5 段 = 判定档字母，未知为 `"?"`；speedRate 段 = 桥 rate 派生），不走 modData 派生、与 client 无关。
+- 第 5 段是硬要求：判定档决定 `malody4` 源转换出的等效 OD（见 [../features/malody4-od.md](../features/malody4-od.md)），**判定档变化必须重算**——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。判定档由壳随 song 帧下发（`meta.judge`），改判定即触发一次重发。
+- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot` / `malodyRoot` / `malody4Root` 不影响键值。
 - meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。

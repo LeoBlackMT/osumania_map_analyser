@@ -15,3 +15,4 @@ ManiaMapAnalyser by Leo_Black/js/estimator/companella/ort/ort.node.min.mjs
 /test
 /tests
 /samples
+/tools/**/__pycache__/

@@ -5,6 +5,11 @@
 // 语义：time[] → 绝对时间 BPM 点；effect[]（SV）→ osu 负红线（100/|scroll|，
 // scroll=0 用 1E+308）；note endbeat → type 128 LN；LN 尾同毫秒冲突自动 -1ms
 // 微调；仅支持 Key 模式（meta.mode === 0）。
+//
+// OD 由 judgeOdTable 按判定档（A~E）+ 速率模组给出（可选参数传入），
+// 本文件只负责把数值写进 [Difficulty] 段；不传时仍是 CONVERT_OD。
+
+import { OD_BOUNDS } from "./judgeOdTable.js";
 
 const CONVERT_OD = 9;
 const CONVERT_HP = 8;
@@ -25,9 +30,22 @@ function columnToX(column, keys) {
 /**
  * 把 .mc JSON 文本转为 .osu v14 文本。
  * @param {string} mcText
+ * @param {{overallDifficulty?: number|null}} [options] 判定档 + 速率求得的等效 OD；
+ *        缺省/越界时回落到 CONVERT_OD（不做静默夹断）
  * @returns {{osuText: string, meta: {title, artist, version, keys, noteCount, holdCount, bpmPoints, svCount}}}
  */
-export function convertMcToOsuText(mcText) {
+export function convertMcToOsuText(mcText, { overallDifficulty = null } = {}) {
+    // 越界（含 NaN/Infinity/非数值）不夹断，而是回落默认值并告警一次：
+    // 夹断会把严格档/宽松档静默改成另一个难度（见 OD_BOUNDS 的由来）。
+    if (overallDifficulty != null
+        && (!Number.isFinite(overallDifficulty)
+            || overallDifficulty < OD_BOUNDS.lo || overallDifficulty > OD_BOUNDS.hi)) {
+        console.warn(`mcToOsuConverter: overallDifficulty=${overallDifficulty} 越界或非法 `
+            + `（允许范围 ${OD_BOUNDS.lo}~${OD_BOUNDS.hi}），回落默认 OD ${CONVERT_OD}`);
+        overallDifficulty = null;
+    }
+    // 不传参时输出仍是 "9"（与改动前逐字节一致）；传参时规范为两位小数。
+    const odText = overallDifficulty == null ? String(CONVERT_OD) : Number(overallDifficulty).toFixed(2);
     let data;
     try {
         data = JSON.parse(mcText);
@@ -37,8 +55,13 @@ export function convertMcToOsuText(mcText) {
     if (!data.meta) {
         throw new Error(`.mc 解析失败：缺少 meta 字段`);
     }
-    if (data.meta.mode !== 0) {
-        throw new Error(`.mc 解析失败：仅支持 Key 模式（mode 0），当前 mode=${data.meta.mode}`);
+    // Key 模式在 .mc 里有两种 mode 取值：0 = 标准键盘模式，6 = 另一种 Key 模式
+    // （实测：模式 6 的谱面声明 mode_ext.column=8，其 note 的 column 取值为 0..7，
+    // 与声明一致；而 Taiko(mode=5) 的 note 带 style、Catch(3)/Live(7) 带 x 坐标、
+    // Pad(4) 带 interval/index —— 这些都不是本转换器能处理的键型谱面）。
+    // 判据是"谱面自带 column 字段"，mode 只是预筛；没有 column 一律拒绝。
+    if (data.meta.mode !== 0 && data.meta.mode !== 6) {
+        throw new Error(`.mc 解析失败：仅支持 Key 模式（mode 0/6），当前 mode=${data.meta.mode}`);
     }
     const keys = data.meta.mode_ext && data.meta.mode_ext.column;
     if (!keys) {
@@ -98,7 +121,7 @@ export function convertMcToOsuText(mcText) {
     lines.push("Source:Malody", "Tags:Converted from mc by LeosMma",
         "BeatmapID:0", "BeatmapSetID:-1", "");
     lines.push("[Difficulty]");
-    lines.push(`HPDrainRate:${CONVERT_HP}`, `CircleSize:${keys}`, `OverallDifficulty:${CONVERT_OD}`,
+    lines.push(`HPDrainRate:${CONVERT_HP}`, `CircleSize:${keys}`, `OverallDifficulty:${odText}`,
         `ApproachRate:${CONVERT_AR}`, "SliderMultiplier:1.4", "SliderTickRate:1", "");
     lines.push("[Events]", "//Background and Video events", "");
     lines.push("[TimingPoints]");

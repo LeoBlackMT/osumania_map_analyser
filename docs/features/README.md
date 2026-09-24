@@ -20,8 +20,11 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [marathon-correction.md](marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [telemetry.md](telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
-| [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna/Malody 接入、转换器、路由决策表、败方门控、能力边界） |
-| [desktop-shell.md](desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v2、窗口操控、构建发布；人类教程见 docs/shell-guide.md） |
+| [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna、Malody V、Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
+| [desktop-shell.md](desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v3、窗口操控、构建发布；人类教程见 docs/shell-guide.md） |
+| [malody4-source.md](malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
+| [malody4-od.md](malody4-od.md) | 人类/AI | Malody 4 判定档 → 等效 osu!mania OD（PC 表 20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 与 Malody V 的局限） |
+| [presets.md](presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 
 [返回 docs 索引](../README.md)
 
@@ -47,7 +50,10 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [marathon-correction.md](marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [telemetry.md](telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
-| [multi-source.md](multi-source.md) | AI | Multi-source document (Etterna/Malody integration, converters, routing decision table, osu gate, capability boundaries) |
-| [desktop-shell.md](desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v2, window controls, build & release; human tutorial: docs/shell-guide.md) |
+| [multi-source.md](multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries) |
+| [desktop-shell.md](desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v3, window controls, build & release; human tutorial: docs/shell-guide.md) |
+| [malody4-source.md](malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
+| [malody4-od.md](malody4-od.md) | Human/AI | Malody 4 judge level → equivalent osu!mania OD (PC table with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, FAIR and Malody V limitations) |
+| [presets.md](presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 
 [Back to docs index](../README.md)

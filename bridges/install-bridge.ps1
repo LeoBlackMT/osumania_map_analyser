@@ -1,7 +1,8 @@
 ﻿<#
 .SYNOPSIS
     Interactive installer/remover for the ManiaMapAnalyser game bridge files
-    (Etterna theme LoadActor injection + Malody V editor plugin).
+    (Etterna theme LoadActor injection + Malody V editor plugin), plus the
+    Malody 4 (4.3.7 native client) source which needs no game files at all.
 
 .DESCRIPTION
     Installs or removes:
@@ -10,6 +11,9 @@
                   plus one LoadActor line injected before `return t` in each
                   screen's default.lua.
       - Malody V:  bridges/malody/mma_editor.lua      -> MalodyV\editor\
+      - Malody 4:  no files - the 4.3.7 native client is only observed, read
+                   only (external process memory, log tail, config.json);
+                   installing just records malody4Root in the shell config.
 
     Game root directories are auto-detected (running process first, then the
     MMA_ETTERNA_ROOT / MMA_MALODY_ROOT env vars, then Steam libraries found via
@@ -31,7 +35,7 @@
     LuaJIT (Etterna) never chokes on a BOM.
 
 .PARAMETER Game
-    'Etterna' or 'Malody' to skip the game picker. Omit for the menu.
+    'Etterna', 'Malody' or 'Malody4' to skip the game picker. Omit for the menu.
 
 .PARAMETER Uninstall
     Remove instead of install.
@@ -63,7 +67,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Etterna', 'Malody')]
+    [ValidateSet('Etterna', 'Malody', 'Malody4')]
     [string]$Game,
     [switch]$Uninstall,
     [switch]$Chinese,
@@ -86,6 +90,8 @@ $script:L = @{
     Lede1Zh         = '安装 / 卸载 mma-shell 数据桥：'
     LedeEtterna     = '   - Etterna theme bridge (mma_bridge / mma_gameplay)'
     LedeMalody      = '   - Malody V editor plugin (mma_editor)'
+    LedeMalody4     = '   - Malody 4 (4.3.7 native client): no game files are written'
+    LedeMalody4Zh   = '   - Malody 4（4.3.7 原生客户端）：不向游戏目录写入任何文件'
     MenuAsk         = 'What would you like to do?'
     MenuAskZh       = '你想做什么？'
     MenuInstall     = 'Install bridges'
@@ -116,10 +122,14 @@ $script:L = @{
     HeaderEtternaZh = '--- 正在安装 Etterna 桥文件 ---'
     HeaderMalody    = '--- Installing Malody V bridge ---'
     HeaderMalodyZh  = '--- 正在安装 Malody V 桥文件 ---'
+    HeaderMalody4   = '--- Installing Malody 4 (native client) support ---'
+    HeaderMalody4Zh = '--- 正在安装 Malody 4（原生客户端）支持 ---'
     RmEtterna       = '--- Removing Etterna bridge ---'
     RmEtternaZh     = '--- 正在卸载 Etterna 桥文件 ---'
     RmMalody        = '--- Removing Malody V bridge ---'
     RmMalodyZh      = '--- 正在卸载 Malody V 桥文件 ---'
+    RmMalody4       = '--- Removing Malody 4 (native client) support ---'
+    RmMalody4Zh     = '--- 正在卸载 Malody 4（原生客户端）支持 ---'
     UseDetected     = "Use detected {0} folder:`n  {1}"
     UseDetectedZh   = "使用检测到的 {0} 目录：`n  {1}"
     UsingCfgRoot    = "using {0} root from mma-shell-config.json: {1}"
@@ -177,6 +187,22 @@ We need the folder that directly contains 'chart' and 'skin'.
      （Steam 库可能在其它盘符——找到 steamapps\common\MalodyV 即可）。
   2. 其他方式：右键 Malody V 快捷方式，选择「打开文件所在位置」。
 我们需要的是直接包含 chart 和 skin 两个文件夹的那个目录。
+'@
+    HelpMalody4     = @'
+How to find your Malody 4 (native client) folder:
+  1. Right-click the Malody shortcut you use to launch the game, choose
+     'Open file location'.
+  2. In the folder that opens, click the address bar and copy the full path,
+     e.g. D:\Games\Malody-4.3.7.
+We need the folder that directly contains 'malody.exe' and a 'beatmap' folder.
+This client is not distributed on Steam, so no Steam library is searched.
+'@
+    HelpMalody4Zh   = @'
+如何找到您的 Malody 4（原生客户端）目录：
+  1. 右键点击你用来启动游戏的 Malody 快捷方式，选择「打开文件所在位置」。
+  2. 在打开的文件夹中，点击地址栏复制完整路径，例如 D:\Games\Malody-4.3.7。
+我们需要的是直接包含 malody.exe 和 beatmap 文件夹的那个目录。
+该客户端不在 Steam 上发行，因此不会搜索 Steam 库。
 '@
 
     # themes
@@ -240,6 +266,8 @@ We need the folder that directly contains 'chart' and 'skin'.
     MalodySrcNoZh   = '未在脚本旁找到桥文件源：{0}（应为 mma_editor.lua）'
     MalodyTip       = 'Use it from the Malody editor: More menu -> MMA Analyze.'
     MalodyTipZh     = '使用方式：打开 Malody 编辑器 → 菜单 → MMA Analyze。'
+    Malody4NoCopy   = 'No files are written into the game directory - this client is only observed (read only).'
+    Malody4NoCopyZh = '无需向游戏目录写入任何文件——本客户端只被只读观察。'
 
     # config
     CfgCreate       = 'creating mma-shell-config.json: {0}'
@@ -260,6 +288,8 @@ We need the folder that directly contains 'chart' and 'skin'.
     ConfirmClearEZh = '是否同时清空 mma-shell-config.json 中的 etternaRoot？'
     ConfirmClearM   = 'Also clear malodyRoot in mma-shell-config.json?'
     ConfirmClearMZh = '是否同时清空 mma-shell-config.json 中的 malodyRoot？'
+    ConfirmClearM4  = 'Clear malody4Root in mma-shell-config.json?'
+    ConfirmClearM4Zh = '是否清空 mma-shell-config.json 中的 malody4Root？'
 
     # results
     EtternaOk       = 'Etterna bridge installed.'
@@ -272,6 +302,10 @@ We need the folder that directly contains 'chart' and 'skin'.
     MalodyOkZh      = 'Malody V 桥文件安装完成。'
     MalodyGone      = 'Malody V bridge removed.'
     MalodyGoneZh    = 'Malody V 桥文件已卸载。'
+    Malody4Ok       = 'Malody 4 support enabled: malody4Root recorded, no game files written.'
+    Malody4OkZh     = 'Malody 4 支持已启用：malody4Root 已记录，未向游戏目录写入任何文件。'
+    Malody4Gone     = 'Malody 4 support removed: malody4Root cleared, no game files were touched.'
+    Malody4GoneZh   = 'Malody 4 支持已卸载：malody4Root 已清空，未改动任何游戏文件。'
     RemindTheme     = 'Reminder: a theme update wipes these files - re-run this installer to restore.'
     RemindThemeZh   = '提示：主题更新会删除这些文件 - 重新运行本安装器即可恢复。'
 }
@@ -319,6 +353,7 @@ function Show-Banner {
     Write-Host (Get-Text 'Lede1') -ForegroundColor Gray
     Write-Host (Get-Text 'LedeEtterna') -ForegroundColor Gray
     Write-Host (Get-Text 'LedeMalody') -ForegroundColor Gray
+    Write-Host (Get-Text 'LedeMalody4') -ForegroundColor Gray
     Write-Host ''
 }
 
@@ -424,7 +459,11 @@ function Read-CustomPath {
             ) -Extra (Get-Text 'OptAbort')
         if ($pick -eq 3) { return $null }
         if ($pick -eq 2) {
-            $help = if ($What -eq 'Etterna') { Get-Text 'HelpEtterna' } else { Get-Text 'HelpMalody' }
+            $help = switch ($What) {
+                'Etterna' { Get-Text 'HelpEtterna'; break }
+                'Malody'  { Get-Text 'HelpMalody'; break }
+                'Malody4' { Get-Text 'HelpMalody4'; break }
+            }
             Write-Host ''
             Write-Host $help -ForegroundColor Gray
             continue
@@ -494,6 +533,16 @@ function Test-MalodyRoot {
            (Test-Path (Join-Path $p 'skin') -PathType Container)
 }
 
+function Test-Malody4Root {
+    # the 4.3.7 native client root: malody.exe next to the beatmap folder.
+    # No version check here - mma-shell validates the executable itself.
+    param([string]$p)
+    if (-not $p) { return $false }
+    if (-not (Test-PathRootAvailable $p)) { return $false }
+    return (Test-Path (Join-Path $p 'beatmap') -PathType Container) -and
+           (Test-Path (Join-Path $p 'malody.exe') -PathType Leaf)
+}
+
 function Get-RunningProcessRoot {
     param([string[]]$Names)
     foreach ($name in $Names) {
@@ -559,13 +608,46 @@ function Get-MalodyCandidates {
     return @($cands)
 }
 
+function Get-Malody4Candidates {
+    $cands = New-Object 'System.Collections.Generic.List[string]'
+    $add = {
+        param($p)
+        # probing is best-effort: never let an unexpected provider error
+        # terminate the installer ($ErrorActionPreference = 'Stop')
+        try {
+            if ($p) { $p = Format-PathInput -Path $p }
+            if ($p -and (Test-Malody4Root $p) -and -not $cands.Contains($p)) { $cands.Add($p) }
+        } catch { }
+    }
+    # running process (the native client's binary is malody.exe)
+    $p = Get-RunningProcessRoot -Names 'malody'
+    if ($p) { & $add $p }
+    if ($env:MMA_MALODY4_ROOT) { & $add $env:MMA_MALODY4_ROOT }
+    # common install paths (the 4.3.7 native client was NOT distributed on
+    # Steam, so Steam libraries are deliberately not consulted here)
+    foreach ($c in @(
+        'D:/Games/Malody-4.3.7',
+        'C:/Games/Malody-4.3.7',
+        'D:/Malody-4.3.7',
+        'D:/Games/Malody',
+        'C:/Malody-4.3.7'
+    )) {
+        & $add $c
+    }
+    return @($cands)
+}
+
 function Select-GameRoot {
     param(
         [string]$Game,
         [string[]]$Candidates,
         [string]$ForceRoot
     )
-    $validator = if ($Game -eq 'Etterna') { { param($p) Test-EtternaRoot $p } } else { { param($p) Test-MalodyRoot $p } }
+    $validator = switch ($Game) {
+        'Etterna' { { param($p) Test-EtternaRoot $p } }
+        'Malody'  { { param($p) Test-MalodyRoot $p } }
+        'Malody4' { { param($p) Test-Malody4Root $p } }
+    }
     if ($ForceRoot) {
         $norm = Format-PathInput -Path $ForceRoot
         if ($norm -and (& $validator $norm)) { return $norm }
@@ -760,7 +842,11 @@ function Select-ExistingRoot {
         Write-Step INFO ((Get-Text 'UsingCfgRoot') -f $Game, $cfg)
         return $cfg
     }
-    $cands = @(if ($Game -eq 'Etterna') { Get-EtternaCandidates } else { Get-MalodyCandidates })
+    $cands = @(switch ($Game) {
+        'Etterna' { Get-EtternaCandidates }
+        'Malody'  { Get-MalodyCandidates }
+        'Malody4' { Get-Malody4Candidates }
+    })
     return Select-GameRoot -Game $Game -Candidates $cands -ForceRoot ''
 }
 
@@ -782,6 +868,7 @@ function Set-ShellConfigValue {
     if (-not $data.Contains('gameClient')) { $data['gameClient'] = 'Auto' }
     if (-not $data.Contains('etternaRoot')) { $data['etternaRoot'] = '' }
     if (-not $data.Contains('malodyRoot')) { $data['malodyRoot'] = '' }
+    if (-not $data.Contains('malody4Root')) { $data['malody4Root'] = '' }
     if (-not $data.Contains('hotkeys')) {
         $data['hotkeys'] = [ordered]@{ topmost = 'Ctrl+Shift+T'; clickThrough = 'Ctrl+Shift+C'; close = 'Ctrl+Q' }
     }
@@ -1060,15 +1147,49 @@ function Uninstall-MalodyBridge {
 }
 
 # ---------------------------------------------------------------------------
+# Malody 4 (4.3.7 native client) - observed read-only, config only
+# ---------------------------------------------------------------------------
+
+function Install-Malody4Bridge {
+    Write-Host ''
+    Write-Host (Get-Text 'HeaderMalody4') -ForegroundColor Cyan
+    $cands = Get-Malody4Candidates
+    $root = Select-GameRoot -Game 'Malody4' -Candidates $cands -ForceRoot $Root
+    if (-not $root) { return }
+
+    # This source needs no bridge files at all: mma-shell only observes the
+    # client (external process memory, its log and config.json), read-only.
+    # So the install is exactly one thing - record the root in the config.
+    Write-Step INFO (Get-Text 'Malody4NoCopy')
+    Set-ShellConfigValue -Key 'malody4Root' -Value $root
+    Write-Host ''
+    Write-Step OK (Get-Text 'Malody4Ok')
+}
+
+function Uninstall-Malody4Bridge {
+    Write-Host ''
+    Write-Host (Get-Text 'RmMalody4') -ForegroundColor Cyan
+    # use the recorded root from mma-shell-config.json when available (no re-probing)
+    $root = Select-ExistingRoot -Game 'Malody4' -ConfigKey 'malody4Root' -Validator { param($p) Test-Malody4Root $p }
+    if (-not $root) { return }
+
+    Write-Step INFO (Get-Text 'Malody4NoCopy')
+    if ((-not $Yes) -and (-not (Confirm-YesNo (Get-Text 'ConfirmClearM4') -DefaultYes $false))) { return }
+    # nothing was ever written into the game directory, so only the config key goes
+    Clear-ShellConfigValue -Key 'malody4Root'
+    Write-Step OK (Get-Text 'Malody4Gone')
+}
+
+# ---------------------------------------------------------------------------
 # main flow
 # ---------------------------------------------------------------------------
 
 function Invoke-GameFlow {
     param([string]$G, [bool]$Remove)
-    if ($Remove) {
-        if ($G -eq 'Etterna') { Uninstall-EtternaBridge } else { Uninstall-MalodyBridge }
-    } else {
-        if ($G -eq 'Etterna') { Install-EtternaBridge } else { Install-MalodyBridge }
+    switch ($G) {
+        'Etterna' { if ($Remove) { Uninstall-EtternaBridge } else { Install-EtternaBridge } }
+        'Malody'  { if ($Remove) { Uninstall-MalodyBridge } else { Install-MalodyBridge } }
+        'Malody4' { if ($Remove) { Uninstall-Malody4Bridge } else { Install-Malody4Bridge } }
     }
 }
 
@@ -1086,9 +1207,14 @@ if ($Game) {
         if ($mode -eq 2) { break }
         $removeMode = ($mode -eq 1)
         $gameItem = Read-Option -Title $(if ($removeMode) { Get-Text 'ChooseGameRm' } else { Get-Text 'ChooseGameIn' }) `
-            -Options @('Etterna', 'Malody V') -Extra (Get-Text 'BackToMenu')
-        if ($gameItem -eq 2) { continue }
-        Invoke-GameFlow -G $(if ($gameItem -eq 0) { 'Etterna' } else { 'Malody' }) -Remove $removeMode
+            -Options @('Etterna', 'Malody V', 'Malody 4') -Extra (Get-Text 'BackToMenu')
+        if ($gameItem -eq 3) { continue }
+        $game = switch ($gameItem) {
+            0 { 'Etterna' }
+            1 { 'Malody' }
+            2 { 'Malody4' }
+        }
+        Invoke-GameFlow -G $game -Remove $removeMode
         if (-not $Yes) {
             if (-not (Confirm-YesNo (Get-Text 'ContinueAsk') -DefaultYes $false)) { break }
         }

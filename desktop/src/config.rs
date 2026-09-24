@@ -215,7 +215,7 @@ pub fn ensure_shell_config() {
     }
     let _ = fs::write(
         &path,
-        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\"\n  },\n  \"logLevel\": \"info\"\n}\n",
     );
 }
 
@@ -341,10 +341,13 @@ const DETECT_CACHE_TTL: Duration = Duration::from_secs(30);
 
 static ETTERNA_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
 static MALODY_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
+static MALODY4_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
 
-fn detect_cached(
+/// 探测结果缓存。`once` 是泛型闭包（不是函数指针）：Malody 4 的启发探测需要捕获
+/// `process_exe` 传给 `detect_malody4_root_once`，函数指针签名无法编译。
+fn detect_cached<F: Fn() -> Option<PathBuf>>(
     cache: &Mutex<Option<(Instant, Option<PathBuf>)>>,
-    once: fn() -> Option<PathBuf>,
+    once: F,
 ) -> Option<PathBuf> {
     if let Ok(guard) = cache.lock() {
         if let Some((at, hit)) = guard.as_ref() {
@@ -485,6 +488,65 @@ fn detect_malody_root_once() -> Option<PathBuf> {
     None
 }
 
+/// Malody 4.3.7 的启发候选（绝对路径**只允许出现在这里**，且是解析链的最后一级，
+/// 绝不是权威来源）。候选目录可能撞上 MalodyV / Maupdate，故每级都做 PE 版本校验。
+const MALODY4_CANDIDATES: [&str; 5] = [
+    "D:/Games/Malody-4.3.7",
+    "C:/Games/Malody-4.3.7",
+    "D:/Malody-4.3.7",
+    "D:/Games/Malody",
+    "C:/Malody-4.3.7",
+];
+
+/// Malody 4.3.7 根目录的**启发式尾部**（30s TTL 缓存 + 盘符预检）。
+///
+/// 只遍历 [`MALODY4_CANDIDATES`]：`process_exe` 级已由 `server::malody4_root` 作为解析链
+/// 第 1 级"非空即采纳"处理（在这里再写一次就是不可达的死分支），`MMA_MALODY4_ROOT` /
+/// 壳配置 `malody4Root` / tosu 设置三级同样由 `server::malody4_root` 处理。
+/// `process_exe` 参数**仅用于日志说明**，本函数不据此判定。
+pub fn detect_malody4_root(process_exe: Option<&Path>) -> Option<PathBuf> {
+    detect_cached(&MALODY4_DETECT_CACHE, || detect_malody4_root_once(process_exe))
+}
+
+fn detect_malody4_root_once(process_exe: Option<&Path>) -> Option<PathBuf> {
+    let hit = scan_malody4_candidates(&MALODY4_CANDIDATES);
+    crate::server::log::log_at(
+        "debug",
+        &format!(
+            "malody4 heuristic scan: process_exe={} -> {}",
+            process_exe
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            hit.as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "no candidate validated".to_string())
+        ),
+    );
+    hit
+}
+
+/// 候选的**三重检查**：`beatmap/` 目录存在 **且** 同目录 `malody.exe` 存在
+/// **且** PE 版本校验通过（`anchor::validate_pe_file`）。
+fn scan_malody4_candidates(candidates: &[&str]) -> Option<PathBuf> {
+    for candidate in candidates {
+        let dir = PathBuf::from(candidate);
+        if !drive_root_ready(&dir) {
+            continue; // 盘符不存在/未就绪：快速跳过（读卡器上的元数据查询可能阻塞）
+        }
+        let exe = dir.join("malody.exe");
+        if !dir.join("beatmap").is_dir() || !exe.is_file() {
+            continue;
+        }
+        if crate::malody4::anchor::validate_pe_file(&exe, crate::malody4::anchor::ClientSpec::current())
+            .is_err()
+        {
+            continue;
+        }
+        return Some(dir);
+    }
+    None
+}
+
 // ---- 窗口状态记忆（mma-shell-state.json，exe 旁）----
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -522,5 +584,90 @@ pub fn write_window_state(state: &WindowState) {
     let tmp = path.with_extension("state.tmp");
     if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
         let _ = fs::rename(&tmp, &path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn tmp_dir(tag: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "mma-shell-config-{}-{}-{}",
+            tag,
+            std::process::id(),
+            stamp
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// `detect_malody4_root` 的启发扫描：没有任何候选通过三重检查时返回 `None`。
+    ///
+    /// 候选列表是编译期常量，而本机可能真的装了 4.3.7（那样公开入口会命中候选并返回
+    /// `Some`），因此"全不通过 ⇒ None"这条断言直接打在三重检查缝 `scan_malody4_candidates`
+    /// 上：同一段代码、同一份判据，只是喂进一批必然不通过的候选。公开入口另断言
+    /// "命中只能来自候选列表且三重检查成立、不通过时不 panic"。
+    #[test]
+    fn detect_malody4_root_returns_none_when_no_candidate_validates() {
+        // ① 目录存在、beatmap/ 存在，但没有 malody.exe
+        let no_exe = tmp_dir("noexe");
+        fs::create_dir_all(no_exe.join("beatmap")).unwrap();
+        // ② 目录存在、beatmap/ 与 malody.exe 都存在，但 malody.exe 不是 4.3.7 的 PE
+        let wrong_pe = tmp_dir("wrongpe");
+        fs::create_dir_all(wrong_pe.join("beatmap")).unwrap();
+        fs::write(wrong_pe.join("malody.exe"), b"not a PE image at all").unwrap();
+        // ③ 盘符不存在（绝不 panic、绝不阻塞）
+        // ④ 目录存在、有 malody.exe，但没有 beatmap/
+        let no_beatmap = tmp_dir("nobeatmap");
+        fs::write(no_beatmap.join("malody.exe"), b"not a PE image at all").unwrap();
+
+        let candidates = [
+            no_exe.to_string_lossy().to_string(),
+            wrong_pe.to_string_lossy().to_string(),
+            no_beatmap.to_string_lossy().to_string(),
+            "Z:/definitely-missing-malody4".to_string(),
+        ];
+        let refs: Vec<&str> = candidates.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            scan_malody4_candidates(&refs),
+            None,
+            "三重检查（beatmap/ + malody.exe + PE 版本）全不通过时必须返回 None"
+        );
+
+        // 公开入口：不 panic；命中只可能来自候选列表且三重检查成立。
+        let _ = detect_malody4_root(Some(Path::new("Z:/definitely-missing/malody.exe")));
+        if let Some(hit) = detect_malody4_root(None) {
+            assert!(
+                MALODY4_CANDIDATES
+                    .iter()
+                    .any(|c| PathBuf::from(c) == hit),
+                "启发命中只能来自候选列表：{}",
+                hit.display()
+            );
+            assert!(hit.join("beatmap").is_dir() && hit.join("malody.exe").is_file());
+        }
+
+        for dir in [no_exe, wrong_pe, no_beatmap] {
+            let _ = fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn malody4_candidates_are_absolute_drive_paths_and_normalise_unchanged() {
+        // 绝对路径只允许出现在候选列表里（解析链最后一级），且必须已归一化。
+        for candidate in MALODY4_CANDIDATES {
+            let bytes = candidate.as_bytes();
+            assert!(
+                bytes.len() > 3 && bytes[1] == b':' && bytes[2] == b'/',
+                "候选必须是绝对路径：{candidate}"
+            );
+            assert_eq!(normalize_path(candidate), candidate);
+        }
     }
 }

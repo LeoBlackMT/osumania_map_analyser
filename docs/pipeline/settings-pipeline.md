@@ -111,12 +111,10 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:833-850）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
 ## 多数据源（外部源）补充
 
-设置管线新增三项（见 [../features/multi-source.md](../features/multi-source.md)）：
+设置管线在多源场景下涉及的键（见 [../features/multi-source.md](../features/multi-source.md)）：
 
-- `gameClient`（options，Auto 默认；其变更入 `SETTING_CACHE_KEYS` 与 `SETTING_RECOMPUTE_KEYS` 之外的缓存侧）
-- `etternaRoot` / `malodyRoot`（text；仅壳侧消费，变更不影响缓存键）
-- 解析函数：`parseGameClientValue` / `parseEtternaRootValue` / `parseMalodyRootValue`
-  （settingsParser.js `createSettingsParsers` 返回对象注册）
+- `gameClient`（Auto 默认；解析函数 `parseGameClientValue` 由 `settingsParser.js` 的 `createSettingsParsers` 返回对象注册，应用函数 `applyGameClientSetting`）；其变更入 `SETTING_CACHE_KEYS`（保守兜底）。
+- 游戏根目录 `etternaRoot` / `malodyRoot` / `malody4Root` **不是插件设置**：它们是壳配置 `mma-shell-config.json`（exe 旁，由桥安装器或用户手写）的键，**只由壳消费**（壳据此定位 `Save/` 桥文件、Malody V chart 目录、Malody 4.3.7 的 `beatmap/`）；**页面侧没有对应的解析函数、也不进任何缓存失效集合**（路径变化不影响分析结果，只影响壳能否找到谱面）。跨进程边界时它们随壳的 settings 帧一起到达页面，但页面不消费。
 
 已知待办：离线模式（壳 24061）的页面侧设置初始拉取与变更持久化（壳 `/settings`
 GET/POST 双向已实现，页面 `applySettingsPayload` 接线未完成）。

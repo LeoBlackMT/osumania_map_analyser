@@ -110,7 +110,7 @@ Body (max 16 KB):
 }
 ```
 
-Returns `204 No Content`. `400` for a bad body, `405` for wrong method, `429` when rate limited. The `data` object is filtered server-side to these keys only: `algorithm`, `actualAlgorithm`, `keycount`, `mods`, `speedRate`, `mode`, `star`, `lnRatio`, `typeBreakdown`, `durationMs`, `numericDifficulty` (optional; standard numeric difficulty, .0 = mid, see `docs/features/telemetry.md`).
+Returns `204 No Content`. `400` for a bad body, `405` for wrong method, `429` when rate limited. The `data` object is filtered server-side to these keys only: `algorithm`, `actualAlgorithm`, `keycount`, `mods`, `speedRate`, `mode`, `star`, `lnRatio`, `typeBreakdown`, `durationMs`, `numericDifficulty` (optional; standard numeric difficulty, .0 = mid, see `docs/features/telemetry.md`). `actualAlgorithm` has a closed value domain (real sub-algorithm names, see `docs/features/telemetry.md`) and the aggregation buckets by that string directly — the display-only capsule labels used by the plugin never appear here.
 
 CORS is enabled for `POST`/`OPTIONS` (the plugin runs on `http://localhost:24050`).
 

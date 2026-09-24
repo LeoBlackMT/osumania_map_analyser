@@ -7,7 +7,7 @@ import { state } from "../appContext.js";
 
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
-const CONTRACT_VERSION = 2;
+const CONTRACT_VERSION = 3;
 
 let socket = null;
 let reconnectTimer = 0;
@@ -83,7 +83,7 @@ export function sendDiag(message) {
     }
 }
 
-/** 初始化壳桥（handlers: {onHello, onState, onSong, onSettings}）。 */
+/** 初始化壳桥（handlers: {onHello, onState, onSong, onSettings, onMalody4Selection}）。 */
 export function initBridgeClient(handlers = {}) {
     if (typeof WebSocket === "undefined") {
         return; // 非浏览器环境（benchmark 等）
@@ -161,6 +161,11 @@ function handleFrame(frame, handlers) {
         case "song":
             if (handlers.onSong) {
                 handlers.onSong(payload);
+            }
+            break;
+        case "malody4_selection":
+            if (handlers.onMalody4Selection) {
+                handlers.onMalody4Selection(payload);
             }
             break;
         case "settings":
