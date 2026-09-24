@@ -200,7 +200,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **第 5 段 = 判定档**。`malody4` 源填**判定档字母**（`A`~`E` 大写归一化，未知为 `"?"`）；桥通道填 `judge{n}`（数值 `0..4`，未采集到为 `judge?`）；Etterna 与 Lua 通道恒为 `"?"`。注意桥通道这一段是**拼进同一个字符串位置**的（`judge{n}` 之后直接接第 6/7 段）。
 - **第 6 段 = 窗口缩放因子**（仅桥通道；`|win{winScale}`，非桥帧为空串）。它与判定**必须同时进键**：Turbo 1.2 与 Dash 1.2 的 `speedRate` 相同而判定窗口不同，只加判定维度会让这两者互相命中缓存。
 - **第 7 段 = Pro**（仅桥通道；`|pro0` / `|pro1` / `|pro?`，非桥帧为空串）。**必须进键**：Pro 在**同一判定档与同一倍率**下改变换算出的 OD，不进键会在勾/去勾 Pro 后命中旧快照 —— 星数纹丝不动，而那正是 Pro 在用户侧唯一的可见效果。
-- **第 5 段是硬要求**：判定档决定等效 OD（Malody 4.3.7 见 [../features/malody4-od.md](../features/malody4-od.md)；Malody V 见同文换算说明与 `js/app/sources/odResolver.js`），**判定档 / Pro / 窗口缩放任一变化都必须重算**——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都随 song 帧下发，变化即触发一次重发。
+- **第 5 段是硬要求**：判定档决定等效 OD（Malody 4.3.7 见 [../features/malody-od.md](../features/malody-od.md)；Malody V 见同文换算说明与 `js/app/sources/odResolver.js`），**判定档 / Pro / 窗口缩放任一变化都必须重算**——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都随 song 帧下发，变化即触发一次重发。
 - 段数与 osu 侧不同（最多 7 vs 4）是有意为之：外部源的 key 集合与 osu 的 key 集合本就由不同 identity 前缀区分，签名只需在**外部源内部**稳定且完整；classic 位恒为 0、与 client 值无关，保证跨在线/离线模式签名稳定、缓存键不抖。
 - ⚠️ 签名里**没有** `judge` 的实际数值之外的 OD 值，也没有 `turbo` 本身：Turbo 与 Dash 的区分由第 6 段（`winScale`）承担，Pro 的区分由第 7 段承担。
 - `state.odFlag` / `state.cvtFlag` 侧仍把 `"none"`/空归一为 `null`（估算器 `parseFloat("none")` 会得 NaN），签名文本里的 `"none"` 只用于缓存键。

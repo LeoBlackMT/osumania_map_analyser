@@ -1,6 +1,6 @@
 # 多数据源：Etterna、Malody V、Malody 4 接入
 
-> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/shell-guide.md` 与 `bridges/` 下的安装说明。Malody 4.3.7 原生客户端源的完整说明（只读观察通道、版本门、索引、帧与限制）见 [malody4-source.md](malody4-source.md)；其动态判定 OD 见 [malody4-od.md](malody4-od.md)。
+> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/shell-guide.md` 与 `bridges/` 下的安装说明。Malody 4.3.7 原生客户端源的完整说明（只读观察通道、版本门、索引、帧与限制）见 [malody4-source.md](malody4-source.md)；其动态判定 OD 见 [malody-od.md](malody-od.md)。
 
 ## 功能说明
 
@@ -37,7 +37,7 @@ Malody 4.3.7（原生客户端，零注入只读观察：ReadProcessMemory 读�
 ## 转换器
 
 - `js/parser/smSscToOsuConverter.js`：vendor simfile-parser（MIT，见 `js/parser/vendor/simfile-parser/NOTICE.md`，含列宽补丁）→ STOPS/DELAYS 烘焙、WARPS 折叠、键数行宽推导、LN 尾冲突修复；OD9/HP8/AR5。
-- `js/parser/mcToOsuConverter.js`：移植 mc_to_osu.py（SV 负红线、type128、尾微调）；HP8/AR5 固定，OD 默认 9（不传参时逐字节不变），`malody4` 源显式传入由判定档 × 速率算出的等效 OD（见 [malody4-od.md](malody4-od.md)）。
+- `js/parser/mcToOsuConverter.js`：移植 mc_to_osu.py（SV 负红线、type128、尾微调）；HP8/AR5 固定，OD 默认 9（不传参时逐字节不变），`malody4` 源显式传入由判定档 × 速率算出的等效 OD（见 [malody-od.md](malody-od.md)）。
 - 测试与 golden 摘要：`docs/pipeline/converters.md`（真实样本仅本机私有，仓库只存摘要与断言；测试脚本本地私有）。
 
 ## 多源路由（sourceManager）
@@ -82,7 +82,7 @@ analyze 事件新增 `client` 字段（osu/etterna/malody/**malody4**，取值�
 
 # Multi-source: Etterna, Malody V and Malody 4
 
-Technical document for AI readers. Human installation guides: `docs/shell-guide.md` and per-bridge READMEs. The Malody 4.3.7 native-client source has its own full document ([malody4-source.md](malody4-source.md)) and its dynamic judge OD table lives in [malody4-od.md](malody4-od.md).
+Technical document for AI readers. Human installation guides: `docs/shell-guide.md` and per-bridge READMEs. The Malody 4.3.7 native-client source has its own full document ([malody4-source.md](malody4-source.md)) and its dynamic judge OD table lives in [malody-od.md](malody-od.md).
 
 Adds Etterna, Malody V and the Malody 4.3.7 native client as live data sources beside osu!mania/tosu, with automatic follow on game switch. **Zero algorithm-layer changes**: `.sm/.ssc/.mc` are converted to `.osu` text and enter the existing pipeline. Each source has its own identity prefix: osu keeps id/hash/path, Etterna `ett:`, Malody V `mdy:`, Malody 4 `mdy4:{md5}` (independent prefixes that never collide).
 

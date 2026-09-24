@@ -23,7 +23,7 @@
 | [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna、Malody V、Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
 | [desktop-shell.md](desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v5**、Malody V 选曲桥端点 17653、窗口操控、构建发布；人类教程见 docs/shell-guide.md） |
 | [malody4-source.md](malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
-| [malody4-od.md](malody4-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD：Malody 4.3.7 的 PC 表 20 格与逐格 σ\*（96% 等精度方法学、窗口值来源、上界 21.3、FAIR 局限）**以及 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、复算工装） |
+| [malody-od.md](malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD：Malody 4.3.7 的 PC 表 20 格与逐格 σ\*（96% 等精度方法学、窗口值来源、上界 21.3、FAIR 局限）**以及 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、复算工装） |
 | [presets.md](presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 
 [返回 docs 索引](../README.md)
@@ -53,7 +53,7 @@
 | [multi-source.md](multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries) |
 | [desktop-shell.md](desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v3, window controls, build & release; human tutorial: docs/shell-guide.md) |
 | [malody4-source.md](malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
-| [malody4-od.md](malody4-od.md) | Human/AI | Malody 4 judge level → equivalent osu!mania OD (PC table with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, FAIR and Malody V limitations) |
+| [malody-od.md](malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, recompute tool) |
 | [presets.md](presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 
 [Back to docs index](../README.md)

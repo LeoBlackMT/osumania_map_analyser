@@ -1,6 +1,6 @@
-# Malody 4.3.7 判定档 → 等效 osu!mania OD（PC 表）
+# 判定档 → 等效 osu!mania OD（Malody 4.3.7 与 Malody V）
 
-> 面向人类与 AI 的说明文档。表值由 `tools/malody4-od-check/verify.py` 从窗口值复算校验，代码表在 `ManiaMapAnalyser by Leo_Black/js/parser/judgeOdTable.js`。数据源本身见 [malody4-source.md](malody4-source.md)；转换器见 [../pipeline/converters.md](../pipeline/converters.md)；缓存键语义见 [../pipeline/result-cache.md](../pipeline/result-cache.md)。
+> 面向人类与 AI 的说明文档，**覆盖两个客户端的两套表**：Malody 4.3.7 的 PC 表（§1–§8、§10）与 Malody V 的表（§9）。**两张表不能互换**——两个客户端用的是不同的判定窗口。表值分别由 `tools/malody4-od-check/verify.py` 与 `tools/malody-v-od-check/verify.py` 从各自的窗口值复算校验；代码表在 `ManiaMapAnalyser by Leo_Black/js/parser/judgeOdTable.js`（4.3.7）与 `js/app/sources/odResolver.js`（Malody V）。数据源本身见 [malody4-source.md](malody4-source.md)；转换器见 [../pipeline/converters.md](../pipeline/converters.md)；缓存键语义见 [../pipeline/result-cache.md](../pipeline/result-cache.md)。
 
 ## 1. 为什么不能直接照搬判定档
 
@@ -74,7 +74,7 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 - **A/B 档会明显变松**（A+NM = 1.05、A+SLOW = -4.56），**E 档整体变严**（E+NM = 13.96、E+RUSH = 16.42）；C+NM = 8.08 与旧值 9 只差 0.92，是最接近旧行为的一格。
 - 影响面：星数、难度标签、PP/数值派生量都会随之变化（Sunny 族吃谱面 OD）。这是**破坏性变更**，详见 [../breakings/2026-09-21-malody4-dynamic-judge-od.md](../breakings/2026-09-21-malody4-dynamic-judge-od.md)。
-- **osu! 与 Etterna 两个源不受影响**：osu! 走 tosu 的真实 OD；Etterna（`.sm/.ssc`）仍走转换器默认值 9，逐字节不变。**Malody V 已在后续改动中接入自己的动态 OD**（判定档 × Pro × 倍率，见 §8），因此不再属于"仍走默认值 9"的那一类。
+- **osu! 与 Etterna 两个源不受影响**：osu! 走 tosu 的真实 OD；Etterna（`.sm/.ssc`）仍走转换器默认值 9，逐字节不变。**Malody V 已在后续改动中接入自己的动态 OD**（判定档 × Pro × 倍率，见 §9），因此不再属于"仍走默认值 9"的那一类。
 - **Daniel 算法不受影响**：`js/rework/danielAlgorithm.js` 内部把 `od` 写死为 9（与其原始 Python 移植保持一致），所以 Daniel 的输出对判定档不敏感。
 
 ## 8. 前提与局限
@@ -88,7 +88,7 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 | 判定档 | Pro 关（常态组） | Pro 开（严格组） | Turbo @1.2（Pro 关 / 开） |
 |---|---|---|---|
-| A | −2.06 | 1.05 | 2.15 / 4.66 |
+| A | -2.06 | 1.05 | 2.15 / 4.66 |
 | B | 1.38 | 4.52 | 4.93 / 7.47 |
 | C | 4.87 | 8.08 | 7.75 / 10.36 |
 | D | 7.72 | 11.00 | 10.06 / 12.74 |
@@ -104,9 +104,9 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 `python tools/malody4-od-check/verify.py`（纯 stdlib，单文件，入库工装）做三件事：① 从窗口值重算 20 格并与 `judgeOdTable.js` 里的表逐值比对（容差 `≤ 0.005`，正则提取、不需要 Node）；② 断言 20 格残差 `≤ 0.05 ms`；③ 断言最外档三种口径给出同一张表。`--emit-md` 会打印与本文 §3/§4 同形的表格（含 σ\*），供重算后更新本文。故意改错 JS 表里任一个值，脚本会以非 0 退出并报出差异（负向验证，证明它不是永远绿的橡皮章）。
 
-# Malody 4.3.7 judge level → equivalent osu!mania OD (PC table)
+# Judge level → equivalent osu!mania OD (Malody 4.3.7 and Malody V)
 
-Human- and AI-facing document. Table values are recomputed and checked by `tools/malody4-od-check/verify.py`; the code table lives in `ManiaMapAnalyser by Leo_Black/js/parser/judgeOdTable.js`. The data source itself: [malody4-source.md](malody4-source.md); converter: [../pipeline/converters.md](../pipeline/converters.md); cache-key semantics: [../pipeline/result-cache.md](../pipeline/result-cache.md).
+Human- and AI-facing document covering **two tables for two clients**: Malody 4.3.7's PC table (§1–§8, §10) and Malody V's (§9). **The two tables are not interchangeable** — the clients use different judge windows. Values are recomputed and checked by `tools/malody4-od-check/verify.py` and `tools/malody-v-od-check/verify.py` respectively; the code tables live in `ManiaMapAnalyser by Leo_Black/js/parser/judgeOdTable.js` (4.3.7) and `js/app/sources/odResolver.js` (Malody V). The data source itself: [malody4-source.md](malody4-source.md); converter: [../pipeline/converters.md](../pipeline/converters.md); cache-key semantics: [../pipeline/result-cache.md](../pipeline/result-cache.md).
 
 ## 1. Why the judge level cannot simply be copied across
 
@@ -180,7 +180,7 @@ Before this, the PC/mobile story still applies to the 4.3.7 table below: the pre
 
 | Judge | Pro off (normal) | Pro on (strict) | Turbo @1.2 (pro off / on) |
 |---|---|---|---|
-| A | −2.06 | 1.05 | 2.15 / 4.66 |
+| A | -2.06 | 1.05 | 2.15 / 4.66 |
 | B | 1.38 | 4.52 | 4.93 / 7.47 |
 | C | 4.87 | 8.08 | 7.75 / 10.36 |
 | D | 7.72 | 11.00 | 10.06 / 12.74 |

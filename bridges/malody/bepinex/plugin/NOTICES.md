@@ -9,10 +9,11 @@
 | 项 | 值 |
 | --- | --- |
 | 上游发行 | `v2.1`（插件显示名 `MalodyV Mina卡片视图v2.1`，程序集版本 `2.1.0`） |
-| 上游源码 | `C:\Users\Leo_BlackLT\Desktop\Dev\files\malody-bridge\build_v2.1\native\MalodyInsightBridge\`，16 个 `.cs` / 3153 行 |
-| 上游二进制 | `…\build_v2.1\native\MalodyInsightBridge.dll`，159,744 字节，SHA256 `5B8C802E614ECDF0895822D2E3CF44D558C81214166C6E501E74C6C06936528C` |
+| 上游源码 | `build_v2.1\native\MalodyInsightBridge\`（**本地参考目录，不在本仓库内**；其父目录见下方"从哪能拿到"），16 个 `.cs` / 3153 行 |
+| 上游二进制 | 同目录下的 `MalodyInsightBridge.dll`，159,744 字节，SHA256 `5B8C802E614ECDF0895822D2E3CF44D558C81214166C6E501E74C6C06936528C` |
 | 抓取日期 | 2026-09-24 |
 | 是否入库 | **否**。上游源码与二进制都不进本仓库、也不被 git 跟踪。`plugin/` 里的 `.cs` 是我们的 fork，不是上游副本 |
+| 从哪能拿到 | 本 fork 的逐文件对照表（每行"上游文件 / 行数 / 我们只动了什么"）在 `.omo/evidence/malody-v-selection-bridge-fork/task-1-build.txt`，**该文件同样是本地证据、不入库**。要独立复核请用上表的大小与两个 SHA256 去比对拿到的文件：一致即同一份基座 |
 
 本 fork 的组成（T2b 实测行数）：
 
