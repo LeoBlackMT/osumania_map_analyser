@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>MMAMalodySelection</AssemblyName>
+    <RootNamespace>MMA.MalodySelection</RootNamespace>
+    <Version>1.0.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <!-- tests/ is the offline assertion project (local only, not committed). Default
+         compile items would otherwise sweep it into this assembly. -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
+    <BepInExDir Condition="'$(BepInExDir)' == ''">$(MSBuildThisFileDirectory)..\.tools\bepinex\BepInEx</BepInExDir>
+    <GameInteropDir Condition="'$(GameInteropDir)' == ''">$(BepInExDir)\interop</GameInteropDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx.Core"><HintPath>$(BepInExDir)\core\BepInEx.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP"><HintPath>$(BepInExDir)\core\BepInEx.Unity.IL2CPP.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExDir)\core\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppInterop.Runtime"><HintPath>$(BepInExDir)\core\Il2CppInterop.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2Cppmscorlib"><HintPath>$(GameInteropDir)\Il2Cppmscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameInteropDir)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="CheckBepInEx" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(BepInExDir)\core\BepInEx.Unity.IL2CPP.dll')" Text="Set BepInExDir to the BepInEx folder of a Unity IL2CPP x64 BepInEx 6 distribution." />
+    <Error Condition="!Exists('$(GameInteropDir)\UnityEngine.CoreModule.dll')" Text="Set GameInteropDir to this game's generated BepInEx/interop folder; launch BepInEx once to generate it." />
+  </Target>
+</Project>
