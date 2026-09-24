@@ -16,3 +16,15 @@ ManiaMapAnalyser by Leo_Black/js/estimator/companella/ort/ort.node.min.mjs
 /tests
 /samples
 /tools/**/__pycache__/
+bridges/malody/bepinex/loader/
+
+# Malody V BepInEx bridge: build/download artefacts that must never be committed.
+# The plugin DLL is shipped from plugin/MMAMalodySelection.dll (staged by build.ps1), so
+# bin/ and obj/ stay out; tests/ is local-only per CLAUDE.md.
+# Both .tools levels are covered because NuGet's globalPackagesFolder and the csproj's
+# default BepInExDir resolve to different levels depending on which folder builds.
+bridges/malody/bepinex/.tools/
+bridges/malody/.tools/
+bridges/malody/bepinex/plugin/bin/
+bridges/malody/bepinex/plugin/obj/
+bridges/malody/bepinex/plugin/tests/
