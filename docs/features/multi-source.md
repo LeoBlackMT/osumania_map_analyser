@@ -13,8 +13,13 @@
 ```
 Etterna（主题 Lua 桥写 Save/MmaBridge.txt + MmaGameplay.txt）
   → 壳（desktop，2Hz 轮询 → song 帧）
-Malody V（编辑器插件 WriteFile `<base>_mma_request.json` → 壳 ≤1Hz 扫 chart/
-  → 谱面 = 同目录 `<base>.mc|.osu` → song 帧；处理完删 request）
+Malody V 有两条通道，游戏内选曲桥优先、编辑器通道回退：
+  A. 游戏内选曲桥（`bridges/malody/bepinex/`，BepInEx 6 IL2CPP 插件
+     `MMAMalodySelection.dll`，本仓库自建 fork）：插件在选曲/游玩/结算各挂点
+     POST `127.0.0.1:17653/selection`（8→11 字段，含判定档/Pro/Turbo）→ 壳归一化 + 去重
+     → song 帧；**选曲界面即跟随**，不需用户做任何操作
+  B. 编辑器插件（`bridges/malody/mma_editor.lua`）WriteFile `<base>_mma_request.json`
+     → 壳 ≤1Hz 扫 chart/ → 谱面 = 同目录 `<base>.mc|.osu` → song 帧；处理完删 request
 Malody 4.3.7（原生客户端，零注入只读观察：ReadProcessMemory 读锚点身份键
   `<md5>_<slot>` + tail 游戏日志取场景 + 轮询 config.json 取变速位/判定档
   → 壳 200ms 轮询 → `malody4_selection` 帧 / song 帧；游戏侧零文件、零注入）
@@ -24,9 +29,10 @@ Malody 4.3.7（原生客户端，零注入只读观察：ReadProcessMemory 读�
 ```
 
 - 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版在线（tosu 存活）双活数据面。
-- Malody 编辑器通道说明：Malody `WriteFile` 只能写当前谱面目录且强制加谱面名前缀（`<base>_mma_request.json`）；`DoRequest` 的 POST+body 被 Malody 网络层拒绝（`invalid url: {body}`）；壳用 request 文件名 base 锁定同目录 `<base>.mc|.osu`（与命名/格式无关，.osu 谱也可分析）。
+- **Malody V 游戏内选曲桥通道说明**：游戏侧是 BepInEx 6 IL2CPP 插件（`local.mma.malody.selection`），源码在 `bridges/malody/bepinex/plugin/`，安装走 `bridges/install-bridge.ps1 -Game MalodyBridge`。插件把选曲/游玩/结算的观察 POST 到 `127.0.0.1:17653/selection`（先 8 字段，现 11 字段），壳侧归一化、去重、按内容六元组（含 Pro 与 Turbo）判定真实事件，再广播 song/state 帧。**它不需要用户打开任何面板**：判定档与 Pro 都由插件主动读取（判定档来自播放设置记录，Pro 来自 `Malody.Play.boq` 的 `bcgh`），面板记录仅作交叉校验。**不得与上游 `MalodyInsightBridge` 共存**（双 Hook）。
+- Malody 编辑器通道说明：Malody `WriteFile` 只能写当前谱面目录且强制加谱面名前缀（`<base>_mma_request.json`）；`DoRequest` 的 POST+body 被 Malody 网络层拒绝（`invalid url: {body}`）；壳用 request 文件名 base 锁定同目录 `<base>.mc|.osu`（与命名/格式无关，.osu 谱也可分析）。不装插件时这是 Malody V 的唯一通道。
 - Malody 4.3.7 通道说明：**不向游戏目录写入任何文件**、不注入 DLL、不用 BepInEx/Lua、不修改游戏内存；只支持 4.3.7 这一个二进制（PE `TimeDateStamp = 0x5D79AC91` 且文件大小 `4,750,848`，不符则整条通道不可用并给出 `target-mismatch:*` 原因），且仅 Windows。
-- 契约：`desktop/docs/CONTRACT.md`（版本 3，八型帧：新增 `malody4_selection` 与 `requestId n{seq}` 前缀；九领域：帧/身份/requestId 状态机/应答两来源/settings 在线只读离线双向/封面白名单/state 周期/contract 终态；皮肤状态文件章节已标注废弃）。
+- 契约：`desktop/docs/CONTRACT.md`（**版本 5**：`song` 帧与 `sources.malody` 都新增 `pro`/`turbo`、`winScale` 可为 `null`；页面接受 `[3,5]`。帧型与领域清单见该文件）。
 
 ## 转换器
 
@@ -84,7 +90,8 @@ Adds Etterna, Malody V and the Malody 4.3.7 native client as live data sources b
 - Malody 4.3.7 channel: zero-injection read-only observation (anchor `ReadProcessMemory`, game-log tail, `config.json` polling), **no file written into the game folder**, no injection and no Lua; only the 4.3.7 binary is supported (PE `TimeDateStamp = 0x5D79AC91` and size `4,750,848`, otherwise the whole channel reports `target-mismatch:*`), Windows only.
 - Router: `js/app/sources/sourceManager.js` decision table L1–L4+L3' (play-state > 60s fresh-event window with hold/preempt > priority reselect > tosu-alive re-entry > none); priority `osu > Etterna > Malody 4 > Malody`; forced `gameClient` (also `Malody 4`); the malody4 L2 window is renewed only by a non-heartbeat selection frame with a non-empty `path`; source dot uses each game's brand color (osu! pink / Etterna purple / Malody 4 cyan `#22d3ee` / Malody V blue).
 - osu gate: beatmap-state handler suspended while another source routes (signals exempt, buffered replay on return).
-- Bridge contract: `desktop/docs/CONTRACT.md` (v3, eight frame types).
+- Malody V has two channels: the in-game song-selection bridge (`bridges/malody/bepinex/`, a BepInEx 6 IL2CPP plugin built from this repo, GUID `local.mma.malody.selection`) which POSTs observations to `127.0.0.1:17653/selection` and follows selection, gameplay and results with **no user action required**, and the editor Lua plugin (`mma_request.json`) which remains as the fallback when the bridge is not installed. Never co-install the upstream `MalodyInsightBridge` (double hooking).
+- Bridge contract: `desktop/docs/CONTRACT.md` (v5: `song` and `sources.malody` both carry `pro`/`turbo`, `winScale` may be `null`; the page accepts `[3,5]`).
 - Telemetry: analyze `client` field (values include `malody4`), dashboard Client pie with Version on its own row.
 - Boundaries documented: Malody V results only via editor POST (resolve by title/path); malody4 follows the game's own anchor md5 and indexes `.mc` only; rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu; malody4 needs no admin rights and writes nothing into the game folder. Skin display removed (2026-09).
 - Known gaps: offline page settings wiring, external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta), malody4 screen-based display gating, `.osu` indexing, multi-library/multi-instance, the Malody V judge-window table and FAIR modelling, browser end-to-end pending environment. This source was previously ruled out (`.omo/plans/malody-v-bepinex-selection-bridge.md:19`) and was reinstated once the zero-injection read-only channel was verified in practice.

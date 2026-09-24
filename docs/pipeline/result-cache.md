@@ -210,7 +210,7 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 
 - identity 含**内容摘要 md5**（壳对谱面原文或谱面文件字节计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
 - 三个前缀分属**三个不同源**、互不命中：Etterna `ett:`、Malody V `mdy:`、Malody 4 `mdy4:{md5}`。`mdy4:` 的 md5 是**游戏自身的身份键**（谱面文件字节摘要），因此**免疫改名与曲名变动**：同一张谱换文件名/改曲名仍是同一个缓存条目。
-- modSignature 由 externalSource **直构**：`speedRate|odFlag|cvtFlag|classic|judge`（**5 段**，第 5 段 = 判定档字母，未知为 `"?"`；speedRate 段 = 桥 rate 派生），不走 modData 派生、与 client 无关。
-- 第 5 段是硬要求：判定档决定 `malody4` 源转换出的等效 OD（见 [../features/malody4-od.md](../features/malody4-od.md)），**判定档变化必须重算**——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。判定档由壳随 song 帧下发（`meta.judge`），改判定即触发一次重发。
+- modSignature 由 externalSource **直构**，**最多 7 段**：`speedRate|odFlag|cvtFlag|classic|judge|win|pro`，不走 modData 派生、与 client 无关。第 5 段 = 判定档（`malody4` 用字母、未知 `"?"`；桥通道用 `judge{n}`），**第 6 段 = 窗口缩放因子**（仅桥通道，`win{winScale}`）、**第 7 段 = Pro**（仅桥通道，`pro0`/`pro1`/`pro?`）；非桥帧的第 6/7 段为空串，故 Lua 通道与 `malody4` / Etterna 仍是 5 段。speedRate 段 = 桥 rate 派生（真实倍率）。
+- 第 5/6/7 段都是硬要求，各自对应一件**会静默出错**的事：判定档决定换算出的等效 OD；**Turbo 1.2 与 Dash 1.2 的 speedRate 相同、只能靠第 6 段区分**；**Pro 在同一判定档与同一倍率下改变等效 OD，只能靠第 7 段区分**。任一变化都必须重算——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都由壳随 song 帧下发（`meta.judge` / `winScale` / `pro`），变化即触发一次重发。
 - `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot` / `malodyRoot` / `malody4Root` 不影响键值。
 - meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。

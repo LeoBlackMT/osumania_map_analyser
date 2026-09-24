@@ -56,8 +56,8 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 - `ManiaMapAnalyser by Leo_Black/js/parser/judgeOdTable.js`：表本体 `JUDGE_OD`（`Object.freeze`，不做插值、不含拟合系数）+ `computeOd(judgeLetter, speedRate)`。判定字母大小写不敏感；速率用容差匹配（`|rate - 1.2| < 1e-5` 等，非 1.2/1.5/0.8 一律视为 NM）；判定不在 `A`~`E` 或缺失 → **回落 `C/NM = 8.08`** 且 `known: false`（C 是标准档，且是旧写死值 9 的邻近档，回落不产生突兀跳变）。
 - `js/parser/mcToOsuConverter.js`：可选参数 `{ overallDifficulty }`；**不传参时输出仍是 `OverallDifficulty:9`（逐字节不变）**，传参时按两位小数规范化。越界/非有限值 → `console.warn` 一次并**回落默认分支**（输出 `9`），不做静默夹断。
-- `js/app/sources/externalSource.js`：**按源分流**——`malody4` 用 `computeOd(meta.judge, speedRate)` 的结果传给转换器；`malody`（Malody V）**绝不传该参数**（它的 song 帧没有 `meta.judge`，共用调用会拿到 C 档回落值 8.08，把 Malody V 的 OD 从 9 悄悄改掉）。
-- 判定档字母进 `state.modSignature` 第 5 段（未知为 `"?"`）：判定决定转换出的 OD，不进键就会在换判定档时命中旧快照（旧星数配新 OD）。
+- `js/app/sources/externalSource.js`：**按源分流**——`malody4` 用 `computeOd(meta.judge, speedRate)` 的结果传给转换器；`malody`（Malody V，游戏内选曲桥）走**另一套表** `js/app/sources/odResolver.js`（判定档 × Pro × 倍率，见 §9）。**两者不共用调用**：把 Malody V 交给 `computeOd` 会让它拿到 4.3.7 表的 C 档回落值（因为它没有 `meta.judge`），那是拿本表的假设去套另一个客户端的窗口。
+- 判定档字母进 `state.modSignature` 第 5 段（未知为 `"?"`）：判定决定转换出的 OD，不进键就会在换判定档时命中旧快照（旧星数配新 OD）。Malody V 另有第 6 段（窗口缩放）与第 7 段（Pro），理由同构。
 - `js/rework/sunnyAlgorithm.js` / `sunnyWindowAlgorithm.js` 在 `odFlag` 为空或无法解析时直接使用谱面 OD（`p.od`），因此新 OD 会真实进入 Sunny 族的星数；`E+RUSH` 端点的星数在回归里被断言为**有限值**（见下）。
 
 ## 6. 越界边界与上界 21.3 的理由
@@ -74,18 +74,33 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 - **A/B 档会明显变松**（A+NM = 1.05、A+SLOW = -4.56），**E 档整体变严**（E+NM = 13.96、E+RUSH = 16.42）；C+NM = 8.08 与旧值 9 只差 0.92，是最接近旧行为的一格。
 - 影响面：星数、难度标签、PP/数值派生量都会随之变化（Sunny 族吃谱面 OD）。这是**破坏性变更**，详见 [../breakings/2026-09-21-malody4-dynamic-judge-od.md](../breakings/2026-09-21-malody4-dynamic-judge-od.md)。
-- **osu!、Etterna、Malody V 这三个源完全不受影响**：osu! 走 tosu 的真实 OD；Etterna（`.sm/.ssc`）与 Malody V（`.mc`）仍走转换器默认值 9，逐字节不变。
+- **osu! 与 Etterna 两个源不受影响**：osu! 走 tosu 的真实 OD；Etterna（`.sm/.ssc`）仍走转换器默认值 9，逐字节不变。**Malody V 已在后续改动中接入自己的动态 OD**（判定档 × Pro × 倍率，见 §8），因此不再属于"仍走默认值 9"的那一类。
 - **Daniel 算法不受影响**：`js/rework/danielAlgorithm.js` 内部把 `od` 写死为 9（与其原始 Python 移植保持一致），所以 Daniel 的输出对判定档不敏感。
 
 ## 8. 前提与局限
 
-- **这是 PC 表；Malody V 另需一张表**。Malody V（6.7.x）是另一个客户端、用**更宽**的一套判定窗口，两边不能共用本表——要用 Malody V 自己的窗口值另算一张，且必须等实测确定后才能落地（不得从 4.3.7 的表外推）。
+- **这是 PC 表；Malody V 用另一张表**。Malody V（6.7.x）是另一个客户端、用**更宽**的一套判定窗口（常态组基准 `45/85/130/170`，Pro 严格组 `36/76/110/160`），两边不能共用本表。它的表已按自己的窗口值单独算出并落地：代码在 `js/app/sources/odResolver.js`，复算工装是 `tools/malody-v-od-check/verify.py`（同一套 96% 等精度 σ\* 方法学，可用 `--check-js` 反查页面表值、改错一个值即以非 0 退出）。要点：
+  - 三组 Mod（Dash/Rush/Slow）**不改判定窗口**（`bnf::Init` 不读 Mod 位），所以它们的 OD 与 NM 同值，难度差异只由倍率承载；**Turbo 走精确调速通道、窗口被 `1/playSpeed` 补偿**，因此同一倍率下 Turbo 的 OD 高于 Dash —— 这是"Turbo 1.2 与 Dash 1.2 可区分"的落点。
+  - **Pro 未知时不猜**：`resolveOd` 返回默认 OD 并在状态行说明原因，绝不按常态组冒充。
+  - ⚠️ "Mod 不改窗口"这一条来自窗口文档 §3 的**高置信推断**（尚未实机验证）；表与实现都按它落地，`Judge pro records differ` / 交叉校验那类日志是它出错时的报警。
+
+## 9. Malody V 的等效 OD 表（摘要）
+
+| 判定档 | Pro 关（常态组） | Pro 开（严格组） | Turbo @1.2（Pro 关 / 开） |
+|---|---|---|---|
+| A | −2.06 | 1.05 | 2.15 / 4.66 |
+| B | 1.38 | 4.52 | 4.93 / 7.47 |
+| C | 4.87 | 8.08 | 7.75 / 10.36 |
+| D | 7.72 | 11.00 | 10.06 / 12.74 |
+| E | 10.63 | 13.96 | 12.44 / 15.19 |
+
+同格内 Dash/Rush/Slow 与 NM 同值（见上）。全表由 `tools/malody-v-od-check/verify.py` 复算校验，自检项：残差 ≤ 0.05 ms、Pro 恒高于非 Pro、TURBO 恒高于同倍率 DASH。
 - **PC 表与早前流传的移动端表在 A/B 两档不同**：早前那张表的 A/B 档用的是**移动端**窗口值，PC 端应比它**低 0.45~1.79 OD**（本轮已按 PC 窗口重算）。C/D/E 三档两平台逐格相同——三档基础窗口三元组一致，且最外档权重为 0 会在相减时抵消，所以那三档不受平台差异影响。
 - **FAIR 判定模组不建模**：桌面端 `JudgeKeyFair`（`user_mods` bit `0x400`）用的是一组**更宽**的窗口（C 档 `45/85/120` vs 默认 `36/76/110`），而本表只按"判定档 × 速率"建模。因此开了 FAIR 的玩家会被按**更严**的默认组换算，**OD 偏高约 2.9**（≈ A↔C 的档距）。本轮不建模 FAIR（等效表材料亦未覆盖）；`user_mods` 只存在于壳读到的 `config.json`、**从不进入任何帧**，所以提示只能由壳侧在 attach 后检测该位并记一次 `warn`（`malody4: FAIR judge mod detected - the OD table does not model it (OD may be overestimated)`），**页面侧无数据通路、不发该提示**。"绝不静默"的落点是壳日志 + 本文档。
 - **未建模的其它因素**：判定档之外的 Malody 判定相关选项（若有）与音符类型差异都不在等效口径内；本表只回答"判定档 × 速率"。
 - **方法学的纪律**：误差分布模型或准确率口径一旦改动，**整张表必须重算**；**不得**为了对齐某张谱面的观感手改表值（表值是推导出来的，不是拟合出来的）。
 
-## 9. 复算与校验
+## 10. 复算与校验
 
 `python tools/malody4-od-check/verify.py`（纯 stdlib，单文件，入库工装）做三件事：① 从窗口值重算 20 格并与 `judgeOdTable.js` 里的表逐值比对（容差 `≤ 0.005`，正则提取、不需要 Node）；② 断言 20 格残差 `≤ 0.05 ms`；③ 断言最外档三种口径给出同一张表。`--emit-md` 会打印与本文 §3/§4 同形的表格（含 σ\*），供重算后更新本文。故意改错 JS 表里任一个值，脚本会以非 0 退出并报出差异（负向验证，证明它不是永远绿的橡皮章）。
 
@@ -153,8 +168,26 @@ Before, every `.mc → .osu` conversion wrote `OverallDifficulty:9`; now the **`
 
 ## 8. Preconditions and limitations
 
-**This is the PC table; Malody V needs a different one.** Malody V (6.7.x) is another client with a **wider** set of judge windows, so the two platforms cannot share this table; Malody V requires its own table computed from its own window values once they are measured (never extrapolated from the 4.3.7 values). The previously circulated table used the **mobile** windows for judges A/B, which is 0.45–1.79 OD above the PC result; judges C/D/E are identical on both platforms because their three-window triplet is the same and the weight-0 outermost band cancels. **FAIR is not modelled**: desktop `JudgeKeyFair` (bit `0x400`) uses a wider set (judge C `45/85/120` vs the default `36/76/110`), so FAIR players are converted with the stricter default set and their OD is overestimated by roughly 2.9 (about the A↔C gap). `user_mods` never enters any frame, so the shell logs the warning once after attach and the page cannot warn at all; not being silent is achieved by that shell log plus this document. Changing the error-distribution model or the accuracy target requires recomputing the whole table, and values must never be hand-edited to match a particular chart.
+**This is the PC table; Malody V uses a different one.** Malody V (6.7.x) is another client with a **wider** set of judge windows (normal base `45/85/130/170`, Pro strict group `36/76/110/160`), so the two cannot share this table. Malody V's table has been computed from its own window values and is live: the code is `js/app/sources/odResolver.js` and the recompute tool is `tools/malody-v-od-check/verify.py` (same 96%-accuracy σ\* methodology; `--check-js` re-reads the page table and a single wrong value exits non-zero). Two things are worth knowing:
 
-## 9. Recompute and check
+- The three rate-changing Mods (Dash/Rush/Slow) **do not touch the judge windows** (`bnf::Init` never reads the Mod bits), so their OD equals the plain-play OD and the entire difficulty difference is carried by the rate. **Turbo goes through the exact-speed path and its windows are compensated by `1/playSpeed`**, so at the same rate Turbo's OD sits above Dash — this is what makes "Turbo 1.2 vs Dash 1.2" separable.
+- **An unknown Pro state is never guessed**: `resolveOd` returns the default OD and the status line says why, rather than silently assuming the normal group.
+- ⚠️ "Mods leave the windows alone" is a **high-confidence inference** from the window document's §3, not yet verified on a real run; the table and the implementation both rely on it, and the cross-check log lines are the alarm if it is wrong.
+
+Before this, the PC/mobile story still applies to the 4.3.7 table below: the previously circulated table used the **mobile** windows for judges A/B, which is 0.45–1.79 OD above the PC result; judges C/D/E are identical on both platforms because their three-window triplet is the same and the weight-0 outermost band cancels. **FAIR is not modelled**: desktop `JudgeKeyFair` (bit `0x400`) uses a wider set (judge C `45/85/120` vs the default `36/76/110`), so FAIR players are converted with the stricter default set and their OD is overestimated by roughly 2.9 (about the A↔C gap). `user_mods` never enters any frame, so the shell logs the warning once after attach and the page cannot warn at all; not being silent is achieved by that shell log plus this document. Changing the error-distribution model or the accuracy target requires recomputing the whole table, and values must never be hand-edited to match a particular chart.
+
+## 9. The Malody V equivalent-OD table (summary)
+
+| Judge | Pro off (normal) | Pro on (strict) | Turbo @1.2 (pro off / on) |
+|---|---|---|---|
+| A | −2.06 | 1.05 | 2.15 / 4.66 |
+| B | 1.38 | 4.52 | 4.93 / 7.47 |
+| C | 4.87 | 8.08 | 7.75 / 10.36 |
+| D | 7.72 | 11.00 | 10.06 / 12.74 |
+| E | 10.63 | 13.96 | 12.44 / 15.19 |
+
+Within a cell, Dash/Rush/Slow equal NM (see above). The whole table is recomputed and checked by `tools/malody-v-od-check/verify.py`: residuals ≤ 0.05 ms, Pro always above non-Pro, TURBO always above DASH at the same rate.
+
+## 10. Recompute and check
 
 `python tools/malody4-od-check/verify.py` (single file, stdlib only) recomputes all 20 cells from the window values, compares them cell by cell with the JS table (tolerance ≤ 0.005, extracted by regex, no Node needed), asserts every residual ≤ 0.05 ms, and asserts the three outermost-band variants agree; `--emit-md` prints tables shaped exactly like §3/§4 for updating this document. Deliberately corrupting one JS value makes the script exit non-zero with the difference reported (negative verification, so it is not a rubber stamp).
