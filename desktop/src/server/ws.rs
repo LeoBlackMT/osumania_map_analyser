@@ -124,6 +124,20 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
     let _ = ws.send(tungstenite::Message::Text(
         serde_json::to_string(&hello_frame(&shared)).unwrap_or_default(),
     ));
+    // 重连补发（契约 v4，只发给**这个**连接）：一帧 state + （桥在选曲/游玩/结算态时）
+    // 当前谱面的 song 帧。song 帧只在真实事件时广播一次，而 broadcast 只发给已注册的
+    // sink ⇒ 页面刷新 / WS 重连 / 先开游戏后开壳时，当前选中的谱面否则再也不会被送来
+    // （旧通道"偶发 No Data"的正面修复）。
+    for text in crate::server::bridge::reconnect_messages(&shared) {
+        if ws.send(tungstenite::Message::Text(text)).is_err() {
+            shared
+                .sinks
+                .lock()
+                .unwrap()
+                .retain(|(id, _s)| *id != conn_id);
+            return;
+        }
+    }
     // 单线程事件循环：出站排水（try_recv）+ 入站匹配 pending。
     loop {
         while let Ok(text) = rx.try_recv() {
