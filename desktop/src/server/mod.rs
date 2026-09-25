@@ -418,17 +418,5 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{md5_hex, md5_hex_bytes};
-
-    #[test]
-    fn md5_hex_of_empty_string_is_unchanged() {
-        assert_eq!(md5_hex(""), "d41d8cd98f00b204e9800998ecf8427e");
-    }
-
-    #[test]
-    fn md5_hex_bytes_matches_md5_hex_for_ascii() {
-        assert_eq!(md5_hex_bytes(b"abc"), md5_hex("abc"));
-        assert_eq!(md5_hex_bytes(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
-    }
-}
+#[path = "../../tests-local/server_mod.rs"]
+mod tests;
