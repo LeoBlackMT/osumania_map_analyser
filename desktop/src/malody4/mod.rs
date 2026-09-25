@@ -27,6 +27,11 @@ pub mod gamelog;
 pub mod library;
 pub mod model;
 pub mod selection;
+pub mod settings;
+pub use self::settings::{
+    chain_disagreement_warning, effective_settings, file_cross_check_warning, settings_log,
+    EffectiveSettings, SettingsLogKey, SettingsOrigin,
+};
 
 use crate::etterna::EtternaStatus;
 use crate::frames::{
@@ -34,7 +39,10 @@ use crate::frames::{
 };
 use crate::server::log::log_at;
 use crate::server::{broadcast, Shared};
-use self::anchor::{AnchorError, IdentityKey, MemoryProbe, MemorySource, RawSettings};
+use self::anchor::{AnchorError, IdentityKey, MemoryProbe};
+// `RawSettings` / `MemorySource` moved into `settings.rs`'s import list but stay part of
+// this module's public surface: the local test module glob-imports them from here.
+pub use self::anchor::{MemorySource, RawSettings};
 use self::config::GameConfig;
 use self::gamelog::SceneTracker;
 use self::library::{ChartLibrary, ChartMeta, LibraryEntry, LibraryFingerprint, LibraryStats};
@@ -110,137 +118,6 @@ pub const SETTINGS_CROSS_CHECK: Duration = Duration::from_secs(30);
 /// 取 3 而不是 1：判定档设置器把两个对象写在相隔 4 条指令处，而壳读它们要走两次独立的
 /// `ReadProcessMemory`，单拍的不一致可能只是"两次系统调用之间游戏真的改了一次设置"。
 pub const CHAIN_DISAGREE_POLLS: u32 = 3;
-
-// --------------------------------------------- 判定档 / 变速位：取值来源 --
-
-/// 本 tick 判定档与变速位的**来源**（诊断与日志用；不进任何帧）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsOrigin {
-    /// 游戏进程内存：`S`（用户设置单例）优先，`S` 读不到时用 `P`（本局 play-config）。
-    Memory,
-    /// `config.json` 兜底（内存这条链现在读不到）。
-    ConfigJson,
-}
-
-impl SettingsOrigin {
-    /// 稳定短字面量（进壳日志，不进任何帧）。
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SettingsOrigin::Memory => "memory",
-            SettingsOrigin::ConfigJson => "config.json",
-        }
-    }
-}
-
-/// 本 tick 实际使用的判定档 / 速率 / `user_mods`（纯函数 `effective_settings` 的产物）。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct EffectiveSettings {
-    pub source: SettingsOrigin,
-    /// 判定档字母；`None` = 判定未知（song 帧 withhold，既有行为不变）。
-    pub judge: Option<char>,
-    /// 变速位换算出的速率。
-    pub rate: f64,
-    /// `user_mods` 位掩码（FAIR 位判定用）：未知位原样带过来，不裁剪。
-    pub user_mods: u64,
-}
-
-/// 取值优先级（纯函数）：**内存读到就赢**（游戏里改判定 / 改变速位立即生效），
-/// 否则回落 `config.json`。
-///
-/// 内存读数在 `anchor` 里已经过完所有 fail-closed 校验——指针为 0 / 不对齐 / 超出 32 位用户
-/// 地址空间 / 对象块短读 / 判定档越界 / `P` 的子集不变量不成立，都会让对应的链读不出来——
-/// 到这里要么是一个校验过的值，要么是 `None`。本函数**不再二次猜测**，也绝不把两条链拼起来用。
-///
-/// 两个来源都给不出值 → `judge = None`（song 帧 withhold 的既有路径）、速率 1.0。
-pub fn effective_settings(
-    memory: Option<(MemorySource, RawSettings)>,
-    file: Option<&GameConfig>,
-) -> EffectiveSettings {
-    if let Some((_, raw)) = memory {
-        // 内存里的判定档 / `user_mods` 与 config.json 是**同一组设置**（该文件正是从这两个偏移
-        // 写出去的），因此直接复用 `GameConfig` 的解释路径：判定档 → JudgeLevel → 字母，
-        // 位掩码 → ModFlags → 速率。未知位一律不解释（`ModFlags` 只看三个变速位）。
-        let view = GameConfig {
-            user_mods: u64::from(raw.user_mods),
-            user_judge_level: u64::from(raw.judge),
-        };
-        return EffectiveSettings {
-            source: SettingsOrigin::Memory,
-            judge: view.judge_letter(),
-            rate: view.mod_flags().speed_rate(),
-            user_mods: view.user_mods,
-        };
-    }
-    match file {
-        Some(config) => EffectiveSettings {
-            source: SettingsOrigin::ConfigJson,
-            judge: config.judge_letter(),
-            rate: config.mod_flags().speed_rate(),
-            user_mods: config.user_mods,
-        },
-        None => EffectiveSettings {
-            source: SettingsOrigin::ConfigJson,
-            judge: None,
-            rate: 1.0,
-            user_mods: 0,
-        },
-    }
-}
-
-/// 判定档的诊断文本（`None` = 判定未知）。
-fn judge_text(judge: Option<char>) -> String {
-    judge
-        .map(|letter| letter.to_string())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-/// **info** 诊断行的文案（纯函数）：来源 + 判定字母 + 速率。
-/// 用户据此确认"游戏里一改就生效"（不必看十六进制转储），也是"值从哪来"的唯一落点。
-fn settings_log(effective: &EffectiveSettings) -> String {
-    format!(
-        "malody4 settings: source={} judge={} speed_rate={:.2}",
-        effective.source.as_str(),
-        judge_text(effective.judge),
-        effective.rate
-    )
-}
-
-/// `S` / `P` 持续不一致的一次性告警文案（纯函数；两边的原始值都给出来便于定位）。
-fn chain_disagreement_warning(user: RawSettings, play: RawSettings, polls: u32) -> String {
-    format!(
-        "malody4 settings chains disagree for {polls} consecutive polls: user-settings judge={} user_mods={:#x} vs play-config judge={} user_mods={:#x} — publishing the play-config value",
-        user.judge, user.user_mods, play.judge, play.user_mods
-    )
-}
-
-/// 内存值与 `config.json` 不一致时的一次性告警文案（纯函数；两边都给出来）。
-fn file_cross_check_warning(effective: &EffectiveSettings, file: &GameConfig) -> String {
-    format!(
-        "malody4 settings cross-check: memory judge={} speed_rate={:.2} vs config.json judge={} speed_rate={:.2} — keeping the memory value (the file is only rewritten at game start/exit)",
-        judge_text(effective.judge),
-        effective.rate,
-        judge_text(file.judge_letter()),
-        file.mod_flags().speed_rate()
-    )
-}
-
-/// info 行（`settings_log`）的去重键：来源 + 判定档 + 速率。**同值不记**（绝不逐 tick 刷）。
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct SettingsLogKey {
-    source: SettingsOrigin,
-    judge: Option<char>,
-    rate: f64,
-}
-
-impl SettingsLogKey {
-    /// 速率按 `RATE_EPS` 容差比较（来源与判定档精确比较）。
-    fn matches(&self, other: &Self) -> bool {
-        self.source == other.source
-            && self.judge == other.judge
-            && (self.rate - other.rate).abs() < RATE_EPS
-    }
-}
-
 // ---------------------------------------------------- 锚点读取：硬失败 / 软失败 --
 
 /// 一次锚点读取对本 tick 的处置（纯函数 `read_action` 的产物）。
