@@ -3,15 +3,16 @@
 > 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[result-cache.md](result-cache.md)（缓存写门/失效）、[analysis-pipeline.md](analysis-pipeline.md)（分析管线总览）、[guides/adding-a-setting.md](../guides/adding-a-setting.md)（新增设置 7 步清单，依赖本文流程）。
 
-## 1. 设置来源三处
+## 1. 设置来源四处（含壳离线面）
 
-插件设置不是单一来源，最终生效值由三处叠加：
+插件设置不是单一来源，最终生效值由四处叠加：
 
 | 来源 | 性质 | 位置 | 说明 |
 | --- | --- | --- | --- |
 | `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 45 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身** |
 | `ManiaMapAnalyser by Leo_Black/config.js` `APP_CONFIG.defaults` | JS 内部默认值 | config.js:76-115 | 解析器无值可读时的回退；`APP_CONFIG.options`（config.js:5-17）提供枚举白名单 |
 | tosu 运行时 `getSettings` 命令 | 用户实际设置 | WebSocket 命令通道 | 实际设置文件位于 tosu 的 `settings` 目录（文件名 `<插件目录名>.json`），通过 `getSettings` 命令推送（见 CLAUDE.md:34、:52） |
+| 桌面壳本机面（无 tosu 时） | 用户实际设置（离线权威） | 壳 `24061` 的 `/settings`（GET/POST）+ exe 旁 `mma-settings.json` | 壳的权威链只有一个判据——**tosu 是否在线**：在线 = tosu 设置文件（只读，`config::resolve_plugin_settings` 第 1 级），离线 = `mma-settings.json`（第 2 级；缺则按插件 `settings.json` 的 `value` 生成骨架并落盘，第 3 级）。离线**绝不**读 tosu 设置文件（即使它存在）。端点与状态码见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c |
 
 **settings.json 的 50 个 uniqueID 构成**：7 header + 6 button + 37 实际设置。
 
@@ -73,6 +74,17 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
 7. **首包解析**：settings.js:857-861 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
 8. **重算调度**：settings.js:863-867 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
 
+**壳离线写回与广播路径**（桌面壳设置窗口，无 tosu 时）：
+
+1. `settings.html` 里改一项 → 页面先 `applySnapshot({[key]: value})` 让本地 `state` 立即生效，再 `patch` 到 transport；
+2. transport（`js/app/settingsPage/shellTransport.js` → `presets/shellTransport.js`）以"最近一次成功 GET 的 base"为基点发**全量对象** `{...base, ...patch}` 到 `POST /settings`（无 base 则拒写，见 [../features/presets.md](../features/presets.md)「离线（壳）模式」）；
+3. 壳 `config::merge_plugin_settings` 做请求键优先的读-改-写（未知键保留）→ 更新缓存 + `broadcast("settings", merged)`（锁外广播）；
+4. overlay 页面收到 settings 帧 → 走本节 1–8 步的同一套处理（含 `SETTING_CACHE_KEYS` 缓存失效与 `scheduleRecompute`），**无需重启**；
+5. 设置窗口自己的订阅者再经 pull-on-notify 拿回合并结果（回填表单 `formValues`，供"Load Current"/保存预设读到当前值）；
+6. **在线**时 `POST /settings` 返回 403（判据与 `resolve_plugin_settings` 第 1 级同一表达式），页面收到 403 立即切只读视图并提示 tosu 已连接——写失败不会被静默吞掉。
+
+壳侧对本地文件的周期检测（`stat → read → stat`）在 30s 内复核手改 `mma-settings.json` 的场景并推同一帧；在线时该检测被 `if !online` 门控，tosu 设置文件检测则被 `if online` 门控（详见 [../features/desktop-shell.md](../features/desktop-shell.md) §4b）。
+
 ## 6. 遗留逻辑（注意事项）
 
 - **autoMode 强制 Auto**：settings.js:769-774——`parseAutoModeValue(payload)` 为真且 `isAutoDisplayEnabled()` 为假（即用户当前不是 Auto）时，**直接写** `state.userSrText = "Auto"`、`state.userContentBar = "Auto"` 并 `refreshAutoDisplayProfile()`。这是对所有设置的独立检查之后运行的全局覆盖，新设置项迁移自旧 `autoMode` 配置时需留意。
@@ -116,5 +128,4 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - `gameClient`（Auto 默认；解析函数 `parseGameClientValue` 由 `settingsParser.js` 的 `createSettingsParsers` 返回对象注册，应用函数 `applyGameClientSetting`）；其变更入 `SETTING_CACHE_KEYS`（保守兜底）。
 - 游戏根目录 `etternaRoot` / `malodyRoot` / `malody4Root` **不是插件设置**：它们是壳配置 `mma-shell-config.json`（exe 旁，由桥安装器或用户手写）的键，**只由壳消费**（壳据此定位 `Save/` 桥文件、Malody V chart 目录、Malody 4.3.7 的 `beatmap/`）；**页面侧没有对应的解析函数、也不进任何缓存失效集合**（路径变化不影响分析结果，只影响壳能否找到谱面）。跨进程边界时它们随壳的 settings 帧一起到达页面，但页面不消费。
 
-已知待办：离线模式（壳 24061）的页面侧设置初始拉取与变更持久化（壳 `/settings`
-GET/POST 双向已实现，页面 `applySettingsPayload` 接线未完成）。
+离线模式（壳 24061）的页面侧设置初始拉取与变更持久化**已实现**：设置窗口 `settings.html`（`js/app/settingsPage/`）启动时 `GET /settings` 取全量并 `applySnapshot` 灌入 `state`（逐键 try/catch），变更经 transport `POST /settings` 落盘 `mma-settings.json` 并由壳广播回 overlay 与设置页（见 §5 末）；预设库同路存进本地 `presetStorage`。在线时同一端点返回 403，设置页转只读（插件设置请在 tosu 设置界面改，预设请在 tosu 的 Presets 页面管理）。壳侧端点、状态码与权威链见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c/§4b。

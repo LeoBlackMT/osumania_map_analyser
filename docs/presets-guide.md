@@ -23,8 +23,9 @@
    - 下载下来的目录名可能不同，请根据实际情况修改。一般情况为 `ManiaMapAnalyser.by.Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`。
    - 如果修改过端口，把 `24050` 换成你的端口
 2. 页面加载后，你看到的就是预设管理器。
+3. **不用 tosu、只用桌面壳（离线）**：预设区就在桌面壳的**设置窗口**里（打开方式见 [shell-guide.md](shell-guide.md) 的「设置窗口」；也可以直接在浏览器打开 `http://127.0.0.1:24061/settings.html`），功能与这个页面相同。
 
-> 提示：这个页面只是管理工具，不影响游戏内显示的叠加界面。预设应用后，游戏内的显示会立即更新（需要 tosu 正在运行）。
+> 提示：这个页面只是管理工具，不影响游戏内显示的叠加界面。预设应用后，游戏内的显示会立即更新（tosu 在线时经 tosu；离线壳模式下经设置窗口，同样立即生效）。
 
 ## 3. 界面总览
 
@@ -48,7 +49,7 @@
   - **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer**：面向不同玩家的推荐配置。
   - **PatternFocus / FullOverview / VibroPlayer / JackPlayer**：面向不同游玩场景。
   - **TheLimitDoesNotExist / DanielLike**：面向高难与特殊玩法。
-- **LastSavedPreset**（只读行）：它不是可应用的预设，而是"自动跟随"标记——选择它之后，你在 tosu 设置页手动修改的设置会自动保存到这里，永远保留你最后一次的手动配置。
+- **LastSavedPreset**（只读行）：它不是可应用的预设，而是"自动跟随"标记——选择它之后，你在 tosu 设置页手动修改的设置会自动保存到这里，永远保留你最后一次的手动配置。（这一行只在 tosu 的 `presets.html` 出现；桌面壳的设置窗口**离线时不显示**它。）
 
 每个预设行都有按钮：
 
@@ -115,7 +116,7 @@
 A: 只变预设里包含（勾选）的设置。自定义预设只保存你勾选的字段；系统预设保存它设计好的字段；未包含的设置保持当前值。
 
 **Q: 预设存在哪里？换电脑会丢吗？**
-A: 自定义预设存在 tosu 的设置文件里（`presetStorage` 设置项），随 tosu 的 settings 目录一起保存。换电脑时拷贝 tosu 的 `settings` 目录即可带走。也可以随时用 **Export All** 导出备份。
+A: 用 tosu 时，自定义预设存在 tosu 的设置文件里（`presetStorage` 设置项），随 tosu 的 settings 目录一起保存，换电脑时拷贝 tosu 的 `settings` 目录即可带走。**离线壳模式**下则存在壳 exe 旁的 `mma-settings.json` 里（同一个 `presetStorage` 键），与 tosu 那份是两份独立的库。两种情况都可以随时用 **Export All** 导出备份。
 
 **Q: 为什么游戏内显示没变化？**
 A: 请确认 tosu 正在运行、且浏览器访问的端口与 tosu 一致。应用成功后页面右上角会弹出绿色提示。
@@ -152,8 +153,9 @@ The manager is a standalone page inside the plugin folder:
    - The downloaded folder name may differ; adjust accordingly. Usually it is `ManiaMapAnalyser.by.Leo_Black`, so visit `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`.
    - If you changed the port, replace `24050` with your port.
 2. The page that loads is the Presets Manager.
+3. **Without tosu, using only the desktop shell (offline)**: the preset area lives inside the shell's **settings window** (see the "Settings window" section of [shell-guide.md](shell-guide.md); you can also open `http://127.0.0.1:24061/settings.html` in a browser directly). It works exactly like this page.
 
-> Note: this page is only a management tool. Applying a preset updates the in-game overlay immediately (tosu must be running).
+> Note: this page is only a management tool. Applying a preset updates the in-game overlay immediately (through tosu while it is online; through the settings window in offline shell mode, equally immediate).
 
 ## 3. Interface overview
 
@@ -173,7 +175,7 @@ Built into the plugin and **cannot be deleted**.
 
 - **Default**: factory reset — applies the plugin's default values to everything.
 - 10 built-in presets, e.g. **Mini** (star rating only), **ForOsuPlayer / ForEtternaPlayer / ForInterludePlayer** (recommended configs per player type), **PatternFocus / FullOverview / VibroPlayer / JackPlayer** (per play style), **TheLimitDoesNotExist / DanielLike** (high-difficulty / niche).
-- **LastSavedPreset** (read-only row): not an applicable preset but a "follow mode" marker — while selected, your manual changes in the tosu settings page are saved into it automatically, keeping your latest manual configuration.
+- **LastSavedPreset** (read-only row): not an applicable preset but a "follow mode" marker — while selected, your manual changes in the tosu settings page are saved into it automatically, keeping your latest manual configuration. (This row only exists on tosu's `presets.html`; the shell's settings window **does not show it offline**.)
 
 Buttons on each row:
 
@@ -238,7 +240,7 @@ Form values auto-refresh from tosu's live broadcast (except the field you are ty
 A: Only the settings included (checked) in the preset. Custom presets store only what you checked; system presets store their designed fields; anything not included keeps its current value.
 
 **Q: Where are presets stored? Will I lose them on a new PC?**
-A: Custom presets live in tosu's settings file (the `presetStorage` setting), inside tosu's `settings` folder — copy that folder to move them. Or use **Export All** anytime for a backup.
+A: With tosu, custom presets live in tosu's settings file (the `presetStorage` setting) inside tosu's `settings` folder — copy that folder to move them. In **offline shell mode** they live in `mma-settings.json` next to the shell exe (same `presetStorage` key), a library independent from tosu's. Either way you can use **Export All** anytime for a backup.
 
 **Q: Nothing changed in-game?**
 A: Make sure tosu is running and the port matches. A green toast appears in the top-right corner after a successful apply.

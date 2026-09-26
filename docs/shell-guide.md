@@ -40,6 +40,7 @@
 | 页面缩放 | 按住 `Ctrl` 滚动鼠标滚轮；或 `Ctrl +` / `Ctrl -`；`Ctrl 0` 复位 |
 | 开关置顶（默认置顶） | 默认按 `Ctrl + Shift + T`（全局快捷键） |
 | 开关点击穿透（默认关） | 默认按 `Ctrl + Shift + C`（全局快捷键） |
+| 打开设置窗口 | 默认按 `Ctrl+Shift+S`（全局快捷键；也可用 `mma-shell.exe --settings` 或浏览器直开，见「五、设置窗口」） |
 | 关闭窗口 | `Alt+F4` 或默认 `Ctrl+Q`（全局快捷键） |
 
 窗口位置/尺寸/置顶/点击穿透会跨启动记忆（下次打开自动恢复）；全局快捷键在窗口失焦或点击穿透时同样有效（Windows/X11；**Linux Wayland 会话**下全局快捷键不可用，窗口聚焦时由页面内快捷键兜底，键位相同）。
@@ -126,7 +127,7 @@ Malody V 有两个互不影响的通道，按需要选：
   "etternaRoot": "",
   "malodyRoot": "",
   "malody4Root": "",
-  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
+  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "settings": "Ctrl+Shift+S", "close": "Ctrl+Q" },
   "logLevel": "info"
 }
 ```
@@ -135,24 +136,44 @@ Malody V 有两个互不影响的通道，按需要选：
   - `Auto`（推荐，按游玩中 > 近期活动 > osu!>Etterna>Malody 4>Malody 自动跟随）
   - 可锁定为某个来源（`Osu!` / `Etterna` / `Malody` / `Malody 4`）。
 - **etternaRoot / malodyRoot / malody4Root**：游戏安装路径。`malody4Root` 由安装器的 **Malody 4** 选项自动写入（Malody 4.3.7 游戏侧无需任何操作）；**留空不等于关断**——壳的启发探测可能仍会采纳一个通过的目录，要关断请把环境变量 `MMA_MALODY4_ROOT` 指向不存在的路径。**路径可写正斜杠或双反斜杠**（如 `D:/Games/Etterna` 或 `D:\\Games\\Etterna`——单反斜杠 `D:\Games` 在 JSON 里是非法转义，请用 `/` 或 `\\`）；
-- **hotkeys**：窗口快捷键。默认 `Ctrl+Shift+T` 置顶 / `Ctrl+Shift+C` 穿透 / `Ctrl+Q` 关闭；若与系统冲突可改（支持 Ctrl/Shift/Alt/Win + 单个字母键 A–Z）。快捷键只在启动时注册，改动后需**重启壳**生效。
+- **hotkeys**：窗口快捷键。默认 `Ctrl+Shift+T` 置顶 / `Ctrl+Shift+C` 穿透 / `Ctrl+Shift+S` 打开设置窗口 / `Ctrl+Q` 关闭；若与系统冲突可改（支持 Ctrl/Shift/Alt/Win + 单个字母键 A–Z）。快捷键只在启动时注册，改动后需**重启壳**生效。
 - **logLevel**：日志级别。`debug` / `info` / `warn` / `error` / `off`（默认 info）。
 
 **② 插件设置 `mma-settings.json`**：
 
 - 考虑到用户可能不使用 tosu，壳提供了**离线模式**，允许用户直接编辑 `mma-settings.json` 来配置卡片显示。修改后**约 30 秒内自动生效**（壳会周期性重读配置并推送，无需重启；壳未运行时则下次启动生效）。
-  - 如果**tosu 设置文件可用**（tosu 安装目录的 `settings/<插件目录名>.values.json`）时，壳**优先使用它**（在线只读 / 离线读文件），不生成也不使用 mma-settings.json。
-  - 如果**找不到 tosu 设置文件**时进入本地模式：存在 `mma-settings.json` 则直接使用；不存在则由壳按插件的 `settings.json` 生成默认骨架。
+  - **tosu 在线**时以 tosu 设置文件为准（tosu 安装目录的 `settings/<插件目录名>.values.json`，只读，此时壳既不生成也不使用 `mma-settings.json`）。
+  - **tosu 离线**时以本地 `mma-settings.json` 为准——判定只看 tosu 是否在线，不看 tosu 设置文件在不在：tosu 装着但没运行时，即使 `values.json` 里还留着旧值也不采用。离线且本地文件不存在时，壳按插件的 `settings.json` 生成一份默认骨架。
 - 设置键与 tosu 设置界面完全一致；只改 `gameClient/etternaRoot/malodyRoot/malody4Root` 的用户**不需要碰它**（这四个在 mma-shell-config.json）。
-- 受限于框架和操作复杂度，**暂不提供图形化设置界面**，目前折中的方案是直接编辑 JSON 文件。请对照[settings.md](settings.md)的说明来修改。
+- 也提供了**图形化设置界面**（见下文「五、设置窗口」）。不想开窗口时，仍可直接编辑 JSON 文件，请对照[settings.md](settings.md)的说明来修改。
 
 配置填错/JSON损坏将自动回落默认并在日志中警告。
 
-## 五、日志
+## 五、设置窗口
+
+壳自带一个图形化设置窗口（页面 `settings.html`，由壳的本机端口 `24061` 提供），用来改**插件设置**、**壳配置**与**预设**。窗口由壳进程承载，所以**壳必须在运行**；改动只作用于卡片显示本身，不会打断分析（打开期间主窗口的置顶会临时取消，见下），关闭它也不会退出壳。
+
+三种打开方式（任选一种）：
+
+| 方式 | 做法 |
+| --- | --- |
+| 全局快捷键 | 默认 `Ctrl+Shift+S`（可经 `mma-shell-config.json` 的 `hotkeys.settings` 改，改后需重启壳） |
+| 命令行 | `mma-shell.exe --settings`。已有一个壳在运行时，它把请求转交给那个实例并**立即退出**（不会开出第二个叠加窗口，也不会闪一下主窗口） |
+| 浏览器直开 | `http://127.0.0.1:24061/settings.html`（仅本机；从其他地址打开时页面只显示提示 `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`） |
+
+窗口内有三块内容：**插件设置**（与 tosu 设置界面同一套键、按分组排列，改一项即保存）、**壳配置**（`gameClient`、三个游戏根目录与实际采纳路径、快捷键、日志级别；改根目录会立刻反映实际采纳的路径，改快捷键会提示需要重启）、**预设区**（完整的预设管理，与 `presets.html` 相同）。窗口的位置与大小记忆在 exe 旁的 `mma-shell-settings-window.json`（与主窗口的 `mma-shell-state.json` 分开，互不影响）；设置窗口打开期间主窗口的置顶会临时取消（关闭或建窗失败后按原状态恢复，此过程不写主窗口状态文件）。
+
+**在线与离线行为不同**：
+
+- **tosu 在线（只读）**：设置表单整体禁用，保存会被壳拒绝（返回 403）。插件设置请在 tosu 设置界面里改；预设请在 tosu 的 **Presets 页面**里管理——设置窗口会显示该页面地址并可一键复制（地址取插件 `settings.json` 里那个按钮的值，再把主机端口换成当前的 `wsEndpoint`）。
+- **离线（可写）**：改一项立即写入本地 `mma-settings.json`，并**立即广播给叠加界面**（无需重启；周期检测也会在约 30 秒内复核一次）。预设区可用，自定义预设保存在本地 `mma-settings.json` 的 `presetStorage` 键里，重启壳后仍在。离线时**不显示** LastSavedPreset 行（那是 tosu 设置页面的跟随标记）。
+- tosu 中途启动或关闭：壳会在 ≤30 秒内跟随切换，页面与预设区的可写状态一起切换。
+
+## 六、日志
 
 壳运行日志写在 **exe 旁的 `logs/` 目录**：`logs/mma-shell-YYYYMMDD.log`（按日轮转，保留 7 天）。排查问题时将 `logLevel` 设为 `debug`，把最新日志发到 [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues) 即可；遇到问题请先确认日志内容。
 
-## 六、常见问题/已知问题
+## 七、常见问题/已知问题
 
 - **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装（Malody 4.3.7 不需要桥）、壳在运行。
 - **Malody 4.3.7 不跟随**：把 `logLevel` 设为 `debug` 看壳日志——日志会给出原因（进程没找到 / 版本不符 / 没有权限 / 该谱不在索引里等）；常见成因是游戏版本不是 4.3.7、或游戏目录设错、或谱面不是 `beatmap/` 下的 `.mc` Key 谱面。
@@ -205,6 +226,7 @@ window** (can overlay games/browsers); and, **without tosu running**, lets the c
 | Zoom | `Ctrl` + mouse wheel, or `Ctrl +` / `Ctrl -`; `Ctrl 0` resets |
 | Always-on-top toggle (default on) | `Ctrl + Shift + T` by default (global shortcut) |
 | Click-through toggle (default off) | `Ctrl + Shift + C` by default (global shortcut) |
+| Open the settings window | `Ctrl+Shift+S` by default (global shortcut; `mma-shell.exe --settings` or a browser also works — see "Settings window") |
 | Close | `Alt+F4` or `Ctrl+Q` by default (global shortcut) |
 
 Window position/size/topmost/click-through are remembered across launches. Global shortcuts keep working while the
@@ -299,7 +321,7 @@ settings (the tosu side only serves the osu! source):
   "etternaRoot": "",
   "malodyRoot": "",
   "malody4Root": "",
-  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "close": "Ctrl+Q" },
+  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "settings": "Ctrl+Shift+S", "close": "Ctrl+Q" },
   "logLevel": "info"
 }
 ```
@@ -309,7 +331,8 @@ settings (the tosu side only serves the osu! source):
   - or lock to one source (`Osu!` / `Etterna` / `Malody` / `Malody 4`).
 - **etternaRoot / malodyRoot / malody4Root**: game install paths. `malody4Root` is written by the installer's **Malody 4** option (nothing to do on the Malody 4.3.7 game side); leaving it empty does **not** disable the source, because the shell's heuristic may still adopt a passing folder — to disable it, point the `MMA_MALODY4_ROOT` environment variable at a nonexistent path. Use forward slashes or double backslashes
   (`D:/Games/Etterna` or `D:\\Games\\Etterna` — a single `\` is invalid JSON escaping).
-- **hotkeys**: window shortcuts. Defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Q` close.
+- **hotkeys**: window shortcuts. Defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Shift+S` open
+  the settings window / `Ctrl+Q` close.
   Change if they conflict with your system (Ctrl/Shift/Alt/Win + single letter A–Z). Hotkeys register at startup
   only — restart the shell after editing.
 - **logLevel**: log level. `debug` / `info` / `warn` / `error` / `off` (default `info`).
@@ -319,17 +342,53 @@ settings (the tosu side only serves the osu! source):
 - Since some users don't use tosu, the shell provides an **offline mode**: edit `mma-settings.json` directly to
   configure the card display. Edits are picked up automatically within ~30 seconds (the shell re-reads the config
   periodically and pushes a settings frame — no restart needed; if the shell isn't running, they apply on next launch).
-  - When the **tosu settings file** (`settings/<plugin folder name>.values.json` inside the tosu install) is
-    available, the shell **prefers it** (read-only online / read file offline) and never creates or uses
-    `mma-settings.json`.
-  - Without a tosu settings file, local mode kicks in: existing `mma-settings.json` is used as-is; otherwise the
-    shell generates a default skeleton from the plugin's `settings.json`.
+  - While tosu is **online** the tosu settings file wins (`settings/<plugin folder name>.values.json` inside the tosu
+    install, read-only — the shell neither creates nor uses `mma-settings.json` then).
+  - While tosu is **offline** the local `mma-settings.json` wins: the criterion is tosu being online, not the tosu
+    settings file existing. With tosu installed but not running, old values left in `values.json` are **not** used.
+    Offline with no local file, the shell generates a default skeleton from the plugin's `settings.json`.
 - Keys match the tosu settings UI exactly; users who only change `gameClient` / `etternaRoot` / `malodyRoot` / `malody4Root` never
   touch this file (those live in `mma-shell-config.json`).
-- No GUI settings panel is provided for now (framework/effort tradeoff); the pragmatic approach is editing the JSON
-  files directly. Refer to [settings.md](settings.md) for the key meanings.
+- A **graphical settings window** is now provided as well (see "Settings window" below). Editing the JSON files
+  directly still works; refer to [settings.md](settings.md) for the key meanings.
 
 A malformed config falls back to defaults with a warning in the log.
+
+## Settings window
+
+The shell ships a graphical settings window (the `settings.html` page, served by the shell's local port `24061`) for
+**plugin settings**, **shell config** and **presets**. The window is hosted by the shell process, so **the shell must be
+running**; changes only affect the card display itself and never interrupt an analysis (while it is open the main
+window's always-on-top is temporarily cancelled — see below), and closing it does not quit the shell.
+
+Three ways to open it (any one works):
+
+| How | What to do |
+| --- | --- |
+| Global shortcut | `Ctrl+Shift+S` by default (change `hotkeys.settings` in `mma-shell-config.json`; restart the shell after editing) |
+| Command line | `mma-shell.exe --settings`. If a shell is already running it forwards the request to that instance and **exits immediately** (no second overlay window, no main-window flash) |
+| Browser | open `http://127.0.0.1:24061/settings.html` (local machine only; from any other address the page just shows `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`) |
+
+The window has three parts: **plugin settings** (the same keys as the tosu settings UI, grouped; every change is saved
+immediately), **shell config** (`gameClient`, the three game roots with the paths actually adopted, hotkeys, log level;
+root changes show the adopted path right away and hotkey changes tell you a restart is needed), and the **preset area**
+(the full preset manager, identical to `presets.html`). The window remembers its own position and size in
+`mma-shell-settings-window.json` next to the exe (separate from the main window's `mma-shell-state.json`, so the two
+never interfere); while it is open the main window's always-on-top is temporarily cancelled (restored per the saved
+state when the settings window closes or fails to build — the main window's state file is not touched by this).
+
+**Online and offline behave differently**:
+
+- **tosu online (read-only)**: the whole form is disabled and the shell rejects saves (HTTP 403). Change plugin
+  settings in the tosu settings UI; manage presets on tosu's **Presets page** — the settings window shows that page's
+  URL with a copy button (the URL comes from the button entry in the plugin's `settings.json`, with host:port replaced
+  by the current `wsEndpoint`).
+- **Offline (writable)**: each change is written to the local `mma-settings.json` immediately and **broadcast to the
+  overlay right away** (no restart; the periodic re-read also re-checks within ~30 seconds). The preset area works and
+  custom presets live in the local `mma-settings.json`'s `presetStorage` key, so they survive a restart. Offline the
+  **LastSavedPreset row is not shown** (that is a tosu settings-page follow marker).
+- tosu starting or stopping mid-run: the shell follows within ≤30 seconds and switches what is writable together with
+  the page and its preset area.
 
 ## Logs
 

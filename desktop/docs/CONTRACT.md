@@ -17,7 +17,7 @@
   | state | 壳→页 | 30s 周期推送：`{tosuOnline, errors[], sources}` |
   | song | 壳→页 | 谱面到达（元信息 + 原文 + 身份） |
   | malody4_selection | 壳→页 | Malody 4.3.7 选曲记录（v3 新增）：`{path, speed_rate, screen, sequence, event, version, chart_hash, source}`——与参考桥（MalodyV）逐字对齐，`event ∈ anchor-changed / scene-changed / heartbeat / hidden`；`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
-  | settings | 壳→页 | 设置推送（tosu 设置文件 mtime 变化 / 离线 POST 变更时主动推送载荷） |
+  | settings | 壳→页 | 设置推送（载荷 = 当前**权威链**的全量设置：在线为 tosu 设置文件内容，离线为本地 `mma-settings.json`；触点 = 来源切换 / 对应文件 mtime 变化 / 离线 `POST /settings`） |
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
   | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart` / `toggleTopmost` / `toggleClickThrough`（后两者为 v2 行内扩展——Wayland 页面内快捷键兜底，页面与壳同版本发布故不升 v3；toggle 以 `mma-shell-state.json` 为权威读-翻-写，主线程执行）；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
@@ -87,8 +87,9 @@
 
 ## 6. settings
 
-- 在线（tosu.env 存在且存活）：**设置权威 = tosu**——壳**只读** `{tosuRoot}/settings/{插件目录名}.json`（mtime 变化重读，30s 周期内生效，**绝不写**）；页面经 tosu getSettings/sendCommand 读写。
-- 离线：**优先级链** = tosu 设置文件（离线也读）> **`mma-settings.json`**（exe 旁，全量插件设置；无 tosu 用户可直接编辑，重启生效；不存在则按插件 `settings.json` 生成默认骨架）——`/settings` GET 按链返回 + POST（页面收变更并**落盘 mma-settings.json**）；壳 30s 周期检测 `mma-settings.json` 与 `mma-shell-config.json` 变化 → 重载并推送 settings 帧；页面经 `applySettingsPayload` 注入。
+- 在线（tosu.env 存在且存活）：**设置权威 = tosu**——壳**只读** `{tosuRoot}/settings/{插件目录名}.json`（mtime 变化重读，30s 周期内生效，**绝不写**）；页面经 tosu getSettings/sendCommand 读写；`POST /settings` 返回 **403**。
+- 离线：**设置权威 = 本地 `mma-settings.json`**（exe 旁，全量插件设置；无 tosu 用户可直接编辑，周期检测后生效）——`GET /settings` 返回本地文件内容（不存在则按插件 `settings.json` 的 `value` 生成默认骨架并落盘）；`POST /settings` 做请求键优先的读-改-写并落盘本地文件，随后广播 settings 帧。
+- **离线不读 tosu 设置文件**（即使它存在）：权威链的唯一判据是 `tosu_online`（`shared.tosu.is_some()` 且探测存活）。GET 的第 1 级与 POST 的 403 条件是**同一个表达式**；POST 内先复探存活，跳变经 `apply_tosu_online_transition` 切源（覆盖 30s 定时器粒度之外的即时切换）。
 - **壳配置 `mma-shell-config.json`**（exe 旁）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`——仅壳使用（源路径/快捷键/日志），与插件设置分离。
 - settings.json（插件）始终是唯一 schema。
 
@@ -247,3 +248,24 @@
 | 游戏侧 cfg | 安装器创建 `local.malody.insight.selection.cfg` 并写 `[Overlay] Enabled = false` | **安装器不写任何 cfg**；`local.mma.malody.selection.cfg` 由 BepInEx 首次加载时自行生成 | fork 已无叠加界面 |
 
 **向后兼容**：8 字段旧载荷 ⇒ 202 且三个新字段为 `null`，绝不因缺字段报 400（回归断言见 `smoke-malody-bridge.mjs` 第 11 节）。
+
+## 13. 本机 HTTP 端点（24061，**非帧契约**）
+
+§0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
+
+> **`CONTRACT_VERSION` 不变：仍为 5**（`desktop/src/frames.rs`）——本次新增端点与设置窗口**不升版本**，页面 `bridgeClient.js` 的常量继续保持 5，接受区间仍为 `[3,5]`（§11.8）。
+
+Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。
+
+| 端点 | 方法 | 状态码与语义 |
+| --- | --- | --- |
+| `/settings` | GET | 200 = 权威链全量对象（在线 tosu 文件 / 离线本地 `mma-settings.json` / 生成骨架并落盘）；读取侧无只读门控 |
+| `/settings` | POST | 200 = 合并后全量对象（请求键优先读-改-写 + 广播 settings 帧）；**403** 在线只读（判据同 §6）；**400** body 非 JSON / 非对象；**500** base 不可读或写盘失败 |
+| `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`；**400** 配置不可读 |
+| `/shell-config` | POST | 200 = 合并后全量壳配置（+ `clear_detect_caches()` + 广播 settings 帧）；**400** body 非 JSON / 非对象 / base 不可读 / 写盘失败（不写盘） |
+| `/open-settings` | POST | 200 `{}`（异步发起建窗/聚焦，不等窗口建成）；**503** 无 app 句柄（无窗口模式） |
+| `/cover/...` | GET | 200 白名单内的具体文件（`Access-Control-Allow-Origin: *`）；404 未列入白名单或读取失败 |
+| `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 200 插件目录静态文件（防穿越，`Cache-Control: no-store`）；405 其他方法；404 穿越/不存在 |
+| `/ws` | WS | 帧通道（§0–§12 的八型 + diag） |
+
+改这一面（含状态码）只需更新本节与 `docs/features/desktop-shell.md` §3c；**只有当 `/ws` 上的帧字段/语义变化时才按 §10 升 `CONTRACT_VERSION`**。

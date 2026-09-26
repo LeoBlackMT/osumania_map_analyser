@@ -73,7 +73,6 @@ analyze 事件新增 `client` 字段（osu/etterna/malody/**malody4**，取值�
 
 ## 已知未完成 / 验证中
 
-- 离线模式页面侧设置拉取与持久化（壳 `/settings` 双向已实现，页面接线待办）；
 - 外部源封面（壳 cover 帧已下发 URL，页面 coverTheme 消费待办）；
 - 真机验证项：Etterna 主题桥写文件与消息在真实游戏运行；Malody V DoRequest 签名/URL 限制、PlayMeta 字段（皮肤显示方案已废弃，不再涉及皮肤目录）；Malody 4 真机端到端跟随（成功标准逐项记录见 `.omo/evidence/malody4-source/`）；
 - 浏览器端到端（壳+页面）验证需 tosu/MalodyV 运行环境；
@@ -94,4 +93,4 @@ Adds Etterna, Malody V and the Malody 4.3.7 native client as live data sources b
 - Bridge contract: `desktop/docs/CONTRACT.md` (v5: `song` and `sources.malody` both carry `pro`/`turbo`, `winScale` may be `null`; the page accepts `[3,5]`).
 - Telemetry: analyze `client` field (values include `malody4`), dashboard Client pie with Version on its own row.
 - Boundaries documented: Malody V results only via editor POST (resolve by title/path); malody4 follows the game's own anchor md5 and indexes `.mc` only; rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu; malody4 needs no admin rights and writes nothing into the game folder. Skin display removed (2026-09).
-- Known gaps: offline page settings wiring, external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta), malody4 screen-based display gating, `.osu` indexing, multi-library/multi-instance, the Malody V judge-window table and FAIR modelling, browser end-to-end pending environment. This source was previously ruled out (`.omo/plans/malody-v-bepinex-selection-bridge.md:19`) and was reinstated once the zero-injection read-only channel was verified in practice.
+- Known gaps: external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta), malody4 screen-based display gating, `.osu` indexing, multi-library/multi-instance, the Malody V judge-window table and FAIR modelling, browser end-to-end pending environment. This source was previously ruled out (`.omo/plans/malody-v-bepinex-selection-bridge.md:19`) and was reinstated once the zero-injection read-only channel was verified in practice.
