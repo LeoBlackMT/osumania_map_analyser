@@ -1,0 +1,389 @@
+/* Desktop settings page (settings.html) — single scrolling column, dark card
+   style consistent with presets.css / the overlay. Loaded on its own (the shell
+   serves the plugin directory), so it must not rely on styles/main.css. */
+
+:root {
+    --settings-bg: #17181d;
+    --settings-panel: #20232b;
+    --settings-panel-2: #292e39;
+    --settings-border: #383e4b;
+    --settings-text: #e8eaf0;
+    --settings-muted: #9aa0ae;
+    --settings-accent: #4f8cff;
+    --settings-success: #4fc47f;
+    --settings-warning: #e0a83c;
+    --settings-danger: #e5534b;
+    --settings-radius: 10px;
+    --settings-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0 0 48px;
+    background: var(--settings-bg);
+    color: var(--settings-text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------------
+   Status bar (sticky, always visible)
+--------------------------------------------------------------------------- */
+
+.settings-status {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    margin: 0;
+    padding: 10px 18px;
+    background: rgba(32, 35, 43, 0.96);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--settings-border);
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.settings-status-ok {
+    color: var(--settings-success);
+}
+
+.settings-status-saving,
+.settings-status-loading {
+    color: var(--settings-accent);
+}
+
+.settings-status-error {
+    color: var(--settings-danger);
+}
+
+/* ---------------------------------------------------------------------------
+   Column layout
+--------------------------------------------------------------------------- */
+
+#settings-root,
+#shell-config-root,
+#presets-app,
+.settings-presets-notice {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 18px;
+}
+
+.settings-nav {
+    position: sticky;
+    top: 41px;
+    z-index: 50;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 14px;
+    padding: 8px 12px;
+    background: rgba(32, 35, 43, 0.94);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--settings-border);
+    border-radius: var(--settings-radius);
+    box-shadow: var(--settings-shadow);
+}
+
+.settings-nav-link {
+    padding: 4px 10px;
+    border-radius: 999px;
+    color: var(--settings-text);
+    text-decoration: none;
+    background: var(--settings-panel-2);
+    border: 1px solid var(--settings-border);
+    font-size: 13px;
+}
+
+.settings-nav-link:hover {
+    border-color: var(--settings-accent);
+    color: var(--settings-accent);
+}
+
+.settings-panel {
+    margin-bottom: 18px;
+    padding: 16px 18px 18px;
+    background: linear-gradient(135deg, var(--settings-panel) 0%, #262b36 100%);
+    border: 1px solid var(--settings-border);
+    border-radius: var(--settings-radius);
+    box-shadow: var(--settings-shadow);
+    scroll-margin-top: 90px;
+}
+
+.settings-panel h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.settings-panel-sub {
+    margin: 6px 0 14px;
+    color: var(--settings-muted);
+    font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+   Read-only banner (tosu owns the settings file)
+--------------------------------------------------------------------------- */
+
+.settings-readonly {
+    margin: 0 0 14px;
+    padding: 12px 16px;
+    background: rgba(79, 140, 255, 0.12);
+    border: 1px solid var(--settings-accent);
+    border-radius: var(--settings-radius);
+}
+
+.settings-readonly-message {
+    margin: 0 0 8px;
+    font-size: 14px;
+}
+
+.settings-readonly-url,
+.settings-presets-notice-url {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-readonly-label {
+    color: var(--settings-muted);
+    font-size: 13px;
+}
+
+.settings-url {
+    padding: 2px 8px;
+    background: rgba(10, 15, 28, 0.5);
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    user-select: all;
+}
+
+.settings-copy-btn {
+    padding: 3px 10px;
+    color: var(--settings-text);
+    background: var(--settings-panel-2);
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.settings-copy-btn:hover {
+    border-color: var(--settings-accent);
+    color: var(--settings-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Plugin settings form
+--------------------------------------------------------------------------- */
+
+.settings-group + .settings-group {
+    margin-top: 6px;
+}
+
+.settings-group-title {
+    margin: 16px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--settings-muted);
+}
+
+.settings-row,
+.shell-config-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+    gap: 10px 16px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+}
+
+.settings-row:nth-child(odd),
+.shell-config-row:nth-child(odd) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-row-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-row-title {
+    font-size: 14px;
+}
+
+.settings-row-desc {
+    font-size: 12px;
+    color: var(--settings-muted);
+}
+
+.settings-row-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-self: end;
+    width: 100%;
+    max-width: 320px;
+}
+
+.settings-row-control input[type="text"],
+.settings-row-control input[type="number"],
+.settings-row-control select,
+.shell-config-hotkey input,
+.settings-root-field input {
+    width: 100%;
+    padding: 6px 8px;
+    color: var(--settings-text);
+    background: var(--settings-panel-2);
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.settings-row-control input:focus,
+.settings-row-control select:focus,
+.shell-config-hotkey input:focus,
+.settings-root-field input:focus {
+    outline: none;
+    border-color: var(--settings-accent);
+}
+
+.settings-row-control input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    justify-self: start;
+    accent-color: var(--settings-accent);
+}
+
+.settings-row-control input:disabled,
+.settings-row-control select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.settings-row-readonly {
+    font-size: 12px;
+    color: var(--settings-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Shell configuration panel
+--------------------------------------------------------------------------- */
+
+.shell-config-status {
+    margin: 0 0 10px;
+    min-height: 18px;
+    font-size: 13px;
+    color: var(--settings-muted);
+}
+
+.shell-config-status-ok {
+    color: var(--settings-success);
+}
+
+.shell-config-status-saving {
+    color: var(--settings-accent);
+}
+
+.shell-config-status-error {
+    color: var(--settings-danger);
+}
+
+.settings-root-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+}
+
+.shell-config-resolved {
+    font-size: 12px;
+    color: var(--settings-muted);
+    word-break: break-all;
+}
+
+.shell-config-row[data-shell-key="hotkeys"] {
+    align-items: start;
+}
+
+.shell-config-hotkeys {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px;
+    width: 100%;
+    max-width: 420px;
+    justify-self: end;
+}
+
+.shell-config-hotkey {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.shell-config-hotkey-label {
+    font-size: 12px;
+    color: var(--settings-muted);
+}
+
+.shell-config-hint {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    color: var(--settings-warning);
+}
+
+/* ---------------------------------------------------------------------------
+   Presets section (offline editor / online read-only notice)
+--------------------------------------------------------------------------- */
+
+.settings-presets-notice {
+    margin: 0 auto 18px;
+    padding: 14px 16px;
+    background: rgba(79, 140, 255, 0.12);
+    border: 1px solid var(--settings-accent);
+    border-radius: var(--settings-radius);
+}
+
+.settings-presets-notice-text {
+    margin: 0 0 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Origin guard notice (page opened outside the shell)
+--------------------------------------------------------------------------- */
+
+.settings-origin-notice {
+    max-width: 1040px;
+    margin: 24px auto;
+    padding: 16px 18px;
+    background: rgba(229, 83, 75, 0.12);
+    border: 1px solid var(--settings-danger);
+    border-radius: var(--settings-radius);
+    color: var(--settings-danger);
+}
+
+@media (max-width: 720px) {
+    .settings-row,
+    .shell-config-row {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-row-control,
+    .shell-config-hotkeys {
+        justify-self: start;
+        max-width: none;
+    }
+}

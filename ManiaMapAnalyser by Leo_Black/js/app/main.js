@@ -1,4 +1,5 @@
 import { fetchBeatmapFile } from "./analysis.js";
+import { state } from "./appContext.js";
 import { startGraphAnimationLoop } from "./graph.js";
 import {
     updateCardPlayVisibility,
