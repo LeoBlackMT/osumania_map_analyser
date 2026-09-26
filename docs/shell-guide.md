@@ -16,9 +16,9 @@
 > 注意：
 > - 本子项目受[DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)启发，感谢 DanielEtterna 的作者提供的思路与部分代码。
 > - 壳是实验性功能，可能存在未知问题。请在使用中遇到问题时及时反馈。
-> - 受限于 Malody V 的 API，Malody V 数据源仅在编辑器中可用，无法在游玩时使用。请在 Malody V 编辑器中使用「MMA Analyze」功能来查看谱面分析。
+> - 受限于 Malody V 的 API，Malody V 源有两条通道：不装插件时走编辑器（`MMA Analyze` 按钮），装了「游戏内选曲桥」后**选曲 / 游玩 / 结算都会自动跟随**（见「安装桥」的 Malody V 一段）。两条通道并存，编辑器那条是不装插件时的回退。
 > - Malody 4.3.7 数据源相反：**在游戏内选曲与游玩时自动跟随**（只读观察游戏高亮的谱面），游戏侧无需安装任何东西；它只支持 4.3.7 这一个版本，版本不符时该源不可用并给出原因，其余三个源不受影响。
-> - 转换后默认为 OD9（ `.sm` / `.ssc` / `.mc` 转换谱面）；**例外**是 Malody 4.3.7 源：它的 OD 由游戏内判定档（A~E）与速率档共同决定（星级会随之变化）。
+> - 转换得到的谱面默认取 **OD 9**（`.sm` / `.ssc` / `.mc`）；**例外**是 Malody 4.3.7 与 Malody V 两个源：它们的 OD 由游戏内判定档（A~E）与当局倍率共同决定（星级会随之变化）。Malody V 还取决于是否开启 **Pro**（严格组）：Pro 状态未知时不会猜，会**关闭动态 OD 并在状态行说明原因**。
 
 ## 一、快速开始
 
@@ -82,9 +82,32 @@ return t
 
 ### Malody V
 
+Malody V 有两个互不影响的通道，按需要选：
+
+#### A. 编辑器通道（不需要插件）
+
 - 把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/editor/` 中（目录不存在就新建）。随后打开游戏 → 打开谱面编辑器 → **MMA Analyze** → 卡片显示本谱分析。
 - 或者在游戏编辑器左上角点击按钮 → 插件管理 → 导入。
-- 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。
+- 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。**一般不用手动填**：壳会自动探测正在运行的进程、`MMA_MALODY_ROOT` 环境变量、Steam 库与常见安装路径。
+
+#### B. 游戏内选曲桥（推荐；选曲/游玩/结算自动跟随）
+
+1. **先准备加载器**。从 BepInEx 6 IL2CPP `6.0.0-be.788` 的 GitHub Release 下载资产 `bepinex-il2cpp-788.zip`，保存为 `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`（该目录不入库），或设环境变量 `MMA_BEPINEX_LOADER_ZIP` 指向它。安装前会校验 SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`，不匹配就中止、不写任何文件。另外还需要 **Unity 参考程序集** `bridges/malody/bepinex/unity-libs/2022.3.62.zip`（同样不入库；来源 <https://unity.bepinex.dev/libraries/2022.3.62.zip>，`MMA_MALODY_UNITY_LIBS_ZIP` 可指向别处，SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`）。安装器会把它装成 `BepInEx\\unity-libs\\2022.3.62.zip`：BepInEx 首次启动本来要自己下这个文件，而且此后只复用、不再校验，所以一次下载不完整就会让之后每次启动都失败。**从 Release 下载整包的用户无需准备，包里已带。**
+2. **双击 `install-bridge-zh.bat`**（或 `install-bridge.bat`）→ **Install** → **Malody V** → **游戏内选曲桥**。装完目标文件是 `BepInEx\\plugins\\MalodyInsight\\MMAMalodySelection.dll`。
+3. **验证**：开着壳启动游戏，进选曲界面切谱 —— 卡片应立刻跟着换，且星数随判定档、Pro、倍率变化。
+4. **卸载**：同样的入口选 **Uninstall**。只删除本安装器记录过的文件；加载器会保留（不想要就按下面"排障"里的六项自行删）。
+
+> 装过上游那份 `MalodyInsightBridge.dll` 的话，安装器会**报告并给出指引，但绝不替你删除**——两份插件会挂在同一批游戏方法上（双 Hook）。要改用本 fork，请自行删掉那个文件再装。
+
+#### 排障
+
+- **卡片没反应 / 一直空着**：先确认壳在运行；再打开壳日志（见「五、日志」）搜 `malody bridge` —— 若出现 `REJECTED … malodyRoot unavailable`，就是壳没解析到游戏目录，手动在 `mma-shell-config.json` 里填 `malodyRoot`。
+- **端口 17653 被占用**：卡片不动且壳日志提示端口被占。关掉多余的 `mma-shell` 实例（同时只能有一个），或重启壳。
+- **游戏里看不到任何变化**：看游戏目录下的 `BepInEx\\LogOutput.log` —— 应有 `Selection bridge ready` 与一行行 `Observe …`。若整个文件都不存在，说明加载器没被游戏加载（多半是杀软隔离了 `winhttp.dll`，或游戏没重启过）。
+- **星数不随速率变化**：确认装的是本 fork 的 `MMAMalodySelection.dll`，而不是上游那份。
+- **Pro（严格组）没生效**：插件会主动读 Pro，**不需要**特意打开 JUDGE 面板；若状态行提示「动态 OD 未启用：Pro 状态未知」，打开一次 JUDGE 面板再关闭即可。
+- **启动时控制台报 `End of Central Directory record could not be found`**：`BepInEx\\unity-libs\\2022.3.62.zip` 被上一次下载弄坏了（截断或没写完），而 BepInEx 之后只会复用这个坏文件——紧接着的 `Unable to execute IL2CPP chainloader, no plugins will be loaded` 就是它导致的，插件永远不会加载（游戏里也就没有任何反应）。**重跑一次安装器即可修好**：它会按 SHA256 校验并替换掉这个文件，然后重启游戏。
+- **想彻底移除加载器**：卸载后手工删除游戏目录下这六项 —— `winhttp.dll`、`doorstop_config.ini`、`.doorstop_version`、`changelog.txt`、`dotnet\\`、`BepInEx\\`。
 
 ### Malody 4.3.7（无需安装）
 
@@ -154,10 +177,9 @@ window** (can overlay games/browsers); and, **without tosu running**, lets the c
 > Note:
 > - This subproject is inspired by [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna); thanks to its author for the ideas and parts of the code.
 > - The shell is experimental — unknown issues may exist. Please report anything you find.
-> - Due to Malody V API limitations, the Malody V source only works in the editor, not during gameplay. Use the
->   "MMA Analyze" button in the Malody V editor to view a chart's analysis.
+> - Due to Malody V API limitations, before you install the plugin the Malody V source works only in the editor. With the **in-game song-selection bridge** installed, **selection, gameplay and results all follow automatically** (see the Malody V part of "Bridges"). The "MMA Analyze" button in the editor keeps working as the fallback channel when the plugin is not installed.
 > - The Malody 4.3.7 source is the opposite: it **follows the highlighted chart automatically during selection and gameplay** (read-only observation), with nothing to install on the game side. It supports the 4.3.7 version only; on a version mismatch this source becomes unavailable with a reason while the other three data sources keep working.
-> - Default OD after conversion is 9 (`.sm` / `.ssc` / `.mc` charts); the **exception** is the Malody 4.3.7 source, whose OD comes from the in-game judge level (A–E) together with the speed mod (star ratings move accordingly).
+> - Default OD after conversion is 9 (`.sm` / `.ssc` / `.mc` charts); the **exception** is the Malody 4.3.7 and Malody V sources, whose OD comes from the in-game judge level (A–E) together with the run's speed. For Malody V it also depends on whether **Pro** is on (the strict group): when the Pro state is unknown nothing is guessed — dynamic OD is turned off and the status line says why.
 
 ## Quick start
 
@@ -239,7 +261,26 @@ return t
 - Put `bridges/malody/mma_editor.lua` into `MalodyV/editor/` (create the folder if missing). Then open the game →
   open the chart editor → **MMA Analyze** → the card shows this chart's analysis.
 - Or, in the game editor's top-left, open the plugin manager and import the file.
-- Open `mma-shell-config.json` next to the plugin and fill in `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`).
+- Open `mma-shell-config.json` next to the plugin and fill in `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`). **You normally do not need to**: the shell auto-detects the running process, `MMA_MALODY_ROOT`, Steam libraries and common install paths.
+
+#### In-game song-selection bridge (recommended: selection / gameplay / results all follow)
+
+1. **Get the loader first.** Download the asset `bepinex-il2cpp-788.zip` from the upstream BepInEx 6 IL2CPP `6.0.0-be.788` GitHub release and save it as `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip` (that folder is not committed), or point `MMA_BEPINEX_LOADER_ZIP` at it. The archive is checked against SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`; a mismatch aborts without writing a byte. You also need the **Unity reference assemblies** `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (that folder is not committed either; source <https://unity.bepinex.dev/libraries/2022.3.62.zip>, `MMA_MALODY_UNITY_LIBS_ZIP` may point elsewhere, SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`). The installer places it at `BepInEx\\unity-libs\\2022.3.62.zip`: BepInEx would otherwise download that file on the first launch and afterwards only reuse it without validating it, so one incomplete download breaks every later launch. **Users who download the whole release package need to prepare nothing — it is already in the package.**
+2. **Double-click `install-bridge.bat`** → **Install** → **Malody V** → **in-game song-selection bridge**. The installed file is `BepInEx\\plugins\\MalodyInsight\\MMAMalodySelection.dll`.
+3. **Verify**: with the shell running, start the game and move through the song list — the card should follow immediately, and star ratings should move with the judge level, Pro and the rate.
+4. **Uninstall**: same entry point, choose **Uninstall**. Only files this installer recorded are removed; the loader is kept (delete the six items listed under Troubleshooting if you want it gone).
+
+> If the upstream `MalodyInsightBridge.dll` is installed, the installer **reports it with instructions but never deletes it** — both plugins patch the same game methods (double hooking). Remove that file yourself before switching to this fork.
+
+**Troubleshooting**
+
+- **The card does nothing / stays empty**: make sure the shell is running, then open its log (see "Logs") and search for `malody bridge`. If you see `REJECTED … malodyRoot unavailable`, the shell could not resolve the game folder — fill in `malodyRoot` in `mma-shell-config.json` by hand.
+- **Port 17653 already in use**: the card stops following and the shell log says the port is taken. Close extra `mma-shell` instances (only one can run at a time) or restart the shell.
+- **Nothing changes in game**: check `BepInEx\\LogOutput.log` in the game folder — it should contain `Selection bridge ready` and a series of `Observe …` lines. If the file does not exist at all, the loader was never loaded (usually antivirus quarantining `winhttp.dll`, or the game has not been restarted since installing).
+- **Star ratings do not move with the rate**: confirm the installed DLL is this fork's `MMAMalodySelection.dll` and not the upstream one.
+- **Pro (strict group) has no effect**: the plugin reads Pro on its own — you do **not** need to open the JUDGE panel. If the status line says "dynamic OD off: Pro state unknown", open the JUDGE panel once and close it.
+- **The console reports `End of Central Directory record could not be found` at startup**: `BepInEx\\unity-libs\\2022.3.62.zip` was damaged by the first download (truncated or never finished) and BepInEx only ever reuses that broken file — the `Unable to execute IL2CPP chainloader, no plugins will be loaded` right after it is the consequence, so no plugin ever loads (and nothing in the game reacts). **Re-running the installer fixes it**: it verifies that file against SHA256 and replaces it. Restart the game afterwards.
+- **Remove the loader completely**: after uninstalling, delete these six items from the game folder by hand — `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`, `dotnet\\`, `BepInEx\\`.
 
 ### Malody 4.3.7 (nothing to install)
 

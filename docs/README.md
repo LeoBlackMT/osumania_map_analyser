@@ -44,7 +44,7 @@
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v3、窗口操控、构建发布） |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
-| [features/malody4-od.md](features/malody4-od.md) | 人类/AI | Malody 4 判定档 → 等效 osu!mania OD（PC 表 20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 与 Malody V 的局限） |
+| [features/malody-od.md](features/malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD，**覆盖两个客户端**：Malody 4.3.7 的 PC 表（20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 局限）**与 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、复算工装） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 | [pipeline/README.md](pipeline/README.md) | AI | 管线技术文档类别索引（分析、缓存、设置、mod） |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | 分析管线总览：tosu WebSocket -> 谱面获取 -> 解析 -> 估算 -> 显示 的完整数据流 |
@@ -66,6 +66,7 @@
 | [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | 人类/AI | Etterna 错误体验与 Companella 胶囊破坏性说明（MinaCalc abort 友好化 + wasm 模块回收、junk file 显式化、融合后胶囊跟随真实来源、新增 `ettErrorCode`/`junkFile`/`Azusa+Companella` 字段与取值） |
 | [breakings/2026-09-21-malody4-native-source.md](breakings/2026-09-21-malody4-native-source.md) | 人类/AI | Malody 4.3.7 第四数据源破坏性说明（零注入只读观察、`mdy4:` 身份、桥契约版本 2→3 与八型帧、`malody4Root`、路由与第四圆点色、插件版本冻结 2.1.0 的后果） |
 | [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | 人类/AI | Malody 4 动态判定 OD 破坏性说明（写死 OD 9 → 判定档 × 速率 `-4.56~16.42`、`modSignature` 4 段扩 5 段即自动失效、仅 `malody4` 源受影响） |
+| [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | 人类/AI | Malody V 选曲桥 fork 化破坏性说明（上游 DLL → `MMAMalodySelection.dll`、叠加界面移除、载荷 8→11 字段、壳契约 v4→v5、动态 OD、缓存键 7 段、安装器不写 cfg） |
 
 # English
 
@@ -110,7 +111,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries) |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v3, window controls, build & release) |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
-| [features/malody4-od.md](features/malody4-od.md) | Human/AI | Malody 4 judge level → equivalent osu!mania OD (PC table with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, FAIR and Malody V limitations) |
+| [features/malody-od.md](features/malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, recompute tool) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 | [pipeline/README.md](pipeline/README.md) | AI | Index of pipeline technical documents (analysis, cache, settings, mods) |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
@@ -132,3 +133,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | Human/AI | Etterna error UX and Companella capsule breaking note (readable MinaCalc aborts plus wasm module recycling, explicit junk-file handling, capsule following the real fusion source, new `ettErrorCode` / `junkFile` / `Azusa+Companella` fields and value) |
 | [breakings/2026-09-21-malody4-native-source.md](breakings/2026-09-21-malody4-native-source.md) | Human/AI | Malody 4.3.7 fourth data source breaking note (zero-injection read-only observation, `mdy4:` identity, bridge contract version 2→3 with eight frame types, `malody4Root`, routing and the fourth dot colour, consequences of the frozen plugin version 2.1.0) |
 | [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | Human/AI | Malody 4 dynamic judge OD breaking note (hard-coded OD 9 → judge level × rate `-4.56~16.42`, `modSignature` growing from 4 to 5 segments as automatic invalidation, only the `malody4` source affected) |
+| [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | Human/AI | Malody V selection bridge forked (upstream DLL → `MMAMalodySelection.dll`, overlay removed, payload 8→11 fields, shell contract v4→v5, dynamic OD, 7-segment cache key, installer writes no cfg) |
