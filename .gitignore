@@ -28,3 +28,4 @@ bridges/malody/.tools/
 bridges/malody/bepinex/plugin/bin/
 bridges/malody/bepinex/plugin/obj/
 bridges/malody/bepinex/plugin/tests/
+/bridges/malody/bepinex/unity-libs
