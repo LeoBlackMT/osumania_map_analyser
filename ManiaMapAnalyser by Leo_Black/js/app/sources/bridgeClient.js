@@ -7,7 +7,23 @@ import { state } from "../appContext.js";
 
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
-const CONTRACT_VERSION = 3;
+/** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
+const CONTRACT_VERSION = 5;
+/**
+ * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
+ *
+ * **v3 兼容路径**：v3 壳仍然可用 —— 它的 `state.sources.malody` 只有 `alive`，
+ * 桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale`。页面据此退回"Lua 通道 + 旧形态"：
+ * 场景/清空/判定三段逻辑在字段缺省时一律不进入（见 shellState.js / externalSource.js）。
+ * **v4** 壳有六个 `sources.malody` 字段、`winScale` 恒为数值；**v5** 起 `pro`/`turbo`
+ * 随帧下发、`winScale` 可为 `null`（未知）。页面按字段**逐个存在性**降级，不按版本号分支。
+ * 只有越界（< 3 或 > 5）才算不匹配。
+ *
+ * ⚠️ 这个常量必须与壳侧 `desktop/src/frames.rs::CONTRACT_VERSION` 同步：壳升而页面不升，
+ * `hello` 会被判为越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 不只数据帧不通，
+ * `sendControl()` 早在首行就返回，**窗口拖动把手与置顶/穿透/关闭快捷键会一起静默失效**。
+ */
+const MIN_ACCEPTED_CONTRACT = 3;
 
 let socket = null;
 let reconnectTimer = 0;
@@ -139,12 +155,16 @@ function handleFrame(frame, handlers) {
     const payload = frame.payload || {};
     switch (frame.type) {
         case "hello": {
-            contractOk = payload.contract === CONTRACT_VERSION;
+            // 接受区间 [MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION]：v4 全功能；v3 接受但页面
+            // 不进入桥的场景/清空/判定路径（字段缺省）。仅越界才进终态。
+            contractOk = Number.isInteger(payload.contract)
+                && payload.contract >= MIN_ACCEPTED_CONTRACT
+                && payload.contract <= CONTRACT_VERSION;
             if (!contractOk) {
                 // 契约不匹配：终态提示并停止重连（防无限握手循环）。
                 stopped = true;
                 syncState();
-                console.warn(`mma shell: contract mismatch (got ${payload.contract}, expected ${CONTRACT_VERSION})`);
+                console.warn(`mma shell: contract mismatch (got ${payload.contract}, expected ${MIN_ACCEPTED_CONTRACT}..${CONTRACT_VERSION})`);
                 return;
             }
             syncState();

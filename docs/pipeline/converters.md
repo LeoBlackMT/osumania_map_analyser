@@ -4,10 +4,11 @@
 
 - `js/parser/smSscToOsuConverter.js` — `.sm`/`.ssc` → `.osu` v14（mania）
 - `js/parser/mcToOsuConverter.js` — `.mc`（Malody chart JSON）→ `.osu` v14（移植自 [mc_to_osu.py](https://github.com/LeoBlackMT/nonebot_plugin_osumania_toolkit)（MIT，源自 Jakads/malody2osu））；OD 有可选参数 `{ overallDifficulty }`
-- `js/parser/judgeOdTable.js` — Malody 4.3.7（PC 端）判定档 × 速率 → 等效 osu!mania OD 的**纯逻辑表**（`JUDGE_OD` / `OD_BOUNDS` / `computeOd`）；不参与转换本身，只给 `mcToOsuConverter` 提供 OD 值（方法学与 20 格见 [../features/malody4-od.md](../features/malody4-od.md)）
+- `js/parser/judgeOdTable.js` — Malody 4.3.7（PC 端）判定档 × 速率 → 等效 osu!mania OD 的**纯逻辑表**（`JUDGE_OD` / `OD_BOUNDS` / `computeOd`）；不参与转换本身，只给 `mcToOsuConverter` 提供 OD 值（方法学与 20 格见 [../features/malody-od.md](../features/malody-od.md)）
+- `js/app/sources/odResolver.js` — Malody V（游戏内选曲桥）判定档 × Pro（严格/常态组）× 当局倍率 → 等效 osu!mania OD；表值与复算工装见 [../features/malody-od.md](../features/malody-od.md)（同一套 96% 等精度 σ\* 方法学）与 `tools/malody-v-od-check/verify.py`
 - `js/parser/vendor/simfile-parser/` — simfile-parser v0.9.0（MIT）vendored 副本，来源与本地补丁见 `NOTICE.md`
 
-两种转换器的输出都直接进入既有 `OsuFileParser`（管线零改动）。固定参数：HP=8 / AR=5 / Mode=3。**OD**：`smSscToOsuConverter` 固定 9；`mcToOsuConverter` **不传参时同样输出 `9`（逐字节不变）**，传参时按两位小数写入传入值——`malody4` 源（Malody 4.3.7）按判定档 × 速率经 `judgeOdTable.js`（`computeOd`）算出等效 OD 后传入，`malody`（Malody V）与其余调用点不传参、保持默认 9。越界/非有限值不会被夹断：`console.warn` 一次并回落默认分支（输出 `9`）。
+两种转换器的输出都直接进入既有 `OsuFileParser`（管线零改动）。固定参数：HP=8 / AR=5 / Mode=3。**OD**：`smSscToOsuConverter` 固定 9；`mcToOsuConverter` **不传参时同样输出 `9`（逐字节不变）**，传参时按两位小数写入传入值——`malody4` 源（Malody 4.3.7）按判定档 × 速率经 `judgeOdTable.js`（`computeOd`）算出等效 OD 后传入；`malody` 源（Malody V，游戏内选曲桥）按**判定档 × Pro × 倍率**经 `odResolver.js` 算出等效 OD 后传入。**只有 Pro 或判定档未知时** Malody V 这条才不传参、回落默认 `9`，并在状态行说明原因——绝不静默按某个窗口组冒充。其余调用点不传参、保持默认 9。越界/非有限值不会被夹断：`console.warn` 一次并回落默认分支（输出 `9`）。
 
 ## 转换语义（时间轴）
 

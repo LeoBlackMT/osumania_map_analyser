@@ -32,12 +32,31 @@ $zip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version-with-shell.zip
 if (Test-Path $zip) { Remove-Item $zip }
 
 # 打包：插件目录 + exe + bridges（桥安装素材）。
+# ⚠️ `Copy-Item -Recurse bridges` 会把**开发产物**一起装进去：NuGet 包缓存
+# （`bepinex/.tools/nuget-packages`，约 97 MB）、本地断言工程（`plugin/tests/`）与
+# `plugin/{bin,obj}/`。`.gitignore` 只管 git、**不管拷贝**，所以这里必须显式排除，
+# 否则分发包会白白大一倍。用 robocopy 的目录级排除，比逐个 Copy-Item 更好维护。
 $stage = Join-Path $env:TEMP "mma-release-stage-$PID"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Copy-Item -Recurse $pluginDir $stage
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
-Copy-Item -Recurse (Join-Path $root "bridges") (Join-Path $stage "bridges")
+
+$bridgesSrc = Join-Path $root "bridges"
+$bridgesDst = Join-Path $stage "bridges"
+# /E 全部子目录（含空） /XD 排除这些目录名（任意层级）
+& robocopy $bridgesSrc $bridgesDst /E /NFL /NDL /NJH /NJS /NP `
+    /XD ".tools" "bin" "obj" "tests" | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
+
+# 兜底断言：开发产物一个都不许进包
+$forbidden = Get-ChildItem $stage -Recurse -Directory |
+    Where-Object { $_.Name -in @('.tools', 'tests') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
+if ($forbidden) {
+    throw ("refusing to package dev artefacts: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
+}
+
 Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Remove-Item -Recurse -Force $stage
 
-Write-Host "released: $zip"
+$mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+Write-Host "released: $zip ($mb MB)"

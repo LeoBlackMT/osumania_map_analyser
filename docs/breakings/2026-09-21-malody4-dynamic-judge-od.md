@@ -2,7 +2,7 @@
 
 ## 修改内容（What changed）
 
-1. `malody4` 源的 `.mc → .osu` 转换 OD 由**写死 9** 改为**按判定档（`A`~`E`）× 速率（NM / DASH 1.2 / RUSH 1.5 / SLOW 0.8）动态取值**，值域 `-4.56 ~ 16.42`（PC 表，20 格；表值、方法学与 σ\* 明细见 [../features/malody4-od.md](../features/malody4-od.md)）。
+1. `malody4` 源的 `.mc → .osu` 转换 OD 由**写死 9** 改为**按判定档（`A`~`E`）× 速率（NM / DASH 1.2 / RUSH 1.5 / SLOW 0.8）动态取值**，值域 `-4.56 ~ 16.42`（PC 表，20 格；表值、方法学与 σ\* 明细见 [../features/malody-od.md](../features/malody-od.md)）。
 2. `state.modSignature` 由 **4 段扩到 5 段**（外部源第 5 段 = 判定档字母，未知为 `"?"`）——判定决定转换出的 OD，不进键就会在换判定档时命中旧快照（旧星数配新 OD，静默错误）。
 3. 判定档经壳由 `song.meta.judge` 下发（`sources.malody4.judge` 同步给出），页面用 `js/parser/judgeOdTable.js` 的 `computeOd()` 换算；`mcToOsuConverter` 新增可选 `{ overallDifficulty }` 参数。
 4. 越界策略：`OD_BOUNDS = { lo: -5, hi: 21.3 }`；越界或非有限值**不夹断**，而是告警一次并回落默认分支（输出 `9`）。
@@ -38,7 +38,7 @@
 
 ## What changed
 
-1. The `.mc → .osu` OD for the `malody4` source changed from a **hard-coded 9** to a value derived from the **judge level (`A`–`E`) × rate (NM / DASH 1.2 / RUSH 1.5 / SLOW 0.8)**, ranging over `-4.56 … 16.42` (PC table, 20 cells; values, method and per-cell σ\* in [../features/malody4-od.md](../features/malody4-od.md)).
+1. The `.mc → .osu` OD for the `malody4` source changed from a **hard-coded 9** to a value derived from the **judge level (`A`–`E`) × rate (NM / DASH 1.2 / RUSH 1.5 / SLOW 0.8)**, ranging over `-4.56 … 16.42` (PC table, 20 cells; values, method and per-cell σ\* in [../features/malody-od.md](../features/malody-od.md)).
 2. `state.modSignature` grew from **4 to 5 segments** (the external source's 5th segment is the judge letter, `"?"` when unknown): the judge level determines the converted OD, so leaving it out of the key would let a judge-level change hit a stale snapshot (old stars with a new OD).
 3. The judge level travels from the shell in `song.meta.judge` (mirrored in `sources.malody4.judge`) and the page converts it with `computeOd()` from `js/parser/judgeOdTable.js`; `mcToOsuConverter` gained an optional `{ overallDifficulty }` argument.
 4. Out-of-range policy: `OD_BOUNDS = { lo: -5, hi: 21.3 }`; out-of-range or non-finite values are **not clamped** — they warn once and fall back to the default branch (output `9`).

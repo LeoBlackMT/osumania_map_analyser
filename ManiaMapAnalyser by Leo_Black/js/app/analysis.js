@@ -189,7 +189,10 @@ function setLeftCapsuleUnitBadge(unitText) {
 
 function buildEtternaAnalyzeOptions(etternaVersion) {
     return {
-        musicRate: state.speedRate,
+        // 进管线的速率（倍率语义见外部源：Mod 派生速率 ⇒ 1.0，难度由 OD 表达）。
+        // **回退是必须的**：该选项构造器与 osu 共用，osu 的 DT/HT 只写 state.speedRate，
+        // 无回退会让 osu 侧拿到 undefined/陈旧值。
+        musicRate: state.analysisRate ?? state.speedRate,
         scoreGoal: ETT_DEFAULT_SCORE_GOAL,
         cvtFlag: state.cvtFlag,
         etternaVersion,
@@ -305,6 +308,62 @@ export function resetReworkDisplay() {
     reworkStarEl.classList.remove("high-contrast");
     reworkStarEl.classList.remove("unit-badge-light");
     setLeftCapsuleUnitBadge("");
+}
+
+/**
+ * 清空时的"外部源上下文复位"：清空边沿必须把上一张谱面的上下文一并作废。
+ *
+ * - `pendingSourceText` 是一次性槽（`fetchBeatmapFile` 取用后立即置 null），残留会让下一次
+ *   osu 触发的缓存未命中拿上一张 Malody 谱面的文本去分析；
+ * - `analysisRate` 置 null ⇒ 回落 `state.speedRate`（倍率语义只在桥通道内有效）。
+ */
+function resetSourceContext() {
+    state.pendingSourceText = null;
+    state.pendingSourceRequestId = null;
+    state.pendingSourceActive = null;
+    state.externalSourceActive = null;
+    state.analysisRate = null;
+    state.speedRate = 1;
+}
+
+/**
+ * 清空卡片（Malody 选曲桥从"有谱面的场景"回到 `other` 稳态时的唯一清空动作）。
+ *
+ * 复用两条既有清空路径的调用组合，不新造渲染逻辑：
+ * - `resetReworkDisplay()`（内含 `clearDiffGraph()` → `resetPlayedFill` / `clearAllPauseMarkers`
+ *   / `setModeTag("Mix")` 等）；
+ * - 三个栏位的空占位（`patternClustersEl` / `ettSkillBarsEl` / `ppBarsEl`）+ 状态行。
+ */
+export function clearSourceCard() {
+    resetReworkDisplay();
+    patternClustersEl.innerHTML = "";
+    ettSkillBarsEl.innerHTML = "";
+    ppBarsEl.innerHTML = "";
+    setStatus("Waiting for a data source…", "ok");
+    resetSourceContext();
+}
+
+/**
+ * 卡片清空回调（**测试缝**）：默认实现 = `clearSourceCard`。
+ * 冒烟脚本注入 spy 即可断言"清空被调用了几次"（Step 4 的 AC2/AC3）。
+ */
+let cardClearHandler = clearSourceCard;
+
+/** 测试缝：替换卡片清空实现；传非函数即恢复默认。 */
+export function setCardClearHandler(fn) {
+    cardClearHandler = typeof fn === "function" ? fn : clearSourceCard;
+}
+
+/**
+ * 执行一次卡片清空 —— 唯一调用者 = `shellState.js` 的 `other` 边沿；
+ * 不得绕过测试缝直接调 `clearSourceCard`。
+ *
+ * 上下文复位放在回调之前：注入 spy 时（只计数、不调真实现）状态也必须被作废，
+ * 否则"清空后 `state.speedRate === 1`"这条验收断言会随测试缝的实现方式而变。
+ */
+export function invokeCardClear() {
+    resetSourceContext();
+    cardClearHandler();
 }
 
 // 遥测值域（后端 backend/internal/store/aggregate.go 按 actualAlgorithm 的字符串直接分桶，
@@ -493,7 +552,10 @@ export async function fetchBeatmapFile(reason) {
         if (!cached) {
             try {
                 const estimatorOptions = {
-                    speedRate: state.speedRate,
+                    // 进管线的速率 = state.analysisRate ?? state.speedRate（倍率语义见 externalSource）：
+                    // 只有 Malody 选曲桥通道会写 analysisRate（Mod 派生速率 ⇒ 1.0，难度由 OD 表达）；
+                    // 其余所有源（含 osu 的 DT/HT，只写 state.speedRate）都走回退，逐字与基线一致。
+                    speedRate: state.analysisRate ?? state.speedRate,
                     odFlag: state.odFlag,
                     cvtFlag: state.cvtFlag,
                     // graph 需要与否用 fetch 前的保守值（needComputed.graph = diffText=Graph 或主体
@@ -752,7 +814,7 @@ export async function fetchBeatmapFile(reason) {
             } else {
                 // 回退：pipeline 估算失败或保守开关未覆盖（override 后 need* 变真）→ 主线程直接计算（旧路径）。
                 try {
-                    interludeStar = await calculateInterludeStar(rawText, state.speedRate, state.cvtFlag);
+                    interludeStar = await calculateInterludeStar(rawText, state.analysisRate ?? state.speedRate, state.cvtFlag);
                     if (isStaleRequest()) return;
                 } catch (error) {
                     errors.push(`Interlude analyze failed: ${error.message}`);

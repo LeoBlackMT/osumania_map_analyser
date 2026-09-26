@@ -6,12 +6,12 @@
  * All destructive actions require a confirmation modal; feedback uses toasts.
  */
 
-import { socket } from "../appContext.js";
 import {
     getCustomPresets,
     getBuiltinPresets,
     getBuiltinSettings,
     getCurrentPreset,
+    getPresetTransport,
     isLibraryLoaded,
     onPresetsChanged,
     applyPresetByName,
@@ -40,6 +40,11 @@ import { createForm } from "./form.js";
 // ---------------------------------------------------------------------------
 
 const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+// The offline desktop settings window (settings.html) mounts this same editor;
+// the LastSavedPreset row is a tosu-dashboard concept without an offline
+// counterpart, so it is hidden there.
+const OFFLINE_SCOPE = document.documentElement.dataset.mmaPage === "settings";
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -300,7 +305,7 @@ function wireActions(actionBar) {
             return;
         }
         await applyCustomSnapshot(snapshot);
-        showToast("Checked settings applied and synced to tosu.", "success");
+        showToast("Checked settings applied.", "success");
     }));
 
     actionBar.querySelector("#act-load-current").addEventListener("click", guarded(async () => {
@@ -565,13 +570,15 @@ function renderList() {
         }));
     }
 
-    listEl.appendChild(buildPresetRow(
-        {
-            name: AUTO_SAVE_PRESET_NAME,
-            description: "Automatically keeps the latest manual configuration after you change settings.",
-        },
-        { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: [] },
-    ));
+    if (!OFFLINE_SCOPE) {
+        listEl.appendChild(buildPresetRow(
+            {
+                name: AUTO_SAVE_PRESET_NAME,
+                description: "Automatically keeps the latest manual configuration after you change settings.",
+            },
+            { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: [] },
+        ));
+    }
 }
 
 function highlightActiveRow(name) {
@@ -697,7 +704,7 @@ async function handleListClick(event) {
                 return;
             }
             if (await applyPresetByName(name)) {
-                showToast(`Preset "${name}" applied and synced to tosu.`, "success");
+                showToast(`Preset "${name}" applied.`, "success");
             } else {
                 showToast(`Preset "${name}" not found.`, "error");
             }
@@ -744,6 +751,52 @@ async function handleListClick(event) {
 }
 
 // ---------------------------------------------------------------------------
+// Live value sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors one settings payload into the editor's form values, then refreshes
+ * the rendered controls (focused inputs are skipped by the form itself).
+ * The form values are updated FIRST so collectCheckedSnapshot() / Load Current
+ * capture what the stream just delivered.
+ * @param {Array|object|null|undefined} payload settings values, or a legacy
+ *        tosu getSettings array; anything empty is ignored.
+ */
+function syncFromPayload(payload) {
+    if (!payload) {
+        return;
+    }
+    for (const key of Object.keys(formValues)) {
+        if (payload[key] !== undefined) {
+            formValues[key] = payload[key];
+        }
+    }
+    form.syncFormControls();
+}
+
+/**
+ * Subscribes the live value sync ONCE to the active preset transport
+ * (getPresetTransport().mode): "tosu" receives raw settings-stream packets,
+ * "shell" receives the settings page's {command:"getSettings", message} frames.
+ * The transport owns the event source in both modes, so this page never talks
+ * to `socket` directly and shares a single connection with the other
+ * subscribers (core.js).
+ */
+function subscribeLiveValueSync() {
+    const transport = getPresetTransport();
+    if (transport.mode === "shell") {
+        transport.subscribe((packet) => syncFromPayload(packet?.message));
+        return;
+    }
+    transport.subscribe((packet) => {
+        const payload = Array.isArray(packet)
+            ? packet
+            : (packet && typeof packet === "object" && packet.command === "getSettings" ? packet.message : null);
+        syncFromPayload(payload);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 
@@ -773,21 +826,8 @@ async function init() {
     listEl.addEventListener("click", guarded(handleListClick));
     onPresetsChanged(() => renderList());
 
-    // Live value sync from the tosu settings stream (skip focused controls).
-    socket.commands((packet) => {
-        const payload = Array.isArray(packet)
-            ? packet
-            : (packet && typeof packet === "object" && packet.command === "getSettings" ? packet.message : null);
-        if (!payload) {
-            return;
-        }
-        for (const key of Object.keys(formValues)) {
-            if (payload[key] !== undefined) {
-                formValues[key] = payload[key];
-            }
-        }
-        form.form.syncFormControls();
-    });
+    // Live value sync from the settings stream (skip focused controls).
+    subscribeLiveValueSync();
 }
 
 init();

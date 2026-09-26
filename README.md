@@ -64,8 +64,9 @@
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
 ## Malody V 编辑器 / Malody 4.3.7 / Etterna 支持
-- Malody V 编辑器、Malody 4.3.7 原生客户端与 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器、Malody 4.3.7 或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。
+- Malody V 编辑器、Malody 4.3.7 原生客户端与 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器、Malody 4.3.7 或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。**Malody V 还可以安装「游戏内选曲桥」：装上后在游戏里选曲、游玩、结算都会自动跟随，不需要打开编辑器、也不需要打开任何面板。**
 - Malody V 与 Etterna 需要在游戏侧安装桥文件；**Malody 4.3.7 不需要在游戏里安装任何东西**：它由桌面壳从进程外只读观察接入（不写游戏目录、不注入），在游戏内选曲/游玩时自动跟随。它只支持 4.3.7 这一个版本，且仅 Windows 可用。
+- Malody V 与 Malody 4.3.7 两个源的难度会随**游戏内判定档**与**当局倍率**变化（Malody V 还取决于是否开启 Pro / 严格组），不再是固定值。
 - 该功能仍处于实验阶段，可能存在未知问题。请在使用过程中遇到问题时及时反馈。
 
 ## 贡献指南
