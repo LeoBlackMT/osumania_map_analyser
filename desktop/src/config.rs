@@ -6,7 +6,7 @@ use std::fs;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 pub const PLUGIN_FOLDER: &str = "ManiaMapAnalyser by Leo_Black";
 
@@ -160,11 +160,15 @@ pub fn read_plugin_settings() -> serde_json::Value {
 }
 
 fn read_exe_json(file: &str, display: &str) -> serde_json::Value {
-    let Some(dir) = exe_dir() else {
-        return serde_json::Value::Null;
-    };
-    let path = dir.join(file);
-    match fs::read_to_string(&path) {
+    match exe_dir() {
+        Some(dir) => read_json_file(&dir.join(file), display),
+        None => serde_json::Value::Null,
+    }
+}
+
+/// 读一份 JSON 文件：不存在/读不到 → `Null`；解析失败 → 记 stderr 警告并 `Null`。
+fn read_json_file(path: &Path, display: &str) -> serde_json::Value {
+    match fs::read_to_string(path) {
         Ok(s) => match serde_json::from_str(&s) {
             Ok(v) => v,
             Err(e) => {
@@ -215,7 +219,7 @@ pub fn ensure_shell_config() {
     }
     let _ = fs::write(
         &path,
-        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
     );
 }
 
@@ -227,37 +231,33 @@ fn write_exe_json(dir: PathBuf, file: &str, value: &serde_json::Value) -> bool {
     ok
 }
 
-/// 全量插件设置解析（优先级链）：
-///   1. tosu 在线（壳探测到 tosu 存活）→ tosu 设置文件（只读）
-///   2. tosu 设置文件存在（即使 tosu 未运行）→ 读文件
-///   3. exe 旁 mma-settings.json 存在 → 读它
-///   4. 都没有 → 用插件 settings.json 的默认值生成 mma-settings.json 骨架
+/// 全量插件设置解析（优先级链，**单一在线门控**）：
+///   1. tosu 在线（`shared.tosu.is_some()` **且** `tosu_online`）→ tosu 设置文件（只读）
+///   2. exe 旁 mma-settings.json 存在 → 读它
+///   3. 都没有 → 用插件 settings.json 的默认值生成 mma-settings.json 骨架
 ///      （用户手动编辑后重启生效），返回该默认。
 /// 在线时绝不落盘 mma-settings.json（tosu 权威）。
+///
+/// 门控与 `server/http.rs` 的 `POST /settings` 403 条件是**同一个表达式**：任何一侧
+/// 单独放宽都会造出"能写却读不回"的窗口（详见 Step 3）。
 pub fn resolve_plugin_settings(shared: &crate::server::Shared) -> serde_json::Value {
-    // 1. tosu 在线：tosu 设置文件权威（若可读）。
-    if let Some(info) = shared.tosu.as_ref() {
-        let from_tosu = read_tosu_settings(info);
-        if from_tosu.is_object() && !from_tosu.as_object().map(|m| m.is_empty()).unwrap_or(true) {
-            return from_tosu;
-        }
-    }
-    // 2. tosu 设置文件存在（离线也读）。
-    if let Some(info) = shared.tosu.as_ref() {
-        if tosu_settings_path(info).exists() {
+    // 1. tosu 在线：tosu 设置文件权威（离线**一律不看** tosu 文件——那是记忆里的旧值，
+    //    本地 mma-settings.json 才是离线权威）。
+    if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
+        if let Some(info) = shared.tosu.as_ref() {
             let from_tosu = read_tosu_settings(info);
-            if from_tosu.is_object() {
+            if from_tosu.is_object() && !from_tosu.as_object().map(|m| m.is_empty()).unwrap_or(true) {
                 return from_tosu;
             }
         }
     }
-    // 3. mma-settings.json。
+    // 2. mma-settings.json。
     let local = read_plugin_settings();
     if local.is_object() {
         return local;
     }
-    // 4. 生成默认（从插件 settings.json 的 value 字段）并落盘 mma-settings.json
-    //    （用户手动编辑后重启生效；壳只在「无 tosu 设置文件」时才生成）。
+    // 3. 生成默认（从插件 settings.json 的 value 字段）并落盘 mma-settings.json
+    //    （用户手动编辑后重启生效；见 should_seed_local_settings）。
     let defaults = generate_default_plugin_settings();
     if defaults.is_object() {
         let _ = write_plugin_settings(&defaults);
@@ -265,17 +265,25 @@ pub fn resolve_plugin_settings(shared: &crate::server::Shared) -> serde_json::Va
     defaults
 }
 
-/// 启动时确保 mma-settings.json 存在：无 tosu 设置文件时生成默认骨架
-/// （用户手动编辑后重启生效；与 resolve_plugin_settings 第 4 级同源）。
-pub fn ensure_plugin_settings(tosu: &Option<TosuInfo>) {
-    // tosu 设置文件存在（在线或离线）→ 不生成（tosu 权威）。
-    if let Some(info) = tosu {
-        if tosu_settings_path(info).exists() {
-            return;
-        }
-    }
-    if read_plugin_settings().is_object() {
-        return; // 已有本地设置
+/// 是否需要生成 mma-settings.json 本地骨架（纯判定，单测四象限）。
+///
+/// 只在**离线且本地无文件**时生成：在线时 tosu 是权威（落一份本地骨架会立刻被
+/// 权威链跳过，还会在切回离线时把记忆里的旧值当成本地权威）；本地已有文件时
+/// 绝不覆盖（用户的离线编辑就是权威）。
+/// **不实现**从 tosu values 播种（决策 D4a：离线骨架取插件 settings.json 的默认值）。
+pub fn should_seed_local_settings(online: bool, has_local: bool) -> bool {
+    !online && !has_local
+}
+
+/// 启动时确保 mma-settings.json 存在：**仅**离线且无本地设置文件时生成默认骨架
+/// （用户手动编辑后重启生效；与 resolve_plugin_settings 第 3 级同源）。
+pub fn ensure_plugin_settings(tosu: &Option<TosuInfo>, online: bool) {
+    // 在线 → 不生成任何东西（tosu 权威）。`tosu` 参数保留在签名里（调用点已持有它，
+    // 且不变量是"权威来源只由 online 决定"，故判定不看 tosu 文件是否存在）。
+    let _ = tosu;
+    let has_local = read_plugin_settings().is_object();
+    if !should_seed_local_settings(online, has_local) {
+        return;
     }
     let defaults = generate_default_plugin_settings();
     if defaults.is_object() {
@@ -311,6 +319,91 @@ pub fn write_plugin_settings(value: &serde_json::Value) -> bool {
     write_exe_json(dir, PLUGIN_SETTINGS_FILE, value)
 }
 
+/// exe 旁 `mma-settings.json` 的完整路径（文件可能不存在）。
+pub fn plugin_settings_path() -> Option<PathBuf> {
+    Some(exe_dir()?.join(PLUGIN_SETTINGS_FILE))
+}
+
+/// exe 旁 `mma-shell-config.json` 的完整路径（文件可能不存在）。
+pub fn shell_config_path() -> Option<PathBuf> {
+    Some(exe_dir()?.join(SHELL_CONFIG_FILE))
+}
+
+/// 文件 mtime（不存在/读不到 → `None`）：定时器用 `stat → read → stat` 识别
+/// "读取期间文件又被写入"的 tick（两次 mtime 不同则跳过本轮推送，避免推旧内容）。
+pub fn file_mtime(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).ok()?.modified().ok()
+}
+
+/// 全量写壳配置（`mma-shell-config.json`，tmp + rename）；返回是否落盘成功。
+pub fn write_shell_config(value: &serde_json::Value) -> bool {
+    match exe_dir() {
+        Some(dir) => write_exe_json(dir, SHELL_CONFIG_FILE, value),
+        None => false,
+    }
+}
+
+/// 读-改-写串行化锁：tmp + rename 只保证**单次写**原子，不保证两次读改写不交错
+/// （交错会造出"旧内容回滚"广播）。
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// 对象递归合并：
+///   * 两侧都是对象 → 逐键递归（base 的未知键全部保留）；
+///   * patch 值为 `null` → **忽略**（base 值存活；base 无此键则不新增）；
+///   * 其余（任一侧非对象）→ 以 patch 覆盖。
+pub fn merge_json(base: &serde_json::Value, patch: &serde_json::Value) -> serde_json::Value {
+    match (base, patch) {
+        (serde_json::Value::Object(b), serde_json::Value::Object(p)) => {
+            let mut out = b.clone();
+            for (k, v) in p {
+                if v.is_null() {
+                    continue;
+                }
+                let merged = match out.get(k) {
+                    Some(existing) => merge_json(existing, v),
+                    None => v.clone(),
+                };
+                out.insert(k.clone(), merged);
+            }
+            serde_json::Value::Object(out)
+        }
+        _ => patch.clone(),
+    }
+}
+
+/// 一份 exe 旁 JSON 的"请求键优先"读-改-写：base 非对象（缺失/损坏）→ `None`
+/// （**不写盘**、不生成骨架，交调用方回 400/500）；写失败 → `None`；
+/// 成功 → 返回合并后的全量值。
+fn merge_exe_json(
+    dir: &Path,
+    file: &str,
+    display: &str,
+    patch: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let _guard = WRITE_LOCK.lock().unwrap();
+    let base = read_json_file(&dir.join(file), display);
+    if !base.is_object() {
+        return None;
+    }
+    let merged = merge_json(&base, patch);
+    if !write_exe_json(dir.to_path_buf(), file, &merged) {
+        return None;
+    }
+    Some(merged)
+}
+
+/// `mma-settings.json` 的读-改-写（离线 `POST /settings`：请求键优先）。
+pub fn merge_plugin_settings(patch: &serde_json::Value) -> Option<serde_json::Value> {
+    let dir = exe_dir()?;
+    merge_exe_json(dir.as_path(), PLUGIN_SETTINGS_FILE, "mma-settings.json", patch)
+}
+
+/// `mma-shell-config.json` 的读-改-写（`POST /shell-config`：请求键优先）。
+pub fn patch_shell_config(patch: &serde_json::Value) -> Option<serde_json::Value> {
+    let dir = exe_dir()?;
+    merge_exe_json(dir.as_path(), SHELL_CONFIG_FILE, "mma-shell-config.json", patch)
+}
+
 fn exe_dir() -> Option<PathBuf> {
     env::current_exe()
         .ok()
@@ -342,6 +435,19 @@ const DETECT_CACHE_TTL: Duration = Duration::from_secs(30);
 static ETTERNA_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
 static MALODY_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
 static MALODY4_DETECT_CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
+
+/// 清空三个探测缓存（壳配置改了根目录后立即失效，否则 ≤30s 内仍用旧结果）。
+pub fn clear_detect_caches() {
+    if let Ok(mut c) = ETTERNA_DETECT_CACHE.lock() {
+        *c = None;
+    }
+    if let Ok(mut c) = MALODY_DETECT_CACHE.lock() {
+        *c = None;
+    }
+    if let Ok(mut c) = MALODY4_DETECT_CACHE.lock() {
+        *c = None;
+    }
+}
 
 /// 探测结果缓存。`once` 是泛型闭包（不是函数指针）：Malody 4 的启发探测需要捕获
 /// `process_exe` 传给 `detect_malody4_root_once`，函数指针签名无法编译。
@@ -581,6 +687,58 @@ pub fn write_window_state(state: &WindowState) {
         return;
     };
     let path = dir.join("mma-shell-state.json");
+    let tmp = path.with_extension("state.tmp");
+    if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+// ---- 设置窗口几何（mma-shell-settings-window.json，exe 旁）----
+// **独立文件**：与主窗 WindowState / mma-shell-state.json 完全分离——主窗的 4 条
+// 写通道与 5s persister 只碰 WindowState，两窗几何不会互相踩。
+
+const SETTINGS_WINDOW_STATE_FILE: &str = "mma-shell-settings-window.json";
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[serde(default)]
+pub struct SettingsWindowState {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl Default for SettingsWindowState {
+    fn default() -> Self {
+        // x == i32::MIN 是"无记忆位置"哨兵（与 WindowState 同约定）→ 建窗时居中。
+        Self { x: i32::MIN, y: 0, w: 1040, h: 720 }
+    }
+}
+
+pub fn read_settings_window_state() -> SettingsWindowState {
+    let Some(dir) = exe_dir() else {
+        return SettingsWindowState::default();
+    };
+    read_settings_window_state_in(&dir)
+}
+
+/// `read_settings_window_state` 的可注入路径版（缺失/损坏 → 默认；单测打在这条缝上）。
+fn read_settings_window_state_in(dir: &Path) -> SettingsWindowState {
+    fs::read_to_string(dir.join(SETTINGS_WINDOW_STATE_FILE))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn write_settings_window_state(state: &SettingsWindowState) {
+    let Some(dir) = exe_dir() else {
+        return;
+    };
+    write_settings_window_state_in(&dir, state);
+}
+
+fn write_settings_window_state_in(dir: &Path, state: &SettingsWindowState) {
+    let path = dir.join(SETTINGS_WINDOW_STATE_FILE);
     let tmp = path.with_extension("state.tmp");
     if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
         let _ = fs::rename(&tmp, &path);

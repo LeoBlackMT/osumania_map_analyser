@@ -805,6 +805,9 @@ impl Runtime {
             .map(|attached| attached.process_exe().to_path_buf());
         let root = crate::server::malody4_root(shared, process_exe.as_deref());
         if let Some(root) = root.as_ref() {
+            // 解析结果进 Shared 缓存：24061 侧（`/shell-config` 的 `resolved.malody4Root`）
+            // 拿不到 `process_exe`，只能从这里取"实际使用的目录"。
+            crate::server::set_malody4_root(shared, root.clone());
             // 根目录变化时才通知构建线程（构建线程只做构建，不做解析）
             if self.sent_root.as_deref() != Some(root.as_path()) {
                 let _ = self.root_tx.send(root.clone());

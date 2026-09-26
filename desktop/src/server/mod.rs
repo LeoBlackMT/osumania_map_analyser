@@ -47,6 +47,11 @@ pub struct Shared {
     pub etterna: Mutex<crate::etterna::EtternaStatus>,
     /// Malody 4.3.7 原生源状态（poller 更新；形状与 `EtternaStatus` 同角色）。
     pub malody4: Mutex<crate::malody4::Malody4Status>,
+    /// Malody 4.3.7 **实际使用**的根目录缓存（poller 每 tick 写入）：解析链第 1 级需要
+    /// `process_exe`，只有 poller 拿得到；24061 侧（`/shell-config` 的 `resolved`）只能取这里。
+    pub malody4_root_cache: Mutex<Option<PathBuf>>,
+    /// App 句柄（`/open-settings` 等窗口入口用；`main.rs` 的 `setup` 内注入，无窗口模式为 None）。
+    pub app: Mutex<Option<tauri::AppHandle>>,
     /// 主窗口控制句柄（契约 v2 control 帧；无窗口模式为 None）。
     pub window: Mutex<Option<tauri::WebviewWindow>>,
 }
@@ -54,6 +59,14 @@ pub struct Shared {
 /// 注入主窗口句柄（main.rs setup 调用）。
 pub fn set_main_window(shared: &Shared, window: tauri::WebviewWindow) {
     *shared.window.lock().unwrap() = Some(window);
+}
+
+/// 注入 App 句柄（main.rs setup 调用；幂等——重复注入只是覆盖同一个 handle）。
+///
+/// 必须在 `server::start` 之后**立即**调用：24061 listener 在 `start` 内就已经在服务请求，
+/// 而 `/open-settings` 需要 `shared.app` 为 `Some`。
+pub fn set_app_handle(shared: &Shared, app: tauri::AppHandle) {
+    *shared.app.lock().unwrap() = Some(app);
 }
 
 pub fn now_ms() -> u64 {
@@ -81,6 +94,8 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
         malody4: Mutex::new(crate::malody4::Malody4Status::default()),
+        malody4_root_cache: Mutex::new(None),
+        app: Mutex::new(None),
         window: Mutex::new(None),
     })
 }
@@ -302,16 +317,73 @@ pub fn malody4_root(shared: &Shared, process_exe: Option<&Path>) -> Option<PathB
     config::detect_malody4_root(process_exe)
 }
 
+/// 记录 poller 解析出的 Malody 4.3.7 根目录（`malody4::Runtime::tick` 每 tick 调用）。
+///
+/// 只写"解析成功"的值：解析链走完仍为 `None` 时保留上一次的缓存（那仍是最近一次
+/// 实际使用的目录），`malody4_effective_root` 的回落逻辑不受影响。
+pub fn set_malody4_root(shared: &Shared, root: PathBuf) {
+    *shared.malody4_root_cache.lock().unwrap() = Some(root);
+}
+
+/// Malody 4.3.7 的**有效**根目录：poller 缓存优先，未命中回落 `malody4_root(shared, None)`
+/// （24061 侧没有 `process_exe` ⇒ 跳过解析链第 1 级；命中缓存时与 poller 用的是同一个值）。
+pub fn malody4_effective_root(shared: &Shared) -> Option<PathBuf> {
+    let cached = shared.malody4_root_cache.lock().unwrap().clone();
+    if let Some(root) = cached {
+        return Some(root);
+    }
+    malody4_root(shared, None)
+}
+
 const PING_INTERVAL: Duration = Duration::from_secs(15);
 const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// tosu 在线状态跳变的**唯一**切换入口（定时器与 Step 6 的 `POST /settings` 复探共用）：
+/// 读旧值 → 写新标志 → **释放锁** → 按**新来源**广播一次全量 settings 帧 →
+/// 把该来源的缓存同步成同一份值（否则下面的"文件变化"检测会把同一份内容再推一次）。
+///
+/// 锁规则：`config::resolve_plugin_settings` 内部会再 lock `shared.tosu_online`
+/// （std `Mutex` 不可重入），故**绝不能持锁广播**。
+///
+/// 无跳变（`prev == online`）时是纯 no-op：调用方都只需在"探测值与存储值不同"时调用，
+/// 这里再幂等兜一次，避免把同一份内容重复推给页面、也避免复探吃掉跳变边沿。
+pub(crate) fn apply_tosu_online_transition(shared: &Shared, online: bool) {
+    let prev = {
+        let mut flag = shared.tosu_online.lock().unwrap();
+        let prev = *flag;
+        *flag = online;
+        prev
+    };
+    if prev == online {
+        return;
+    }
+    // 新来源的全量设置：在线 = tosu 设置文件；离线 = mma-settings.json。
+    let fresh = config::resolve_plugin_settings(shared);
+    if online {
+        // offline → online：tosu 侧缓存转存，之后 tosu 文件检测以它为基线。
+        *shared.tosu_settings_cache.lock().unwrap() = fresh.clone();
+    } else {
+        // online → offline：本地侧缓存转存（同理由）。
+        *shared.plugin_settings.lock().unwrap() = fresh.clone();
+    }
+    broadcast(shared, "settings", Some(fresh));
+}
 
 pub fn spawn_timers(shared: Arc<Shared>) {
     thread::spawn(move || {
         loop {
             thread::sleep(PING_INTERVAL);
+            // ① 在线判定（每 30s 一次 TCP 探测）+ 跳变处理。
+            //    `shared.tosu` 为 None 时 `online` 恒为 false ⇒ 跳变只可能是"在线 → 离线"，
+            //    绝不可能翻到在线。
             let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);
-            *shared.tosu_online.lock().unwrap() = online;
-            // 壳配置（mma-shell-config.json）变化检测：用户直接编辑文件 → 重载并推送 settings 帧。
+            let prev_online = *shared.tosu_online.lock().unwrap();
+            if online != prev_online {
+                apply_tosu_online_transition(&shared, online);
+            }
+            // ② 壳配置（mma-shell-config.json）变化检测：用户直接编辑文件 → 重载并推送
+            //    settings 帧。**不加在线门控**：在线时 `*_root` 解析链第 3 级同样读它，
+            //    用户手改后也必须 ≤30s 生效。
             let file_cfg = config::read_shell_config();
             let changed = {
                 let mut mem = shared.offline_settings.lock().unwrap();
@@ -325,22 +397,36 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             if changed {
                 broadcast(&shared, "settings", Some(file_cfg));
             }
-            // mma-settings.json（全量插件设置）变化检测：用户手改 → 推送 settings 帧。
-            let plugin_cfg = config::read_plugin_settings();
-            if plugin_cfg.is_object() && plugin_cfg != *shared.plugin_settings.lock().unwrap() {
-                *shared.plugin_settings.lock().unwrap() = plugin_cfg.clone();
-                broadcast(&shared, "settings", Some(plugin_cfg));
-            }
-            // tosu 设置文件（<插件目录名>.values.json）变化检测：用户在线模式
-            // 在 tosu dashboard 改设置 → 文件更新 → 推送 settings 帧（壳窗口
-            // 页面即时生效，无需重启）。离线（无 tosu）时跳过。
-            if let Some(info) = shared.tosu.as_ref() {
-                let tosu_cfg = config::read_tosu_settings(info);
-                if tosu_cfg.is_object()
-                    && tosu_cfg != *shared.tosu_settings_cache.lock().unwrap()
+            // ③ mma-settings.json（全量插件设置）变化检测：用户手改 → 推送 settings 帧。
+            //    **仅离线**：在线时 tosu 是权威，推本地文件等于把错误来源镜像给页面。
+            //    stat → read → stat：读取期间文件又被写（tmp + rename 的并发写）则跳过
+            //    本 tick，绝不推半份内容。
+            if !online {
+                let path = config::plugin_settings_path();
+                let mtime_before = path.as_deref().and_then(config::file_mtime);
+                let plugin_cfg = config::read_plugin_settings();
+                let mtime_after = path.as_deref().and_then(config::file_mtime);
+                if mtime_before == mtime_after
+                    && plugin_cfg.is_object()
+                    && plugin_cfg != *shared.plugin_settings.lock().unwrap()
                 {
-                    *shared.tosu_settings_cache.lock().unwrap() = tosu_cfg.clone();
-                    broadcast(&shared, "settings", Some(tosu_cfg));
+                    *shared.plugin_settings.lock().unwrap() = plugin_cfg.clone();
+                    broadcast(&shared, "settings", Some(plugin_cfg));
+                }
+            }
+            // ④ tosu 设置文件（<插件目录名>.values.json）变化检测：用户在线模式
+            //    在 tosu dashboard 改设置 → 文件更新 → 推送 settings 帧（壳窗口
+            //    页面即时生效，无需重启）。**仅在线**：离线时本地文件才是权威，
+            //    tosu 文件只是记忆里的旧值；`shared.tosu` 为 None 时本段恒不执行。
+            if online {
+                if let Some(info) = shared.tosu.as_ref() {
+                    let tosu_cfg = config::read_tosu_settings(info);
+                    if tosu_cfg.is_object()
+                        && tosu_cfg != *shared.tosu_settings_cache.lock().unwrap()
+                    {
+                        *shared.tosu_settings_cache.lock().unwrap() = tosu_cfg.clone();
+                        broadcast(&shared, "settings", Some(tosu_cfg));
+                    }
                 }
             }
             broadcast(&shared, "state", Some(state_frame(&shared)));
@@ -358,7 +444,7 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);
         *shared.tosu_online.lock().unwrap() = online;
     }
-    let listener = match TcpListener::bind("127.0.0.1:24061") {
+    let listener = match TcpListener::bind(("127.0.0.1", HTTP_PORT)) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("mma-shell: cannot bind 24061 ({e}) — another instance already running?");
