@@ -55,6 +55,20 @@ if ($forbidden) {
     throw ("refusing to package dev artefacts: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
 }
 
+# 兜底断言：安装素材必须随包分发。加载器与 Unity 参考程序集都是 gitignore 的
+# 本地资产，插件 DLL 由 build.ps1 落盘——缺任何一个，安装器都会拒绝安装，
+# 用户拿到的就是一个装不上的包。
+$required = @(
+    'bridges\malody\bepinex\loader\bepinex-il2cpp-788.zip',
+    'bridges\malody\bepinex\unity-libs\2022.3.62.zip',
+    'bridges\malody\bepinex\plugin\MMAMalodySelection.dll'
+)
+foreach ($rel in $required) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stage $rel) -PathType Leaf)) {
+        throw "release package is missing a required asset: $rel"
+    }
+}
+
 Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Remove-Item -Recurse -Force $stage
 

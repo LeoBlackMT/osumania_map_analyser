@@ -374,6 +374,26 @@ This client is not distributed on Steam, so no Steam library is searched.
     LoaderZipHashOkZh    = '加载器压缩包 SHA256 校验通过：{0}'
     LoaderZipHashBad     = 'loader archive SHA256 mismatch, nothing was written (expected {0}, got {1})'
     LoaderZipHashBadZh   = '加载器压缩包 SHA256 不匹配，未写入任何文件（期望 {0}，实际 {1}）'
+    UnityLibsFound       = 'unity reference libraries archive found: {0}'
+    UnityLibsFoundZh     = '已找到 Unity 参考程序集压缩包：{0}'
+    UnityLibsEnvBad      = 'MMA_MALODY_UNITY_LIBS_ZIP does not exist, falling back to the default path: {0}'
+    UnityLibsEnvBadZh    = 'MMA_MALODY_UNITY_LIBS_ZIP 指向的文件不存在，改用默认路径：{0}'
+    UnityLibsMissing     = 'unity reference libraries archive not found. BepInEx downloads this file itself on the first launch and then reuses it without checking it ever again, so one truncated download breaks every later launch. Save a copy as:`n  {0}`nor set the MMA_MALODY_UNITY_LIBS_ZIP environment variable to its path, then run this again.'
+    UnityLibsMissingZh   = '未找到 Unity 参考程序集压缩包。BepInEx 会在首次启动时自行下载这个文件，此后一直复用且不再校验，因此一次下载不完整就会让之后每次启动都失败。请把它保存为：`n  {0}`n或把环境变量 MMA_MALODY_UNITY_LIBS_ZIP 指向该文件，然后重新运行。'
+    UnityLibsHashOk      = 'unity reference libraries SHA256 verified: {0}'
+    UnityLibsHashOkZh    = 'Unity 参考程序集 SHA256 校验通过：{0}'
+    UnityLibsHashBad     = 'unity reference libraries SHA256 mismatch, nothing was written (expected {0}, got {1})'
+    UnityLibsHashBadZh   = 'Unity 参考程序集 SHA256 不匹配，未写入任何文件（期望 {0}，实际 {1}）'
+    UnityLibsOk          = 'unity reference libraries: {0}'
+    UnityLibsOkZh        = 'Unity 参考程序集：{0}'
+    UnityLibsSkip        = 'unity reference libraries already in place with the same hash: {0}'
+    UnityLibsSkipZh      = 'Unity 参考程序集已存在且哈希一致：{0}'
+    UnityLibsRepair      = '{0} is not a valid copy (expected {1}, got {2}) - replacing it so the next launch does not fail with it'
+    UnityLibsRepairZh    = '{0} 不是有效副本（期望 {1}，实际 {2}）——已替换，避免下次启动因此失败'
+    UnityLibsBad         = 'could not place the unity reference libraries: {0}'
+    UnityLibsBadZh       = '无法放置 Unity 参考程序集：{0}'
+    UnityLibsVerifyBad   = 're-verification failed: unity reference libraries mismatch at {0}'
+    UnityLibsVerifyBadZh = '复验失败：Unity 参考程序集不一致 {0}'
     ZipOpenFail          = 'could not open {0}: {1}'
     ZipOpenFailZh        = '无法打开 {0}：{1}'
     ManifestNo           = 'loader manifest not found: {0}'
@@ -1373,6 +1393,16 @@ function Uninstall-Malody4Bridge {
 $script:LoaderZipSha256   = 'F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A'
 $script:LoaderZipRel      = 'malody\bepinex\loader\bepinex-il2cpp-788.zip'
 $script:LoaderManifestRel = 'malody\bepinex\loader-manifest.bepinex-6.0.0-be.788.json'
+# Unity reference assemblies for Malody V's Unity version (2022.3.62). BepInEx
+# downloads this one file itself on its first launch
+# (https://unity.bepinex.dev/libraries/2022.3.62.zip) and afterwards reuses
+# whatever sits in BepInEx\unity-libs\ without ever validating it again, so a
+# single truncated download makes every later launch fail with
+# "End of Central Directory record could not be found" and no plugin ever loads.
+# We vendor the byte-exact copy and install it before the first launch instead.
+$script:UnityLibsZipSha256 = '575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1'
+$script:UnityLibsZipRel    = 'malody\bepinex\unity-libs\2022.3.62.zip'
+$script:UnityLibsTarget    = 'BepInEx/unity-libs/2022.3.62.zip'
 $script:BridgeDllRel      = 'malody\bepinex\plugin\MMAMalodySelection.dll'
 $script:BridgeManifestRel = 'BepInEx\bepinex-install.json'
 $script:BridgeDllTarget   = 'BepInEx/plugins/MalodyInsight/MMAMalodySelection.dll'
@@ -1505,6 +1535,79 @@ function Assert-LoaderZipHash {
         return $false
     }
     Write-Step OK ((Get-Text 'LoaderZipHashOk') -f $actual)
+    return $true
+}
+
+function Resolve-UnityLibsZip {
+    # Locate the vendored Unity reference assemblies for Malody V's Unity
+    # version: MMA_MALODY_UNITY_LIBS_ZIP first, then the vendored local slot
+    # next to this script (bridges\malody\bepinex\unity-libs\, not committed).
+    # No third source: this file is what keeps the loader's first launch offline
+    # and deterministic, so it ships with the installer like the loader archive.
+    if ($env:MMA_MALODY_UNITY_LIBS_ZIP) {
+        if (Test-Path -LiteralPath $env:MMA_MALODY_UNITY_LIBS_ZIP -PathType Leaf) {
+            $p = (Get-Item -LiteralPath $env:MMA_MALODY_UNITY_LIBS_ZIP -Force).FullName
+            Write-Step INFO ((Get-Text 'UnityLibsFound') -f $p)
+            return $p
+        }
+        Write-Step WARN ((Get-Text 'UnityLibsEnvBad') -f $env:MMA_MALODY_UNITY_LIBS_ZIP)
+    }
+    $def = Join-Path $PSScriptRoot $script:UnityLibsZipRel
+    if (Test-Path -LiteralPath $def -PathType Leaf) {
+        $p = (Get-Item -LiteralPath $def -Force).FullName
+        Write-Step INFO ((Get-Text 'UnityLibsFound') -f $p)
+        return $p
+    }
+    Write-Step FAIL ((Get-Text 'UnityLibsMissing') -f $def)
+    return $null
+}
+
+function Assert-UnityLibsZipHash {
+    param([string]$Path)
+    $actual = ''
+    try { $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } catch {
+        Write-Step FAIL ((Get-Text 'ZipOpenFail') -f $Path, $_.Exception.Message)
+        return $false
+    }
+    if ($actual -ne $script:UnityLibsZipSha256) {
+        Write-Step FAIL ((Get-Text 'UnityLibsHashBad') -f $script:UnityLibsZipSha256, $actual)
+        return $false
+    }
+    Write-Step OK ((Get-Text 'UnityLibsHashOk') -f $actual)
+    return $true
+}
+
+function Install-UnityLibsZip {
+    <# Place the vendored archive at {root}\BepInEx\unity-libs\2022.3.62.zip.
+       A file already there is kept only while size + SHA256 match; anything else
+       - a truncated download, a half-written copy - is replaced, which is what
+       repairs an install whose every launch dies in InteropManager. #>
+    param([string]$Root, [string]$ZipPath, [long]$Size, [string]$Sha256)
+    $dst = Join-BridgeTarget -Root $Root -Rel $script:UnityLibsTarget
+    if ((Get-BridgeFileState -Path $dst -Sha256 $Sha256 -Size $Size) -eq 'ok') {
+        Write-Step SKIP ((Get-Text 'UnityLibsSkip') -f $script:UnityLibsTarget)
+        return $true
+    }
+    if (-not (Assert-NoReparsePoint -Path $dst -StopAt $Root)) { return $false }
+    $dir = Split-Path -Path $dst -Parent
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $had = Test-Path -LiteralPath $dst -PathType Leaf
+    if ($had) {
+        $old = '?'
+        try {
+            $oldItem = Get-Item -LiteralPath $dst -Force
+            $old = '{0} bytes, {1}' -f $oldItem.Length, (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash
+        } catch { }
+        Write-Step WARN ((Get-Text 'UnityLibsRepair') -f $script:UnityLibsTarget, ('{0} bytes, {1}' -f $Size, $Sha256), $old)
+    }
+    Copy-Item -LiteralPath $ZipPath -Destination $dst -Force
+    if ((Get-BridgeFileState -Path $dst -Sha256 $Sha256 -Size $Size) -ne 'ok') {
+        Write-Step FAIL ((Get-Text 'UnityLibsBad') -f $script:UnityLibsTarget)
+        return $false
+    }
+    if (-not $had) { Write-Step OK ((Get-Text 'UnityLibsOk') -f $script:UnityLibsTarget) }
     return $true
 }
 
@@ -1686,8 +1789,9 @@ function Read-BridgeManifest {
 function Write-BridgeManifest {
     # Write {root}\BepInEx\bepinex-install.json. The section mapping is fixed:
     # created = text files we created (by path, no hash), installed = plugin
-    # files we placed (hash), kept = the loader archive entries (hash; part of
-    # our install but never deleted on uninstall).
+    # files we placed (hash), kept = everything else the loader needs (hash; the
+    # archive entries plus the vendored Unity reference assemblies - part of our
+    # install but never deleted on uninstall).
     param([string]$Root, [object[]]$Created, [object[]]$Installed, [object[]]$Kept)
     $path = Join-Path $Root $script:BridgeManifestRel
     $dir = Split-Path -Path $path -Parent
@@ -1885,8 +1989,21 @@ function Install-MalodyBepInExBridge {
         Write-Step FAIL (Get-Text 'MalodyBridgeNot')
         return
     }
+    # read-only: the vendored Unity reference assemblies, so the loader's first
+    # launch never has to download them (see $script:UnityLibsZipRel)
+    $ulZip = Resolve-UnityLibsZip
+    if (-not $ulZip) {
+        Write-Step FAIL (Get-Text 'MalodyBridgeNot')
+        return
+    }
+    if (-not (Assert-UnityLibsZipHash -Path $ulZip)) {
+        Write-Step FAIL (Get-Text 'MalodyBridgeNot')
+        return
+    }
+    $ulSize = (Get-Item -LiteralPath $ulZip -Force).Length
+    $ulHash = (Get-FileHash -LiteralPath $ulZip -Algorithm SHA256).Hash
     # hard gate 3: every path we are about to write, checked before the first write
-    $targets = @($script:BridgeManifestRel, $script:BridgeDllTarget, $script:BridgeCfgTarget)
+    $targets = @($script:BridgeManifestRel, $script:BridgeDllTarget, $script:BridgeCfgTarget, $script:UnityLibsTarget)
     foreach ($e in $plan) { $targets += ($e.Path -replace '/', '\') }
     foreach ($rel in $targets) {
         if (-not (Assert-NoReparsePoint -Path (Join-BridgeTarget -Root $root -Rel $rel) -StopAt $root)) {
@@ -1914,6 +2031,7 @@ function Install-MalodyBepInExBridge {
     $kept = @($plan | ForEach-Object {
         [pscustomobject]@{ path = $_.Path; size = [long]$_.Size; sha256 = [string]$_.Sha256 }
     })
+    $kept += [pscustomobject]@{ path = $script:UnityLibsTarget; size = [long]$ulSize; sha256 = $ulHash }
     if ($LoaderOnly) {
         # nothing of ours beyond the loader: an empty installed/created pair
         # keeps the record honest, and -Uninstall then removes nothing but the
@@ -1932,6 +2050,10 @@ function Install-MalodyBepInExBridge {
     if (-not (Expand-BridgeLoader -Root $root -ZipPath $zip -Plan $plan -InPlace $state.InPlace)) {
         Write-Step FAIL (Get-Text 'MalodyBridgeNot')
         Write-Host (Get-Text 'BridgeResumeTip') -ForegroundColor Gray
+        return
+    }
+    if (-not (Install-UnityLibsZip -Root $root -ZipPath $ulZip -Size $ulSize -Sha256 $ulHash)) {
+        Write-Step FAIL (Get-Text 'MalodyBridgeNot')
         return
     }
     if ($LoaderOnly) {
@@ -1960,6 +2082,11 @@ function Install-MalodyBepInExBridge {
         }
     }
     if ($bad -gt 0) {
+        Write-Step FAIL (Get-Text 'MalodyBridgeNot')
+        return
+    }
+    if ((Get-BridgeFileState -Path (Join-BridgeTarget -Root $root -Rel $script:UnityLibsTarget) -Sha256 $ulHash -Size $ulSize) -ne 'ok') {
+        Write-Step FAIL ((Get-Text 'UnityLibsVerifyBad') -f $script:UnityLibsTarget)
         Write-Step FAIL (Get-Text 'MalodyBridgeNot')
         return
     }
