@@ -209,18 +209,78 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
 
 /// 启动时确保 mma-shell-config.json 存在（无 tosu 用户可发现并直接编辑）。
 /// 骨架含 hotkeys 与 logLevel（用户验收项 1：骨架必须完整可编辑）。
+///
+/// 文件**已存在**时只补缺：hotkeys 里缺失/空串的键按下面的默认值补齐并落盘
+/// （功能新增前写下的旧文件缺 `settings`，设置页会显示成空输入框）；用户改过的值
+/// 与其余顶层键一字不动，无改动就不落盘。
 pub fn ensure_shell_config() {
     let Some(dir) = exe_dir() else {
         return;
     };
+    ensure_shell_config_in(&dir);
+}
+
+/// `ensure_shell_config` 的可注入路径版（单测打在这条缝上，绝不碰 exe 旁的真配置）。
+fn ensure_shell_config_in(dir: &Path) {
     let path = dir.join(SHELL_CONFIG_FILE);
-    if path.exists() {
+    if !path.exists() {
+        let _ = fs::write(
+            &path,
+            "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+        );
         return;
     }
-    let _ = fs::write(
-        &path,
-        "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
-    );
+    let mut existing = read_json_file(&path, "mma-shell-config.json");
+    if backfill_shell_hotkeys(&mut existing) {
+        // 落盘走 write_shell_config 的同一个 tmp + rename 写者。
+        let _ = write_exe_json(dir.to_path_buf(), SHELL_CONFIG_FILE, &existing);
+    }
+}
+
+/// 骨架里的 hotkeys 默认值（**必须与上面骨架的字面量一致**：写骨架与补缺是同一套默认）。
+const DEFAULT_HOTKEYS: [(&str, &str); 4] = [
+    ("topmost", "Ctrl+Shift+T"),
+    ("clickThrough", "Ctrl+Shift+C"),
+    ("close", "Ctrl+Q"),
+    ("settings", "Ctrl+Shift+S"),
+];
+
+/// 给已有配置补 hotkeys 缺键（只加不改）：返回是否真的补了（→ 是否需要落盘）。
+///
+///   * `hotkeys` 缺失或不是对象（用户手改成 null/字符串）→ 换成一个空对象再补四个键
+///     （非对象值壳本来就解析不出热键，替换不丢可用信息）；
+///   * 某个键只在「存在且是非空字符串」时算已有——用户自定义的值原样保留；
+///   * 配置根不是对象（缺失/损坏，读取时已记 stderr 警告）→ 一律不猜、不写。
+fn backfill_shell_hotkeys(config: &mut serde_json::Value) -> bool {
+    let Some(root) = config.as_object_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    if !root.get("hotkeys").map(|v| v.is_object()).unwrap_or(false) {
+        root.insert(
+            "hotkeys".to_string(),
+            serde_json::Value::Object(serde_json::Map::new()),
+        );
+        changed = true;
+    }
+    let Some(hotkeys) = root.get_mut("hotkeys").and_then(|v| v.as_object_mut()) else {
+        return changed; // 上面刚确保过是对象；不可达，防御式返回（绝不 panic）
+    };
+    for (key, default) in DEFAULT_HOTKEYS {
+        let present = hotkeys
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        if !present {
+            hotkeys.insert(
+                key.to_string(),
+                serde_json::Value::String(default.to_string()),
+            );
+            changed = true;
+        }
+    }
+    changed
 }
 
 fn write_exe_json(dir: PathBuf, file: &str, value: &serde_json::Value) -> bool {
