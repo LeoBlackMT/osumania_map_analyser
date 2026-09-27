@@ -67,6 +67,9 @@ export const state = {
     lastBeatmapKey: "",
     lastBeatmapIdentity: "",
     lastBeatmapIdentitySource: "",
+    // 本页面已通过自己的 tosu 数据面（直连 socket）收到过载荷——页面侧信号，
+    // 与壳的 shellTosuOnline 探测位无关。
+    tosuDataSeen: false,
     lastSongKey: "",
     pendingChangeKind: "",
     activeChangeKind: "",

@@ -59,12 +59,21 @@ export async function initialize() {
     });
     // 延迟初始加载仅用于「壳离线页」（端口 24061，避免 tosu 抓取噪声）；
     // 浏览器模式（tosu 页）立即执行，否则首图/切图/背景会被 1.2s 延迟吞掉。
+    // 页面自己的 tosu 数据面已收到载荷（state.tosuDataSeen）时同样立即执行——
+    // 有数据就不会有"抓取噪声"，等 1.2s 只是白等。
     const isShellOfflinePage = typeof window !== "undefined"
         && window.location
         && String(window.location.port) === "24061";
-    const shellOffline = isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline;
+    const shellOffline = isShellOfflinePage && state.externalBridgeAvailable
+        && !state.shellTosuOnline && !state.tosuDataSeen;
     if (shellOffline) {
-        setTimeout(() => scheduleRecompute("initial load", false), 1200);
+        // 兜底定时器登记在 state.recalcTimerId 上：窗口期内 tosu 载荷到达时，
+        // socketHandlers 的 scheduleRecompute 会清掉它并在 200ms 内计算，
+        // 不会白等满 1.2s、也不会多跑一次 "initial load"。
+        state.recalcTimerId = setTimeout(() => {
+            state.recalcTimerId = null;
+            scheduleRecompute("initial load", false);
+        }, 1200);
     } else {
         scheduleRecompute("initial load", false);
     }

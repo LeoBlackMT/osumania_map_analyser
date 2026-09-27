@@ -388,10 +388,12 @@ export async function fetchBeatmapFile(reason) {
     // 离线圈模式守卫：仅当页面本身就是壳离线页（端口 24061）且无 tosu 数据面
     // 时才跳过 osu 抓取（避免 "Failed to fetch" 噪声）。浏览器 tosu 页
     // （其他端口）即使壳开着也绝不挡——否则首图/背景/切图会被吞。
+    // 数据面 = 壳探测在线 OR 页面自己的 tosu socket 已收到过载荷。
     const isShellOfflinePage = typeof window !== "undefined"
         && window.location
         && String(window.location.port) === "24061";
-    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline) {
+    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable
+        && !state.shellTosuOnline && !state.tosuDataSeen) {
         setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
         return;
     }
@@ -518,7 +520,8 @@ export async function fetchBeatmapFile(reason) {
             }
         } else {
             // 壳离线页（24061）无 tosu 数据面时任何 osu 抓取都守卫：Waiting 而非报错。
-            if (isShellOfflinePage && state.externalBridgeAvailable && !state.shellTosuOnline && !state.pendingSourceText) {
+            if (isShellOfflinePage && state.externalBridgeAvailable
+                && !state.shellTosuOnline && !state.tosuDataSeen && !state.pendingSourceText) {
                 setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                 return;
             }
