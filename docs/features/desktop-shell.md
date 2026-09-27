@@ -14,7 +14,7 @@
 3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 4. **Malody 4.3.7 只读观察器**：200ms 一拍——从进程外读锚点身份键（`ReadProcessMemory`）、tail 游戏日志取场景、轮询 `config.json` 取变速位与判定档，广播 `malody4_selection` / song / state 帧。**不向游戏目录写入任何文件**、不注入、不 hook（详见 [multi-source.md](multi-source.md) 与 [malody4-source.md](malody4-source.md)）。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv}.rs` + `malody4/{mod,anchor,library,gamelog,selection,config,model}.rs` + `server/`（mod/http/ws/post/log）；契约 `desktop/docs/CONTRACT.md`（v3）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv}.rs` + `malody4/{mod,anchor,library,gamelog,selection,config,model}.rs` + `server/`（mod/http/ws/post/log/bridge）；契约 `desktop/docs/CONTRACT.md`（**v5**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（main.rs + config.rs）
 
@@ -24,7 +24,7 @@ plugin_dir() 解析（env MMA_PLUGIN_DIR 覆盖 → exe 上溯 0..=3 层找
 probe_tosu_env()（exe 目录向上 ≤3 层找 tosu.env；MMA_SKIP_TOSU_PROBE 跳过）
   ├─ 命中且 tosu_online()（TCP connect 2s）→ url = http://{ip}:{port}/{插件目录 %20}/
   └─ 未命中/离线 → url = http://127.0.0.1:24061/
-server::start（24060/24061 双监听 + 30s 定时帧 + etterna poller）
+server::start（24060/24061 + **17653 桥监听** + 30s 定时帧 + etterna poller）
 window.navigate(url)
 ```
 
@@ -35,18 +35,29 @@ window.navigate(url)
 - **Etterna 与 Malody V 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > **壳配置 `mma-shell-config.json`**（exe 旁，`{gameClient, etternaRoot, malodyRoot, malody4Root, hotkeys, logLevel}`，可直接编辑，30s 周期检测变化后重载并推送 settings 帧）> tosu 在线只读。无 tosu 用户无需下载 tosu 即可配置游戏路径。启发探测（Steam 库/常见路径）带**盘符就绪预检**——不存在的盘符（用户没有 D: 盘等）快速跳过、绝不 panic/阻塞；且探测结果 30s TTL 缓存，未配置根目录时轮询器不会每个周期都打注册表与盘符。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
-## 3. 契约 v3 帧
+## 3. 契约 v5 帧
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 3, tosuOnline}`；契约不匹配=终态（页面停止重连并提示） |
-| state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},malody{alive},malody4{alive,playing,screen,reason?,judge?}} |
-| song | 壳→页 | requestId/source/identity/modData{rate,...}/meta{...judge?}/cover/rawText |
+| hello | 壳→页 | `{contract: 5, tosuOnline}`；页面接受 `[3,5]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
+| state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?}} |
+| song | 壳→页 | requestId/source/identity/modData{rate,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`winScale`**（`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0） |
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 离线设置 JSON（在线只读不推） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
+
+## 3b. Malody V 选曲桥端点（`127.0.0.1:17653`）
+
+游戏侧是 BepInEx 6 IL2CPP 插件 `MMAMalodySelection.dll`（本仓库自建 fork，源码 `bridges/malody/bepinex/plugin/`），它 `POST /selection` 推送选曲/游玩/结算观察。壳侧实现 `server/bridge.rs`：
+
+- **载荷 11 字段**：上游 8 字段 + `judge_level`（0..4 ↔ A~E，`MAX` 不算档位）+ `pro_judge` + `turbo`。三者全部容错：缺失/`null`/类型错/越界一律视为"未知"，**绝不拒收**（旧插件仍可用）。
+- **门禁顺序**：Host 白名单 → 路径沙箱（`canonicalize` 后必须落在 `{malodyRoot}/chart/` 内且后缀 `.mc`/`.osu`）→ **任何 Origin 头出现即 403** → 方法 → Content-Type → body 长度 → JSON。任一步不过都返回 JSON 错误体。
+- **真实事件判定 = 内容六元组**（`path, rate_text, screen, judge_text, pro_text, turbo_text`）；心跳与重复观察不产生帧、不续期。`turbo` 必须在元组里：选曲界面切 Turbo 时倍率不变，少了它会把它当成重复而静默停在上一个值。
+- **`winScale`**：只有"确认非 Turbo（`turbo == false`）且倍率命中名义值 1.2/1.5/0.8（±0.005）"才给 `1/名义值`；Turbo／未知／自定义倍率一律 `null`。**未知不得与"确认非 Turbo"混为一谈**——那正好会让 Dash/Rush/Slow 被当成 Turbo。
+- **判定档来源**：插件值优先；插件没给才回落 `{malodyRoot}/config.json` 的 `user_judge_level`，两者都有且不一致时用插件值并打**一条** info。Pro **永不**来自该文件。
+- **端口被占**：壳报"Malody 选曲桥端口 17653 被占用，游戏内选曲跟随不可用"，其余功能不受影响。
 
 ## 4. 窗口操控（v2 起）
 

@@ -2,6 +2,7 @@
 // 拆分：mod.rs（状态/帧/启动/timers）+ http.rs（24061 静态/settings/cover）
 //       + ws.rs（/ws 帧循环）+ post.rs（24060 POST/resolve/control）+ log.rs（日志）。
 
+pub mod bridge;
 pub mod http;
 pub mod log;
 pub mod post;
@@ -35,6 +36,10 @@ pub struct Shared {
     pub tosu_settings_cache: Mutex<serde_json::Value>,
     /// Malody 最近 POST 时间（60s 存活窗口）。
     pub last_malody_post: Mutex<Option<Instant>>,
+    /// Malody V 选曲桥状态（17653 listener 更新）——去重、心跳与会话重置的唯一去重点。
+    pub malody_bridge: Mutex<bridge::MalodyBridgeState>,
+    /// 17653 是否绑定成功（被占用时为 false，其余功能照常）。
+    pub bridge_listen_ok: Mutex<bool>,
     pub tosu_online: Mutex<bool>,
     /// 壳侧推送错误面（state.errors，页面 status 行展示）。
     pub shell_errors: Mutex<Vec<String>>,
@@ -70,6 +75,8 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         plugin_settings: Mutex::new(config::read_plugin_settings()),
         tosu_settings_cache: Mutex::new(serde_json::Value::Null),
         last_malody_post: Mutex::new(None),
+        malody_bridge: Mutex::new(bridge::MalodyBridgeState::default()),
+        bridge_listen_ok: Mutex::new(false),
         tosu_online: Mutex::new(false),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
@@ -94,19 +101,36 @@ pub fn broadcast(shared: &Shared, frame_type: &str, payload: Option<serde_json::
 /// state 帧的薄封装：**先全部克隆再组装**，组装本身在 `malody4::build_state_frame`
 /// 里用 `frames::SourcesFrame` 结构体完成（字段不漏；既有两个源的语义不变）。
 ///
+/// v4：`sources.malody` 由 `bridge::malody_source` 组装后**整体覆盖**同一对象——v5 起八个字段
+/// （`alive/transport/screen/playing/eventSeq/judge/pro/turbo`）与"只由 24060 POST 写入的 60s 窗口"
+/// 合成一条口径：桥 8s 存活 **或** Lua 通道 60s 存活。`malody4/**` 属另一份计划，本步不动
+/// 它的签名，故在 JSON 层覆盖这一个对象（其余三个源仍由它组装）。
+///
 /// `pub(crate)`：poller 在 `alive`/`playing` 跳变时要即时推送一次 state。
-/// **调用方不得持有 `shared.malody4` 的 `MutexGuard` 跨越本函数**——本函数会再 lock
-/// 同一字段，std `Mutex` 不可重入，跨调用持锁会自死锁。
+/// **调用方不得持有 `shared.malody4` / `shared.malody_bridge` 的 `MutexGuard` 跨越本函数**
+/// ——本函数会再 lock 这两个字段，std `Mutex` 不可重入，跨调用持锁会自死锁。
 pub(crate) fn state_frame(shared: &Shared) -> serde_json::Value {
     let tosu_online = *shared.tosu_online.lock().unwrap();
     let errors = shared.shell_errors.lock().unwrap().clone();
     let etterna = shared.etterna.lock().unwrap().clone();
-    let malody_alive = match *shared.last_malody_post.lock().unwrap() {
+    let lua_alive = match *shared.last_malody_post.lock().unwrap() {
         Some(at) if at.elapsed() < Duration::from_secs(60) => true,
         _ => false,
     };
     let malody4 = shared.malody4.lock().unwrap().clone();
-    crate::malody4::build_state_frame(tosu_online, &errors, &etterna, malody_alive, &malody4)
+    let malody = {
+        let state = shared.malody_bridge.lock().unwrap();
+        bridge::malody_source(&state, lua_alive)
+    };
+    let mut value =
+        crate::malody4::build_state_frame(tosu_online, &errors, &etterna, lua_alive, &malody4);
+    if let Some(sources) = value.get_mut("sources").and_then(|s| s.as_object_mut()) {
+        sources.insert(
+            "malody".to_string(),
+            serde_json::to_value(malody).unwrap_or(serde_json::Value::Null),
+        );
+    }
+    value
 }
 
 pub fn hello_frame(shared: &Shared) -> Envelope {
@@ -341,9 +365,51 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
             std::process::exit(2);
         }
     };
-    let post_listener = TcpListener::bind("127.0.0.1:24060").unwrap();
+    // 24060 / 17653 端口占用**不 panic、不 exit**：记一条 error 日志 + 进 `shell_errors`
+    // （页面 status 行可见），其余一切照常——单端口被占不该让整个壳起不来。
+    let post_listener = match TcpListener::bind("127.0.0.1:24060") {
+        Ok(l) => Some(l),
+        Err(e) => {
+            log::log_at(
+                "error",
+                &format!("mma-shell: cannot bind 24060 ({e}) — the Malody editor channel is unavailable"),
+            );
+            shared
+                .shell_errors
+                .lock()
+                .unwrap()
+                .push("Malody 编辑器通道端口 24060 被占用，编辑器分析不可用".to_string());
+            None
+        }
+    };
+    let bridge_listener = match TcpListener::bind(("127.0.0.1", BRIDGE_PORT)) {
+        Ok(l) => {
+            *shared.bridge_listen_ok.lock().unwrap() = true;
+            Some(l)
+        }
+        Err(e) => {
+            log::log_at(
+                "error",
+                &format!(
+                    "mma-shell: cannot bind {} ({e}) — the Malody selection bridge is unavailable",
+                    BRIDGE_PORT
+                ),
+            );
+            shared
+                .shell_errors
+                .lock()
+                .unwrap()
+                .push("Malody 选曲桥端口 17653 被占用，游戏内选曲跟随不可用".to_string());
+            None
+        }
+    };
     http::spawn_http_ws(shared.clone(), listener);
-    post::spawn_post(shared.clone(), post_listener);
+    if let Some(post_listener) = post_listener {
+        post::spawn_post(shared.clone(), post_listener);
+    }
+    if let Some(bridge_listener) = bridge_listener {
+        bridge::spawn_bridge(shared.clone(), bridge_listener);
+    }
     spawn_timers(shared.clone());
     crate::etterna::spawn_poller(shared.clone());
     crate::malodyv::spawn_malody_poller(shared.clone());
@@ -352,17 +418,5 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{md5_hex, md5_hex_bytes};
-
-    #[test]
-    fn md5_hex_of_empty_string_is_unchanged() {
-        assert_eq!(md5_hex(""), "d41d8cd98f00b204e9800998ecf8427e");
-    }
-
-    #[test]
-    fn md5_hex_bytes_matches_md5_hex_for_ascii() {
-        assert_eq!(md5_hex_bytes(b"abc"), md5_hex("abc"));
-        assert_eq!(md5_hex_bytes(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
-    }
-}
+#[path = "../../tests-local/server_mod.rs"]
+mod tests;

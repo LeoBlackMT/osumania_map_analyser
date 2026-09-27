@@ -102,18 +102,24 @@ pub fn respond_json(stream: &mut TcpStream, code: u16, body: &str) {
 fn status_text(code: u16) -> &'static str {
     match code {
         200 => "OK",
+        202 => "Accepted",
         400 => "Bad Request",
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        413 => "Payload Too Large",
+        415 => "Unsupported Media Type",
         500 => "Internal Server Error",
         504 => "Gateway Timeout",
         _ => "Unknown",
     }
 }
 
-/// Host 头仅允许本机 24061（`http.rs` 单 listener 端口固定，硬编码即可）。
-fn is_local_host(head: &str) -> bool {
+/// Host 头仅允许本机 `{host}:{port}`（`127.0.0.1` / `localhost` / `[::1]`）。
+///
+/// 端口按参数传入：本函数同时服务 24061（静态/设置）与 17653（Malody 选曲桥），
+/// 两者各自只有一个 listener，端口是唯一的差异。
+pub(crate) fn is_local_host(head: &str, port: u16) -> bool {
     let Some(host) = head.lines().find_map(|l| {
         let lower = l.to_ascii_lowercase();
         if lower.starts_with("host:") {
@@ -124,13 +130,18 @@ fn is_local_host(head: &str) -> bool {
     }) else {
         return true;
     };
-    matches!(host.as_str(), "127.0.0.1:24061" | "localhost:24061" | "[::1]:24061")
+    let allowed = [
+        format!("127.0.0.1:{}", port),
+        format!("localhost:{}", port),
+        format!("[::1]:{}", port),
+    ];
+    allowed.iter().any(|a| a == &host)
 }
 
 fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &str) {
     // Host 头校验：仅接受本机 24061（DNS rebinding 防护——rebind 后的恶意页
     // Host 为攻击者域名，直接 403）。无 Host 头（HTTP/1.0 裸客户端）放行。
-    if !is_local_host(head) {
+    if !is_local_host(head, 24061) {
         respond_json(&mut stream, 403, r#"{"error":"forbidden host"}"#);
         return;
     }

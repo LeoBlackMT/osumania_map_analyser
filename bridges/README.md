@@ -11,7 +11,7 @@
 面向不熟悉手动操作的用户，本目录提供交互式安装器：
 
 - 双击 `install-bridge.bat`（英文界面）或 `install-bridge-zh.bat`（中文界面）即可；命令行运行：`powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`。
-- 主菜单选择 **Install** / **Uninstall**，再选择游戏（**Malody 4** / Etterna / Malody V）。全程交互确认。
+- 主菜单选择 **Install** / **Uninstall**，再选择游戏（**Malody 4** / Etterna / Malody V）。选 Malody V 时会再问一次：**编辑器 Lua 插件** / **游戏内选曲桥** / 两者。全程交互确认。
 - **Malody 4 选项零文件复制**：它只把 `malody4Root` 写进 `mma-shell-config.json`（游戏侧无需任何操作），卸载时只清空该键。
 - 游戏根目录自动探测：正在运行的进程 → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 → 常见安装路径；Malody V 额外探测 Steam 库（注册表 + `steamapps/libraryfolders.vdf`。
 - **自动探测失败时**：可从「浏览选择目录」图形对话框选择、手动输入路径（`/`、`\`、`\\` 写法与包裹引号、尾部斜杠都能兼容归一化），或按提示查看「如何找到游戏路径」指引。
@@ -19,7 +19,12 @@
 - 写入/更新插件根目录（`bridges/..`，即 `mma-shell.exe` 旁）的 `mma-shell-config.json` 的 `etternaRoot` / `malodyRoot`（正斜杠路径）；选择 **Malody 4** 时只写 `malody4Root`（不复制任何文件）。
 - 与已安装的其他脚本（如 DanOverlay、elements/titlesplash）共存：只新增/移除自己的一行 `LoadActor`，不触碰他人注入行。
 - `default.lua` 不存在时报错并跳过该屏（绝不自动创建、绝不盲目注入）。
-- 高级参数：`-Game Etterna|Malody|Malody4`、`-Uninstall`、`-Chinese`（中文界面）、`-Yes`（自动化）、`-Root <path>`、`-Theme <name>`、`-ConfigPath <path>`。
+- 高级参数：`-Game Etterna|Malody|Malody4|MalodyBridge`、`-Uninstall`、`-Chinese`（中文界面）、`-Yes`（自动化）、`-Root <path>`、`-Theme <name>`、`-ConfigPath <path>`、**`-LoaderOnly`**（只装 Malody V 加载器、跳过插件 DLL）。
+- **Malody V 游戏内选曲桥（`-Game MalodyBridge`）**：把 BepInEx 6 IL2CPP 加载器（`winhttp.dll`、`dotnet/`、`BepInEx/`）与本仓库**自建 fork** 的插件 DLL（`MMAMalodySelection.dll`）装进游戏目录。插件不是上游那份：上游桥与本 fork **会挂在同一批游戏方法上，两者共存等于双 Hook**，所以安装前若发现上游 `MalodyInsightBridge.dll` 仍在，安装器只**报告并给出指引，绝不删除**（删不删是你的决定）。
+  - **加载器获取方式（必须逐字节匹配）**：从上游 BepInEx 6 IL2CPP `6.0.0-be.788` 的 GitHub Release 下载资产 `bepinex-il2cpp-788.zip`，保存为 `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`（该目录不入库），或把环境变量 `MMA_BEPINEX_LOADER_ZIP` 指向它。安装前会校验 **SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`**（34,336,405 字节），不匹配即中止且**不写入任何文件**。
+  - **Unity 参考程序集（同样必须逐字节匹配）**：`bridges/malody/bepinex/unity-libs/2022.3.62.zip`（该目录不入库），来源 <https://unity.bepinex.dev/libraries/2022.3.62.zip>，SHA256 **`575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`**（1,900,589 字节），`MMA_MALODY_UNITY_LIBS_ZIP` 可指向别处。安装器把它装到 `BepInEx\unity-libs\2022.3.62.zip`：BepInEx 首次启动本会自己下载这个文件、此后只复用不再校验，一次下载不完整就会让之后每次启动都失败（`End of Central Directory record could not be found` → 无插件加载）；已存在但哈希不符的文件会被替换，因此重跑安装器即可修复这种装坏的安装。
+  - **`-LoaderOnly`**：只装加载器、不装插件 DLL。用于"先让 BepInEx 生成 `BepInEx/interop/`"或插件产物暂不可用时——首次安装加载器后**启动一次游戏**，BepInEx 会生成 `BepInEx\interop\`，之后不带该开关再跑一次即可补上插件。
+  - **不写任何配置文件**：fork 已无游戏内叠加界面，`BepInEx\config\local.mma.malody.selection.cfg` 由 BepInEx 首次加载时自行生成，安装器既不创建也不删除它。
 
 工作原理（替代手动步骤）：
 1. Etterna：复制两个 lua 到 `Themes\<theme>\BGAnimations\{ScreenSelectMusic decorations, ScreenGameplay overlay}\`，并在各自 `default.lua` 的 `return t` 前注入 `t[#t + 1] = LoadActor("<file>")`（幂等，注入前备份 `default.lua.mma-backup`）。
@@ -38,7 +43,7 @@ Lua injection assets for the shell's data-source channels. Follow the bridge hea
 For users unfamiliar with manual steps, this folder ships an interactive installer:
 
 - Double-click `install-bridge.bat` (English UI) or `install-bridge-zh.bat` (Chinese UI); or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`.
-- Main menu: **Install** / **Uninstall**, then pick the game (**Malody 4** / Etterna / Malody V). Every step asks for confirmation.
+- Main menu: **Install** / **Uninstall**, then pick the game (**Malody 4** / Etterna / Malody V). Choosing Malody V asks once more: **editor Lua plugin** / **in-game song-selection bridge** / both. Every step asks for confirmation.
 - **The Malody 4 option copies zero files**: it only writes `malody4Root` into `mma-shell-config.json` (nothing to do on the game side), and uninstall clears just that key.
 - Game roots are auto-detected: running process → `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` env vars → common install paths; Malody V additionally probes Steam libraries (registry + `steamapps/libraryfolders.vdf`).
 - **If auto-detection finds nothing**: pick the folder from a browse dialog, type a path (`/`, `\` or `\\` separators, wrapping quotes and trailing slashes are all normalized), or follow the built-in "how do I find the path" hint.
@@ -46,7 +51,12 @@ For users unfamiliar with manual steps, this folder ships an interactive install
 - Writes/updates `etternaRoot` / `malodyRoot` (forward-slash paths) in `mma-shell-config.json` next to the plugin root (`bridges/..`, i.e. next to `mma-shell.exe`); picking the **Malody 4** game option writes only `malody4Root` and copies no file.
 - Coexists with other installed scripts (e.g. DanOverlay, elements/titlesplash): only its own `LoadActor` line is added/removed; other injections are never touched.
 - A missing `default.lua` is an error and that screen is skipped (never auto-created, never blindly injected).
-- Advanced flags: `-Game Etterna|Malody|Malody4`, `-Uninstall`, `-Chinese` (Chinese UI), `-Yes` (automation), `-Root <path>`, `-Theme <name>`, `-ConfigPath <path>`.
+- Advanced flags: `-Game Etterna|Malody|Malody4|MalodyBridge`, `-Uninstall`, `-Chinese` (Chinese UI), `-Yes` (automation), `-Root <path>`, `-Theme <name>`, `-ConfigPath <path>`, **`-LoaderOnly`** (Malody V loader only, skip the plugin DLL).
+- **Malody V in-game song-selection bridge (`-Game MalodyBridge`)**: installs the BepInEx 6 IL2CPP loader (`winhttp.dll`, `dotnet/`, `BepInEx/`) plus **this repository's own fork** of the plugin (`MMAMalodySelection.dll`). The fork is not the upstream DLL: the upstream bridge and this fork **patch the same game methods, so having both installed double-hooks the game**. If the installer finds the upstream `MalodyInsightBridge.dll` still present it **only reports it with instructions and never deletes it** — removing it is your call.
+  - **Getting the loader (must match byte for byte)**: download the asset `bepinex-il2cpp-788.zip` from the upstream BepInEx 6 IL2CPP `6.0.0-be.788` GitHub release and save it as `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip` (that folder is not committed), or point `MMA_BEPINEX_LOADER_ZIP` at it. The archive is checked against **SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`** (34,336,405 bytes); a mismatch aborts without writing a single byte.
+  - **Unity reference assemblies (also byte-exact)**: `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (that folder is not committed), sourced from <https://unity.bepinex.dev/libraries/2022.3.62.zip>, **SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`** (1,900,589 bytes); `MMA_MALODY_UNITY_LIBS_ZIP` may point elsewhere. The installer places it at `BepInEx\unity-libs\2022.3.62.zip`: BepInEx would otherwise download that file on the first launch and afterwards only reuse it without ever validating it, so a single incomplete download breaks every later launch (`End of Central Directory record could not be found` → no plugin loads). A file that is present but does not match the hash is replaced, so re-running the installer repairs such an install.
+  - **`-LoaderOnly`**: install (or keep) the loader and stop before the plugin DLL. Use it to let BepInEx generate `BepInEx/interop/` first — install the loader, **launch the game once**, then run the installer again without the flag to add the plugin.
+  - **No config file is written**: the fork no longer has an in-game overlay, so `BepInEx\config\local.mma.malody.selection.cfg` is generated by BepInEx on first load; the installer neither creates nor deletes it.
 
 What it does (replacing the manual steps):
 1. Etterna: copies the two lua files into `Themes\<theme>\BGAnimations\{ScreenSelectMusic decorations, ScreenGameplay overlay}\` and injects `t[#t + 1] = LoadActor("<file>")` before `return t` in each `default.lua` (idempotent; backs up `default.lua.mma-backup` first).

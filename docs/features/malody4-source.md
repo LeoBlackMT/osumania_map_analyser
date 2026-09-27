@@ -1,6 +1,6 @@
 # Malody 4.3.7 原生客户端数据源（malody4）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构与路由见 [multi-source.md](multi-source.md)；壳侧契约见 `desktop/docs/CONTRACT.md`（v3）；动态 OD 表见 [malody4-od.md](malody4-od.md)。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构与路由见 [multi-source.md](multi-source.md)；壳侧契约见 `desktop/docs/CONTRACT.md`（v3）；动态 OD 表见 [malody-od.md](malody-od.md)。
 
 ## 1. 定位
 
@@ -80,7 +80,7 @@
 
 ## 7. 已知限制与未做项（如实标注）
 
-- **判定 OD 动态化仅覆盖 PC 端窗口**：判定档 × 速率 → 等效 OD 的换算与 `FAIR` 模组不建模的限制见 [malody4-od.md](malody4-od.md)。
+- **判定 OD 动态化仅覆盖 PC 端窗口**：判定档 × 速率 → 等效 OD 的换算与 `FAIR` 模组不建模的限制见 [malody-od.md](malody-od.md)。
 - **判定档 / 变速位的内存链只对 4.3.7 这一个构建成立**：`S` / `P` 的 RVA 与四个字段偏移和锚点 RVA 一样是构建专用的（同处 `anchor.rs`）。读不到就如实回落 `config.json`——行为与改动前完全一致（不报错、不影响其余信号），只是不再"立即生效"；将来换二进制时这条链会随版本门一起 fail closed，而不是按旧偏移读出垃圾。
 - **screen 显示门控未做**：`screen` 只进 state 帧与诊断，卡片不会因"当前是结算/选曲场景"而隐藏或清空。
 - **只索引 `.mc`**：库里的 `.osu` 谱面不会被跟随（§3 的理由与代价）。
@@ -101,7 +101,7 @@
 
 # Malody 4.3.7 native client data source (malody4)
 
-Technical document for AI readers. Human-facing guide: [docs/shell-guide.md](../shell-guide.md); multi-source architecture and routing: [multi-source.md](multi-source.md); shell contract: `desktop/docs/CONTRACT.md` (v3); dynamic OD table: [malody4-od.md](malody4-od.md).
+Technical document for AI readers. Human-facing guide: [docs/shell-guide.md](../shell-guide.md); multi-source architecture and routing: [multi-source.md](multi-source.md); shell contract: `desktop/docs/CONTRACT.md` (v3); dynamic OD table: [malody-od.md](malody-od.md).
 
 ## 1. What it is
 
@@ -163,7 +163,7 @@ Priority is `["osu", "etterna", "malody4", "malody"]`. L1 preempts when the shel
 
 ## 7. Known limitations
 
-Dynamic judge OD covers the PC windows only (see [malody4-od.md](malody4-od.md)); the judge/speed memory chain is **build-specific** to the 4.3.7 binary (its RVAs and field offsets live next to the anchor RVA in `anchor.rs`) and falls back to `config.json` whenever it cannot read — identical to the pre-change behaviour (no error, no impact on the other signals), just without the immediate effect, and a future binary fails closed with the version gate instead of reading garbage at stale offsets; screen-based display gating is not implemented (`screen` is diagnostic only); only `.mc` is indexed, so `.osu` charts in the library are never followed; one library and one instance only (several `malody.exe` processes make the channel unavailable as `multiple-instances`); only the 4.3.7 binary is supported (any other build is `target-mismatch:*`); no native MSD, no pause detection, no live PP; no administrator rights required (same-user reads suffice, and a policy block reports `access-denied`).
+Dynamic judge OD covers the PC windows only (see [malody-od.md](malody-od.md)); the judge/speed memory chain is **build-specific** to the 4.3.7 binary (its RVAs and field offsets live next to the anchor RVA in `anchor.rs`) and falls back to `config.json` whenever it cannot read — identical to the pre-change behaviour (no error, no impact on the other signals), just without the immediate effect, and a future binary fails closed with the version gate instead of reading garbage at stale offsets; screen-based display gating is not implemented (`screen` is diagnostic only); only `.mc` is indexed, so `.osu` charts in the library are never followed; one library and one instance only (several `malody.exe` processes make the channel unavailable as `multiple-instances`); only the 4.3.7 binary is supported (any other build is `target-mismatch:*`); no native MSD, no pause detection, no live PP; no administrator rights required (same-user reads suffice, and a policy block reports `access-denied`).
 
 ### 7.1 Coverage boundary: charts whose identity cannot be resolved are not followed (measured)
 
