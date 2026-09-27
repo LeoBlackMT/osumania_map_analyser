@@ -4,6 +4,13 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// 进程级日志锁：把"打开文件 + 写整行"变成原子段。多线程同时记日志时，
+/// `writeln!` 的格式化会拆成多次写（"[", ts, ... 分别写），任一次写之间都可能被
+/// 另一线程插入，导致同一行内交错。故先 `format!` 拼出整行，再在锁内单次
+/// `write_all`，保证一行由一个写入者一次写完。
+static LOCK: Mutex<()> = Mutex::new(());
 
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe()
@@ -89,9 +96,15 @@ pub fn log_at(level: &str, msg: &str) {
         .unwrap_or_default()
         .as_secs();
     let path = log_file_path(&dir, unix);
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let (ts, _) = local_parts(unix);
-        let _ = writeln!(f, "[{}] [{}] {}", ts, level, msg);
+    // 整行先拼好；打开文件与写入都在 LOCK 内，一行一次性写完（见 LOCK 注释）。
+    let (ts, _) = local_parts(unix);
+    let line = format!("[{}] [{}] {}\n", ts, level, msg);
+    {
+        // 锁中毒（持锁线程 panic）时取回内部值继续记日志，不为日志失败再抛。
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = f.write_all(line.as_bytes());
+        }
     }
     // 清理旧日志（保留最近 7 个文件；按文件名日期字符串排序）。
     if let Ok(entries) = fs::read_dir(&dir) {

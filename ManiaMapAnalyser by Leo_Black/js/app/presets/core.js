@@ -4,12 +4,12 @@
  * the exported state/action API and onPresetsChanged notifications.
  */
 
-import { socket, state } from "../appContext.js";
-import { getCounterPathForCommand } from "../settings.js";
+import { state } from "../appContext.js";
 import {
     loadSettingsSchema,
     buildDefaultSnapshot,
 } from "./schema.js";
+import { createTosuTransport } from "./tosuTransport.js";
 import {
     AUTO_SAVE_PRESET_NAME,
     DEFAULT_SLOT_NAMES,
@@ -52,6 +52,11 @@ let currentPreset = "Default";
 let lastValues = null;
 let initialized = false;
 
+// Preset storage transport (see tosuTransport.js for the contract). Defaults to
+// tosu, i.e. exactly the pre-split behaviour; the desktop settings page injects
+// a shell transport with setPresetTransport() BEFORE initPresets() runs.
+let transport = createTosuTransport();
+
 // Keys never counted as a "manual settings change": wsEndpoint is a connection
 // parameter, presetStorage is the presets library itself.
 const IGNORED_DIFF_KEYS = new Set([PRESET_STORAGE_SETTING, "wsEndpoint"]);
@@ -89,6 +94,19 @@ export function isLibraryLoaded() {
 export function onPresetsChanged(callback) {
     listeners.add(callback);
     return () => listeners.delete(callback);
+}
+
+/**
+ * Replaces the preset storage transport. Must be called BEFORE initPresets()
+ * (the transport is subscribed to in there); the tosu transport is the default.
+ */
+export function setPresetTransport(nextTransport) {
+    transport = nextTransport;
+}
+
+/** Returns the active preset storage transport. */
+export function getPresetTransport() {
+    return transport;
 }
 
 // ---------------------------------------------------------------------------
@@ -426,77 +444,22 @@ function persistLibrary() {
 }
 
 /**
- * Writes the library (+ lastWritten queue) into the presetStorage tosu setting.
- * Returns true when the POST was actually issued.
+ * Writes the library (+ lastWritten queue) into the presetStorage setting
+ * through the active transport. Returns true when the write was accepted and
+ * the request dispatched (the transport's synchronous semantics).
  */
 function writeLibraryToTosu() {
-    // Write-back happens only from a browser page (the manager page or the
-    // overlay in a browser tab): localhost and 127.0.0.1 are both fine.
-    // The in-game CEF overlay never opens presets.html, so it stays read-only.
-    if (!isBrowserOrigin()) {
-        return false;
-    }
-    const folderName = typeof window.COUNTER_PATH === "string"
-        ? window.COUNTER_PATH.trim()
-        : "";
-    if (!folderName) {
-        return false;
-    }
-    fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify([{
-            uniqueID: PRESET_STORAGE_SETTING,
-            value: serializeStore(customPresets, lastWritten),
-        }]),
-    }).catch(() => {
-        // Best-effort sync; the library stays in memory and re-syncs on next
-        // successful write.
-    });
-    return true;
-}
-
-/** True when the page runs in a regular browser (localhost / 127.0.0.1). */
-function isBrowserOrigin() {
-    const host = window.location.hostname;
-    return host === "127.0.0.1" || host === "localhost";
+    return transport.writeLibrary(serializeStore(customPresets, lastWritten));
 }
 
 /**
- * Pulls the preset store straight from tosu's values file
- * (GET /api/counters/settings/<folder>). Origin-independent: localhost and
- * 127.0.0.1 read the same data here.
+ * Pulls the preset store through the active transport (tosu: tosu's values file
+ * via GET /api/counters/settings/<folder>; shell: the shell's local settings
+ * endpoint).
  * @returns {Promise<{store: {presets: Array, lastWritten: Array}, raw: string|null}|null>}
  */
-async function fetchStoreFromTosu() {
-    if (!isBrowserOrigin()) {
-        return null;
-    }
-    const folderName = typeof window.COUNTER_PATH === "string"
-        ? window.COUNTER_PATH.trim()
-        : "";
-    if (!folderName) {
-        return null;
-    }
-    try {
-        const response = await fetch(
-            `/api/counters/settings/${encodeURIComponent(folderName)}`,
-            { cache: "no-store" },
-        );
-        if (!response.ok) {
-            return null;
-        }
-        const data = await response.json();
-        const values = (data && data.values) || {};
-        return {
-            store: storeFromPayload(values),
-            raw: typeof values[PRESET_STORAGE_SETTING] === "string"
-                ? values[PRESET_STORAGE_SETTING]
-                : null,
-        };
-    } catch {
-        return null;
-    }
+function fetchStoreFromTosu() {
+    return transport.readStore();
 }
 
 /**
@@ -534,26 +497,17 @@ function applyLoadedStore(store, raw) {
 }
 
 // ---------------------------------------------------------------------------
-// tosu write-back (preset apply echo)
+// Preset write-back (preset apply echo)
 // ---------------------------------------------------------------------------
 
 function writeBackToTosu(presetName, snapshot) {
-    if (!isBrowserOrigin()) {
-        return;
-    }
-    const folderName = typeof window.COUNTER_PATH === "string"
-        ? window.COUNTER_PATH.trim()
-        : "";
-    if (!folderName) {
-        return;
-    }
     const values = Object.keys(snapshot)
         .filter((key) => key !== "wsEndpoint" && !SYSTEM_SNAPSHOT_KEYS.has(key))
         .map((key) => ({
             uniqueID: key,
             value: snapshot[key],
         }));
-    // Ship the store (library + lastWritten) in the same POST so every origin
+    // Ship the store (library + lastWritten) in the same write so every origin
     // sees the echo guard state through the broadcast.
     values.push({ uniqueID: "preset", value: presetName });
     values.push({
@@ -561,13 +515,7 @@ function writeBackToTosu(presetName, snapshot) {
         value: serializeStore(customPresets, lastWritten),
     });
 
-    fetch(`/api/counters/settings/${encodeURIComponent(folderName)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-    }).catch(() => {
-        // Write-back is a best-effort sync; preset application still worked.
-    });
+    transport.writeBack(values);
 }
 
 function shouldWriteBack(snapshot, presetName) {
@@ -627,6 +575,11 @@ function rawStoreFromPayload(payload) {
     return null;
 }
 
+/** True when the desktop shell owns the settings file (offline settings page). */
+function isShellMode() {
+    return getPresetTransport().mode === "shell";
+}
+
 async function handleSettingsPacket(packet) {
     const payload = extractSettingsPayload(packet);
     if (!payload) {
@@ -671,7 +624,10 @@ async function handleSettingsPacket(packet) {
         // Always notify: the UI may have rendered before this first batch.
         notifyChanged();
 
-        if (presetValue && presetValue !== currentPreset) {
+        // The preset picker is a tosu-dashboard stream: in shell (offline) mode
+        // there is no picker, and following a stale `preset` value from the local
+        // settings file would rewrite the whole file with that preset on load.
+        if (!isShellMode() && presetValue && presetValue !== currentPreset) {
             if (presetValue === "Default" || !(await applyPresetByName(presetValue))) {
                 currentPreset = "Default";
                 notifyChanged();
@@ -694,6 +650,17 @@ async function handleSettingsPacket(packet) {
         // the echo it just received (breaks the broadcast->POST->broadcast loop).
         lastPersistedFingerprint = currentStoreFingerprint();
         notifyChanged();
+    }
+
+    if (isShellMode()) {
+        // Shell (offline) mode: only lastValues + the library are kept in sync.
+        // The picker-follow / auto-save half below belongs to the tosu dashboard
+        // stream (there is no tosu picker here, and auto-saving would invent a
+        // LastSavedPreset the offline page must not create). notifyChanged() runs
+        // once more because the store branch above only notifies when the payload
+        // actually carried a store; listeners are idempotent re-renderers.
+        notifyChanged();
+        return;
     }
 
     // True when the user actually changed settings in the dashboard.
@@ -803,8 +770,10 @@ export function initPresets() {
         });
     }
 
-    // Observe the tosu settings stream on our own commands connection.
-    socket.commands((packet) => {
+    // Observe the settings stream through the active transport (tosu's own
+    // commands connection / the shell's pull-on-notify delivery). The transport
+    // owns the socket; multiple subscribers are supported.
+    getPresetTransport().subscribe((packet) => {
         handleSettingsPacket(packet).catch((error) => {
             console.error("[presets] settings stream handler failed:", error);
         });
@@ -812,12 +781,10 @@ export function initPresets() {
 
     // The manager page does not go through loadSettings(), so request the
     // settings stream explicitly (idempotent — duplicates are harmless).
-    if (typeof socket.sendCommand === "function") {
-        socket.sendCommand("getSettings", getCounterPathForCommand());
-    }
+    getPresetTransport().requestInitial();
 
-    // Eagerly pull the authoritative store straight from tosu. This is
-    // origin-independent: localhost and 127.0.0.1 are DIFFERENT origins, and
+    // Eagerly pull the authoritative store through the transport. For tosu this
+    // is origin-independent: localhost and 127.0.0.1 are DIFFERENT origins, and
     // tosu's values.json is the single cross-origin source of truth. The
     // settings broadcast (when it arrives) remains authoritative and wins.
     fetchStoreFromTosu().then((result) => {
@@ -826,9 +793,10 @@ export function initPresets() {
         }
     });
 
-    // Fallback: if neither the broadcast nor the HTTP pull delivered anything
-    // (tosu offline), start with an empty library after a short grace period.
-    // The persist guard keeps this read-only (no overwriting presetStorage).
+    // Fallback: if neither the broadcast nor the pull delivered anything (the
+    // source is offline), start with an empty library after a short grace
+    // period. The persist guard keeps this read-only (no overwriting
+    // presetStorage).
     setTimeout(async () => {
         if (lastValues !== null || customPresets.length > 0) {
             return;

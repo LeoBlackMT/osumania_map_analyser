@@ -9,6 +9,10 @@ pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 pub const PING_INTERVAL: Duration = Duration::from_secs(15);
 
+// ---- 壳本机 HTTP 端口（settings.html / /settings / /shell-config / /ws 同源）----
+/// 壳本机 listener 端口（本机页面与端点的唯一来源；设置窗口 URL 亦由它拼出）。
+pub const HTTP_PORT: u16 = 24061;
+
 // ---- Malody V BepInEx 选曲桥（17653）----
 /// 桥 listener 端口（上游插件 `UseProxy=false` 时固定 POST 到这里）。
 pub const BRIDGE_PORT: u16 = 17653;

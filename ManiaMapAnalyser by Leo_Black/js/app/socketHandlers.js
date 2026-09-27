@@ -301,6 +301,8 @@ export function applyBeatmapState(data) {
         state.lastBeatmapIdentitySource = identityParts.length > 1
             ? "composite"
             : (identityParts[0]?.split(":")[0] || "");
+        // 页面自身的 tosu 数据面收到了可用载荷（壳离线门控据此放行，见 analysis.js）。
+        state.tosuDataSeen = true;
 
         // 仅在谱面本身（非单纯改 mod）发生变化时，重新取封面主色刷新主题。
         // 取色异步进行、失败自动退默认，绝不阻塞分析流程。
