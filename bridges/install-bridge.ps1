@@ -16,7 +16,7 @@
                    the BepInEx 6 IL2CPP be.788 loader archive (winhttp.dll,
                    dotnet\..., BepInEx\core\... - 228 files, SHA256 checked
                    against a cached hash and a vendored manifest) plus
-                   bridges/malody/bepinex/MalodyInsightBridge.dll
+                   bridges/malody/bepinex/plugin/MMAMalodySelection.dll
                    -> MalodyV\BepInEx\plugins\MalodyInsight\
                    Files are extracted into a staging folder inside the game
                    directory, verified there, and only then moved into place.
