@@ -98,42 +98,47 @@ let resolvedModeTag = (activeContentBar === "None")
 
 `ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` 提供全部 vibro 纯函数（共享模块，Node/浏览器同款；原 `js/app/vibro.js` 已合并进该文件）：
 
-**a) `vibro.js:16 detectVibro(values, threshold)`** — 主流程使用的检测（基于 Etterna MSD 技能值）：
+**a) `chartVibro.js:50 detectVibro(values, threshold)`** — 主流程使用的检测（基于 Etterna MSD 技能值）：
 
-- `vibro.js:17` — 从 `values` 中取 `Overall`（兼容 `overall` 小写）。
-- `vibro.js:18` — 取 `JackSpeed`（兼容 `Jackspeed`/`jackSpeed`/`jackspeed` 大小写变体）。
-- `vibro.js:20-22` — `Overall <= 0` 或 JackSpeed 非有限数 → 非 vibro。
-- `vibro.js:24` — 判定条件：`jackSpeed / overall >= threshold`。
+- `chartVibro.js:51` — 从 `values` 中取 `Overall`（兼容 `overall` 小写）。
+- `chartVibro.js:52` — 取 `JackSpeed`（兼容 `Jackspeed`/`jackSpeed`/`jackspeed` 大小写变体）。
+- `chartVibro.js:54-56` — `Overall <= 0` 或 JackSpeed 非有限数 → 非 vibro。
+- `chartVibro.js:58` — 判定条件：`jackSpeed / overall >= threshold`。
 
-**b) `vibro.js:27 detectVibroFromLongjackPattern(patternReport, threshold, minBpm)`** — 基于键型聚类报告的备选检测：
+**b) `chartVibro.js:64 detectVibroFromLongjackPattern(patternReport, threshold, minBpm)`** — 基于键型聚类报告的备选检测：
 
-- 遍历 `patternReport.Clusters`，跳过 BPM 低于 `minBpm` 的聚类（`vibro.js:38-41`）。
-- 在聚类 `SpecificTypes` 中查找 `"Longjacks"` 且占比 `ratio >= threshold`（`vibro.js:42-45`）。
+- 遍历 `patternReport.Clusters`，跳过 BPM 低于 `minBpm` 的聚类（`chartVibro.js:75-78`）。
+- 在聚类 `SpecificTypes` 中查找 `"Longjacks"` 且占比 `ratio >= threshold`（`chartVibro.js:79-83`）。
 
-> ⚠️ 当前主流程只调用 `detectVibro`（见 §4.2）；`detectVibroFromLongjackPattern` 仅有定义、未被任何调用点引用。接入或改造时注意其输入是 pattern 报告而非 Etterna 值。
+**c) `chartVibro.js:16 detectVibroFromMetadata(metaData)`** — 元数据关键词直判：把 `Title` / `Version` 拼接后转小写，包含 `APP_CONFIG.vibroKeywords`（`config.js`，当前 `["vibro"]`）中任一关键词即视为 vibro（`chartVibro.js:17-24`）。大小写不敏感，无独立设置项，与其余判据同受 `VibroDetection` 总开关控制；只看标题与难度名，`Tags`、`TitleUnicode` 等字段不参与。
+
+> ⚠️ 当前主流程调用 `detectVibroFromMetadata`（关键词通道）与 `detectVibro`（MSD 通道），两者**取或**（见 §4.2）；`detectVibroFromLongjackPattern` 仅有定义、未被任何调用点引用。接入或改造时注意其输入是 pattern 报告而非 Etterna 值。
 
 ### 4.2 主流程接入（analysis.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:653-657`：
+`ManiaMapAnalyser by Leo_Black/js/app/analysis.js` 分两处判定，结果**取或**（`||`，后者不覆盖前者）：
 
 ```js
-const reworkStarValue = Number(rework?.star);
-const vibroEligible = Number.isFinite(reworkStarValue) && reworkStarValue > 5.0;
+// 1) 元数据关键词通道（analysis.js:673-677）：解析结果一到手就判，不受 star 门控
+let isVibroMap = state.vibroDetection
+    ? detectVibroFromMetadata(parsedInfo?.metadata)
+    : false;
+
+// 2) MSD 通道（analysis.js:914-919 / :931-936）：等 ettResult 就绪后判定
+//    vibroEligible 由 pipeline 用归一化前的算法自身 star 算好带出（star > 5.0）
 // MSD 基准：4K 固定 0.72.3，非 4K 用主结果（0.74.0 n-key）
 // resolveVibroMsdValues 在 4K 且主结果版本 != 0.72.3 时补算
-const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
-isVibroMap = state.vibroDetection
-    && vibroEligible
-    && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+if (state.vibroDetection && vibroEligible) {
+    const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
+    isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
+}
 ```
 
-三个条件缺一不可：
+- **关键词通道**：只要求设置开关 `state.vibroDetection`（对应 settings.json 的 `VibroDetection`）开启；不看星数，也不需要 Ett/pattern 结果。
+- **MSD 通道**：`state.vibroDetection` + `vibroEligible`（rework 星数 `> 5.0`，用归一化前的算法自身 star）+ `detectVibro(...)` 命中，三个条件缺一不可。`vibroValues` 来源（`resolveVibroMsdValues`）：**4K 固定 0.72.3**（主结果已是 0.72.3 直接复用，否则 0.72.3 补算，失败回退主结果）；**非 4K 直接用主结果**（= 0.74.0 n-key，0.72.3 对非 4K 输出全 0 无法判定）。
+- **取或而非覆盖**：MSD 通道只补充信号——若写成纯赋值，关键词命中但 JackSpeed 未达阈值的谱会被赋回 `false`。
 
-1. `analysis.js:655` — 设置开关 `state.vibroDetection`（对应 settings.json 的 `VibroDetection`）。
-2. `analysis.js:654` — rework 星数必须 `> 5.0`（vibro 谱面通常是高密度高星谱，低星谱不做检测）。
-3. `analysis.js:657` — `detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD)` 命中。`vibroValues` 来源（`resolveVibroMsdValues`）：**4K 固定 0.72.3**（主结果已是 0.72.3 直接复用，否则 0.72.3 补算，失败回退主结果）；**非 4K 直接用主结果**（= 0.74.0 n-key，0.72.3 对非 4K 输出全 0 无法判定）。
-
-阈值来源链：`ManiaMapAnalyser by Leo_Black/config.js:49 vibroJackspeedRatioThreshold: 0.95`（小驼峰命名）→ `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:157 VIBRO_JACKSPEED_RATIO_THRESHOLD = APP_CONFIG.etterna.vibroJackspeedRatioThreshold` → `analysis.js:657` 使用。
+阈值来源链：`ManiaMapAnalyser by Leo_Black/config.js:49 vibroJackspeedRatioThreshold: 0.95`（小驼峰命名）→ `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:157 VIBRO_JACKSPEED_RATIO_THRESHOLD = APP_CONFIG.etterna.vibroJackspeedRatioThreshold` → `analysis.js:918`/`:935` 使用。
 
 依赖关系：`analysis.js:409 needVibroDetection = state.vibroDetection` 会使键型分析（`:410-415`）与 Etterna 分析（`:420-423`）按需开启，保证 `ettResult.values` 与 `patternReport` 可用。
 
@@ -141,8 +146,8 @@ isVibroMap = state.vibroDetection
 
 检测为 vibro 谱面后（`isVibroMap = true`）：
 
-- `analysis.js:824 setForceHideNumericDifficulty(isVibroMap)` — 隐藏数值难度（实现见 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:737 setForceHideNumericDifficulty(value)`）。vibro 谱面的数值难度会被极度拉高，无参考价值。
-- `analysis.js:898-900` — 当 `diffText === "Difficulty"` 时，难度文本直接显示 `"VIBRO"`。
+- `analysis.js:1156 setForceHideNumericDifficulty(isVibroMap)` — 隐藏数值难度（实现见 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:737 setForceHideNumericDifficulty(value)`）。vibro 谱面的数值难度会被极度拉高，无参考价值。
+- `analysis.js:1276-1278` — 当 `diffText === "Difficulty"` 时，难度文本直接显示 `"VIBRO"`。
 
 > 关联设置说明见 `docs/settings.md:74-75`：不启用 vibro 检测时，"您将看到被极度拉高的难度估计"。这与 [difficulty-estimation.md](difficulty-estimation.md) 中数值难度（Numeric Difficulty）显示逻辑相互影响。
 
@@ -319,12 +324,12 @@ setSvTagVisible(shouldShowSvTag);
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:60` | `modeTagSubGroupEl` |
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:61` | `svTagEl` |
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:153` | `MODE_TAG_OPTIONS` |
-| `ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` | `detectVibro`（Etterna MSD 口径）、`detectVibroFromLongjackPattern`（pattern report 口径）、`detectChartVibro` / `detectVibroFromMetadata`（整图结构 + 元数据关键词） |
+| `ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` | `detectVibro`（Etterna MSD 口径）、`detectVibroFromLongjackPattern`（pattern report 口径）、`detectVibroFromMetadata`（元数据关键词直判） |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:792` | `fallbackModeTag` |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:798-806` | SV 检测块 |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:653-657` | `isVibroMap` 判定 |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:824` | `setForceHideNumericDifficulty(isVibroMap)` |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:898-900` | `setEstimateDifficultyText("VIBRO")` |
+| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:673-677 / :914-919 / :931-936` | `isVibroMap` 判定（关键词通道 + MSD 通道取或） |
+| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1156` | `setForceHideNumericDifficulty(isVibroMap)` |
+| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1276-1278` | `setEstimateDifficultyText("VIBRO")` |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:524` | `typePercentageData = sunnyWindowRework.typePercentageData` |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:808-814` | 标签渲染分派 |
 | `ManiaMapAnalyser by Leo_Black/js/app/hud.js:143` | `setModeTag` |
