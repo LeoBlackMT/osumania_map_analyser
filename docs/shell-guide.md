@@ -35,8 +35,8 @@
 
 | 操作 | 方法 |
 | --- | --- |
-| 拖动整个窗口 | 按住窗口顶部拖动条（顶端发光细条，中间有 `⋮⋮` 标志）拖动 |
-| 改变窗口大小 | 拖动窗口边缘（无边框，四周可拖） |
+| 拖动整个窗口 | 按住窗口顶部拖动条（发光细条，中间有 `⋮⋮` 标志）拖动。这条光带跟着**卡片顶沿**走：卡片贴底向上生长（反向延伸）时它就在卡片正上方，鼠标移上去还会显示一圈细描边，标出即将移动的整扇窗口范围 |
+| 改变窗口大小 | 拖动窗口边缘（无边框，四周可拖）。看不到边界时把鼠标移向窗口边缘：贴近（约 16 像素）的那条边会发光，那条位置就是可拖拽的尺寸边界（角落会同时亮两条） |
 | 页面缩放 | 按住 `Ctrl` 滚动鼠标滚轮；或 `Ctrl +` / `Ctrl -`；`Ctrl 0` 复位 |
 | 开关置顶（默认置顶） | 默认按 `Ctrl + Shift + T`（全局快捷键） |
 | 开关点击穿透（默认关） | 默认按 `Ctrl + Shift + C`（全局快捷键） |
@@ -167,8 +167,8 @@ Malody V 有两个互不影响的通道，按需要选：
 
 - 页面在运行时读插件的 `settings.json`，按其条目逐项渲染：`header` 变成分组标题，`checkbox` / `options` / `text` / `color` 变成对应控件，默认值取条目的 `value`；`preset` 与 `presetStorage` 两个系统键不在这里显示（它们归下面的预设区管）。
 - **新增一项设置不需要改设置页**：在 `settings.json` 里加条目（tosu 设置界面的定义与默认值），按仓库内 `AGENTS.md` 的要求同步 `config.js` 的 `defaults` 与对应的解析/应用函数，设置页下次打开就会自动多出一行。
-- `settings.json` 里类型为 `button` 的条目（设置说明、预设说明、报告问题、基准测试结果、预设管理页、调试页，共 6 个）不在表单里，而是渲染在**页面最顶部**的 **Links** 行（状态栏下方、导航栏上方）——打开窗口第一眼就能看到，不必往下翻。
-- **链接行为**：点链接不会把设置窗口导航走。壳窗口里若打不开系统浏览器（`window.open` 被拦），页面会**把地址复制到剪贴板**并提示 `Link copied — open it in your browser.`，自己在浏览器里粘贴打开即可；「预设管理页」的地址会先把主机端口换成当前的 `wsEndpoint`。预设区的 **Guide** 按钮也走同一条路（以前在壳窗口里点了没反应）。
+- `settings.json` 里类型为 `button` 的条目中**壳内可用的 4 个**（设置说明、预设说明、报告问题、基准测试结果）不在表单里，而是渲染在**页面最顶部**的 **Links** 行（状态栏下方、导航栏上方）——打开窗口第一眼就能看到，不必往下翻。另两个条目（预设管理页、调试页）指向的是 tosu 自己提供、在壳里并不存在的地址，因此设置窗口不显示它们（`settings.json` 与 tosu 设置界面照旧保留全部 6 个）；tosu 在线时下方的只读提示仍会给出 tosu 预设页地址，预设管理入口没有丢失。
+- **链接行为**：点链接不会把设置窗口导航走。壳窗口里若打不开系统浏览器（`window.open` 被拦），页面会**把地址复制到剪贴板**并提示 `Link copied — open it in your browser.`，自己在浏览器里粘贴打开即可。预设区的 **Guide** 按钮也走同一条路（以前在壳窗口里点了没反应）。
 - **快捷键字段总有值**：壳启动时会检查 `mma-shell-config.json` 的 `hotkeys`，缺失或为空的键按内置默认补齐（`topmost` / `clickThrough` / `close` / `settings`，其中打开设置窗口默认 **`Ctrl+Shift+S`**），你自己填过的值不会被覆盖；所以 Shell 面板里的「Open settings window」不会再是空输入框。快捷键只在启动时注册，在该面板改完需**重启壳**生效。
 
 **在线与离线行为不同**：
@@ -229,8 +229,8 @@ window** (can overlay games/browsers); and, **without tosu running**, lets the c
 
 | Action | How |
 | --- | --- |
-| Move the whole window | drag the top drag bar (glow strip with `⋮⋮` hint at the window top) |
-| Resize | drag any window edge (borderless, draggable on all sides) |
+| Move the whole window | drag the top drag bar (glow strip with the `⋮⋮` hint). The strip follows the **card's top edge**, so with the card docked at the bottom (reverse extension) it sits right above the card, and hovering it shows a thin full-window outline marking the window you are about to move |
+| Resize | drag any window edge (borderless, draggable on all sides). Cannot see where the window ends? Move the cursor towards an edge: the edge you are within ~16 pixels of lights up — that glow is exactly where the drag border is (a corner lights two edges at once) |
 | Zoom | `Ctrl` + mouse wheel, or `Ctrl +` / `Ctrl -`; `Ctrl 0` resets |
 | Always-on-top toggle (default on) | `Ctrl + Shift + T` by default (global shortcut) |
 | Click-through toggle (default off) | `Ctrl + Shift + C` by default (global shortcut) |
@@ -395,15 +395,17 @@ to build — the main window's state file is not touched by this).
 - **Adding a setting needs no change to the settings page**: add the entry to `settings.json` (the tosu settings-UI
   definition plus its default) and keep `config.js`'s `defaults` and the matching parse/apply pair in sync as the
   repository's `AGENTS.md` requires — the page picks it up automatically the next time it opens.
-- Entries whose `settings.json` type is `button` (settings guide, presets guide, report issue, benchmark results,
-  presets manage page, debug page — six in total) are not part of the form; they are rendered as the **Links** row at
+- Entries whose `settings.json` type is `button` that are reachable from the shell (four of them: settings guide,
+  presets guide, report issue, benchmark results) are not part of the form; they are rendered as the **Links** row at
   the very top of the page (below the status bar, above the nav), so they are visible the moment the window opens
-  instead of at the bottom of the Card Settings form.
+  instead of at the bottom of the Card Settings form. The other two (presets manage page, debug page) point at
+  tosu-hosted addresses that do not exist inside the shell, so the settings window does not offer them (`settings.json`
+  and tosu's own settings dashboard keep all six). The read-only notice below still shows the tosu presets-page address
+  while tosu is online, so that entry point is not lost.
 - **Link behaviour**: clicking a link never navigates the settings window away. Inside the shell window, when the
   system browser cannot be opened (`window.open` is blocked), the page **copies the address to the clipboard** and
-  shows `Link copied — open it in your browser.` so you can paste it into your own browser; the "presets manage page"
-  address has its host:port rewritten to the current `wsEndpoint` first. The preset area's **Guide** button goes
-  through the same path (it previously did nothing inside the shell window).
+  shows `Link copied — open it in your browser.` so you can paste it into your own browser. The preset area's **Guide**
+  button goes through the same path (it previously did nothing inside the shell window).
 - **The hotkey fields always have a value**: at startup the shell checks `mma-shell-config.json`'s `hotkeys` and fills
   in any missing or empty key with its built-in default (`topmost` / `clickThrough` / `close` / `settings`, where
   opening the settings window defaults to **`Ctrl+Shift+S`**) without ever overwriting a value you wrote — so the
