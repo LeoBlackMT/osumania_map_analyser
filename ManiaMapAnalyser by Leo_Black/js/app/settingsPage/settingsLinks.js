@@ -3,9 +3,9 @@
  *
  * tosu renders these entries as buttons in its own settings dashboard; this page
  * used to drop them (settingsForm.js only renders keys with an applier, so every
- * button was skipped) and the Guide / Preset guide / Issue / Benchmark / Debug /
- * Presets-page links were lost. They are links, not settings, so they live in a
- * compact row of their own instead of inside the form.
+ * button was skipped) and the Guide / Preset guide / Issue / Benchmark links
+ * were lost. They are links, not settings, so they live in a compact row of
+ * their own instead of inside the form.
  *
  * Clicking never navigates this window: the click is handled here and the URL is
  * opened through `openExternalLink()` (see ../externalLink.js), which falls back
@@ -13,6 +13,20 @@
  */
 
 import { openExternalLink } from "../externalLink.js";
+
+/**
+ * Link ids this page does not offer (the sibling exclusion of `EXCLUDED_KEYS`
+ * in settingsForm.js, for the button row instead of the form): both targets are
+ * tosu-hosted pages under `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/`
+ * that do not exist while the page is served by the desktop shell, so the links
+ * could only ever land on a dead address. `settings.json` keeps all six entries
+ * for tosu's own settings dashboard.
+ *
+ * Nothing is lost by dropping `PresetButton`: while tosu is online the read-only
+ * notice still points at the tosu Presets page (settingsPage/index.js
+ * `presetsPageUrl()`, which reads that same entry).
+ */
+const EXCLUDED_LINK_IDS = new Set(["PresetButton", "DebugButton"]);
 
 /**
  * @param {object} options
@@ -26,7 +40,8 @@ import { openExternalLink } from "../externalLink.js";
 export function createSettingsLinks({ root, entries, urlFor, onCopied }) {
     function render() {
         root.textContent = "";
-        const buttons = (entries || []).filter((entry) => entry && entry.type === "button" && entry.uniqueID);
+        const buttons = (entries || []).filter((entry) => entry && entry.type === "button"
+            && entry.uniqueID && !EXCLUDED_LINK_IDS.has(entry.uniqueID));
         if (buttons.length === 0) {
             return;
         }

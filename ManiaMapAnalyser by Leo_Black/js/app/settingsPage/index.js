@@ -518,9 +518,11 @@ async function runShellPage() {
     form.render();
     form.setReadOnly(state.shellTosuOnline === true);
 
-    // settings.json button entries (Guide / Preset guide / Issue / Benchmark /
-    // Debug / Presets page) — links, not settings: they render into the
-    // top-of-page #settings-links-root declared by settings.html.
+    // settings.json button entries (Guide / Preset guide / Issue / Benchmark) —
+    // links, not settings: they render into the top-of-page
+    // #settings-links-root declared by settings.html. The tosu-hosted
+    // PresetButton / DebugButton targets do not exist inside the shell and are
+    // filtered out by settingsLinks.js (EXCLUDED_LINK_IDS).
     links = createSettingsLinks({
         root: linksRootEl,
         entries: schema.entries,
