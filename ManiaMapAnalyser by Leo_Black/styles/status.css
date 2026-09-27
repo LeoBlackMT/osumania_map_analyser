@@ -179,6 +179,83 @@ html.shell-mode .mma-drag-bar {
     pointer-events: none;
 }
 
+/* 壳窗口的可视提示（元素由 js/app/windowAffordances.js 运行时创建）。
+   窗口透明无边框、Tauri 的可拖拽 resize 边框只有 4~8px，肉眼看不到边界：
+   鼠标进入某条边 16px 内就点亮那条边（判定在 JS，按 window 坐标）。
+   容器 fixed 铺满窗口、pointer-events:none —— 不参与布局、不拦输入；
+   z-index 低于拖动把手(9999)，光带始终画在把手之下。
+   - 拖动把手跟随卡片顶沿（反向后卡片贴底时不再浮在空白里），
+     位置由 windowAffordances.js 的 inline top 决定。 */
+.mma-edge-hints {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    pointer-events: none;
+}
+
+.mma-edge {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.mma-edge.active {
+    opacity: 1;
+}
+
+/* 与拖动把手同款白色渐变（朝窗口内侧渐隐）+ 一层柔和主题色辉光 */
+.mma-edge-top {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ma-accent) 60%, rgba(180, 220, 255, 0.55));
+}
+
+.mma-edge-bottom {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ma-accent) 60%, rgba(180, 220, 255, 0.55));
+}
+
+.mma-edge-left {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 6px;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ma-accent) 60%, rgba(180, 220, 255, 0.55));
+}
+
+.mma-edge-right {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 6px;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ma-accent) 60%, rgba(180, 220, 255, 0.55));
+}
+
+/* hover 拖动把手：一圈细描边标出"即将移动的整扇窗口"，离开即灭。 */
+.mma-window-outline {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    box-shadow: inset 0 0 14px color-mix(in srgb, var(--ma-accent) 50%, rgba(180, 220, 255, 0.4));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.mma-edge-hints.drag-active .mma-window-outline {
+    opacity: 1;
+}
+
 /* 壳模式（WS 已连）：卡片贴窗口边缘（浏览器模式保持 18px 悬浮） */
 html.shell-mode body {
     padding: 0;

@@ -417,6 +417,8 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
                     numericDifficulty: companellaResult.numericDifficulty,
                     numericDifficultyHint: companellaResult.numericDifficultyHint,
                     mixedCompanellaPlan: null,
+                    // 胶囊来源：数值确实换成了 Companella 的结果。
+                    companellaCapsule: "Companella",
                 };
             }
             return mixedResult;
@@ -433,6 +435,8 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
             numericDifficulty: fused,
             numericDifficultyHint: null,
             mixedCompanellaPlan: null,
+            // 胶囊来源：低难段的 0.5/0.5 融合——数值由 Azusa 与 Companella 共同决定。
+            companellaCapsule: "Azusa+Companella",
         };
     }
 
@@ -446,5 +450,7 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         numericDifficulty: companellaResult.numericDifficulty,
         numericDifficultyHint: companellaResult.numericDifficultyHint,
         mixedCompanellaPlan: null,
+        // 胶囊来源：无 fuseRc 计划（Azusa 不可用）时整体采用 Companella。
+        companellaCapsule: "Companella",
     };
 }

@@ -6,7 +6,7 @@ export const APP_CONFIG = {
         contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "ReworkPP", "Full"],
         srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR", "ReworkPP"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
-        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Daniel", "Companella", "SunnyWindow"],
+        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Daniel", "Companella"],
         etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0", "0.75.0"],
         companellaEtternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0", "0.75.0"],
         cardOpacity: ["100%", "95%", "90%", "80%", "70%"],
@@ -15,6 +15,10 @@ export const APP_CONFIG = {
         reverseCardExtendDirection: [true, false],
         modeTag: ["RC", "LN", "HB", "Mix", "SV"],
     },
+
+    // vibro 关键词直判：谱面元数据（标题或难度名）包含其中任一关键词即判定为 vibro，
+    // 大小写不敏感。判定实现见 js/patterns/chartVibro.js 的 detectVibroFromMetadata。
+    vibroKeywords: ["vibro"],
 
     starStops: {
         background: [

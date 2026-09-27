@@ -21,7 +21,7 @@
 - **键型分析**：分析谱面中的RC/LN键型分布，帮助玩家了解谱面结构。
 - **Rework PP**：提供Rework PP难度表现面板，显示Max PP/Live PP、Proportion及各乘子柱状图，游玩/结算时实时更新。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
-- **Etterna/Malody支持**：除 osu!mania 外可接收来自 Etterna、Malody V（需桌面壳）的数据，状态行圆点实时指示（osu! 蓝 / Etterna 绿 / Malody 橙）。
+- **Etterna、Malody V、Malody 4 支持**：除 osu!mania 外可接收来自 Etterna、Malody V、Malody 4.3.7 原生客户端（后三者需桌面壳）的数据，状态行圆点实时指示（osu! 粉 / Etterna 紫 / Malody 4 亮青 / Malody V 蓝）。
 - **桌面壳**：独立置顶/透明/无边框小窗口。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
 
@@ -36,6 +36,7 @@
 ## 难度估计算法基准测试
 - 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
 - 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
+- 受限于人工标注误差以及个人差异，目前在700+样本量下的难度估计准确度已经接近极限，如果你有兴趣参与，可以参与到算法的改进中来，帮助提升难度估计的准确性。
 - 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
 
 ## 注意事项
@@ -62,8 +63,10 @@
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准（纯内部变换，不依赖谱面之外的信息），使结果更贴近段位判定。
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看详细说明。
 
-## Malody V 编辑器 / Etterna 支持
-- Malody V 编辑器和 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。
+## Malody V 编辑器 / Malody 4.3.7 / Etterna 支持
+- Malody V 编辑器、Malody 4.3.7 原生客户端与 Etterna 的支持需要桌面壳（mma-shell）配合使用。桌面壳是一个独立的小窗口程序，可以在不启动 tosu 的情况下接收来自 Malody V 编辑器、Malody 4.3.7 或 Etterna 的数据，并将分析结果显示在独立的置顶小窗口中。详细使用方法请参见 [docs/shell-guide.md](docs/shell-guide.md)。**Malody V 还可以安装「游戏内选曲桥」：装上后在游戏里选曲、游玩、结算都会自动跟随，不需要打开编辑器、也不需要打开任何面板。**
+- Malody V 与 Etterna 需要在游戏侧安装桥文件；**Malody 4.3.7 不需要在游戏里安装任何东西**：它由桌面壳从进程外只读观察接入（不写游戏目录、不注入），在游戏内选曲/游玩时自动跟随。它只支持 4.3.7 这一个版本，且仅 Windows 可用。
+- Malody V 与 Malody 4.3.7 两个源的难度会随**游戏内判定档**与**当局倍率**变化（Malody V 还取决于是否开启 Pro / 严格组），不再是固定值。
 - 该功能仍处于实验阶段，可能存在未知问题。请在使用过程中遇到问题时及时反馈。
 
 ## 贡献指南
@@ -82,7 +85,7 @@
 - [greycsont](https://github.com/greycsont): 提供了部分功能。
 - [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式。
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
-- [未来lk](https://www.bilibili.com/space/419035379): 赞助了300M Token。
+- [未来lk](https://space.bilibili.com/419035379): 赞助了300M Token。
 
 ---------
 本页累计访问量，自2026/6/21起统计，感谢大家的支持！

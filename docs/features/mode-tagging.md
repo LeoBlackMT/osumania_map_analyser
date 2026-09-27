@@ -94,9 +94,9 @@ let resolvedModeTag = (activeContentBar === "None")
 
 ## 4. Vibro 检测
 
-### 4.1 检测逻辑（vibro.js）
+### 4.1 检测逻辑（js/patterns/chartVibro.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/vibro.js` 提供两个纯函数：
+`ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` 提供全部 vibro 纯函数（共享模块，Node/浏览器同款；原 `js/app/vibro.js` 已合并进该文件）：
 
 **a) `vibro.js:16 detectVibro(values, threshold)`** — 主流程使用的检测（基于 Etterna MSD 技能值）：
 
@@ -319,8 +319,7 @@ setSvTagVisible(shouldShowSvTag);
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:60` | `modeTagSubGroupEl` |
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:61` | `svTagEl` |
 | `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:153` | `MODE_TAG_OPTIONS` |
-| `ManiaMapAnalyser by Leo_Black/js/app/vibro.js:16` | `detectVibro` |
-| `ManiaMapAnalyser by Leo_Black/js/app/vibro.js:27` | `detectVibroFromLongjackPattern` |
+| `ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` | `detectVibro`（Etterna MSD 口径）、`detectVibroFromLongjackPattern`（pattern report 口径）、`detectChartVibro` / `detectVibroFromMetadata`（整图结构 + 元数据关键词） |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:792` | `fallbackModeTag` |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:798-806` | SV 检测块 |
 | `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:653-657` | `isVibroMap` 判定 |

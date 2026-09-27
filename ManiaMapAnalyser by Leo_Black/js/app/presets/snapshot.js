@@ -87,8 +87,18 @@ export async function captureCurrentSettings() {
  * elements that do not exist on the manager page (presets.html) — a failure
  * must never abort the rest of the snapshot. State changes made before the
  * failure still count (the write-back + broadcast re-render on the overlay).
+ *
+ * @param {object} snapshot key -> value
+ * @param {object} [options]
+ * @param {boolean} [options.quiet] report per-key failures with console.debug
+ *        instead of console.error. The desktop settings page (settings.html)
+ *        has no overlay DOM by design, so those failures are expected there and
+ *        an error per key would make a healthy page look broken. Nothing is
+ *        swallowed: the message and the error object are still logged, the loop
+ *        still continues per key, and every existing caller keeps the loud
+ *        default (a failure is a real defect wherever the card exists).
  */
-export async function applySnapshot(snapshot) {
+export async function applySnapshot(snapshot, { quiet = false } = {}) {
     const { appliers } = await loadSettingsSchema();
     let recomputeNeeded = false;
     let cacheNeeded = false;
@@ -107,7 +117,12 @@ export async function applySnapshot(snapshot) {
         try {
             changed = applier(value) === true;
         } catch (error) {
-            console.error(`[presets] apply "${key}" failed (DOM may be missing on this page):`, error);
+            const message = `[presets] apply "${key}" failed (DOM may be missing on this page):`;
+            if (quiet) {
+                console.debug(message, error);
+            } else {
+                console.error(message, error);
+            }
             // The state may already have been updated — treat as changed so
             // recompute/cache invalidation still fire when needed.
             changed = true;

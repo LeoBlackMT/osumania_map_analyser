@@ -61,6 +61,8 @@ export function normalizeGameClientValue(value) {
     if (lowered === "auto") return "Auto";
     if (lowered === "osu!" || lowered === "osu") return "Osu!";
     if (lowered === "etterna") return "Etterna";
+    // 必须放在精确匹配 "malody" 之前（Malody 4 与 Malody V 是两个独立源）。
+    if (lowered === "malody4" || lowered === "malody 4" || lowered === "malody-4") return "Malody4";
     if (lowered === "malody") return "Malody";
     return null;
 }

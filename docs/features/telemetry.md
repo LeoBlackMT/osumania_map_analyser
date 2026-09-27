@@ -17,9 +17,11 @@
 - **匿名标识**：`crypto.randomUUID()`（或回退随机 hex）生成的随机 UUID，存 `localStorage` 键 `mma.telemetry.installId.v1`（失败回退 sessionStorage → 内存）。同一机器同一 tosu 数据目录多实例共享 → 天然去重；换机器/清数据才变。
 - **明确不采**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP（后端不存，连哈希都不存）、UA/OS、时区。
 - **采集字段白名单**（`analyze.data`，与后端 `backend/internal/telemetry/handler.go` 的 `allowedDataKeys` 严格一致）：
-  `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`、`numericDifficulty`。
-  - `actualAlgorithm` 语义：Mixed 是自动路由算法，`analysis.js` 上报的是**路由后实际命中的子算法**（Roxy/Azusa/Daniel/Companella/Sunny，见 `js/estimator/mixedEstimator.js` 的 `actualEstimatorAlgorithm` 返回值与 `runAnalysisPipeline.js` Mixed 分支），不再是字面 "Mixed"；其余算法（Azusa/Roxy 无效回退）同样上报实际结果。
+  `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`、`numericDifficulty`、`client`。
+  - `client` 语义：本次分析实际生效的数据源 id，取值 = `state.activeSource || "osu"`（`js/app/analysis.js`）——即 `osu` / `etterna` / `malody` / **`malody4`**（Malody 4.3.7 原生客户端源）。后端 `daily_agg` 以它为维度，dashboard 的 Client 饼图与 Version 并列一行。
+  - `actualAlgorithm` 语义与**值域**：Mixed 是自动路由算法，`analysis.js` 上报的是**路由后实际命中的子算法**（Roxy/Azusa/Daniel/Companella/Sunny，见 `js/estimator/mixedEstimator.js` 的 `actualEstimatorAlgorithm` 返回值与 `runAnalysisPipeline.js` Mixed 分支），不再是字面 "Mixed"；其余算法（Azusa/Roxy 无效回退）同样上报实际结果。合法取值是六个算法名（`Mixed`/`Azusa`/`Roxy`/`Sunny`/`Daniel`/`Companella`）**去掉 `Mixed`** 后的五个——`Sunny`/`Daniel`/`Azusa`/`Roxy`/`Companella`，**永远不是 `"Mixed"`**：后端 `backend/internal/store/aggregate.go` 把 `actualAlgorithm` 的每个不同字符串直接当成一个算法桶（`actual` 维度），任何非算法名都会被记成一条假算法行。低难段 Azusa⊕Companella 0.5/0.5 融合的胶囊 `"Azusa+Companella"`（见 [mixed-routing.md](mixed-routing.md) C8）**只是卡片显示值，不是遥测值**：`analysis.js` 的 `toTelemetryActualAlgorithm()` 在载荷构造处把它映射为 `"Azusa"`（该融合的 RC 数值以 Azusa 的估算结果为基准），并对该字段做值域守卫——未知胶囊标签一律不发送该字段（宁缺勿假，后端按空值跳过）。`algorithm` 字段则原样上报用户设置（六个算法名，含 `Mixed`）。
   - `numericDifficulty` 语义：标准数值化难度（Reform 段位体系，**.0 = mid**）。Azusa/Roxy（含 Mixed 路由到它们）用原生连续值；其余算法（Sunny/Companella/Daniel）用 `rcLabelToNumeric(estDiff)` 从估计难度字符串**反向换算**——Daniel 原生值是 DP 尺度（比标准约高 0.5），故 Daniel 一律走反解。边界标签（`< Alpha Low`、`> Emik Zeta high`、`Unknown` 等）反解为 null → **不发送该字段**。
+  - **已知限制（本轮不扩维）**：Malody 4 源的等效 OD 由"判定档 × 速率"决定，而遥测只有 `speedRate`、没有判定档，故**无法从遥测还原该源实际使用的 OD**（判定档不进任何帧之外的字段，页面也不上报它）。本轮明确**不为遥测扩维**，此限制如实记录于此。
 - **开关**：设置项 `enableTelemetry`（Network 分组，默认开），用户可关；endpoint 为空时完全不发送（默认开启但未配置 = no-op）。
 
 ## 3. 模块设计

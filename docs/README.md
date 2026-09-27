@@ -33,6 +33,7 @@
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（6 种估计算法、4/6/7K、LN/RC 段位） |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、回退链、标签与胶囊取值、Companella 融合三路） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [features/pause-detection.md](features/pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
@@ -40,8 +41,10 @@
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
-| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody 接入、转换器、路由决策表、败方门控、能力边界） |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v2、窗口操控、构建发布） |
+| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v3、窗口操控、构建发布） |
+| [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
+| [features/malody-od.md](features/malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD，**覆盖两个客户端**：Malody 4.3.7 的 PC 表（20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 局限）**与 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、复算工装） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
 | [pipeline/README.md](pipeline/README.md) | AI | 管线技术文档类别索引（分析、缓存、设置、mod） |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | 分析管线总览：tosu WebSocket -> 谱面获取 -> 解析 -> 估算 -> 显示 的完整数据流 |
@@ -60,6 +63,11 @@
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | 人类/AI | 马拉松时长修正架构重构破坏性说明（管线派生段 → 估算器内嵌、按需前置 Ett 复用、perf 约束遵守、基准双口径） |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | 人类/AI | 多数据源与桌面壳破坏性说明（外部文本入口、缓存身份/速率签名、设置管线、遥测 client 维度、fetch 语义） |
+| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | 人类/AI | Etterna 错误体验与 Companella 胶囊破坏性说明（MinaCalc abort 友好化 + wasm 模块回收、junk file 显式化、融合后胶囊跟随真实来源、新增 `ettErrorCode`/`junkFile`/`Azusa+Companella` 字段与取值） |
+| [breakings/2026-09-21-malody4-native-source.md](breakings/2026-09-21-malody4-native-source.md) | 人类/AI | Malody 4.3.7 第四数据源破坏性说明（零注入只读观察、`mdy4:` 身份、桥契约版本 2→3 与八型帧、`malody4Root`、路由与第四圆点色、插件版本冻结 2.1.0 的后果） |
+| [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | 人类/AI | Malody 4 动态判定 OD 破坏性说明（写死 OD 9 → 判定档 × 速率 `-4.56~16.42`、`modSignature` 4 段扩 5 段即自动失效、仅 `malody4` 源受影响） |
+| [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | 人类/AI | Malody V 选曲桥 fork 化破坏性说明（上游 DLL → `MMAMalodySelection.dll`、叠加界面移除、载荷 8→11 字段、壳契约 v4→v5、动态 OD、缓存键 7 段、安装器不写 cfg） |
+| [breakings/2026-09-26-local-settings-window.md](breakings/2026-09-26-local-settings-window.md) | 人类/AI | 本地设置窗口与离线权威链破坏性说明（权威链收敛为"在线 tosu / 离线本地 `mma-settings.json`"、原"离线读 tosu 文件"一级删除、新增 `settings.html` 第二窗口与三入口、`/shell-config`+`/open-settings` 端点、离线读改写与广播；契约版本/帧型/版本号均不变） |
 
 # English
 
@@ -93,6 +101,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (6 algorithms, 4/6/7K, LN/RC dan tiers) |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: which algorithm wins when, exact thresholds, fallback chains, label and capsule values, Companella fusion routes) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [features/pause-detection.md](features/pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
@@ -100,8 +109,10 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
-| [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna/Malody integration, converters, routing decision table, osu gate, capability boundaries) |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v2, window controls, build & release) |
+| [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries) |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v5, local 24061 endpoints, window controls, settings window, build & release) |
+| [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
+| [features/malody-od.md](features/malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, recompute tool) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
 | [pipeline/README.md](pipeline/README.md) | AI | Index of pipeline technical documents (analysis, cache, settings, mods) |
 | [pipeline/analysis-pipeline.md](pipeline/analysis-pipeline.md) | AI | Analysis pipeline overview: tosu WebSocket -> beatmap fetch -> parse -> estimate -> display |
@@ -120,3 +131,8 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
 | [breakings/2026-08-30-marathon-correction-in-estimator.md](breakings/2026-08-30-marathon-correction-in-estimator.md) | Human/AI | Marathon correction architecture refactor breaking note (pipeline patch → estimator-embedded, on-demand pre-Ett reuse, perf constraints honored, two-tier benchmark semantics) |
 | [breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md](breakings/2026-08-30-multi-source-data-sources-and-desktop-shell.md) | Human/AI | Multi-source & desktop shell breaking note (external text entry, cache identity/rate signature, settings pipeline, telemetry client dim, fetch semantics) |
+| [breakings/2026-09-20-ett-ux-and-companella-capsule.md](breakings/2026-09-20-ett-ux-and-companella-capsule.md) | Human/AI | Etterna error UX and Companella capsule breaking note (readable MinaCalc aborts plus wasm module recycling, explicit junk-file handling, capsule following the real fusion source, new `ettErrorCode` / `junkFile` / `Azusa+Companella` fields and value) |
+| [breakings/2026-09-21-malody4-native-source.md](breakings/2026-09-21-malody4-native-source.md) | Human/AI | Malody 4.3.7 fourth data source breaking note (zero-injection read-only observation, `mdy4:` identity, bridge contract version 2→3 with eight frame types, `malody4Root`, routing and the fourth dot colour, consequences of the frozen plugin version 2.1.0) |
+| [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | Human/AI | Malody 4 dynamic judge OD breaking note (hard-coded OD 9 → judge level × rate `-4.56~16.42`, `modSignature` growing from 4 to 5 segments as automatic invalidation, only the `malody4` source affected) |
+| [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | Human/AI | Malody V selection bridge forked (upstream DLL → `MMAMalodySelection.dll`, overlay removed, payload 8→11 fields, shell contract v4→v5, dynamic OD, 7-segment cache key, installer writes no cfg) |
+| [breakings/2026-09-26-local-settings-window.md](breakings/2026-09-26-local-settings-window.md) | Human/AI | Local settings window and the offline authority chain breaking note (chain collapsed to "online tosu / offline local `mma-settings.json`", the old "read the tosu file offline" level deleted, a new `settings.html` second window with three entry points, `/shell-config` + `/open-settings` endpoints, offline read-modify-write with broadcast; contract version, frame types and version numbers all unchanged) |

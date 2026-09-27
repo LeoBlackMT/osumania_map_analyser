@@ -90,7 +90,7 @@ if (!nextBeatmapIdentity) return;                                // :253 空身�
 ```
 
 - **md5 免疫文件替换**：`hash:` 段来自 `beatmap?.md5 || beatmap?.checksum`（:196），谱面文件内容变化 → md5 变 → identity 变 → 缓存键变，天然免疫文件替换（这是缓存键安全性的基石，见 result-cache.md §5）。
-- **meta: 降级**：仅当 tosu 同时缺少 id/hash/path 时发生（:248）。此时身份只有标题元数据（artist::title::version::mapper 小写拼接，:198-203）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js:399 isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
+- **meta: 降级**：仅当 tosu 同时缺少 id/hash/path 时发生（:248）。此时身份只有标题元数据（artist::title::version::mapper 小写拼接，:198-203）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js:482 isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
 - 归一化：id 取正整数（`normalizeNumberText` :187-193，`Math.trunc` 去小数）；path 反斜杠转正斜杠、折叠重复斜杠、小写（:181-185）；hash 小写（:196）。
 - `socketHandlers.js:290-292 lastBeatmapIdentitySource`：记录身份是 composite（≥2 段）还是单段来源，供展示层区分。
 
@@ -138,7 +138,7 @@ state.pendingChangeKind = changeKind;   // :286
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:257-261 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:267-272`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:62 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:172-173）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:395` 缓存键 = `star-v7|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v7` 是缓存语义版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:481` 缓存键 = `star-v8|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v8` 是缓存语义版本前缀；构成见 modData.js:218-228，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -171,8 +171,8 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:287-304 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:334；Companella/Mixed 需要 ett 与 interlude，:333、:337-338；`contentBarShows("ReworkPP")` 需要 pp，:339）。
-- `analysis.js:398 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v7` + 三段，modSignature 四段含 classic）。
-- `analysis.js:399 isMetaDegraded`：identity 以 `meta:` 开头。
+- `analysis.js:481 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v8` + 三段，modSignature 四段含 classic）。
+- `analysis.js:482 isMetaDegraded`：identity 以 `meta:` 开头。
 - `analysis.js:308-317`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
 
 ### 7.2 fetch .osu
@@ -204,7 +204,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | 1 解析一次 | `OsuFileParser` `process()` → 估算器/归一化/SunnyWindow/Interlude 共享同一实例（任务 9/10 已验证 parsed 路径逐位一致），输出 `parsedSummary {metadata, lnRatio, columnCount}` |
 | 1b 马拉松前置 Ett（按需） | `durationS > 300`（noteStarts 首尾差，未缩放）且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时，先算一次 Ett：注入 `options.marathonCorrection = {durationS, ettValues}` 供估算器内嵌修正，并复用于段 9/10（零重复 WASM）；其他情况零开销 |
 | 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`（白名单与回退语义同 compute.worker.js:17-54） |
-| 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0}` |
+| 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0, chart}`；`options.withChartVibro === true` 时另算整图 vibro（`js/patterns/chartVibro.js`：rice 六档 + LN vibro + 元数据关键词直判，纯结构、不依赖 Ett），结果为 `chart {vibro, reasons}`，否则 `chart = null` |
 | 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文） |
 | 5 SunnyWindow | `forceSunnyWindow` 时 `runSunnyWindowEstimatorFromText(rawText, {...options, enableAnalyzeLN}, parser)`（calculateSunny + calculateLN 均带 parsed），输出 `sunnyWindow` |
 | 6 派生 | `sixKConst`（`display6kLevel && columnCount===6` 时 `star*200/81+7/6` 2dp） |
@@ -216,7 +216,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | 12 马拉松修正 | **估算器内嵌**（无管线派生段）：`options.marathonCorrection = { durationS, ettValues }` 由前置段注入（见 §7.4 前置 Ett）——仅 `durationS > 300` 且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时提前计算一次 Ett 并复用于段 9/10；估算器内部对 `numericDifficulty` 只降不升修正（对数饱和 `min(0.50, 0.40×ln(1+excessMin))` + numeric taper `10~16`），`estDiff`/`star` 由修正后值派生。缺省不触发（逐位兼容旧行为）。详见 [features/marathon-correction.md](../features/marathon-correction.md) |
 
 - **附属段开关**：`withPattern/withEtterna/withInterlude` 取自 needComputed（fetch 前的保守值，与缓存覆盖检查同源，analysis.js:365-368）。默认 false——仅请求需要的段，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界：主线程消费段有回退分支，见下）。
-- **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。
+- **软失败通道**：附属段各自 try/catch，失败置空字段（`patternReport=null` / `ettResult=null` / `interludeStar=NaN`）并填独立错误文本（`patternError/ettError/interludeError/companellaEttError`），**不并入 errors[]**——旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError` 过滤、need* 门控）依赖主线程状态，由 analysis.js 按旧条件决定是否并入，保证逐字一致。Ett 段另有 `ettErrorCode`（当前仅 `minacalc-aborted`）与成功路径的 `ettResult.junkFile`/`rowCount`，展示层据此渲染 "Unsupported Chart" 与 "MSD unavailable (MinaCalc junk file)"（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）。
 - **worker 往返**：manager 发 `{id, type:"pipeline", input}`，compute.worker.js 的 `"pipeline"` 消息分支**异步**调 `runAnalysisPipeline(input)` 经 then/catch 回传（原 4 估算器消息保留不动）；`pendingRequests` 取消 + 30s 超时语义保持 worker 防挂起。
 - **归一化星数复用决策**（仅影响性能，不改数值）：Mixed 与 Azusa(`forceSunnyReferenceHo=false`) 的内部 Sunny 与归一化调用使用相同 options → 预计算一份 Sunny 结果经 `precomputedSunnyResult` 喂给估算器并复用其 star；Azusa(`forceSunnyReferenceHo=true`) 内部用 `cvtFlag:"HO"`、Roxy 内部用 canonicalized 文本 → 独立计算（决策表见 worker.md §4.5）。
 - **估算失败**：pipeline 不吞估算器/SunnyWindow 抛错——直接向上传播，analysis.js 估算块 catch 先做 `isStaleRequest()` 守卫（过期请求因新请求取消而 reject 时直接 return，不做失败 UI），非过期才 `resetReworkDisplay()` + `errors.push("Rework failed: ...")` + 失败路径回退元信息解析（pipeline 抛错时 parsedSummary 未返回，catch 内用最小 OsuFileParser 补齐 parsedInfo 供渲染降级，与旧 parseMetadataFromBeatmap 行为一致）；`errors[]` 恒为空（预留软失败通道），合并与写门条件不变。
@@ -318,7 +318,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - **身份为空的包直接丢弃**：`socketHandlers.js:253` 空 identity return——tosu 在谱面信息未就绪时发的包不会触发分析（mod 变化也进不来，此时 mod 状态保留旧值）。
 ## 多数据源（外部源）补充
 
-多数据源场景（Etterna/Malody，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
+多数据源场景（Etterna、Malody V、Malody 4.3.7，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
 
 - 外部文本入口：`state.pendingSourceText` 存在时跳过 tosu HTTP 抓取（`analysis.js` fetch 分支；缓存命中短路在前，转换器只在 miss 路径执行——转换由 `js/app/sources/externalSource.js` 主线程完成）。
 - result 帧 finally 汇合：外部源触发的分析在 `finally`（非 stale 守卫）统一发 result 帧（成功/失败/缓存命中/未命中四路；浏览器无壳 no-op）。requestId 在函数开头快照（沿用请求序号本地快照模式）。

@@ -3,8 +3,11 @@
 
 use crate::config;
 use std::sync::Arc;
-use crate::frames::MAX_PAYLOAD_BYTES;
-use crate::server::{mime_for, percent_decode, Shared, ws};
+use crate::frames::{HTTP_PORT, MAX_PAYLOAD_BYTES};
+use crate::server::{
+    apply_tosu_online_transition, broadcast, malody4_effective_root, malody_root, mime_for,
+    percent_decode, Shared, ws,
+};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -102,18 +105,25 @@ pub fn respond_json(stream: &mut TcpStream, code: u16, body: &str) {
 fn status_text(code: u16) -> &'static str {
     match code {
         200 => "OK",
+        202 => "Accepted",
         400 => "Bad Request",
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        413 => "Payload Too Large",
+        415 => "Unsupported Media Type",
         500 => "Internal Server Error",
+        503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Unknown",
     }
 }
 
-/// Host 头仅允许本机 24061（`http.rs` 单 listener 端口固定，硬编码即可）。
-fn is_local_host(head: &str) -> bool {
+/// Host 头仅允许本机 `{host}:{port}`（`127.0.0.1` / `localhost` / `[::1]`）。
+///
+/// 端口按参数传入：本函数同时服务 24061（静态/设置）与 17653（Malody 选曲桥），
+/// 两者各自只有一个 listener，端口是唯一的差异。
+pub(crate) fn is_local_host(head: &str, port: u16) -> bool {
     let Some(host) = head.lines().find_map(|l| {
         let lower = l.to_ascii_lowercase();
         if lower.starts_with("host:") {
@@ -124,13 +134,18 @@ fn is_local_host(head: &str) -> bool {
     }) else {
         return true;
     };
-    matches!(host.as_str(), "127.0.0.1:24061" | "localhost:24061" | "[::1]:24061")
+    let allowed = [
+        format!("127.0.0.1:{}", port),
+        format!("localhost:{}", port),
+        format!("[::1]:{}", port),
+    ];
+    allowed.iter().any(|a| a == &host)
 }
 
 fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &str) {
     // Host 头校验：仅接受本机 24061（DNS rebinding 防护——rebind 后的恶意页
     // Host 为攻击者域名，直接 403）。无 Host 头（HTTP/1.0 裸客户端）放行。
-    if !is_local_host(head) {
+    if !is_local_host(head, HTTP_PORT) {
         respond_json(&mut stream, 403, r#"{"error":"forbidden host"}"#);
         return;
     }
@@ -141,23 +156,81 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     let url = parts.next().unwrap_or("/");
     let path = url.split('?').next().unwrap_or("").to_string();
 
+    // POST /settings：离线可写（请求键优先的读-改-写）；在线只读。三点硬性规定见 §11-Q3。
     if method == "POST" && path == "/settings" {
-        // 在线（tosu 存活）→ 只读拒绝；离线 → 全量写 mma-settings.json。
+        // ① 在线复探 + 单一判据：tosu 存在时先复探存活（30s 定时器粒度太粗，见假设 5）；
+        //    跳变必须经 `apply_tosu_online_transition` —— 它是"来源切换 + 全量推送"的
+        //    **唯一**入口，直接写标志会吃掉切换边沿、跳过全量推送。
+        //    403 的条件与 `config::resolve_plugin_settings` 第 1 级**逐字相同**：任一侧
+        //    单独改动都会造出"可写但读不回"的窗口。
+        if let Some(info) = shared.tosu.as_ref() {
+            let alive = config::tosu_online(info);
+            let cached = *shared.tosu_online.lock().unwrap();
+            if alive != cached {
+                apply_tosu_online_transition(&shared, alive);
+            }
+        }
         if shared.tosu.is_some() && *shared.tosu_online.lock().unwrap() {
             respond_json(&mut stream, 403, r#"{"error":"tosu online: settings are read-only"}"#);
             return;
         }
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
-            if value.is_object() {
-                // 页面设置变更 → 落盘 mma-settings.json（插件设置全量；壳配置键
-                // etternaRoot 等不属于此文件——用户在 mma-shell-config.json 手改）。
-                let _ = config::write_plugin_settings(&value);
-                respond_json(&mut stream, 200, "{}");
-            } else {
-                respond_json(&mut stream, 400, r#"{"error":"settings must be an object"}"#);
-            }
-        } else {
+        // ② 写盘 = 请求键优先的读-改-写：页面发**全量 object**，壳只据此合并——
+        //    未知键保留，绝不把 mma-settings.json 截断成请求体。
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
             respond_json(&mut stream, 400, r#"{"error":"invalid settings json"}"#);
+            return;
+        };
+        if !value.is_object() {
+            respond_json(&mut stream, 400, r#"{"error":"settings must be an object"}"#);
+            return;
+        }
+        let Some(merged) = config::merge_plugin_settings(&value) else {
+            respond_json(&mut stream, 500, r#"{"error":"settings write failed"}"#);
+            return;
+        };
+        // ③ 缓存 + 广播：先更新本地缓存（语句结束即释放锁），再推全量合并结果；
+        //    响应体是**合并后的全量对象**（Step 9 与冒烟脚本据此读回，不是 `{}`）。
+        *shared.plugin_settings.lock().unwrap() = merged.clone();
+        broadcast(&shared, "settings", Some(merged.clone()));
+        respond_json(&mut stream, 200, &merged.to_string());
+        return;
+    }
+
+    // POST /shell-config：壳配置（mma-shell-config.json）的请求键优先读-改-写。
+    if method == "POST" && path == "/shell-config" {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+            respond_json(&mut stream, 400, r#"{"error":"invalid shell config json"}"#);
+            return;
+        };
+        if !value.is_object() {
+            respond_json(&mut stream, 400, r#"{"error":"shell config must be an object"}"#);
+            return;
+        }
+        // `None` = base 不可读或写盘失败 → 400，且**什么都不写**（不生成骨架）。
+        let Some(merged) = config::patch_shell_config(&value) else {
+            respond_json(&mut stream, 400, r#"{"error":"shell config write failed"}"#);
+            return;
+        };
+        // 壳配置既在 `*_root` 解析链里（第 3 级）又是来源缓存的内容：更新缓存 →
+        // 失效探测缓存（否则 ≤30s 内仍用旧根目录）→ **释放锁后**广播全量。
+        *shared.offline_settings.lock().unwrap() = merged.clone();
+        config::clear_detect_caches();
+        broadcast(&shared, "settings", Some(merged.clone()));
+        respond_json(&mut stream, 200, &merged.to_string());
+        return;
+    }
+
+    // POST /open-settings：打开/聚焦设置窗口。**不等窗口真的建出来**（open_or_focus 只置
+    // 标志并起独立线程，建窗是异步的；见 settings_window.rs 线程规则）。
+    if method == "POST" && path == "/open-settings" {
+        let app = shared.app.lock().unwrap().clone();
+        match app {
+            Some(app) => {
+                crate::settings_window::open_or_focus(&app, &shared.plugin_dir);
+                respond_json(&mut stream, 200, "{}");
+            }
+            // 无窗口模式（app 句柄未注入）→ 503（状态码固定，body 形状不参与判定）。
+            None => respond_json(&mut stream, 503, r#"{"error":"no app handle"}"#),
         }
         return;
     }
@@ -168,6 +241,26 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         let settings = config::resolve_plugin_settings(&shared);
         let body = serde_json::to_string(&settings).unwrap_or_default();
         write_response(&mut stream, 200, "application/json", body.as_bytes());
+        return;
+    }
+
+    // GET /shell-config：壳配置全文 + 三个根目录的**实际采纳**路径（`None` → JSON `null`，
+    // 由 `Option<PathBuf>` 序列化而来，不做有损字符串化）。配置不可读 → 400。
+    if path == "/shell-config" {
+        let cfg = config::read_shell_config();
+        if !cfg.is_object() {
+            respond_json(&mut stream, 400, r#"{"error":"shell config unreadable"}"#);
+            return;
+        }
+        let body = serde_json::json!({
+            "config": cfg,
+            "resolved": {
+                "etternaRoot": crate::etterna::etterna_root(&shared),
+                "malodyRoot": malody_root(&shared),
+                "malody4Root": malody4_effective_root(&shared),
+            },
+        });
+        respond_json(&mut stream, 200, &body.to_string());
         return;
     }
 

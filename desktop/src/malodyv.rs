@@ -1,3 +1,4 @@
+// Malody V 编辑器通道；老 Malody 4.3.7（原生客户端）源见 malody4/。
 // Malody 请求轮询（壳侧）——编辑器按钮触发的文件通道：
 //
 // 1) 编辑器插件 WriteFile 写请求——Malody 自动加谱面名前缀，实际文件为
@@ -183,6 +184,10 @@ pub fn spawn_malody_poller(shared: std::sync::Arc<Shared>) {
                 if v.get("action").and_then(|x| x.as_str()) != Some("analyze") {
                     continue; // 非本插件的请求
                 }
+                // Lua 通道（编辑器文件请求）同样算「Malody 活着」：`state.sources.malody.alive`
+                // 的 60s 窗口此前只由 24060 POST 写入，文件通道永不置真（契约 v4 修正 ⇒
+                // `transport` 才能如实回报 `lua`）。
+                *shared.last_malody_post.lock().unwrap() = Some(std::time::Instant::now());
                 let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("");
                 let artist = v.get("artist").and_then(|x| x.as_str()).unwrap_or("");
                 let level = v.get("level").and_then(|x| x.as_str()).unwrap_or("");

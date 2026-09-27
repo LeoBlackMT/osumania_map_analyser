@@ -124,13 +124,14 @@ worker 端处理（compute.worker.js:23-37）：
 | `sunnyStar` | number \| null | 归一化用的 Sunny 原始 sr（非归一化算法为 null） |
 | `sunnyWindow` | object \| null | `forceSunnyWindow` 时 calculateSunny + calculateLN 结果 |
 | `sixKConst` | number \| null | `display6kLevel && columnCount===6` 时 `star*200/81+7/6` 2dp |
-| `vibro` | `{ star: number, eligible: boolean }` | 归一化前 star 与 `> 5.0` 判定（§4.5） |
+| `vibro` | `{ star: number, eligible: boolean, chart: { vibro: boolean, reasons: string[] } \| null }` | 归一化前 star 与 `> 5.0` 判定（§4.5）；`chart` 为 `options.withChartVibro === true` 时的整图结构 vibro 判定（rice 六档 + LN vibro + 元数据关键词），关闭时为 null |
 | `parsedSummary` | `{ metadata, lnRatio, columnCount }` | 解析摘要（主线程不再二次解析） |
 | `patternReport` | object \| null | 纯数据子集（§4.4） |
 | `patternTopFiveClusters` | array \| null | 前 5 cluster |
 | `patternError` | string \| null | 软失败文本 |
-| `ettResult` | object \| null | `{ values, keycount, ... }` |
+| `ettResult` | object \| null | `{ values, keycount, rowCount, junkFile, ... }`；`junkFile = true` 表示 MinaCalc 的 junk-file 守卫返回了"显示为 0.00"的技能值（所有展示技能值 < 0.005，且行数 ≥32）——是不可用，不是"难度 0" |
 | `ettError` | string \| null | 软失败文本 |
+| `ettErrorCode` | string \| null | 软失败错误码（当前仅 `minacalc-aborted`：MinaCalc 在异常谱面上主动 abort）；展示层用它把卡片渲染成 "Unsupported Chart" |
 | `interludeStar` | number | 软失败时为 NaN |
 | `interludeError` | string \| null | 软失败文本 |
 | `companellaEttResult` | object \| null | 二次 Ett（Companella/Mixed && 4K && 版本不同） |
@@ -149,7 +150,8 @@ worker 端处理（compute.worker.js:23-37）：
 **vibro 顺序约束（关键）**：
 
 1. **pipeline 内 vibro 判定用归一化前 star**（runAnalysisPipeline.js:169-175）：`vibroStar = Number(selectedRework?.star)`，`eligible = Number.isFinite(vibroStar) && vibroStar > 5.0`，与旧 analysis.js `selectedRework?.star` 顺序一致（算法自身 star，非归一化后口径）。
-2. **实际 isVibroMap 判定留在主线程**（analysis.js:664-667）：`isVibroMap = state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD)`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro`（js/app/vibro.js:16）是浏览器专属（`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。
+2. **Etterna 口径的 isVibroMap 判定留在主线程**（analysis.js）：`isVibroMap = isVibroMap || (state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD))`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro` 本身是共享纯函数（`js/patterns/chartVibro.js`，`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。注意这里是 **`||` 取或**：整图/关键词结论（见下条）不被覆盖，MSD 口径只做补充。
+3. **整图结构 vibro 在 pipeline 内算**（runAnalysisPipeline.js，`options.withChartVibro === true` 时）：`detectChartVibro({notes, keyCount, rate, metaData})`（`js/patterns/chartVibro.js`，共享纯函数）产出 `vibro.chart = {vibro, reasons}`。它不依赖 Ett，故与上面的 Etterna 路径**取或**：`analysis.js` 在消费 pipeline 结果时若 `pipelineResult.vibro?.chart?.vibro` 为真则直接置 `isVibroMap = true`（受同一 `state.vibroDetection` 开关控制，命中行为仍只是隐藏数值难度 + 警告）。worker 失败回退主线程时走同一 `pipelineInput`，语义一致。
 
 **归一化星数复用决策**（runAnalysisPipeline.js:109-127，仅性能优化，不改数值）：
 

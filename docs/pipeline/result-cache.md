@@ -54,10 +54,10 @@ fetchBeatmapFile() → 查缓存（analysis.js:308-317）
 
 ## 5. 缓存键
 
-`analysis.js:398`：
+`analysis.js:480`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v7"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v8"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
@@ -65,7 +65,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v7` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:399） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1** |
+| `star-v8` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:480） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Etterna junk 文件（技能值全零）不再显示 `0.00`——快照里 `ettResult` 的语义变化，旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）**；**v8：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:88） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
 | `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
@@ -142,7 +142,7 @@ if (identityParts.length === 0 && hasMetadataIdentity) {
 
 处理链：
 
-1. `analysis.js:399 isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:")`——在 fetchBeatmapFile 开头判定。
+1. `analysis.js:482 isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:")`——在 fetchBeatmapFile 开头判定。
 2. 查询侧：`analysis.js:308` 只要 identity 存在就会尝试查缓存（`meta:` 键也可能命中——但如果从未写入过，实际永远 miss）。
 3. 写入侧：`analysis.js:776` `{ skip: isMetaDegraded }` → `put({skip:true})`（§3），**meta 降级快照永不进入缓存**。
 
@@ -206,9 +206,11 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - **Node 环境**：`resultCache.js` 无 import，benchmark runner 的 `smoke-result-cache.mjs` 直接 `import` 它跑 8 个冒烟用例，修改本模块后建议跑一遍该用例保持 Node 侧兼容。
 ## 多数据源（外部源）补充
 
-外部源（`ett:`/`mdy:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
+外部源（`ett:` / `mdy:` / `mdy4:` 前缀 identity，见 [../features/multi-source.md](../features/multi-source.md)）的缓存键语义：
 
-- identity 含**内容摘要 md5**（壳对谱面原文计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
-- modSignature 由 externalSource **直构**（`speedRate|none|none|0`，speedRate 段 = 桥 rate 派生）——同图不同 rate 缓存独立；额外部源不走 modData 派生、与 client 无关。
-- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot`/`malodyRoot` 不影响键值。
+- identity 含**内容摘要 md5**（壳对谱面原文或谱面文件字节计算）——跨包同名/跨难度不串快照；外部源 mtime 不参与键。
+- 三个前缀分属**三个不同源**、互不命中：Etterna `ett:`、Malody V `mdy:`、Malody 4 `mdy4:{md5}`。`mdy4:` 的 md5 是**游戏自身的身份键**（谱面文件字节摘要），因此**免疫改名与曲名变动**：同一张谱换文件名/改曲名仍是同一个缓存条目。
+- modSignature 由 externalSource **直构**，**最多 7 段**：`speedRate|odFlag|cvtFlag|classic|judge|win|pro`，不走 modData 派生、与 client 无关。第 5 段 = 判定档（`malody4` 用字母、未知 `"?"`；桥通道用 `judge{n}`），**第 6 段 = 窗口缩放因子**（仅桥通道，`win{winScale}`）、**第 7 段 = Pro**（仅桥通道，`pro0`/`pro1`/`pro?`）；非桥帧的第 6/7 段为空串，故 Lua 通道与 `malody4` / Etterna 仍是 5 段。speedRate 段 = 桥 rate 派生（真实倍率）。
+- 第 5/6/7 段都是硬要求，各自对应一件**会静默出错**的事：判定档决定换算出的等效 OD；**Turbo 1.2 与 Dash 1.2 的 speedRate 相同、只能靠第 6 段区分**；**Pro 在同一判定档与同一倍率下改变等效 OD，只能靠第 7 段区分**。任一变化都必须重算——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都由壳随 song 帧下发（`meta.judge` / `winScale` / `pro`），变化即触发一次重发。
+- `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot` / `malodyRoot` / `malody4Root` 不影响键值。
 - meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。

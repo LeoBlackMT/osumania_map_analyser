@@ -2,6 +2,8 @@ import {
     analyzeEtternaFromText as analyzeEtternaWasm,
     DEFAULT_SCORE_GOAL,
     DISPLAY_SKILLSET_ORDER,
+    MINACALC_ABORT_CODE,
+    MINACALC_ABORT_MESSAGE,
 } from "./calc.js";
 import { SUPPORTED_KEYS } from "./constants.js";
 
@@ -53,4 +55,6 @@ export async function analyzeEtternaFromText(osuText, {
 export {
     DEFAULT_SCORE_GOAL,
     DISPLAY_SKILLSET_ORDER,
+    MINACALC_ABORT_CODE,
+    MINACALC_ABORT_MESSAGE,
 };

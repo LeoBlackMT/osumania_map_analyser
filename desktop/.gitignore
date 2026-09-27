@@ -2,3 +2,5 @@
 /scripts/
 
 /gen/
+# 本地测试脚手架（不能用 tests/：Cargo 会把 tests/*.rs 当成独立的集成测试 crate 编译）：按仓库既有约定（/scripts/ 亦然）不入库。
+/tests-local/

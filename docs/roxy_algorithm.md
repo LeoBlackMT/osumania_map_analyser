@@ -368,7 +368,7 @@ For reference, the wider set of five degenerate dimensions affects 66 charts (0.
 
 If the meta head is ever retrained, the proper fix is a variance floor at training time; the inference-side clamp exists because the training script (`temp/retrain_upper.py`) is not in the repository.
 
-Cache prefix bumped `star-v6` → `star-v7` because Roxy `numeric`/`estDiff` change semantics.
+Cache prefix bumped `star-v7` → `star-v8` because Roxy `numeric`/`estDiff` change semantics (`star-v7` was taken by the Etterna junk-file bump landed on main in the meantime).
 
 After meta evaluation, a structural backstop prevents the calibrated value from falling slightly below Roxy's own structural score. The backstop is gated from structural numeric `12.25` to `14.0`, targets `structuralNumeric - 0.15`, and only applies when the gap is positive but no larger than `0.35`. This keeps it from acting as a broad high-difficulty special case.
 

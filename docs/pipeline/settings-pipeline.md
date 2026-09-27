@@ -3,19 +3,20 @@
 > 面向 AI 的管线技术文档。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 相关文档：[result-cache.md](result-cache.md)（缓存写门/失效）、[analysis-pipeline.md](analysis-pipeline.md)（分析管线总览）、[guides/adding-a-setting.md](../guides/adding-a-setting.md)（新增设置 7 步清单，依赖本文流程）。
 
-## 1. 设置来源三处
+## 1. 设置来源四处（含壳离线面）
 
-插件设置不是单一来源，最终生效值由三处叠加：
+插件设置不是单一来源，最终生效值由四处叠加：
 
 | 来源 | 性质 | 位置 | 说明 |
 | --- | --- | --- | --- |
-| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 45 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身** |
+| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 50 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身**。同时也是设置窗口（`settings.html`）表单的 schema 来源，见 §1 末 |
 | `ManiaMapAnalyser by Leo_Black/config.js` `APP_CONFIG.defaults` | JS 内部默认值 | config.js:76-115 | 解析器无值可读时的回退；`APP_CONFIG.options`（config.js:5-17）提供枚举白名单 |
 | tosu 运行时 `getSettings` 命令 | 用户实际设置 | WebSocket 命令通道 | 实际设置文件位于 tosu 的 `settings` 目录（文件名 `<插件目录名>.json`），通过 `getSettings` 命令推送（见 CLAUDE.md:34、:52） |
+| 桌面壳本机面（无 tosu 时） | 用户实际设置（离线权威） | 壳 `24061` 的 `/settings`（GET/POST）+ exe 旁 `mma-settings.json` | 壳的权威链只有一个判据——**tosu 是否在线**：在线 = tosu 设置文件（只读，`config::resolve_plugin_settings` 第 1 级），离线 = `mma-settings.json`（第 2 级；缺则按插件 `settings.json` 的 `value` 生成骨架并落盘，第 3 级）。离线**绝不**读 tosu 设置文件（即使它存在）。端点与状态码见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c |
 
 **settings.json 的 50 个 uniqueID 构成**：7 header + 6 button + 37 实际设置。
 
-- **Links（header `hLinks` settings.json:3）**：button `GuideButtonEN` settings.json:11、`GuideButtonCN` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35
+- **Links（header `hLinks` settings.json:3）**：6 个 button —— `GuideButton` settings.json:11、`PresetGuideButton` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35、`PresetButton` settings.json:75、`DebugButton` settings.json:444（后两个指向 tosu 自己提供的页面，壳内**不渲染**，见 §1 末）
 - **Modules Customization（header `hModules` settings.json:43）**：`contentBar` settings.json:51、`srText` settings.json:66、`diffText` settings.json:80、`showModeTagCapsule` settings.json:96
 - **Theme & Effects（header `hTheme` settings.json:104）**：`enableOsuTheme` settings.json:112、`useOsuFont` settings.json:120、`enableFloatingTriangles` settings.json:128、`enableCoverArt` settings.json:136、`customBackgroundColor` settings.json:144、`enableEtternaRainbowBars` settings.json:152、`enableStatusMarquee` settings.json:160、`enableNumericDifficulty` settings.json:168、`enableLNDifficulty` settings.json:176、`reverseCardExtendDirection` settings.json:184、`cardVisibility` settings.json:192、`cardOpacity` settings.json:204、`cardBgBlur` settings.json:218、`cardRadius` settings.json:233
 - **Functionality Options（header `hFunctions` settings.json:287）**：`enableUpdateCheck` settings.json:295、`enableResultCache` settings.json:303、`enablePauseDetection` settings.json:311、`VibroDetection` settings.json:319（注意大写 V，见 §9）、`useSvDetection` settings.json:327、`display6kLevel` settings.json:335、`extendedEstimationRange` settings.json:343、`forceSunnyWindow` settings.json:351、`enableAnalyzeLN` settings.json:359、`estimatorAlgorithm` settings.json:367、`etternaVersion` settings.json:382、`companellaEtternaVersion` settings.json:397
@@ -23,6 +24,10 @@
 - **Debug Options（header `hDebug` settings.json:434）**：`debugUseAmount` settings.json:450、`azusaSunnyReferenceHo` settings.json:458、`enableAlwaysShowLNDifficulty` settings.json:466
 
 config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字段一一对应，默认值需保持同步（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:234-244）。
+
+**设置窗口（`settings.html`）用的就是这套 schema**：表单由 `js/app/settingsPage/settingsForm.js` 在运行时按 `settings.json` 的 `entries` 渲染——`header` → 分组标题，`checkbox`/`options`/`text`/`color` → 对应控件，默认值取条目 `value`；只渲染 `loadSettingsSchema`（`presets/schema.js`）找得到 `apply{Key}Setting` applier 的键，`preset`/`presetStorage` 刻意排除（预设库归预设区），`button` 条目归页面顶部的 **Links** 行（`settings.html` 的 `#settings-links-root`，在状态栏下方、导航栏上方；由 `js/app/settingsPage/settingsLinks.js` 渲染，其 `EXCLUDED_LINK_IDS` 排除 `PresetButton`/`DebugButton` 这两个壳内不存在的 tosu 页面地址——`settings.json` 不动，tosu 设置界面照旧 6 个；`PresetButton` 的主机端口改写仍由 `settingsPage/index.js buttonUrl()` 供 tosu 在线时的只读提示使用）。**因此新增设置不需要改设置页**：`settings.json`（UI 定义 + 默认值）+ `config.js` `defaults` + 解析/应用函数同步即可（完整清单见 [../guides/adding-a-setting.md](../guides/adding-a-setting.md)），设置页自动多出一行；页面的导航顺序与表单段标题（**Shell → Card Settings → Presets**）不受设置增删影响。
+
+**页面侧 tosu 数据面（`state.tosuDataSeen`）**：壳离线页（24061）的初始抓取门控不再只看壳的 `tosuOnline` 探测位——页面自己的 tosu socket 收到过载荷（`socketHandlers.js:305 applyBeatmapState` 置位）就同样放行（`analysis.js` 两处），并把 1.2s 的延迟初始重算改为立即执行（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，`scheduleRecompute` 会清掉它、200ms 内计算）。这决定了设置窗口写出的配置能否立刻看到分析结果：以前"tosu 在跑但壳找不到 `tosu.env`"的机器会停在 `Waiting for a data source (Etterna/Malody or tosu)...`。
 
 ## 2. 启动流程
 
@@ -73,6 +78,17 @@ config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字�
 7. **首包解析**：settings.js:857-861 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
 8. **重算调度**：settings.js:863-867 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
 
+**壳离线写回与广播路径**（桌面壳设置窗口，无 tosu 时）：
+
+1. `settings.html` 里改一项 → 页面先 `applySnapshot({[key]: value})` 让本地 `state` 立即生效，再 `patch` 到 transport；
+2. transport（`js/app/settingsPage/shellTransport.js` → `presets/shellTransport.js`）以"最近一次成功 GET 的 base"为基点发**全量对象** `{...base, ...patch}` 到 `POST /settings`（无 base 则拒写，见 [../features/presets.md](../features/presets.md)「离线（壳）模式」）；
+3. 壳 `config::merge_plugin_settings` 做请求键优先的读-改-写（未知键保留）→ 更新缓存 + `broadcast("settings", merged)`（锁外广播）；
+4. overlay 页面收到 settings 帧 → 走本节 1–8 步的同一套处理（含 `SETTING_CACHE_KEYS` 缓存失效与 `scheduleRecompute`），**无需重启**；
+5. 设置窗口自己的订阅者再经 pull-on-notify 拿回合并结果（回填表单 `formValues`，供"Load Current"/保存预设读到当前值）；
+6. **在线**时 `POST /settings` 返回 403（判据与 `resolve_plugin_settings` 第 1 级同一表达式），页面收到 403 立即切只读视图并提示 tosu 已连接——写失败不会被静默吞掉。
+
+壳侧对本地文件的周期检测（`stat → read → stat`）在 30s 内复核手改 `mma-settings.json` 的场景并推同一帧；在线时该检测被 `if !online` 门控，tosu 设置文件检测则被 `if online` 门控（详见 [../features/desktop-shell.md](../features/desktop-shell.md) §4b）。
+
 ## 6. 遗留逻辑（注意事项）
 
 - **autoMode 强制 Auto**：settings.js:769-774——`parseAutoModeValue(payload)` 为真且 `isAutoDisplayEnabled()` 为假（即用户当前不是 Auto）时，**直接写** `state.userSrText = "Auto"`、`state.userContentBar = "Auto"` 并 `refreshAutoDisplayProfile()`。这是对所有设置的独立检查之后运行的全局覆盖，新设置项迁移自旧 `autoMode` 配置时需留意。
@@ -111,12 +127,9 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:833-850）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
 ## 多数据源（外部源）补充
 
-设置管线新增三项（见 [../features/multi-source.md](../features/multi-source.md)）：
+设置管线在多源场景下涉及的键（见 [../features/multi-source.md](../features/multi-source.md)）：
 
-- `gameClient`（options，Auto 默认；其变更入 `SETTING_CACHE_KEYS` 与 `SETTING_RECOMPUTE_KEYS` 之外的缓存侧）
-- `etternaRoot` / `malodyRoot`（text；仅壳侧消费，变更不影响缓存键）
-- 解析函数：`parseGameClientValue` / `parseEtternaRootValue` / `parseMalodyRootValue`
-  （settingsParser.js `createSettingsParsers` 返回对象注册）
+- `gameClient`（Auto 默认；解析函数 `parseGameClientValue` 由 `settingsParser.js` 的 `createSettingsParsers` 返回对象注册，应用函数 `applyGameClientSetting`）；其变更入 `SETTING_CACHE_KEYS`（保守兜底）。
+- 游戏根目录 `etternaRoot` / `malodyRoot` / `malody4Root` **不是插件设置**：它们是壳配置 `mma-shell-config.json`（exe 旁，由桥安装器或用户手写）的键，**只由壳消费**（壳据此定位 `Save/` 桥文件、Malody V chart 目录、Malody 4.3.7 的 `beatmap/`）；**页面侧没有对应的解析函数、也不进任何缓存失效集合**（路径变化不影响分析结果，只影响壳能否找到谱面）。跨进程边界时它们随壳的 settings 帧一起到达页面，但页面不消费。
 
-已知待办：离线模式（壳 24061）的页面侧设置初始拉取与变更持久化（壳 `/settings`
-GET/POST 双向已实现，页面 `applySettingsPayload` 接线未完成）。
+离线模式（壳 24061）的页面侧设置初始拉取与变更持久化**已实现**：设置窗口 `settings.html`（`js/app/settingsPage/`）启动时 `GET /settings` 取全量并 `applySnapshot` 灌入 `state`（逐键 try/catch），变更经 transport `POST /settings` 落盘 `mma-settings.json` 并由壳广播回 overlay 与设置页（见 §5 末）；预设库同路存进本地 `presetStorage`。在线时同一端点返回 403，设置页转只读（插件设置请在 tosu 设置界面改，预设请在 tosu 的 Presets 页面管理）。壳侧端点、状态码与权威链见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c/§4b。
