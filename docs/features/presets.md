@@ -112,6 +112,10 @@ tosu WebSocket 设置广播
 
 设置窗口的预设区**整体复用** `manager.js`/`form.js`，因此编辑器的"勾选要包含的项"列（include checkbox）与 `presets.html` **一致地保留**。这是**预设编辑器**（部分快照）的语义，不是设置面板的语义——设置面板（`settingsPage/settingsForm.js`）才是无勾选列、改一项即提交。两者不要混为一谈。
 
+### Guide 链接在壳窗口内可用（剪贴板兜底）
+
+顶部操作栏的 **Guide** 按钮（`manager.js` 的 `#act-guide`）以前在壳窗口里点了没反应：Tauri/WebView2 把 `<a target="_blank">` 的新窗口点击吞掉，页面既没打开浏览器也没给反馈。现在它与设置页的 Links 行共用 `js/app/externalLink.js openExternalLink()`：先 `window.open(url, "_blank", "noopener")`，返回空（壳窗口拦下）就把地址复制到剪贴板，并 toast 提示 `LINK_COPIED_NOTICE`（`Link copied — open it in your browser.`）。点击一律 `preventDefault()`，不会把页面导航走；浏览器里的 `presets.html` 行为不变（正常打开新标签页）。
+
 ## 注意事项
 
 1. 内置预设名（`presets/index.json` 的 `name`）必须与 `settings.json` 的 `preset` options 一致（不一致时 dashboard 选择后 `applyPresetByName` 找不到 → 回退 Default）。

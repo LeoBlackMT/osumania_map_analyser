@@ -151,7 +151,7 @@ Malody V 有两个互不影响的通道，按需要选：
 
 ## 五、设置窗口
 
-壳自带一个图形化设置窗口（页面 `settings.html`，由壳的本机端口 `24061` 提供），用来改**插件设置**、**壳配置**与**预设**。窗口由壳进程承载，所以**壳必须在运行**；改动只作用于卡片显示本身，不会打断分析（打开期间主窗口的置顶会临时取消，见下），关闭它也不会退出壳。
+壳自带一个图形化设置窗口（页面 `settings.html`，由壳的本机端口 `24061` 提供），用来改**壳配置**（Shell）、**卡片设置**（Card Settings，即叠加卡片自身的显示与功能设置）与**预设**（Presets）。窗口由壳进程承载，所以**壳必须在运行**；改动只作用于卡片显示本身，不会打断分析（打开期间主窗口的置顶会临时取消，见下），关闭它也不会退出壳。
 
 三种打开方式（任选一种）：
 
@@ -161,7 +161,15 @@ Malody V 有两个互不影响的通道，按需要选：
 | 命令行 | `mma-shell.exe --settings`。已有一个壳在运行时，它把请求转交给那个实例并**立即退出**（不会开出第二个叠加窗口，也不会闪一下主窗口） |
 | 浏览器直开 | `http://127.0.0.1:24061/settings.html`（仅本机；从其他地址打开时页面只显示提示 `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`） |
 
-窗口内有三块内容：**插件设置**（与 tosu 设置界面同一套键、按分组排列，改一项即保存）、**壳配置**（`gameClient`、三个游戏根目录与实际采纳路径、快捷键、日志级别；改根目录会立刻反映实际采纳的路径，改快捷键会提示需要重启）、**预设区**（完整的预设管理，与 `presets.html` 相同）。窗口的位置与大小记忆在 exe 旁的 `mma-shell-settings-window.json`（与主窗口的 `mma-shell-state.json` 分开，互不影响）；设置窗口打开期间主窗口的置顶会临时取消（关闭或建窗失败后按原状态恢复，此过程不写主窗口状态文件）。
+窗口的导航顺序为 **Shell → Card Settings → Presets**：**Shell**（`gameClient`、三个游戏根目录与实际采纳路径、快捷键、日志级别；改根目录会立刻反映实际采纳的路径，改快捷键会提示需要重启）、**Card Settings**（叠加卡片自身的设置：与 tosu 设置界面同一套键、按 `settings.json` 的分组排列，改一项即保存）、**Presets**（完整的预设管理，与 `presets.html` 相同）。窗口的位置与大小记忆在 exe 旁的 `mma-shell-settings-window.json`（与主窗口的 `mma-shell-state.json` 分开，互不影响）；设置窗口打开期间主窗口的置顶会临时取消（关闭或建窗失败后按原状态恢复，此过程不写主窗口状态文件）。
+
+**Card Settings 的表单由 `settings.json` 生成**（每项设置都不需要为设置页写代码）：
+
+- 页面在运行时读插件的 `settings.json`，按其条目逐项渲染：`header` 变成分组标题，`checkbox` / `options` / `text` / `color` 变成对应控件，默认值取条目的 `value`；`preset` 与 `presetStorage` 两个系统键不在这里显示（它们归下面的预设区管）。
+- **新增一项设置不需要改设置页**：在 `settings.json` 里加条目（tosu 设置界面的定义与默认值），按仓库内 `AGENTS.md` 的要求同步 `config.js` 的 `defaults` 与对应的解析/应用函数，设置页下次打开就会自动多出一行。
+- `settings.json` 里类型为 `button` 的条目（设置说明、预设说明、报告问题、基准测试结果、预设管理页、调试页，共 6 个）不在表单里，而是渲染在**页面最顶部**的 **Links** 行（状态栏下方、导航栏上方）——打开窗口第一眼就能看到，不必往下翻。
+- **链接行为**：点链接不会把设置窗口导航走。壳窗口里若打不开系统浏览器（`window.open` 被拦），页面会**把地址复制到剪贴板**并提示 `Link copied — open it in your browser.`，自己在浏览器里粘贴打开即可；「预设管理页」的地址会先把主机端口换成当前的 `wsEndpoint`。预设区的 **Guide** 按钮也走同一条路（以前在壳窗口里点了没反应）。
+- **快捷键字段总有值**：壳启动时会检查 `mma-shell-config.json` 的 `hotkeys`，缺失或为空的键按内置默认补齐（`topmost` / `clickThrough` / `close` / `settings`，其中打开设置窗口默认 **`Ctrl+Shift+S`**），你自己填过的值不会被覆盖；所以 Shell 面板里的「Open settings window」不会再是空输入框。快捷键只在启动时注册，在该面板改完需**重启壳**生效。
 
 **在线与离线行为不同**：
 
@@ -357,7 +365,8 @@ A malformed config falls back to defaults with a warning in the log.
 ## Settings window
 
 The shell ships a graphical settings window (the `settings.html` page, served by the shell's local port `24061`) for
-**plugin settings**, **shell config** and **presets**. The window is hosted by the shell process, so **the shell must be
+the **shell config** (Shell), the **card settings** (Card Settings — the overlay card's own display and behaviour
+settings) and **presets** (Presets). The window is hosted by the shell process, so **the shell must be
 running**; changes only affect the card display itself and never interrupt an analysis (while it is open the main
 window's always-on-top is temporarily cancelled — see below), and closing it does not quit the shell.
 
@@ -369,13 +378,37 @@ Three ways to open it (any one works):
 | Command line | `mma-shell.exe --settings`. If a shell is already running it forwards the request to that instance and **exits immediately** (no second overlay window, no main-window flash) |
 | Browser | open `http://127.0.0.1:24061/settings.html` (local machine only; from any other address the page just shows `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`) |
 
-The window has three parts: **plugin settings** (the same keys as the tosu settings UI, grouped; every change is saved
-immediately), **shell config** (`gameClient`, the three game roots with the paths actually adopted, hotkeys, log level;
-root changes show the adopted path right away and hotkey changes tell you a restart is needed), and the **preset area**
-(the full preset manager, identical to `presets.html`). The window remembers its own position and size in
-`mma-shell-settings-window.json` next to the exe (separate from the main window's `mma-shell-state.json`, so the two
-never interfere); while it is open the main window's always-on-top is temporarily cancelled (restored per the saved
-state when the settings window closes or fails to build — the main window's state file is not touched by this).
+The window's navigation order is **Shell → Card Settings → Presets**: **Shell** (`gameClient`, the three game roots
+with the paths actually adopted, hotkeys, log level; root changes show the adopted path right away and hotkey changes
+tell you a restart is needed), **Card Settings** (the overlay card's own settings: the same keys as the tosu settings
+UI, grouped as in `settings.json`; every change is saved immediately) and **Presets** (the full preset manager,
+identical to `presets.html`). The window remembers its own position and size in `mma-shell-settings-window.json` next to
+the exe (separate from the main window's `mma-shell-state.json`, so the two never interfere); while it is open the main
+window's always-on-top is temporarily cancelled (restored per the saved state when the settings window closes or fails
+to build — the main window's state file is not touched by this).
+
+**The Card Settings form is generated from `settings.json`** (no code is needed per setting):
+
+- At runtime the page reads the plugin's `settings.json` and renders one row per entry: `header` becomes a group title,
+  `checkbox` / `options` / `text` / `color` become the matching controls, and the default comes from the entry's
+  `value`. The two system keys `preset` and `presetStorage` are not shown here (they belong to the preset area below).
+- **Adding a setting needs no change to the settings page**: add the entry to `settings.json` (the tosu settings-UI
+  definition plus its default) and keep `config.js`'s `defaults` and the matching parse/apply pair in sync as the
+  repository's `AGENTS.md` requires — the page picks it up automatically the next time it opens.
+- Entries whose `settings.json` type is `button` (settings guide, presets guide, report issue, benchmark results,
+  presets manage page, debug page — six in total) are not part of the form; they are rendered as the **Links** row at
+  the very top of the page (below the status bar, above the nav), so they are visible the moment the window opens
+  instead of at the bottom of the Card Settings form.
+- **Link behaviour**: clicking a link never navigates the settings window away. Inside the shell window, when the
+  system browser cannot be opened (`window.open` is blocked), the page **copies the address to the clipboard** and
+  shows `Link copied — open it in your browser.` so you can paste it into your own browser; the "presets manage page"
+  address has its host:port rewritten to the current `wsEndpoint` first. The preset area's **Guide** button goes
+  through the same path (it previously did nothing inside the shell window).
+- **The hotkey fields always have a value**: at startup the shell checks `mma-shell-config.json`'s `hotkeys` and fills
+  in any missing or empty key with its built-in default (`topmost` / `clickThrough` / `close` / `settings`, where
+  opening the settings window defaults to **`Ctrl+Shift+S`**) without ever overwriting a value you wrote — so the
+  "Open settings window" field in the Shell panel never shows up empty. Hotkeys register at startup only: restart the
+  shell after changing them there.
 
 **Online and offline behave differently**:
 

@@ -94,6 +94,13 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - **置顶与事件分流**：窗口打开期间临时 `set_always_on_top(false)` 主窗（**不写** `mma-shell-state.json`；关闭或建窗失败时按该文件恢复），两个全局快捷键回调（置顶/穿透）在 `is_open()` 时只记 debug 并 return，避免把设置窗口盖住。`on_window_event` 按 `window.label()` 分流：`main` = 原逻辑 + `CloseRequested` 连带 `settings_window::close()`（关 overlay 一起关设置窗口）；`settings` = 几何写独立文件，`CloseRequested`/`Destroyed` 复位标志并恢复主窗置顶。
 - **已知差异（计划 §11-Q9）**：置顶/穿透的**页面内兜底路径**（Wayland 无全局快捷键时页面经 control 帧 `toggleTopmost`/`toggleClickThrough` → `server/ws.rs handle_control`）**没有** `is_open()` 门控——设置窗口打开期间按这两个兜底键仍会切换置顶并写 `mma-shell-state.json`，主窗可能重新盖住设置窗口。本轮刻意保留该差异（保持"不动 `ws.rs`"）；修法是 4 行（让 `handle_control` 也走 `is_open()` 判定），另立处理。
 
+**设置页（`settings.html`）的页面侧事实**（导航顺序 **Shell → Card Settings → Presets**，表单段标题即 "Card Settings"，指叠加卡片自身的设置）：
+
+- **表单由 `settings.json` schema 生成**：`js/app/settingsPage/settingsForm.js` 在运行时按 `settings.json` 的 `entries` 逐项渲染（`header` → 分组标题；`checkbox`/`options`/`text`/`color` → 对应控件；默认值取条目的 `value`），且只渲染 `presets/schema.js loadSettingsSchema()` 找得到 `apply{Key}Setting` applier 的键；`preset`/`presetStorage` 刻意排除（预设库归预设区的完整管理器）。**新增设置不需要改设置页**：改 `settings.json`（tosu UI 定义 + 默认值）并按 AGENTS.md 同步 `config.js` `defaults` 与解析/应用函数即可，页面自动跟随。
+- **Links 行（页面顶部）**：`settings.json` 的 `button` 条目不在表单里，由 `js/app/settingsPage/settingsLinks.js` 渲染进 `settings.html` 顶部的 `#settings-links-root`（状态栏下方、导航栏上方，打开窗口第一眼可见；当前 6 个：`GuideButton` / `PresetGuideButton` / `IssueButton` / `BenchmarkButton` / `PresetButton` / `DebugButton`）；`PresetButton` 的主机端口在打开前换成当前 `wsEndpoint`（`settingsPage/index.js buttonUrl()`），其余条目用原值。
+- **链接行为**：设置页 Links 行与预设区 `Guide` 按钮（`presets/manager.js`）共用 `js/app/externalLink.js openExternalLink()`——先 `window.open(url, "_blank", "noopener")`；返回空（Tauri/WebView2 拦下）则复制到剪贴板并提示 `Link copied — open it in your browser.`。两处点击都 `preventDefault()`，设置窗口自身绝不导航走。预设区 Guide 在壳窗口里以前是死按钮。
+- **hotkeys 补缺**：`config.rs::ensure_shell_config()` 对**已存在**的 `mma-shell-config.json` 只补不改——`hotkeys` 缺失/非对象，或四个键（`topmost`/`clickThrough`/`close`/`settings`）中某个缺失、空串时，按 `DEFAULT_HOTKEYS` 补齐并落盘（复用 `write_exe_json` 的 tmp + rename 写者），用户写过的值原样保留；无改动不落盘。因此 Shell 面板的「Open settings window」总有值——在此之前老配置缺该键时输入框是空的，而快捷键本身靠 `main.rs` 的 `hot(&k, def)` 内置默认（`Ctrl+Shift+S`）照常可用。快捷键仍只在启动时注册，改后需重启。
+
 ## 4b. 配置、日志与路径容错
 
 - **壳配置 `mma-shell-config.json`**（exe 旁，首启自动生成骨架）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`；损坏或非法字段自动回落默认并警告（不崩溃）。`malody4Root` 由桥安装器的第三个游戏项（`Malody 4`）自动写入——该选项**只写这个键、不复制任何文件**，卸载只清该键。
@@ -112,5 +119,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 ## 6. 已知限制与待办
 
 离线设置持久化已实现（`mma-shell-config.json` 壳配置 + `mma-settings.json` 插件设置 + 页面 `/settings` 应用，在线时仍以 tosu 为准只读）；本轮新增**图形化设置窗口**（§4）与三个本机端点（§3c），离线可写、在线只读，权威链收敛为"在线 tosu / 离线本地"。**已知限制**：置顶/穿透的页面内兜底路径不经 `is_open()` 门控（§4 末的 §11-Q9 差异）；第二实例遇到不带 `/open-settings` 的旧壳时静默退出并记日志；`mma-shell-state.json` 既有的并发写隐患未处理（超出本轮范围）；Wayland 无全局快捷键（设置窗口用 `--settings` 或浏览器直开兜底）；离线且本地无 `mma-settings.json` 时骨架取插件默认值，**不继承** tosu `values.json` 里的旧值。外部源封面消费（壳 cover URL 已下发）为待办。真机验证项：Etterna 主题桥真实写入、Malody 编辑器文件通道（WriteFile `<base>_mma_request.json` → 壳扫 chart/（两级目录 mtime 快筛，≤1Hz）→ 谱面 = 同目录 `<base>.mc|.osu` → 分析 → 卡片展示，处理完删 request；DoRequest POST 实测被 Malody 网络层拒绝（invalid url: {body}），故不走网络通道）、PlayMeta 字段、Malody 4.3.7 真机端到端跟随；窗口穿透与透明目视。浏览器模式（无壳）不受影响：osu! 单源，control/result no-op。来源指示器：空心=无源；osu! 粉 / Etterna 紫 / Malody 4 亮青（`#22d3ee`）/ Malody V 蓝实心——**Malody 4 = Malody 4.3.7 原生客户端，与 Malody V 是两个独立源、两个独立圆点颜色**。
+
+**壳检测不到 tosu 时页面照常分析（页面侧数据面）**：离线页（24061）的数据面门控加入页面侧信号 `state.tosuDataSeen`（`socketHandlers.js` 在 `applyBeatmapState` 里置位）——页面自己的 tosu socket 收到过载荷就放行（`analysis.js` 的两处门控），因此"tosu 在跑、但壳没有 `tosu.env`（探测不到 `tosuOnline`）"的机器上卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；同时 1.2s 的延迟初始重算不再白等（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，tosu 载荷一到 `scheduleRecompute` 就清掉它并在 200ms 内计算）。
 
 **版本冻结的后果（必须知悉）**：桥契约已升到 **v5**（v3→v4→v5），但插件版本号**不 bump**（`index.js` `_VERSION` 与 `metadata.txt` `Version` 均为 `2.1.0`）。因此**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 不匹配进入终态（页面提示更新插件并停止重连），**外部源全部不可用**——这类用户必须**更新插件文件**，且因为版本号没变，他们**不会**收到"有新版本"的提示。

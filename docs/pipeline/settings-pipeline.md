@@ -9,14 +9,14 @@
 
 | 来源 | 性质 | 位置 | 说明 |
 | --- | --- | --- | --- |
-| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 45 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身** |
+| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 50 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身**。同时也是设置窗口（`settings.html`）表单的 schema 来源，见 §1 末 |
 | `ManiaMapAnalyser by Leo_Black/config.js` `APP_CONFIG.defaults` | JS 内部默认值 | config.js:76-115 | 解析器无值可读时的回退；`APP_CONFIG.options`（config.js:5-17）提供枚举白名单 |
 | tosu 运行时 `getSettings` 命令 | 用户实际设置 | WebSocket 命令通道 | 实际设置文件位于 tosu 的 `settings` 目录（文件名 `<插件目录名>.json`），通过 `getSettings` 命令推送（见 CLAUDE.md:34、:52） |
 | 桌面壳本机面（无 tosu 时） | 用户实际设置（离线权威） | 壳 `24061` 的 `/settings`（GET/POST）+ exe 旁 `mma-settings.json` | 壳的权威链只有一个判据——**tosu 是否在线**：在线 = tosu 设置文件（只读，`config::resolve_plugin_settings` 第 1 级），离线 = `mma-settings.json`（第 2 级；缺则按插件 `settings.json` 的 `value` 生成骨架并落盘，第 3 级）。离线**绝不**读 tosu 设置文件（即使它存在）。端点与状态码见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c |
 
 **settings.json 的 50 个 uniqueID 构成**：7 header + 6 button + 37 实际设置。
 
-- **Links（header `hLinks` settings.json:3）**：button `GuideButtonEN` settings.json:11、`GuideButtonCN` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35
+- **Links（header `hLinks` settings.json:3）**：6 个 button —— `GuideButton` settings.json:11、`PresetGuideButton` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35、`PresetButton` settings.json:75、`DebugButton` settings.json:444
 - **Modules Customization（header `hModules` settings.json:43）**：`contentBar` settings.json:51、`srText` settings.json:66、`diffText` settings.json:80、`showModeTagCapsule` settings.json:96
 - **Theme & Effects（header `hTheme` settings.json:104）**：`enableOsuTheme` settings.json:112、`useOsuFont` settings.json:120、`enableFloatingTriangles` settings.json:128、`enableCoverArt` settings.json:136、`customBackgroundColor` settings.json:144、`enableEtternaRainbowBars` settings.json:152、`enableStatusMarquee` settings.json:160、`enableNumericDifficulty` settings.json:168、`enableLNDifficulty` settings.json:176、`reverseCardExtendDirection` settings.json:184、`cardVisibility` settings.json:192、`cardOpacity` settings.json:204、`cardBgBlur` settings.json:218、`cardRadius` settings.json:233
 - **Functionality Options（header `hFunctions` settings.json:287）**：`enableUpdateCheck` settings.json:295、`enableResultCache` settings.json:303、`enablePauseDetection` settings.json:311、`VibroDetection` settings.json:319（注意大写 V，见 §9）、`useSvDetection` settings.json:327、`display6kLevel` settings.json:335、`extendedEstimationRange` settings.json:343、`forceSunnyWindow` settings.json:351、`enableAnalyzeLN` settings.json:359、`estimatorAlgorithm` settings.json:367、`etternaVersion` settings.json:382、`companellaEtternaVersion` settings.json:397
@@ -24,6 +24,10 @@
 - **Debug Options（header `hDebug` settings.json:434）**：`debugUseAmount` settings.json:450、`azusaSunnyReferenceHo` settings.json:458、`enableAlwaysShowLNDifficulty` settings.json:466
 
 config.js 的 `APP_CONFIG.defaults`（config.js:76-115）与 settings.json 字段一一对应，默认值需保持同步（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:234-244）。
+
+**设置窗口（`settings.html`）用的就是这套 schema**：表单由 `js/app/settingsPage/settingsForm.js` 在运行时按 `settings.json` 的 `entries` 渲染——`header` → 分组标题，`checkbox`/`options`/`text`/`color` → 对应控件，默认值取条目 `value`；只渲染 `loadSettingsSchema`（`presets/schema.js`）找得到 `apply{Key}Setting` applier 的键，`preset`/`presetStorage` 刻意排除（预设库归预设区），`button` 条目归页面顶部的 **Links** 行（`settings.html` 的 `#settings-links-root`，在状态栏下方、导航栏上方；由 `js/app/settingsPage/settingsLinks.js` 渲染，`PresetButton` 的主机端口打开前换成 `wsEndpoint`）。**因此新增设置不需要改设置页**：`settings.json`（UI 定义 + 默认值）+ `config.js` `defaults` + 解析/应用函数同步即可（完整清单见 [../guides/adding-a-setting.md](../guides/adding-a-setting.md)），设置页自动多出一行；页面的导航顺序与表单段标题（**Shell → Card Settings → Presets**）不受设置增删影响。
+
+**页面侧 tosu 数据面（`state.tosuDataSeen`）**：壳离线页（24061）的初始抓取门控不再只看壳的 `tosuOnline` 探测位——页面自己的 tosu socket 收到过载荷（`socketHandlers.js:305 applyBeatmapState` 置位）就同样放行（`analysis.js` 两处），并把 1.2s 的延迟初始重算改为立即执行（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，`scheduleRecompute` 会清掉它、200ms 内计算）。这决定了设置窗口写出的配置能否立刻看到分析结果：以前"tosu 在跑但壳找不到 `tosu.env`"的机器会停在 `Waiting for a data source (Etterna/Malody or tosu)...`。
 
 ## 2. 启动流程
 
