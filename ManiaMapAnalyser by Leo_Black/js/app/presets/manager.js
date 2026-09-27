@@ -34,6 +34,7 @@ import {
     DEFAULT_SLOT_NAMES,
 } from "./storage.js";
 import { createForm } from "./form.js";
+import { LINK_COPIED_NOTICE, openExternalLink } from "../externalLink.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -372,6 +373,21 @@ function wireActions(actionBar) {
         const result = await importPresetFromFile(file);
         showToast(result.message, result.ok ? "success" : "error", result.ok ? 3500 : 6000);
     }));
+
+    // Guide is an external link: inside the shell webview a plain
+    // `<a target="_blank">` click does nothing, so it goes through the shared
+    // helper (window.open, else copy + notice). A normal browser tab is unchanged.
+    const guideLink = actionBar.querySelector("#act-guide");
+    guideLink.addEventListener("click", (event) => {
+        if (event && typeof event.preventDefault === "function") {
+            event.preventDefault();
+        }
+        openExternalLink(guideLink.href).then((opened) => {
+            if (!opened) {
+                showToast(LINK_COPIED_NOTICE, "info", 6000);
+            }
+        });
+    });
 }
 
 // ---------------------------------------------------------------------------

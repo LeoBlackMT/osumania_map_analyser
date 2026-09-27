@@ -28,8 +28,10 @@ import { loadBuiltinPresets } from "../presets/builtin.js";
 import { loadSettingsSchema } from "../presets/schema.js";
 import { initBridgeClient } from "../sources/bridgeClient.js";
 import { applyShellState as applyShellStateFrame } from "../sources/shellState.js";
+import { LINK_COPIED_NOTICE } from "../externalLink.js";
 import { createShellPresetTransport } from "./shellTransport.js";
 import { createSettingsForm } from "./settingsForm.js";
+import { createSettingsLinks } from "./settingsLinks.js";
 import { createShellConfigPanel } from "./shellConfigPanel.js";
 
 /** Port the desktop shell serves the plugin directory on. */
@@ -48,18 +50,21 @@ const SHELL_ONLINE_PRESETS_NOTICE = "tosu is connected — settings are read-onl
 const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:24061/settings.html";
 
 const statusBarEl = document.getElementById("settings-status");
+const linksRootEl = document.getElementById("settings-links-root");
 const settingsRootEl = document.getElementById("settings-root");
 const shellConfigRootEl = document.getElementById("shell-config-root");
 const presetsAppEl = document.getElementById("presets-app");
 
 let schema = null;
 let form = null;
+let links = null;
 let shellConfigPanel = null;
 let pageTransport = null;
 let settingsFormEl = null;
 let readOnlyEl = null;
 let dashboardUrlEl = null;
 let presetsNoticeEl = null;
+let toastRootEl = null;
 // manager.js is imported on first need and evaluates exactly once; the flag also
 // keeps two concurrent applyPresetsView() calls from importing it twice.
 let presetsViewReady = false;
@@ -76,6 +81,22 @@ function setStatus(message, kind = "info") {
     }
     statusBarEl.textContent = message;
     statusBarEl.className = `settings-status settings-status-${kind}`;
+}
+
+/** Bottom-right toast (the status bar stays reserved for save-state messages). */
+function showToast(message) {
+    if (!toastRootEl) {
+        toastRootEl = document.createElement("div");
+        toastRootEl.id = "settings-toast";
+        toastRootEl.className = "settings-toast-container";
+        document.body.appendChild(toastRootEl);
+    }
+    const toast = document.createElement("div");
+    toast.className = "settings-toast";
+    toast.textContent = message;
+    toastRootEl.appendChild(toast);
+    setTimeout(() => toast.classList.add("show"), 10);
+    setTimeout(() => toast.remove(), 4000);
 }
 
 function attachCopyButton(container, getText) {
@@ -132,17 +153,25 @@ function dashboardUrl() {
     return `http://${endpoint}/`;
 }
 
+/** settings.json button entry → URL; PresetButton's host:port is the tosu endpoint. */
+function buttonUrl(entry) {
+    const raw = entry && typeof entry.value === "string" ? entry.value.trim() : "";
+    if (!raw) {
+        return null;
+    }
+    if (entry.uniqueID !== PRESETS_BUTTON_KEY) {
+        return raw;
+    }
+    const endpoint = endpointValue().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    return /^https?:\/\//i.test(raw) ? raw.replace(/^https?:\/\/[^/]+/i, `http://${endpoint}`) : raw;
+}
+
 /** settings.json PresetButton URL with its host:port rewritten to wsEndpoint. */
 function presetsPageUrl() {
     const entry = schema && Array.isArray(schema.entries)
         ? schema.entries.find((item) => item && item.uniqueID === PRESETS_BUTTON_KEY)
         : null;
-    const raw = entry && typeof entry.value === "string" ? entry.value.trim() : "";
-    if (!raw) {
-        return null;
-    }
-    const endpoint = endpointValue().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    return /^https?:\/\//i.test(raw) ? raw.replace(/^https?:\/\/[^/]+/i, `http://${endpoint}`) : raw;
+    return buttonUrl(entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +210,7 @@ function buildLayout() {
     section.className = "settings-panel";
 
     const title = document.createElement("h2");
-    title.textContent = "Plugin Settings";
+    title.textContent = "Card Settings";
     section.appendChild(title);
 
     const sub = document.createElement("p");
@@ -193,6 +222,7 @@ function buildLayout() {
     settingsFormEl = document.createElement("div");
     settingsFormEl.className = "settings-form";
     section.appendChild(settingsFormEl);
+
     settingsRootEl.appendChild(section);
 }
 
@@ -200,8 +230,8 @@ function buildNav() {
     const nav = document.createElement("nav");
     nav.className = "settings-nav";
     for (const [href, label] of [
-        ["#settings-form-section", "Settings"],
         ["#shell-config-section", "Shell"],
+        ["#settings-form-section", "Card Settings"],
         ["#presets-app", "Presets"],
     ]) {
         const link = document.createElement("a");
@@ -487,6 +517,17 @@ async function runShellPage() {
     });
     form.render();
     form.setReadOnly(state.shellTosuOnline === true);
+
+    // settings.json button entries (Guide / Preset guide / Issue / Benchmark /
+    // Debug / Presets page) — links, not settings: they render into the
+    // top-of-page #settings-links-root declared by settings.html.
+    links = createSettingsLinks({
+        root: linksRootEl,
+        entries: schema.entries,
+        urlFor: buttonUrl,
+        onCopied: () => showToast(LINK_COPIED_NOTICE),
+    });
+    links.render();
 
     shellConfigPanel = createShellConfigPanel({ root: shellConfigRootEl });
     await shellConfigPanel.load();
