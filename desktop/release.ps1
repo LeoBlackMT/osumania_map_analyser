@@ -1,7 +1,7 @@
 # ManiaMapAnalyser desktop shell — release 打包（Windows）。
 # 用法：desktop\release.ps1
 # 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/ 下
-#       插件 zip（含 exe 与 bridges 安装说明引用）。
+#       插件 zip（插件目录 + exe + bridges 安装素材；开发产物与插件源码不入包）。
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
@@ -48,11 +48,28 @@ $bridgesDst = Join-Path $stage "bridges"
     /XD ".tools" "bin" "obj" "tests" | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
 
+# `bepinex\plugin\` 是插件的**开发树**（5 个 .cs、.csproj、NuGet.Config、build.ps1）。
+# 安装器只读 `MMAMalodySelection.dll`（install-bridge.ps1 的 $BridgeDllRel）；LICENSE 是
+# 该 DLL 的 MIT 归属声明、NOTICES.md 是它的来源与复现说明，两者必须随二进制分发。
+# 其余文件对用户没有任何用途，只留这三份。
+$pluginStage = Join-Path $bridgesDst "malody\bepinex\plugin"
+$pluginShip = @('MMAMalodySelection.dll', 'LICENSE', 'NOTICES.md')
+Get-ChildItem -LiteralPath $pluginStage -File |
+    Where-Object { $_.Name -notin $pluginShip } |
+    Remove-Item -Force
+
 # 兜底断言：开发产物一个都不许进包
 $forbidden = Get-ChildItem $stage -Recurse -Directory |
     Where-Object { $_.Name -in @('.tools', 'tests') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
 if ($forbidden) {
     throw ("refusing to package dev artefacts: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
+}
+
+# 兜底断言：插件目录里只该有那三份安装素材。将来若有人往 plugin/ 里加了新文件又被拷进包，
+# 这里会直接失败，而不是把开发文件悄悄发给用户。
+$shippedPluginFiles = @(Get-ChildItem -LiteralPath $pluginStage -File | Select-Object -ExpandProperty Name | Sort-Object)
+if (($shippedPluginFiles -join ',') -ne (($pluginShip | Sort-Object) -join ',')) {
+    throw ("unexpected files in the packaged plugin folder: " + ($shippedPluginFiles -join ', '))
 }
 
 # 兜底断言：安装素材必须随包分发。加载器与 Unity 参考程序集都是 gitignore 的

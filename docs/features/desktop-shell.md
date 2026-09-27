@@ -115,6 +115,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 - 开发：`cargo build`（debug 保留控制台输出）。
 - 发布：`cargo build --release`；打包脚本 `desktop/release.ps1`（Windows，打 zip）/ `desktop/build-linux.sh`（Linux，打 tar.gz，保留执行位），版本号均读插件 `metadata.txt`，产物落在仓库 `release/`；**Windows release 为 GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
+- **入包规则（两个脚本同一份）**：开发产物一律不入包——`bridges/` 下的 `.tools`（NuGet 包缓存约 97 MB）、`bin`、`obj`、`tests` 按目录名排除；`bridges/malody/bepinex/plugin/` 只发安装素材 `MMAMalodySelection.dll` + `LICENSE` + `NOTICES.md`（安装器只读 DLL，后两者是该 DLL 的 MIT 归属与来源说明），5 个 `.cs`、`.csproj`、`NuGet.Config`、`build.ps1` 都是开发文件。两个脚本随后都断言加载器 `bepinex-il2cpp-788.zip`、`unity-libs/2022.3.62.zip` 与插件 DLL 在包内（前两者是 gitignore 的本地资产，缺一即装不上）。
 - **平台**：Windows 全功能；Linux 支持 Etterna 数据源（0.75+ 官方 Linux 版），Malody V 无 Linux 版（该源仅 Windows）。**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` 与 PE 版本校验是 Win32 语义）：Linux 上该源以 `platform-unsupported` **优雅不可用**，不影响其余三个源与浏览器模式。
 - CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows + Linux**（release 产物上传 artifact `mma-shell-windows` / `mma-shell-linux`；Linux = ubuntu-24.04 + Tauri 系统依赖）；`workflow_dispatch` 可手动触发。Linux 构建曾因无受众移除，Etterna 0.75 发布官方 Linux 版后恢复（Ubuntu 24.04 VM 全链路实测）。
 
