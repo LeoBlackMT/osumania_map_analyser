@@ -9,6 +9,9 @@ import {
 import { setRecomputeHandler, scheduleRecompute } from "./scheduler.js";
 import { loadSettings, applySettingsPayload } from "./settings.js";
 import { initTriangleField } from "./triangles.js";
+// 壳窗口可视提示：拖动把手跟随卡片顶沿 + 鼠标靠近窗口边缘时点亮那条边
+// （浏览器/tosu 模式内部自会 no-op，shell-mode 由桥连接后异步挂上）。
+import { initWindowAffordances } from "./windowAffordances.js";
 // Side-effect import: presets module self-initializes (registers the preset
 // settings-stream listener) on load; it must be loaded exactly once.
 import "./presets/index.js";
@@ -23,6 +26,7 @@ setRecomputeHandler(fetchBeatmapFile);
 
 export async function initialize() {
     initTriangleField();
+    initWindowAffordances();
     await loadSettings();
     initTelemetry();
     startTelemetryHeartbeat();
