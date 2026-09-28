@@ -15,6 +15,7 @@ pub mod beatmap_file;
 pub mod compare;
 pub mod keys;
 pub mod model;
+pub mod offsets;
 pub mod packet;
 pub mod patterns;
 pub mod scan;
@@ -113,6 +114,8 @@ pub fn instance() -> Option<Reader> {
 fn run(reader: Reader) {
     let mut attached: Option<win::Target> = None;
     let mut anchors: Option<patterns::AnchorTable> = None;
+    // C1：区域列表按附着缓存（换进程/重附着即重建；见 `scan::RegionCache` 的生命周期说明）。
+    let mut regions: scan::RegionCache = scan::RegionCache::new();
     let mut last_scan_fail: Option<std::time::Instant> = None;
     let mut last_reason: Option<Reason> = None;
 
@@ -166,6 +169,8 @@ fn run(reader: Reader) {
                     );
                     attached = Some(target);
                     anchors = None;
+                    // 新附着 = 新的区域列表（旧缓存的 VAD 快照属于上一个进程，必须丢弃）。
+                    regions = scan::RegionCache::new();
                 }
                 Err(reason) => {
                     let detail = reason.as_str();
@@ -203,7 +208,7 @@ fn run(reader: Reader) {
                 .unwrap_or(true);
             if retry_due {
                 let target = attached.as_ref().expect("attached");
-                match resolve_anchors(target) {
+                match resolve_anchors(target, &mut regions) {
                     Ok((table, elapsed_ms)) => {
                         eprintln!(
                             "[osu] anchors resolved in {}ms: statusPtr=0x{:08X} baseAddr=0x{:08X} menuModsPtr=0x{:08X} settingsClassAddr=0x{:08X}",
@@ -225,6 +230,7 @@ fn run(reader: Reader) {
                         // 扫描失败不立刻 detach（可能是过滤器不匹配而不是目标变了）；
                         // 但连续失败时把 target 丢掉重来（进程可能已经被替换）。
                         attached = None;
+                        regions = scan::RegionCache::new();
                         thread::sleep(ATTACH_RETRY);
                         continue;
                     }
@@ -276,6 +282,7 @@ fn run(reader: Reader) {
                     attached = None;
                     anchors = None;
                     osu_cache = None;
+                    regions = scan::RegionCache::new();
                     if let Some(writer) = writer.as_mut() {
                         let tosu = feed.as_ref().and_then(|f| f.latest());
                         let record = compare::record(
@@ -332,8 +339,14 @@ fn publish(
 /// 每次重扫都要遍历 ~1200–2200 个区域并读 0.6–1.3 GB（P1 实测 ~8s / ~21s），
 /// 所以只在"两枚关键锚点（statusPtr/baseAddr）缺一个"时才退化——菜单 mod 掩码
 /// 或 songs 链（B3 的 best-effort 锚点）缺席不值得把扫描时间翻三倍。
+///
+/// 区域列表走 `regions`（**按附着缓存**）：同一附着内重复定址（例如本步的失败重试）
+/// 不再重走 `VirtualQueryEx`；换进程/重附着由调用方把缓存整体丢掉。
 #[cfg(windows)]
-fn resolve_anchors(target: &win::Target) -> Result<(patterns::AnchorTable, u128), Reason> {
+fn resolve_anchors(
+    target: &win::Target,
+    regions: &mut scan::RegionCache,
+) -> Result<(patterns::AnchorTable, u128), Reason> {
     use std::time::Instant;
     let started = Instant::now();
     let mut table = patterns::AnchorTable::default();
@@ -350,7 +363,7 @@ fn resolve_anchors(target: &win::Target) -> Result<(patterns::AnchorTable, u128)
     let mut degraded: Vec<&'static str> = Vec::new();
 
     for (index, mask) in FILTER_READY.iter().enumerate() {
-        let regions = win::walk_regions(target.handle(), *mask, REGION_LIMIT);
+        let regions = target.regions_cached(regions, *mask, REGION_LIMIT);
         let mut stats = scan::ScanStats {
             regions: regions.len(),
             ..Default::default()
@@ -759,7 +772,10 @@ fn read_songs_cfg_value(_target: &win::Target, _addr: u32) -> Option<String> {
 // ---- 非 Windows 桩（同 `malody4` 约定：同名同签名，行为为空）----
 
 #[cfg(not(windows))]
-fn resolve_anchors(_target: &win::Target) -> Result<(patterns::AnchorTable, u128), Reason> {
+fn resolve_anchors(
+    _target: &win::Target,
+    _regions: &mut scan::RegionCache,
+) -> Result<(patterns::AnchorTable, u128), Reason> {
     Err(Reason::ReadError)
 }
 
@@ -825,9 +841,10 @@ pub fn state_json(reader: &Reader) -> Value {
 #[cfg(test)]
 #[path = "../../tests-local/osu_beatmap_corpus.rs"]
 mod tests_beatmap_corpus;
-#[cfg(test)]
-#[path = "../../tests-local/osu_beatmap_file.rs"]
-mod tests_beatmap_file;
+// ⚠️ `tests_beatmap_file` / `tests_shadow` 的声明**只在各自的宿主模块**里
+// （`osu/beatmap_file.rs` / `osu/shadow.rs`）。这里曾各重复声明一次 ⇒ 那 24 个测试
+// 在 `cargo test` 里跑两遍（`...::osu::tests_beatmap_file::x` 与
+// `...::osu::beatmap_file::tests_beatmap_file::x`），C1 清理掉，测试集因此**变短**。
 #[cfg(test)]
 #[path = "../../tests-local/osu_keys.rs"]
 mod tests_keys;
@@ -837,6 +854,3 @@ mod tests_model;
 #[cfg(test)]
 #[path = "../../tests-local/osu_scan.rs"]
 mod tests_scan;
-#[cfg(test)]
-#[path = "../../tests-local/osu_shadow.rs"]
-mod tests_shadow;

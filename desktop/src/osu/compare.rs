@@ -32,6 +32,76 @@ pub fn enabled() -> bool {
     }
 }
 
+/// 默认落盘的 tosu 载荷白名单（**C1 变更**）。
+///
+/// 为什么要有它：B3 的真机会话是 2271 条 / **37 MB**，而其中
+/// `performance.graph.series`（逐帧星数曲线）一条就占 ~8 KB——对拍从不比较它。
+/// 默认只留"被比较的字段 + 一小撮诊断字段"（下面这张表逐条给出理由），
+/// 需要整包时用 `MMA_OSU_COMPARE_FULL=1` 恢复今天的行为。
+///
+/// 保留项与理由：
+/// - `client`/`state`/`beatmap`/`files`/`directPath`/`folders`：`shadow.rs` 的比较面（必需）
+/// - `menu`/`play`/`resultsScreen`：mod 码集合的来源（`play` 态另有 hits，livePP 相关的证据）
+/// - `game`：`game.paused` 是停滞推导的对照面（B2/B3 的对拍口径都引用它）
+/// - `server`/`session`/`profile`/`leaderboard`：**小**（合计 <1 KB/条）且 `beatmap.md5` /
+///   `state.name` 的兜底链在 tosu 侧就长在这里（页面 `socketHandlers.js` 的回退读取）
+const KEPT_TOP_LEVEL: &[&str] = &[
+    "client",
+    "state",
+    "beatmap",
+    "files",
+    "directPath",
+    "folders",
+    "menu",
+    "play",
+    "resultsScreen",
+    "game",
+    "server",
+    "session",
+    "profile",
+    "leaderboard",
+];
+
+/// 大型诊断块（**默认丢弃**，`MMA_OSU_COMPARE_FULL=1` 时原样保留）：
+/// `performance`（逐帧星数曲线，~8 KB/条）、`settings`（tosu 全量设置字典，~1.5 KB/条）、
+/// `tourney`（锦标赛客户端列表，~200 B/条；仅 mod 候选来源）。它们既不参与比较，
+/// 也不被证据分析引用，却占了 2271 条会话 37 MB 里的 ~80%。
+///
+/// 整包模式：`MMA_OSU_COMPARE_FULL=1`（其它值 = 默认的裁剪模式）。
+pub fn full_payload() -> bool {
+    match std::env::var("MMA_OSU_COMPARE_FULL") {
+        Ok(value) => value.trim() == "1",
+        Err(_) => false,
+    }
+}
+
+/// **纯函数**：把 tosu 载荷裁成"被比较的字段 + 诊断子集"（默认落盘形态）。
+///
+/// 非对象（`null`/数组/标量）原样返回；对象按 [`KEPT_TOP_LEVEL`] 投影，
+/// 并额外放一个 `_projected: true` 标记 + `_dropped_keys` 名单——**绝不能**让读者
+/// 把"被裁掉的键"误读成"tosu 没发这个键"（那会把设备事实读成读数缺陷）。
+pub fn project_payload(payload: &Value) -> Value {
+    let Some(map) = payload.as_object() else {
+        return payload.clone();
+    };
+    let mut out = Map::new();
+    for key in KEPT_TOP_LEVEL {
+        if let Some(value) = map.get(*key) {
+            out.insert((*key).to_string(), value.clone());
+        }
+    }
+    out.insert("_projected".to_string(), json!(true));
+    out.insert(
+        "_dropped_keys".to_string(),
+        json!(map
+            .keys()
+            .filter(|key| !KEPT_TOP_LEVEL.contains(&key.as_str()))
+            .cloned()
+            .collect::<Vec<String>>()),
+    );
+    Value::Object(out)
+}
+
 /// 影子比对节奏：默认 **100 ms（10 Hz）**；`MMA_OSU_COMPARE_INTERVAL_MS` 覆盖。
 ///
 /// 夹取到 `20..=5000` ms：低于 20 ms 会让 WS 客户端与内存 tick 抢同一段时间片，
@@ -184,7 +254,8 @@ pub fn fields_from_payload(payload: &Value, client: Option<Client>) -> Value {
 /// - `ts`：毫秒时间戳
 /// - `our`：我方载荷 + `reason`（`reason` = 壳侧原因字面量，`None` = 正常发布）
 /// - `our_meta`：只在对拍侧出现的诊断（`.osu` 解析结果、头字段交叉校验、songs 原始 cfg 值）
-/// - `tosu`：tosu 原始载荷（`null` = 还没收到帧）
+/// - `tosu`：tosu 原始载荷（`null` = 还没收到帧）。**默认是投影后的形态**
+///   （`_projected: true` + `_dropped_keys`），`MMA_OSU_COMPARE_FULL=1` 时才是整包。
 /// - `cmp`：逐字段 `true` / `false` / `"skipped:<why>"`
 /// - `diff`：**只列**不等/跳过的格子（带两侧原始值）
 /// - `mods`：两侧 mod 代码集合与是否相等
@@ -192,17 +263,24 @@ pub fn record(snapshot: &Snapshot, reason: Option<String>, tosu: Option<&Value>)
     let ours = OurShadow::from_snapshot(snapshot);
     match tosu {
         Some(payload) => {
+            // 比较永远走**原始载荷**；只有落盘形态受 `MMA_OSU_COMPARE_FULL` 影响
+            // （投影不参与判定，否则"少了一个键"会变成"数据变了"）。
             let theirs = TosuShadow::from_payload(payload);
             let diff = shadow::diff(&ours, &theirs);
             let mut our = snapshot.to_packet();
             if let Some(map) = our.as_object_mut() {
                 map.insert("reason".to_string(), json!(reason));
             }
+            let tosu_value = if full_payload() {
+                payload.clone()
+            } else {
+                project_payload(payload)
+            };
             json!({
                 "ts": now_ms(),
                 "our": our,
                 "our_meta": our_meta_json(snapshot),
-                "tosu": payload,
+                "tosu": tosu_value,
                 "cmp": diff.to_json(),
                 "diff": diff.detail_json(),
                 "mods": {
@@ -343,3 +421,7 @@ impl SampleWriter {
         let _ = writeln!(file, "{record}");
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests-local/osu_compare.rs"]
+mod tests_compare;

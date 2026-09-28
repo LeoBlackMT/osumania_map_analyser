@@ -13,6 +13,9 @@
 // - 每个句柄都在 `OwnedHandle`/`Target` 的 `Drop` 里 `CloseHandle`（RAII，无泄漏路径）。
 // - `ReadProcessMemory` 必须**整段读满**才算成功：短读（`ERROR_PARTIAL_COPY = 299`
 //   的典型形态）一律当失败返回，**绝不零填充**（零填充会把"读不到"伪装成"值是 0"）。
+// - **单次调用硬上限 1 MiB**（计划 §3.4「按区截断 + 单次硬上限」）：`read_exact_at`
+//   一次最多读 `READ_CALL_MAX` 字节，更大的请求由 `read_exact_chunked_at` 切块下发；
+//   299 的处置是"**缩小重试**"（见 `plan_shrink_sequence`），不是零填充、也不是静默短读。
 
 #![allow(non_snake_case, non_camel_case_types)]
 
@@ -365,6 +368,22 @@ mod win32 {
     impl Target {
         pub fn handle(&self) -> Handle {
             self.handle
+        }
+
+        /// 该 target 的可扫区域：**命中缓存即复用，未命中才走 `VirtualQueryEx`**，
+        /// 结果写回 `cache`（缓存的生命周期 = 本 `Target`，见 `scan::RegionCache`）。
+        pub fn regions_cached(
+            &self,
+            cache: &mut crate::osu::scan::RegionCache,
+            access_mask: u32,
+            limit: usize,
+        ) -> Vec<crate::osu::scan::Region> {
+            if let Some(hit) = cache.get(access_mask) {
+                return hit.to_vec();
+            }
+            let regions = walk_regions(self.handle, access_mask, limit);
+            cache.refresh(access_mask, regions.clone());
+            regions
         }
     }
 
@@ -803,10 +822,34 @@ mod win32 {
         out
     }
 
+    /// 单次 `ReadProcessMemory` 的**硬上限**（1 MiB）。与 `scan::CHUNK_MAX` **同值**
+    /// （层内常量按 §3.4 的"单次读上限 1 MiB"取整；`scan.rs` 直接引用本常量）。
+    ///
+    /// 为什么要在这里再夹一次：`scan.rs` 的分块是"扫描策略"（它还要带尾接、要按区推进），
+    /// 而本函数是**产品侧唯一的下发点**——字符串/字段读若哪天被传进一个大缓冲（例如
+    /// 64 MiB 的 lazer 扫描），没有这道夹取就会变成"一次请求 64 MiB"，
+    /// 与 §3.4 的约定不符。
+    pub const READ_CALL_MAX: usize = 1024 * 1024;
+
+    /// `ERROR_PARTIAL_COPY`：请求的区间**不是整段可访问**（跨区/页尾）。
+    /// `ReadProcessMemory` 的典型失败形态，处置 = 缩小重试（见 `plan_shrink_sequence`）。
+    pub const ERROR_PARTIAL_COPY: u32 = 299;
+
     /// 单次 `ReadProcessMemory`：**必须整段读满**，否则报错（含 `ERROR_PARTIAL_COPY`）。
     ///
-    /// 绝不零填充：失败时调用方拿到 `Err`，而不是一段被 0 污染的缓冲。
+    /// 绝不零填充：失败时调用方拿到 `Err`，而不是一段被 0 污染的缓冲。短读（Win32 当成功
+    /// 但 `lpNumberOfBytesRead < nSize`）与失败同义（fail-closed），同样不补齐。
+    ///
+    /// `buf.len()` 超过 [`READ_CALL_MAX`] 时返回 [`ERROR_PARTIAL_COPY`] 风格的错误码
+    /// （`ERROR_INVALID_PARAMETER = 87`）而**不是**悄悄截断——静默截断会让调用方拿着半段
+    /// 缓冲当整段用（比报错危险得多）。
     pub fn read_exact_at(handle: Handle, addr: u32, buf: &mut [u8]) -> Result<(), u32> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+        if buf.len() > READ_CALL_MAX {
+            return Err(87); // ERROR_INVALID_PARAMETER：超单次上限，调用方必须走 chunked
+        }
         let mut got: usize = 0;
         let ok = unsafe {
             ReadProcessMemory(
@@ -823,9 +866,42 @@ mod win32 {
         if got != buf.len() {
             // 短读：Win32 把它当成功但 `lpNumberOfBytesRead < nSize`；这是"读不满"，
             // 与失败同义（fail-closed），且**不能**用 0 补齐剩余部分冒充成功。
-            return Err(299); // ERROR_PARTIAL_COPY
+            return Err(ERROR_PARTIAL_COPY);
         }
         Ok(())
+    }
+
+    /// 超长读：**同一次读取**语义，但按 [`READ_CALL_MAX`] 切块下达，每一块仍然必须读满。
+    ///
+    /// 与"缩小重试"的分工：本函数不重试、不缩小——任何一块读不满就整体失败（fail-closed），
+    /// 由调用方决定是否缩小区间重来（`scan.rs::read_chunk` 就是这么做的）。
+    /// `addr` 在这里按 `usize` 传递：x64 目标的地址放不进 `u32`（lazer 在 E 步）。
+    pub fn read_exact_chunked_at(handle: Handle, addr: usize, buf: &mut [u8]) -> Result<(), u32> {
+        for (index, chunk) in buf.chunks_mut(READ_CALL_MAX).enumerate() {
+            let at = addr.wrapping_add(index * READ_CALL_MAX);
+            read_exact_at(handle, at as u32, chunk)?;
+        }
+        Ok(())
+    }
+
+    /// 缩小重试的计划（**纯函数**，可单测；`scan.rs` 的读取策略就是它的产物）。
+    ///
+    /// 语义：从 `want` 起，每次失败就把请求长度**减半**再试，直到小于 `floor` 为止；
+    /// 返回的是"依次尝试的请求长度"。`want` 先被 [`READ_CALL_MAX`] 夹取（单次硬上限）。
+    ///
+    /// - 空计划 = 不尝试（`floor == 0` 或 `want == 0`）；
+    /// - 计划里**不会出现 0 长度**的请求（0 长度读毫无意义，且会掩盖"读不到"）。
+    pub fn plan_shrink_sequence(want: usize, floor: usize) -> Vec<usize> {
+        let mut plan = Vec::new();
+        if floor == 0 {
+            return plan;
+        }
+        let mut len = want.min(READ_CALL_MAX);
+        while len >= floor {
+            plan.push(len);
+            len /= 2;
+        }
+        plan
     }
 
     fn read_array<const N: usize>(handle: Handle, addr: u32) -> Result<[u8; N], Reason> {

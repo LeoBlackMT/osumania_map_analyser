@@ -202,3 +202,7 @@ impl AnchorTable {
 pub fn is_aligned(addr: u32) -> bool {
     addr % 4 == 0
 }
+
+#[cfg(test)]
+#[path = "../../tests-local/osu_patterns.rs"]
+mod tests_patterns;
