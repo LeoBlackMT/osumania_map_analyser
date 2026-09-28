@@ -5,6 +5,7 @@
 pub mod bridge;
 pub mod http;
 pub mod log;
+pub mod osu_compat;
 pub mod post;
 pub mod ws;
 
@@ -490,6 +491,14 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         }
     };
     http::spawn_http_ws(shared.clone(), listener);
+    // 24062（tosu 兼容子集 origin，B1 回放版）：**不预先绑定**，由 osu_compat 自己 bind，
+    // 占用时记 error + 入 shell_errors 并返回（与 24060/17653 同语义）。
+    osu_compat::spawn_osu_compat(shared.clone());
+    // Wave B2/B3：osu!stable 原生读取线程（只读句柄 + 锚点扫描）。
+    // 与 `osu_compat` 并列启动，失败不 panic（线程内部自愈重试）。
+    // 共享句柄存进进程级 OnceLock：本步没有 state 帧消费点（Step 9 接），但后续步骤
+    // 与调试入口需要一个稳定的读取入口。
+    let _ = crate::osu::INSTANCE.set(crate::osu::spawn_osu_reader());
     if let Some(post_listener) = post_listener {
         post::spawn_post(shared.clone(), post_listener);
     }

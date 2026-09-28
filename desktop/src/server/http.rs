@@ -34,7 +34,7 @@ pub fn spawn_http_ws(shared: Arc<Shared>, listener: TcpListener) {
 }
 
 /// peek 前 1KB 判断是否 WS 升级请求（peek 不消费；accept_hdr 需要原文在流中）。
-fn probe_is_ws(stream: &TcpStream) -> bool {
+pub(crate) fn probe_is_ws(stream: &TcpStream) -> bool {
     let mut probe = [0u8; 1024];
     for _ in 0..250 {
         match stream.peek(&mut probe) {

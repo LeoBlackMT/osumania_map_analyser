@@ -1,0 +1,554 @@
+// 24062：tosu 兼容子集 origin —— **B1 回放版（临时）**。
+//
+// B1 replay origin — temporary; replaced by the real reader in later steps.
+// No memory reading in this file.
+//
+// 本模块只做一件事：在 `127.0.0.1:24062` 上假装成 tosu 的三条端点，让页面
+// **零代码改动**地指向它并渲染卡片，从而在最便宜的节点上证伪/证实"壳内自建
+// origin"这条架构（计划 §4 Step 4 / §3.3 端点路径表）。数据面全部是**手写常量**：
+// 固定一张真实 `.osu`（磁盘直供）+ 每 150 ms 推一帧手写 tosu-v2 形状包。
+// 不读游戏内存、不附着进程、不写任何文件（只有 read-only 文件读取）。
+//
+// 固定谱面 = `D:\Games\osu!\Songs\2004024 Icon For Hire - Make a Move (Sped Up & Cut Ver)\`
+// 下的 `[2000s emo-rock type song]`（4K mania；657 个 hitobject；背景 `SHE IS PLAYING
+// TRIUMPH AND REGRET.jpg`、音频 `audio.mp3`；BeatmapID/SetID = 4167558/2004024；
+// `.osu` = 19 379 B、MD5 `589a91e2c0d7d5f3c96195e39ae05c6a`（**启动时实测**，不硬编码）；
+// firstObject = 4431 ms、lastObject = 48719 ms —— 末对象是 circle，故不需滑条时长推算）。
+// 选型与候选清单：`temp/osu-native-memory/evidence/B1-replay/tools/pick-map-shortlist.json`。
+//
+// 与 tosu 的差异（**有意的、记录在案**）：`play.hits`/`resultsScreen.hits` 只供 §3.3
+// 字段表要求的 6 键（真实 tosu 供 10/9 键，多出的 sliderBreaks 等页面不消费）；
+// `resultsScreen` 只给 `{hits,mods}`；帧速率固定 150 ms。其余字符串形状照
+// `evidence/P8/P8-precapture-notes.md` 的真实帧对齐。
+
+use crate::server::{http, ws, Shared};
+use std::io::Write;
+use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// tosu 兼容子集 origin 的固定端口（计划 §4.0 单选结论：24050=tosu、24060=Malody 编辑器、
+/// 24061=壳页面、17653=Malody 选曲桥）。
+pub const OSU_COMPAT_PORT: u16 = 24062;
+
+/// 回放节奏：计划 §3.3 端点路径表写死 150 ms。
+const REPLAY_INTERVAL: Duration = Duration::from_millis(150);
+/// WS 的 read 超时（`ws.read()` 会阻塞，超时即周期性唤醒）。**必须显著小于
+/// `REPLAY_INTERVAL`**：出帧判定是"`elapsed() >= 150ms` 就发"，若唤醒粒度也是
+/// 100 ms，实际节奏会被量化成 ~200 ms（实测 217 ms）。20 ms ⇒ 实测 153–158 ms。
+const READ_TIMEOUT: Duration = Duration::from_millis(20);
+
+// ---- 固定回放谱面（TEMPORARY B1 replay source）----
+
+/// osu!stable 的 Songs 根目录（`folders.songs`，P8 帧同形）。
+const SONGS_DIR: &str = r"D:\Games\osu!\Songs";
+/// osu!stable 安装目录（`folders.game`）。
+const GAME_DIR: &str = r"D:\Games\osu!";
+const MAP_FOLDER: &str = "2004024 Icon For Hire - Make a Move (Sped Up & Cut Ver)";
+const MAP_FILE: &str =
+    "Icon For Hire - Make a Move (Sped Up & Cut Ver.) (MocaLoca) [2000s emo-rock type song].osu";
+const MAP_BACKGROUND: &str = "SHE IS PLAYING TRIUMPH AND REGRET.jpg";
+const MAP_AUDIO: &str = "audio.mp3";
+
+/// 固定谱面的磁盘绝对路径（`\` 连接，与 `directPath.*` 的 win32 形状一致）。
+fn map_dir() -> PathBuf {
+    PathBuf::from(format!("{}\\{}", SONGS_DIR, MAP_FOLDER))
+}
+
+// ---- 入站请求 ----
+
+/// 一条入站请求的解析结果（只取路由需要的两项）。
+struct RequestHead {
+    method: String,
+    path: String,
+}
+
+/// 解析请求行（HTTP 路径不含空白，`split_whitespace` 足够，无需 URL 解析器）。
+fn parse_head(raw: &str) -> Option<RequestHead> {
+    let mut lines = raw.lines();
+    let request_line = lines.next().unwrap_or("");
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next()?.to_string();
+    let url = parts.next().unwrap_or("/");
+    let path = url.split('?').next().unwrap_or("").to_string();
+    Some(RequestHead { method, path })
+}
+
+/// Host 门禁：只放行本机 `{host}:24062` / 无 Host 头（复用 24061 的 `is_local_host`，
+/// 端口按参数传入 ⇒ DNS rebinding 防护与 24061 同一份实现）。
+fn host_allowed(head: &str) -> bool {
+    http::is_local_host(head, OSU_COMPAT_PORT)
+}
+
+// ---- 响应 ----
+
+/// 状态码 → 原因短语（只覆盖本模块真正会发的码）。
+fn status_text(code: u16) -> &'static str {
+    match code {
+        200 => "OK",
+        403 => "Forbidden",
+        404 => "Not Found",
+        500 => "Internal Server Error",
+        _ => "Unknown",
+    }
+}
+
+/// **所有**响应统一出口：`Access-Control-Allow-Origin: *` 是硬要求——页面在
+/// `http://127.0.0.1:24061` 上跨源取 24062 的谱面与背景图（`coverTheme.js` 的
+/// `crossOrigin="anonymous"` + `getImageData`），缺 ACAO 会静默退回默认主题；
+/// 403/404/500 同样要带（计划 §3.3）。
+fn write_response(stream: &mut TcpStream, code: u16, ctype: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+        code,
+        status_text(code),
+        ctype,
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+}
+
+fn write_json(stream: &mut TcpStream, code: u16, body: &str) {
+    write_response(stream, code, "application/json", body.as_bytes());
+}
+
+// ---- 固定谱面的解析结果（进程内只解析一次）----
+
+/// 回放包需要的全部谱面事实（全部来自磁盘上的那一份 `.osu`）。
+struct ReplayMap {
+    /// `.osu` 的 MD5（小写 32 hex）→ `beatmap.checksum`。实测，不硬编码。
+    checksum: String,
+    id: u64,
+    set: u64,
+    artist: String,
+    title: String,
+    version: String,
+    mapper: String,
+    first_object: i64,
+    last_object: i64,
+}
+
+impl ReplayMap {
+    /// 兜底：元信息全空（200 照常返回，报文里字段为空/z ero）。
+    fn empty() -> Self {
+        ReplayMap {
+            checksum: String::new(),
+            id: 0,
+            set: 0,
+            artist: String::new(),
+            title: String::new(),
+            version: String::new(),
+            mapper: String::new(),
+            first_object: 0,
+            last_object: 0,
+        }
+    }
+}
+
+static REPLAY_MAP: OnceLock<ReplayMap> = OnceLock::new();
+
+/// 起点：解析固定谱面；**任何失败都不 panic**（24062 是可选端点，不许拖垮壳）。
+/// 解析器出 bug 时记 error 并退化成"元信息全空"（HTTP 面照常服务）。
+fn replay_map() -> &'static ReplayMap {
+    REPLAY_MAP.get_or_init(|| {
+        let path = map_dir().join(MAP_FILE);
+        let parsed = path.is_file().then(|| parse_map(&path));
+        match parsed {
+            Some(Ok(map)) => map,
+            Some(Err(e)) => {
+                crate::server::log::log_at(
+                    "error",
+                    &format!("osu compat: replay map parse failed ({e}) — serving zeroed metadata"),
+                );
+                ReplayMap::empty()
+            }
+            None => {
+                crate::server::log::log_at(
+                    "error",
+                    &format!("osu compat: replay map not found ({})", path.display()),
+                );
+                ReplayMap::empty()
+            }
+        }
+    })
+}
+
+/// 解析一份 `.osu`：头部字段 + `[Events]` 背景 + `[HitObjects]` 时间窗。
+///
+/// `firstObject` = 文件顺序第一个 hitobject 的起始时间；`lastObject` = 文件顺序最后一个
+/// hitobject 的**结束**时间（spinner = 第 6 段 `endTime`；circle/hold = 起始时间；slider 的
+/// 时长推算超出 B1 范围 → 退化为起始时间并记 warn）。
+fn parse_map(path: &std::path::Path) -> Result<ReplayMap, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut section = String::new();
+    let mut header: Vec<(String, String)> = Vec::new();
+    let mut background: Option<String> = None;
+    let mut first_object: Option<i64> = None;
+    let mut last_object: Option<i64> = None;
+    let mut last_is_slider = false;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line.trim_matches(['[', ']']).to_string();
+            continue;
+        }
+        match section.as_str() {
+            "Events" => {
+                // 形如 `0,0,"bg.jpg",0,0`：取第 3 段并剥引号。**不能**用 `trim_matches('"')`
+                // ——尾部的 `,0,0` 会把结果污染成 `bg.jpg",0,0`，而它仍通过"非空"检查。
+                if background.is_none() {
+                    if let Some(rest) = line.strip_prefix("0,0,") {
+                        let name = rest.trim().trim_start_matches('"');
+                        let name = name.split('"').next().unwrap_or("");
+                        if !name.is_empty() {
+                            background = Some(name.to_string());
+                        }
+                    }
+                }
+            }
+            "HitObjects" => {
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() < 4 || parts[0].parse::<i64>().is_err() {
+                    continue;
+                }
+                let Ok(time) = parts[2].parse::<i64>() else {
+                    continue;
+                };
+                let Ok(kind) = parts[3].parse::<i64>() else {
+                    continue;
+                };
+                let end = if kind & 8 != 0 {
+                    // spinner：EndTime 在第 6 段
+                    parts
+                        .get(5)
+                        .and_then(|v| v.parse::<i64>().ok())
+                        .unwrap_or(time)
+                } else {
+                    if kind & 2 != 0 {
+                        last_is_slider = true;
+                    }
+                    time
+                };
+                first_object.get_or_insert(time);
+                last_object = Some(end);
+            }
+            "General" | "Metadata" => {
+                if let Some((k, v)) = line.split_once(':') {
+                    header.push((k.trim().to_string(), v.trim().to_string()));
+                }
+            }
+            _ => {}
+        }
+    }
+    let get = |key: &str| -> String {
+        header
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    let num = |key: &str| -> u64 { get(key).parse::<u64>().unwrap_or(0) };
+    // 解析器真跑通的标志：`[Events]` 里必须解出背景名。常量与磁盘不一致时照常服务磁盘
+    // 上的那张（`/files/beatmap/background` 本就是这个文件名去读盘），只记 warn。
+    let background = background
+        .filter(|b| !b.is_empty())
+        .ok_or_else(|| "[Events] background: no `0,0,\"<file>\"` line found".to_string())?;
+    if background != MAP_BACKGROUND {
+        crate::server::log::log_at(
+            "warn",
+            &format!("osu compat: [Events] background is {background:?}, MAP_BACKGROUND is {MAP_BACKGROUND:?}"),
+        );
+    }
+    if last_is_slider {
+        crate::server::log::log_at(
+            "warn",
+            "osu compat: last hit object is a slider — lastObject falls back to its start time",
+        );
+    }
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(ReplayMap {
+        checksum: crate::server::md5_hex_bytes(&bytes),
+        id: num("BeatmapID"),
+        set: num("BeatmapSetID"),
+        artist: get("Artist"),
+        title: get("Title"),
+        version: get("Version"),
+        mapper: get("Creator"),
+        first_object: first_object.unwrap_or(0),
+        last_object: last_object.unwrap_or(0),
+    })
+}
+
+// ---- 回放包 ----
+
+/// 全局帧计数器：第 n 个**推给客户端**的帧 ⇒ `live` 前进 150 ms（并发消费者共享它，
+/// 故单个连接看到的步长可能是 150 的整数倍；见 `evidence/B1-replay/B1-notes.md`）。
+static REPLAY_TICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 手写 tosu-v2 形状包（字段表 = 计划 §3.3；字符串形状照 P8 真实帧）。
+/// `live` 从 `firstObject` 起步、每帧 +150 ms，越过 `lastObject` 后回绕——页面的
+/// 时间线/暂停逻辑因此一直被驱动，且 live 始终落在磁盘谱面的时间窗内。
+fn replay_packet(map: &ReplayMap) -> String {
+    let tick = REPLAY_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let step = REPLAY_INTERVAL.as_millis() as i64;
+    let span = (map.last_object - map.first_object).max(step);
+    let live = map.first_object + (tick as i64 * step) % span;
+    let direct_file = format!("{}\\{}", MAP_FOLDER, MAP_FILE);
+    serde_json::json!({
+        "client": "stable",
+        "state": { "number": 2, "name": "play" },
+        "game": { "paused": false, "focused": true },
+        "beatmap": {
+            "checksum": map.checksum,
+            "id": map.id,
+            "set": map.set,
+            "artist": map.artist,
+            "title": map.title,
+            "version": map.version,
+            "mapper": map.mapper,
+            "time": {
+                "live": live,
+                "firstObject": map.first_object,
+                "lastObject": map.last_object,
+                "mp3Length": 0,
+            },
+        },
+        "files": {
+            "beatmap": MAP_FILE,
+            "background": MAP_BACKGROUND,
+            "audio": MAP_AUDIO,
+        },
+        "directPath": {
+            "beatmapFile": direct_file,
+            "beatmapBackground": format!("{}\\{}", MAP_FOLDER, MAP_BACKGROUND),
+            "beatmapAudio": format!("{}\\{}", MAP_FOLDER, MAP_AUDIO),
+            "beatmapFolder": MAP_FOLDER,
+        },
+        "folders": {
+            "game": GAME_DIR,
+            "songs": SONGS_DIR,
+            "beatmap": MAP_FOLDER,
+        },
+        "menu": { "mods": serde_json::Value::Null },
+        "play": {
+            "mods": {
+                "checksum": crate::server::md5_hex(r#"[{"acronym":"DT"}]"#),
+                "number": 64,
+                "name": "DT",
+                "array": [{ "acronym": "DT" }],
+                "rate": 1.5,
+            },
+            "hits": { "0": 0, "50": 0, "100": 1, "300": 42, "geki": 7, "katu": 0 },
+            "combo": 50,
+            "score": 100000,
+            "accuracy": 0.98,
+        },
+        "resultsScreen": {
+            "hits": { "0": 0, "50": 0, "100": 0, "300": 0, "geki": 0, "katu": 0 },
+            "mods": {
+                "checksum": "",
+                "number": 0,
+                "name": "",
+                "array": [],
+                "rate": 1,
+            },
+        },
+    })
+    .to_string()
+}
+
+// ---- WS ----
+
+fn is_timeout(err: &tungstenite::Error) -> bool {
+    matches!(
+        err,
+        tungstenite::Error::Io(e)
+            if e.kind() == std::io::ErrorKind::WouldBlock
+                || e.kind() == std::io::ErrorKind::TimedOut
+    )
+}
+
+/// 带 loopback Origin 校验的握手（与 24061 的 `ws.rs` 同一份判定）。
+fn accept_loopback_ws(stream: TcpStream) -> Option<tungstenite::WebSocket<TcpStream>> {
+    tungstenite::accept_hdr(
+        stream,
+        |req: &tungstenite::handshake::server::Request,
+         resp: tungstenite::handshake::server::Response| {
+            let origin_ok = req
+                .headers()
+                .get("Origin")
+                .map(|v| ws::is_loopback_origin(v.to_str().unwrap_or("")))
+                .unwrap_or(true);
+            if origin_ok {
+                Ok(resp)
+            } else {
+                Err(tungstenite::http::Response::builder()
+                    .status(403)
+                    .body(Some("forbidden".to_string()))
+                    .unwrap())
+            }
+        },
+    )
+    .ok()
+}
+
+/// `/websocket/v2`：每 150 ms 推一帧回放包；入站消息一律忽略；Close 干净收场。
+fn handle_v2_ws(stream: TcpStream) {
+    let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+    let Some(mut ws) = accept_loopback_ws(stream) else {
+        return;
+    };
+    let map = replay_map();
+    let mut last_push = Instant::now();
+    loop {
+        if last_push.elapsed() >= REPLAY_INTERVAL {
+            last_push = Instant::now();
+            if ws
+                .send(tungstenite::Message::Text(replay_packet(map)))
+                .is_err()
+            {
+                return;
+            }
+        }
+        match ws.read() {
+            Ok(tungstenite::Message::Close(_)) => return,
+            Ok(_) => {}
+            Err(e) if is_timeout(&e) => {}
+            Err(_) => return,
+        }
+    }
+}
+
+/// `/websocket/commands`：**黑洞** —— 接受握手、丢弃全部入站、永不回包。页面每次
+/// identity/mod 变化都发 `getSettings`（`socket.js:65-97`），不回包是设计的一部分：
+/// 设置的权威保持"壳 settings 帧 / tosu 设置文件"单源。连接保持打开直到对端关闭。
+fn handle_commands_ws(stream: TcpStream) {
+    let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+    let Some(mut ws) = accept_loopback_ws(stream) else {
+        return;
+    };
+    loop {
+        match ws.read() {
+            Ok(tungstenite::Message::Close(_)) => return,
+            Ok(_) => {}
+            Err(e) if is_timeout(&e) => {}
+            Err(_) => return,
+        }
+    }
+}
+
+// ---- HTTP ----
+
+/// 24062 的 HTTP 面（§3.3 端点路径表）：Host 门禁 → 两条文件路由 → 其余 404。
+/// 两条文件路由都读固定谱面目录下的文件；读失败 = 500（**不是** 404：路由命中过）。
+fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
+    if !host_allowed(head) {
+        write_json(stream, 403, r#"{"error":"forbidden host"}"#);
+        return;
+    }
+    if method != "GET" {
+        write_json(stream, 405, r#"{"error":"method not allowed"}"#);
+        return;
+    }
+    let (file, ctype) = match path {
+        "/files/beatmap/file" => (
+            MAP_FILE.to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        ),
+        "/files/beatmap/background" => (
+            MAP_BACKGROUND.to_string(),
+            crate::server::mime_for(MAP_BACKGROUND),
+        ),
+        _ => {
+            write_json(stream, 404, r#"{"error":"not found"}"#);
+            return;
+        }
+    };
+    let full = map_dir().join(&file);
+    match std::fs::read(&full) {
+        Ok(bytes) => write_response(stream, 200, &ctype, &bytes),
+        Err(e) => {
+            crate::server::log::log_at(
+                "error",
+                &format!("osu compat: cannot read {} ({e})", full.display()),
+            );
+            write_json(stream, 500, r#"{"error":"file read failed"}"#);
+        }
+    }
+}
+
+/// 一条连接：先 peek 探 WS 升级（照 24061 的 `http::probe_is_ws`），否则按普通 HTTP
+/// 读完整请求。**任何分支都不 panic**：解析失败直接关连接。
+fn handle_conn(mut stream: TcpStream) {
+    if http::probe_is_ws(&stream) {
+        // WS 不能在 accept 前消费请求字节 ⇒ Host 门禁落在 accept 回调的 Origin 校验上
+        // （rebinding 场景下 Host 与 Origin 必然一起跨源）。这里只 peek。
+        let raw = peek_head(&stream);
+        if let Some(req) = raw.as_deref().and_then(parse_head) {
+            match (req.method.as_str(), req.path.as_str()) {
+                ("GET", "/websocket/v2") => return handle_v2_ws(stream),
+                ("GET", "/websocket/commands") => return handle_commands_ws(stream),
+                _ => {
+                    write_json(&mut stream, 404, r#"{"error":"not found"}"#);
+                    return;
+                }
+            }
+        }
+        return;
+    }
+    let Some((head, _body)) = http::read_request(&mut stream) else {
+        return;
+    };
+    let Some(req) = parse_head(&head) else { return };
+    handle_http(&mut stream, &head, &req.method, &req.path);
+}
+
+/// peek 出已到达的请求头（Upgrade 请求第一包必然含完整 head；只 peek 不消费）。
+fn peek_head(stream: &TcpStream) -> Option<String> {
+    let mut probe = [0u8; 4096];
+    for _ in 0..250 {
+        match stream.peek(&mut probe) {
+            Ok(0) => thread::sleep(Duration::from_millis(20)),
+            Ok(n) => return Some(String::from_utf8_lossy(&probe[..n]).to_string()),
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+// ---- 入口 ----
+
+/// 起 24062 监听器（由 `server::start` 调用，与 `spawn_http_ws`/`spawn_post`/`spawn_bridge`
+/// 同形）。**自己 bind**：绑定失败不 panic、不 exit，只记 error 日志 + 入 `state.errors`
+/// （页面 status 行可见），照 24060 / 17653 的先例（24061 才是 exit(2) 的那一个）。
+pub fn spawn_osu_compat(shared: Arc<Shared>) {
+    let listener = match TcpListener::bind(("127.0.0.1", OSU_COMPAT_PORT)) {
+        Ok(l) => l,
+        Err(e) => {
+            crate::server::log::log_at(
+                "error",
+                &format!(
+                    "mma-shell: cannot bind {} ({e}) — the osu! compatible origin is unavailable",
+                    OSU_COMPAT_PORT
+                ),
+            );
+            shared
+                .shell_errors
+                .lock()
+                .unwrap()
+                .push("osu! 兼容端点端口 24062 被占用，原生传输不可用".to_string());
+            return;
+        }
+    };
+    // `shared` 只在绑定失败那一支用到——成功路径不持有它（本模块不发壳帧）。
+    drop(shared);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            thread::spawn(move || handle_conn(stream));
+        }
+    });
+}
