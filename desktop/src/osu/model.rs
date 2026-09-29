@@ -80,6 +80,22 @@ impl Reason {
             Reason::ReadError
         }
     }
+
+    /// **进程选择**层面的原因（"选不出唯一目标"）：描述的是**上一次发现时的进程集合**，
+    /// 一旦附着成功就不再成立 —— 门必须在附着时把它清掉（Step 9b 缺陷 ①：真机日志里
+    /// 附着成功后 `reason=multiple-instances` 一直挂着，冻结帧不带 `beatmap`，24062 的两条
+    /// 文件路由因此持续 404）。
+    ///
+    /// 读取/定址层面的原因（`read-error` / `signature-miss:<key>` / `invariant-failed:<field>`）
+    /// **不在此列**：那类冻结要按 §3.4 的"锚点重解析 + `RECOVERY_CLEAN_FRAMES` 帧清白"才退出。
+    /// `access-denied` 同样不在列——它有两个来源（`OpenProcess` 被拒 vs. 某段内存读不动），
+    /// 后者是读取层面的失败，**不能**因为"换了个附着"就清掉。
+    pub fn is_discovery(&self) -> bool {
+        matches!(
+            self,
+            Reason::ProcessNotFound | Reason::MultipleInstances | Reason::ClientAmbiguous
+        )
+    }
 }
 
 /// 进程分派结果（`client` 字段的来源）。
@@ -96,6 +112,33 @@ impl Client {
             Client::Lazer => "lazer",
         }
     }
+
+    /// **位数分派**（DEC-19）：32 位（PE machine `0x014C`）⇒ stable、64 位（`0x8664`）⇒ lazer。
+    ///
+    /// 两者进程名逐字相同（`osu!.exe`），位数是唯一判据；其它 machine（ARM64 等）⇒ `None`
+    /// （分不出 ⇒ 调用方按既有规则报 reason，绝不猜）。表驱动单测逐行钉住。
+    pub fn from_bitness(pe_machine: u16) -> Option<Client> {
+        match pe_machine {
+            crate::osu::win::PE_MACHINE_I386 => Some(Client::Stable),
+            crate::osu::win::PE_MACHINE_AMD64 => Some(Client::Lazer),
+            _ => None,
+        }
+    }
+}
+
+/// lazer 的一个 mod（页面只需要三件：`acronym` + `settings` 里的两个数值）。
+///
+/// 为什么不是位掩码：lazer 的 mod 不是位域（`ModsJson` 是 acronym 列表），`modSignature` 的
+/// `speedRate`/`odFlag` 取值在 lazer 分支读的是 `array[].settings.{speed_change,
+/// overall_difficulty}`（`js/app/modData.js:150-180`），位掩码表达不了自定义速率。
+#[derive(Clone, Debug, PartialEq)]
+pub struct LazerMod {
+    /// 大写 acronym（逐字来自内存里的 `ModsJson`，**不查白名单**）。
+    pub acronym: String,
+    /// `settings.speed_change`（DT/HT 等速率 mod 的倍率；`None` = 该 mod 没有这个设置）。
+    pub speed_change: Option<f64>,
+    /// `settings.overall_difficulty`（DA 的 OD 值）。
+    pub overall_difficulty: Option<f64>,
 }
 
 /// `GameState` 名的**观测集**（唯一权威：P8 的 `(state.number, state.name)` 台账）。
@@ -263,6 +306,14 @@ pub struct Snapshot {
     pub beatmap_file_error: Option<String>,
     /// `.osu` 头字段与内存值的交叉校验结果（不一致的字段名；空 = 全等或无法比较）。
     pub beatmap_file_mismatches: Vec<String>,
+    // ---- Step 10B：lazer 读取路径（全部由偏移表驱动，见 `osu/lazer.rs`）----
+    /// lazer 当前态的 mod 列表（`SelectedMods` 链；`None` = 本帧没有 mods 信息 ⇒ 发 `null`）。
+    ///
+    /// **不映射到位掩码**：页面在 lazer 分支读 `array[].acronym` 与
+    /// `array[].settings.{speed_change,overall_difficulty}`（`modData.js:150-180`）。
+    pub lazer_mods: Option<Vec<LazerMod>>,
+    /// lazer 解引用链的地址（诊断/证据用；**不进载荷**）。
+    pub lazer_chain: Option<crate::osu::lazer::ChainAddrs>,
     /// 观测集外的状态索引（I-01 的降级上报）。
     pub degraded_fields: Vec<String>,
 }

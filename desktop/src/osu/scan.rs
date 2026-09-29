@@ -177,7 +177,9 @@ pub struct ScanStats {
 fn read_chunk(handle: win::Handle, addr: usize, want: usize) -> Option<Vec<u8>> {
     for len in win::plan_shrink_sequence(want, CHUNK_MIN) {
         let mut buf = vec![0u8; len];
-        if win::read_exact_at(handle, addr as u32, &mut buf).is_ok() {
+        // 64 位地址读：stable 目标（<4 GiB）走这条与走 `read_exact_at` 逐字节等价，
+        // lazer（64 位）只有这一条能读。
+        if win::read_exact_at64(handle, addr as u64, &mut buf).is_ok() {
             return Some(buf);
         }
     }
@@ -190,7 +192,7 @@ fn read_chunk(handle: win::Handle, addr: usize, want: usize) -> Option<Vec<u8>> 
 /// 读失败的块**推进 `CHUNK_MAX` 并丢弃尾接**（不能拿上一块的尾巴去接下一块的头冒充连续内存）。
 ///
 /// 热点路径：**首字节是实字节**时先用它做快速筛（x86 签名首字节是 opcode，命中率低），
-/// 命中候选才逐个做掩码比较——否则每个窗口位置都进一次掩码循环，1.4 GB 的扫描会到秒级。
+/// 命中候选才逐个做掩码比较——否则每个窗口位置进一次掩码循环，1.4 GB 的扫描会到秒级。
 /// 首字节是通配（`??`）时**跳过**快筛（它不携带信息，拿它筛会丢真命中）。
 #[cfg(windows)]
 pub fn find_in_regions(
@@ -201,6 +203,26 @@ pub fn find_in_regions(
     limit: usize,
     stats: &mut ScanStats,
 ) -> Vec<u32> {
+    // stable 是 32 位目标：命中的 64 位地址在这里**有意**收敛回 `u32`（既有调用方与
+    // `AnchorTable` 的全套判据都是 32 位的）。lazer 用 `find_in_regions64`，不经过这一步。
+    find_in_regions64(handle, regions, pattern, offset as i64, limit, stats)
+        .into_iter()
+        .map(|hit| hit as u32)
+        .collect()
+}
+
+/// 64 位目标的同一份扫描（Step 10B）：命中的地址是 `u64`（lazer 的对象地址可以 >4 GiB）。
+///
+/// 与 32 位版的**唯一**差别是地址宽度：分块/尾接/首字节快筛/失败处置全部逐字相同。
+#[cfg(windows)]
+pub fn find_in_regions64(
+    handle: win::Handle,
+    regions: &[Region],
+    pattern: &Pattern,
+    offset: i64,
+    limit: usize,
+    stats: &mut ScanStats,
+) -> Vec<u64> {
     let sig_len = pattern.len();
     if sig_len == 0 || limit == 0 {
         return Vec::new();
@@ -210,7 +232,7 @@ pub fn find_in_regions(
     // 它不携带任何信息，拿它筛会把所有"该位 ≠ 0"的真命中全丢掉（C1 修）。
     let first_byte = pattern.mask[0] != 0;
     let first_value = pattern.sig[0];
-    let mut hits: Vec<u32> = Vec::new();
+    let mut hits: Vec<u64> = Vec::new();
     'regions: for region in regions {
         let mut addr = region.base;
         let mut remaining = region.size;
@@ -234,10 +256,10 @@ pub fn find_in_regions(
                             pattern.matches_at(&window, at)
                         };
                         if candidate {
-                            // 有符号位移必须先在 i64 里加：`statusPtr` 是 -0x4，命中地址可能是
-                            // 0x0…3（u32 相减会下溢 panic，debug 构建直接崩）。
-                            let hit = (window_base + at) as i64;
-                            hits.push((hit + offset as i64) as u32);
+                            // 有符号位移必须先在 i128 里加：`statusPtr` 是 -0x4，命中地址可能是
+                            // 0x0…3（相减会下溢 panic，debug 构建直接崩），且 64 位地址回绕面更宽。
+                            let hit = window_base as i128 + at as i128 + offset as i128;
+                            hits.push(hit as u64);
                             if hits.len() >= limit {
                                 break 'regions;
                             }

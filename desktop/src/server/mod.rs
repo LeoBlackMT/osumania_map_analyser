@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod http;
 pub mod log;
 pub mod osu_compat;
+pub mod osu_source;
 pub mod post;
 pub mod ws;
 
@@ -42,6 +43,9 @@ pub struct Shared {
     /// 17653 是否绑定成功（被占用时为 false，其余功能照常）。
     pub bridge_listen_ok: Mutex<bool>,
     pub tosu_online: Mutex<bool>,
+    /// 读取器健康读数的纯记忆（Step 9c 抗抖动窗口的唯一状态；`osu_source::ReaderLiveness`）。
+    /// 由 `osu_source()` 每次取值时观测一次 ⇒ 状态帧/监视器两条路径共享同一个窗口。
+    pub osu_reader_liveness: Mutex<osu_source::ReaderLiveness>,
     /// 壳侧推送错误面（state.errors，页面 status 行展示）。
     pub shell_errors: Mutex<Vec<String>>,
     /// Etterna 桥状态（poller 更新）。
@@ -92,6 +96,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         malody_bridge: Mutex::new(bridge::MalodyBridgeState::default()),
         bridge_listen_ok: Mutex::new(false),
         tosu_online: Mutex::new(false),
+        osu_reader_liveness: Mutex::new(osu_source::ReaderLiveness::default()),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
         malody4: Mutex::new(crate::malody4::Malody4Status::default()),
@@ -145,8 +150,76 @@ pub(crate) fn state_frame(shared: &Shared) -> serde_json::Value {
             "malody".to_string(),
             serde_json::to_value(malody).unwrap_or(serde_json::Value::Null),
         );
+        // 契约 v6：`sources.osu`（原生传输的端点下发）。**在 JSON 层插入**而不是给
+        // `frames::SourcesFrame` 加字段：该结构体由 `malody4::build_state_frame` 用结构体
+        // 字面量组装，加字段会连带改 `malody4/**`（Step 9 明令不动）。
+        sources.insert(
+            "osu".to_string(),
+            serde_json::to_value(osu_source(shared)).unwrap_or(serde_json::Value::Null),
+        );
     }
     value
+}
+
+/// `sources.osu`（契约 v6）：把读取器健康位 + 壳配置 + 24062 绑定结果折叠成帧字段。
+/// 取值全在这里，决策是纯函数（`osu_source::build`，表驱动单测在
+/// `tests-local/server_osu_source.rs`）。
+fn osu_source(shared: &Shared) -> OsuSource {
+    let reader = crate::osu::instance().map(|reader| reader.latest());
+    let (reader_alive, gate, client, reason, degraded_fields, phase, notice, progress) = match &reader
+    {
+        Some(state) => (
+            crate::osu::healthy(state),
+            state.health.clone(),
+            state.client.clone(),
+            state.reason.clone(),
+            state.degraded_fields.clone(),
+            // Step 9e：相位 / 提示句 / L0 扫描实测进度（诊断 + 页面提示的唯一输入）。
+            state.phase.clone(),
+            state.phase_notice.clone(),
+            state.scan,
+        ),
+        // 读取线程未启动（无窗口模式 / 启动早期）：等同于"没有原生传输"。
+        None => (
+            false,
+            "idle".to_string(),
+            None,
+            None,
+            Vec::new(),
+            String::new(),
+            String::new(),
+            None,
+        ),
+    };
+    // 抗抖动窗口的输入（Step 9c）：读取器已连续多久没有可用载荷。从未健康过 ⇒ `None`
+    // ⇒ `mode` 立即 `"tosu"`（与改动前逐字节相同——没有"最后一张好卡片"可保）。
+    let reader_down_ms = shared
+        .osu_reader_liveness
+        .lock()
+        .unwrap()
+        .observe(reader_alive, now_ms());
+    let shell_config = shared.offline_settings.lock().unwrap().clone();
+    let (tosu_host, tosu_port) = shared
+        .tosu
+        .as_ref()
+        .map(|info| (info.ip.clone(), info.port))
+        .unwrap_or_else(|| ("127.0.0.1".to_string(), TOSU_DEFAULT_PORT));
+    osu_source::build(osu_source::Inputs {
+        reader_alive,
+        reader_down_ms,
+        gate: &gate,
+        client,
+        reason,
+        degraded_fields,
+        forced_tosu: osu_source::forced_tosu(&shell_config),
+        compat_bound: osu_compat::bound(),
+        tosu_host,
+        tosu_port,
+        // Step 9e：相位/提示/进度（`build` 只在原生可达时下发后两项）。
+        phase: &phase,
+        notice: &notice,
+        progress,
+    })
 }
 
 pub fn hello_frame(shared: &Shared) -> Envelope {
@@ -370,6 +443,29 @@ pub(crate) fn apply_tosu_online_transition(shared: &Shared, online: bool) {
     broadcast(shared, "settings", Some(fresh));
 }
 
+/// osu 源变化监视器（契约 v6）：`sources.osu` 的值一变就**立即**推 state 帧。
+///
+/// 兜底的周期帧是 30s（`spawn_timers`），页面等不起——用户关掉/打开 tosu 后必须马上
+/// 看到传输切换（照 `malody4` poller 的"值变即推"先例）。首拍（值还没记过）也推一帧：
+/// 页面因此不必等 30s 才知道自己是 tosu 还是 native。
+const OSU_SOURCE_WATCH_INTERVAL: Duration = Duration::from_secs(2);
+
+fn spawn_osu_source_watcher(shared: Arc<Shared>) {
+    thread::spawn(move || {
+        let mut last: Option<serde_json::Value> = None;
+        loop {
+            thread::sleep(OSU_SOURCE_WATCH_INTERVAL);
+            let current =
+                serde_json::to_value(osu_source(&shared)).unwrap_or(serde_json::Value::Null);
+            if last.as_ref() == Some(&current) {
+                continue; // 值不变 ⇒ 绝不每拍广播（每帧都要 clone 并推给每个 sink）
+            }
+            last = Some(current);
+            broadcast(&shared, "state", Some(state_frame(&shared)));
+        }
+    });
+}
+
 pub fn spawn_timers(shared: Arc<Shared>) {
     thread::spawn(move || {
         loop {
@@ -506,6 +602,8 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         bridge::spawn_bridge(shared.clone(), bridge_listener);
     }
     spawn_timers(shared.clone());
+    // 契约 v6：`sources.osu` 变化（健康位/端点）时立即推 state 帧（2s 一拍）。
+    spawn_osu_source_watcher(shared.clone());
     crate::etterna::spawn_poller(shared.clone());
     crate::malodyv::spawn_malody_poller(shared.clone());
     crate::malody4::spawn_poller(shared.clone());

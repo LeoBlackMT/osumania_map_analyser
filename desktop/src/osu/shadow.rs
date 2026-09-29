@@ -397,7 +397,12 @@ impl OurShadow {
                 stopped_packet = json!({});
                 &stopped_packet
             }
-            FrameAction::FreezeStateOnly => {
+            // Step 9g：`HoldLastGood` 帧的载荷是**上一份验证过的块** + 本帧 `state`
+            // （`packet::held_packet_from`）。对拍侧手里只有**本帧快照**，重建不出那一份
+            // ⇒ 与冻结帧同形处理（`frozen-field-level` / `our-gate-only` 的"没得比"语义，
+            // 而不是拿本帧的半截读数去比）。保持帧在实际载荷里带完整图表块这件事，
+            // 由 `osu_compat` 的文件路由与 `ReaderState.holding` 面承担。
+            FrameAction::FreezeStateOnly | FrameAction::HoldLastGood => {
                 frozen_packet = snapshot.to_frozen_packet();
                 &frozen_packet
             }
@@ -419,7 +424,12 @@ impl OurShadow {
             play_hits: snapshot.play_hits.map(|hits| hits.canonical()),
             result_hits: snapshot.result_hits.map(|hits| hits.canonical()),
             health: outcome.state.map(|s| s.as_str()).unwrap_or("idle"),
-            frozen: outcome.action == FrameAction::FreezeStateOnly,
+            // Step 9g：身份保持帧与冻结帧同口径（"我方这一格不是本帧的新读数"）——
+            // 保持帧的载荷来自上一份验证过的块，对拍侧重建不出 ⇒ 走同一套跳过。
+            frozen: matches!(
+                outcome.action,
+                FrameAction::FreezeStateOnly | FrameAction::HoldLastGood
+            ),
         }
     }
 

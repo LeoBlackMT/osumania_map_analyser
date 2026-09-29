@@ -40,8 +40,125 @@
 // `game_base_vtable` 可省略（`null` = 本表未提取到）；其余六个必需。
 // `types` 的键是 CLR 类型名、字段名逐字照源码/元数据（**不做大小写归一**：字段名错一个
 // 字母就该查不到，而不是悄悄命中另一个字段）。
+//
+// ## `runtime` 段（Step 10f：EEType → 类型名）
+//
+// `types` 段是"某个已知类型上的某个字段在哪"，它答不了"**这个活对象的类型叫什么**"
+// （`state.name` 需要的正是后者）。所以表里另有一段**运行时结构**（同一批双见证规则：
+// 每个位移都由生成器从 dump 里的 SOS 打印 + dump 字节逐字比出来）：
+//
+// ```json
+// "runtime": {
+//   "eetype":       { "token": {"offset": 8, "shift": 8, "witness": "…"},
+//                     "loader_module": {"offset": 24, "shift": 0, "witness": "…"} },
+//   "module":       { "image_base": {"offset": 200, "shift": 0, "witness": "…"} },
+//   "screen_array": { "length": {"offset": 8, …}, "elements": {"offset": 16, "stride": 8, …} },
+//   "typedefs":     { "osu.Game.dll": { "9A2": "osu.Game.Screens.Menu.MainMenu", … } },
+//   "observed":     { "osu.Game.dll": { "9A2": "…" } },   // dumpmt 直接印出来的那一部分
+//   "witness": "…"
+// }
+// ```
+//
+// 读取侧的**完整链**（`lazer.rs` 每一跳都只信表里的位移，绝不写死）：
+//
+// ```text
+//   screenObj   → [screenObj]                        = MethodTable（EEType）
+//   rid         → u32[MT + eetype.token.offset] >> eetype.token.shift
+//   module      → [MT + eetype.loader_module.offset]              （Module 对象，loader heap）
+//   imageBase   → [module + module.image_base.offset]             （该程序集的映像基址）
+//   moduleName  → 目标进程的模块表（Toolhelp32）按 imageBase 反查（基址在进程内唯一）
+//   typeName    → runtime.typedefs[moduleName][<rid 的十六进制大写>]
+// ```
+//
+// `typedefs` 的键是**模块文件名**（`MODULEENTRY32W.szModule` / IL 清单的 `assembly:<名字>`），
+// 值是 `TypeDef RID → 完整类型名`；IL 侧给出全量、`observed` 给出 dumpmt 直接印出的那一部分
+// （两者必须一致，否则生成器拒绝出表）。
 
 use std::collections::BTreeMap;
+
+/// 查一个「类型 + 字段」的**结构化查法**（不写死类型名的完整拼写）。
+///
+/// 为什么不是精确类型名：表的类型键是**运行时类型**（`dumpobj` 的 `Name:` 行规范化后的形态），
+/// 而泛型实例化的写法跨构建会变（程序集限定后缀、SOS 列宽截断、C# 侧加不加程序集名）。
+/// 所以查法与生成器 `spec.rs::CHAIN` 的 `contains` 判据**同形**：类型键必须**包含**全部子串。
+///
+/// 硬规则（见 `OffsetTable::offset_for`）：**恰好一个**类型键命中才算找到；0 个 ⇒ `NoType`；
+/// ≥2 个 ⇒ `Ambiguous`（拒读并降级，绝不猜另一个实例化——`Bindable<T>.value` 的偏移
+/// **依赖 T**，README 的判据表原话是"缺对应实例化时必须按字段降级"）。
+#[derive(Clone, Copy, Debug)]
+pub struct FieldLookup {
+    /// 类型键必须**全部**包含的子串（all-of；全部按 [`canonical_type`] 规范化后比较）。
+    pub type_all: &'static [&'static str],
+    /// 类型键必须**至少**包含其一的子串（any-of；空 = 不约束）。
+    ///
+    /// 用在"派生类改名不该被当成结构失效"的地方（`GameBase` 的活对象是
+    /// `osu.Desktop.OsuGameDesktop`，而台账里给的是基类族）——与生成器 `spec.rs::CHAIN`
+    /// 的 `contains` 判据同义。
+    pub type_any: &'static [&'static str],
+    /// 字段名（**逐字**，不做大小写归一：错一个字母就该查不到）。
+    pub field: &'static str,
+}
+
+impl FieldLookup {
+    /// all-of 形态（最常用：一个类型子串 + 一个字段）。
+    pub const fn new(type_all: &'static [&'static str], field: &'static str) -> FieldLookup {
+        FieldLookup {
+            type_all,
+            type_any: &[],
+            field,
+        }
+    }
+
+    /// any-of 形态（派生类改名容忍；见 `type_any`）。
+    pub const fn new_any(type_any: &'static [&'static str], field: &'static str) -> FieldLookup {
+        FieldLookup {
+            type_all: &[],
+            type_any,
+            field,
+        }
+    }
+
+    /// 日志/降级标记用的短名（`类型子串#字段`）。
+    pub fn label(&self) -> String {
+        let mut parts: Vec<&str> = self.type_all.to_vec();
+        parts.extend_from_slice(self.type_any);
+        format!("{}#{}", parts.join("+"), self.field)
+    }
+}
+
+/// 字段查找失败的原因（**字面量**，进 `degradedFields` 与日志）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LookupError {
+    /// 没有任何类型键包含全部子串 ⇒ 该类型的字段本表没有。
+    NoType(String),
+    /// ≥2 个类型键命中 ⇒ 分不出实例化（**拒绝**，不猜）。
+    Ambiguous(String, Vec<String>),
+    /// 类型找到了但字段不在（改名/被裁掉）。
+    NoField(String, String),
+    /// 偏移不在合理域（对象头之后、且不超过 [`MAX_FIELD_OFFSET`]）。
+    OutOfRange(String, i64),
+}
+
+impl std::fmt::Display for LookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LookupError::NoType(label) => write!(f, "no-type:{label}"),
+            LookupError::Ambiguous(label, keys) => {
+                write!(f, "ambiguous:{label}({})", keys.join(","))
+            }
+            LookupError::NoField(key, field) => write!(f, "no-field:{key}.{field}"),
+            LookupError::OutOfRange(label, offset) => {
+                write!(f, "offset-out-of-range:{label}={offset}")
+            }
+        }
+    }
+}
+
+/// 字段偏移的合理下界（x64 对象的前 8 字节是 MethodTable 指针 ⇒ 字段必在 `+0x08` 之后）。
+pub const MIN_FIELD_OFFSET: i64 = 0x08;
+/// 字段偏移的合理上界：真机最大字段（`OsuScreenStack` 的 `stack`）是 `0x320`；给 16 倍余量。
+/// 超出即判"表坏了/查错了键"，**不给假值**。
+pub const MAX_FIELD_OFFSET: i64 = 0x4000;
 
 /// 一张偏移表（一个 `(lazer 版本, runtime 版本, 架构)` 组合一份）。
 ///
@@ -58,19 +175,99 @@ pub struct OffsetTable {
     pub game_base_vtable: Option<u64>,
     /// `Type.Field → offset`（`BTreeMap`：JSON 对象键序不稳定，用有序表保证可复现）。
     pub types: BTreeMap<String, BTreeMap<String, i64>>,
+    /// **运行时结构段**（Step 10f；见文件头）：EEType→类型名 这条链的位移与 RID 表。
+    /// `None` = 本表没有这一段（旧表）⇒ 依赖它的字段按字段级降级，绝不猜。
+    #[serde(default)]
+    pub runtime: Option<RuntimeSection>,
     /// 验证过的运行时构建标识（表自证的一部分）。
     pub verified_build: String,
     /// **验证方法**（不是文件路径）：这个偏移是怎么提取的、怎么证明它对。
     pub evidence: String,
 }
 
+/// `runtime` 段里的一个位移（`witness` = 生成器留下的证据行；读取侧只读 `offset`/`shift`）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+pub struct RuntimeEntry {
+    /// 对象基准（EEType / Module / 数组对象）上的位移。
+    pub offset: i64,
+    /// 读出来的整数要右移多少位才是 RID（`token` 用；其余为 0）。
+    #[serde(default)]
+    pub shift: u32,
+    /// 数组元素的步长（`screen_array.elements` 用；其余为 0）。
+    #[serde(default)]
+    pub stride: i64,
+    /// 为什么这个位移是对的（生成器的 SOS 行 + dump 字节比对，逐字留存）。
+    #[serde(default)]
+    pub witness: String,
+}
+
+impl RuntimeEntry {
+    /// 位移的合理域判据（与 [`MIN_FIELD_OFFSET`]/[`MAX_FIELD_OFFSET`] 同一口径）。
+    pub fn usable(&self) -> bool {
+        self.offset >= 0 && self.offset <= MAX_FIELD_OFFSET
+    }
+}
+
+/// 运行时结构段（见文件头）。每一组都是 `名字 → 位移`。
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+pub struct RuntimeSection {
+    /// `token`（TypeDef RID 的来源）/ `loader_module`（Module 指针）。
+    #[serde(default)]
+    pub eetype: BTreeMap<String, RuntimeEntry>,
+    /// Module 对象上的 `image_base`。
+    #[serde(default)]
+    pub module: BTreeMap<String, RuntimeEntry>,
+    /// 屏幕栈数组对象上的 `length` / `elements`。
+    #[serde(default)]
+    pub screen_array: BTreeMap<String, RuntimeEntry>,
+    /// `模块文件名 → (RID 十六进制大写 → 完整类型名)`（IL 侧全量）。
+    #[serde(default)]
+    pub typedefs: BTreeMap<String, BTreeMap<String, String>>,
+    /// 同一张映射里**由 dumpmt 直接印出**的那一部分（SOS 见证；与 `typedefs` 必须一致）。
+    #[serde(default)]
+    pub observed: BTreeMap<String, BTreeMap<String, String>>,
+    /// 这一段的整体见证（哪些 MT / 哪些模块 / 哪份 dump）。
+    #[serde(default)]
+    pub witness: String,
+}
+
+impl RuntimeSection {
+    /// 取一组位移里的一个（缺 → `None`，调用方按字段级降级处理）。
+    pub fn entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {
+        let map = match group {
+            "eetype" => &self.eetype,
+            "module" => &self.module,
+            "screen_array" => &self.screen_array,
+            _ => return None,
+        };
+        map.get(name).filter(|entry| entry.usable())
+    }
+
+    /// `(模块文件名, RID)` → 类型名（键是 RID 的**十六进制大写**，两端同一格式）。
+    pub fn type_name(&self, module: &str, rid: u32) -> Option<&str> {
+        self.typedefs
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(module))
+            .and_then(|(_, map)| map.get(&format!("{rid:X}")))
+            .map(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+    }
+
+    /// 本段覆盖的模块文件名（诊断用）。
+    pub fn modules(&self) -> Vec<&str> {
+        self.typedefs.keys().map(|key| key.as_str()).collect()
+    }
+}
+
 /// JSON 根键名（错误消息与测试都引用它，避免两处各写一遍字面量）。
+/// `runtime` 之后的这一段是可选的（见 [`OffsetTable::runtime`]）。
 pub const TABLE_KEYS: &[&str] = &[
     "lazer_version",
     "runtime_version",
     "arch",
     "game_base_vtable",
     "types",
+    "runtime",
     "verified_build",
     "evidence",
 ];
@@ -125,6 +322,70 @@ impl OffsetTable {
     /// （**不**回退到别的类型/字段：那会让"读错字段"看起来像"读到了"）。
     pub fn offset(&self, type_name: &str, field: &str) -> Option<i64> {
         self.types.get(type_name)?.get(field).copied()
+    }
+
+    /// `runtime` 段（`None` = 旧表没有这一段）。
+    pub fn runtime(&self) -> Option<&RuntimeSection> {
+        self.runtime.as_ref()
+    }
+
+    /// `runtime.<group>.<name>` 的位移（缺段/缺项/越界 ⇒ `None`）。
+    pub fn runtime_entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {
+        self.runtime.as_ref()?.entry(group, name)
+    }
+
+    /// `(模块文件名, RID)` → 类型名（`runtime` 段缺失 ⇒ `None`）。
+    pub fn runtime_type_name(&self, module: &str, rid: u32) -> Option<&str> {
+        self.runtime.as_ref()?.type_name(module, rid)
+    }
+
+    /// 按 [`FieldLookup`] 查偏移（唯一类型命中 + 字段存在 + 偏移在合理域）。
+    ///
+    /// 三种失败各自给出**可进日志/降级标记**的原因；调用方把它们记进 `degradedFields`
+    /// 并让该字段**不出现在载荷里**（绝不填 0/占位）。
+    pub fn offset_for(&self, lookup: &FieldLookup) -> Result<i64, LookupError> {
+        let all: Vec<String> = lookup
+            .type_all
+            .iter()
+            .map(|text| canonical_type(text))
+            .collect();
+        let any: Vec<String> = lookup
+            .type_any
+            .iter()
+            .map(|text| canonical_type(text))
+            .collect();
+        let mut matches: Vec<(String, i64)> = Vec::new();
+        for (key, fields) in &self.types {
+            let canonical = canonical_type(key);
+            let all_hit = all.iter().all(|needle| canonical.contains(needle.as_str()));
+            let any_hit = any.is_empty() || any.iter().any(|needle| canonical.contains(needle.as_str()));
+            if !(all_hit && any_hit) {
+                continue;
+            }
+            if let Some(offset) = fields.get(lookup.field).copied() {
+                matches.push((canonical, offset));
+            } else {
+                // 类型命中但字段不在：这是"字段被改名/裁掉"，比"类型没有"更值得单列。
+                matches.push((canonical, i64::MIN));
+            }
+        }
+        match matches.len() {
+            0 => Err(LookupError::NoType(lookup.label())),
+            1 => {
+                let (key, offset) = matches.remove(0);
+                if offset == i64::MIN {
+                    return Err(LookupError::NoField(key, lookup.field.to_string()));
+                }
+                if !(MIN_FIELD_OFFSET..=MAX_FIELD_OFFSET).contains(&offset) {
+                    return Err(LookupError::OutOfRange(lookup.label(), offset));
+                }
+                Ok(offset)
+            }
+            _ => {
+                let keys: Vec<String> = matches.into_iter().map(|(key, _)| key).collect();
+                Err(LookupError::Ambiguous(lookup.label(), keys))
+            }
+        }
     }
 
     /// 与目标环境不一致的**第一处**（`None` = 版本位面一致）。
@@ -197,6 +458,139 @@ impl OffsetTable {
         match policy.validate(nearest) {
             true => Ok(nearest),
             false => Err(NearestError::Refused(nearest.key())),
+        }
+    }
+
+    /// 本表覆盖的 `Type.Field` 标签（**降级清单的来源**：表缺失/不可用时，读者按它逐字段
+    /// 上报"这些字段因此没有来源"，绝不填零/占位）。
+    pub fn field_labels(&self) -> Vec<String> {
+        let mut labels: Vec<String> = Vec::new();
+        for (key, fields) in &self.types {
+            for field in fields.keys() {
+                labels.push(format!("{key}.{field}"));
+            }
+        }
+        labels
+    }
+}
+
+/// **CLR 类型名规范化**（读取侧的唯一规则，与生成器 `tools/lazer-offsets-gen/names.rs`
+/// 逐字同源——表的类型键就是按它产出的，读的那一侧必须用同一条规则）。
+///
+/// - 泛型实例化：``Name`1[[Arg, Asm],[Arg2, Asm2]]`` → ``Name`1<Arg,Arg2>``（去程序集限定与空白）
+/// - 数组后缀原样保留（`X[]`）、嵌套类型保留 `+`
+/// - 被 SOS 列宽截断的形态（含 `...`）不做结构解析：去空白后原样返回
+///
+/// ⚠️ 两份实现（工具侧 / 读取侧）**必须逐字一致**，否则"类型键查不到"会伪装成"表里没这个
+/// 字段"。工具侧的自测（`names/canonical-table`）与读取侧的 `osu_lazer.rs` 用例各自钉住
+/// 同一批样本；任何一侧改动都要同时改另一侧。
+pub fn canonical_type(display: &str) -> String {
+    let trimmed = display.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.contains("...") {
+        return trimmed.split_whitespace().collect::<Vec<_>>().join("");
+    }
+    let mut parser = TypeParser {
+        bytes: trimmed.as_bytes(),
+        index: 0,
+    };
+    let mut out = parser.parse_type();
+    parser.skip_ws();
+    out = out.trim().to_string();
+    if out.is_empty() {
+        out = trimmed.split_whitespace().collect::<Vec<_>>().join("");
+    }
+    out
+}
+
+struct TypeParser<'a> {
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> TypeParser<'a> {
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.index).copied()
+    }
+
+    fn skip_ws(&mut self) {
+        while matches!(self.peek(), Some(b' ') | Some(b'\t')) {
+            self.index += 1;
+        }
+    }
+
+    fn parse_type(&mut self) -> String {
+        self.skip_ws();
+        let start = self.index;
+        while let Some(c) = self.peek() {
+            if c == b'[' || c == b']' || c == b',' {
+                break;
+            }
+            self.index += 1;
+        }
+        let mut name: String = String::from_utf8_lossy(&self.bytes[start..self.index])
+            .trim()
+            .to_string();
+        if self.peek() == Some(b'[') && self.bytes.get(self.index + 1) == Some(&b']') {
+            while self.peek() == Some(b'[') && self.bytes.get(self.index + 1) == Some(&b']') {
+                name.push_str("[]");
+                self.index += 2;
+            }
+            return name;
+        }
+        if self.peek() == Some(b'[') && self.bytes.get(self.index + 1) == Some(&b'[') {
+            self.index += 2;
+            let mut args: Vec<String> = Vec::new();
+            loop {
+                self.skip_ws();
+                if self.peek() == Some(b'[') {
+                    self.index += 1;
+                }
+                let arg = self.parse_type();
+                args.push(arg);
+                self.skip_to_close();
+                self.skip_ws();
+                if self.peek() == Some(b',') {
+                    self.index += 1;
+                    continue;
+                }
+                break;
+            }
+            while self.peek() == Some(b']') {
+                self.index += 1;
+            }
+            if !args.is_empty() {
+                name = format!("{name}<{}>", args.join(","));
+            }
+            while self.peek() == Some(b'[') && self.bytes.get(self.index + 1) == Some(&b']') {
+                name.push_str("[]");
+                self.index += 2;
+            }
+            return name;
+        }
+        name
+    }
+
+    fn skip_to_close(&mut self) {
+        let mut depth = 0usize;
+        while let Some(c) = self.peek() {
+            match c {
+                b'[' => {
+                    depth += 1;
+                    self.index += 1;
+                }
+                b']' => {
+                    if depth == 0 {
+                        self.index += 1;
+                        return;
+                    }
+                    depth -= 1;
+                    self.index += 1;
+                }
+                _ => self.index += 1,
+            }
         }
     }
 }

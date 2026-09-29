@@ -213,6 +213,10 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
 /// 文件**已存在**时只补缺：hotkeys 里缺失/空串的键按下面的默认值补齐并落盘
 /// （功能新增前写下的旧文件缺 `settings`，设置页会显示成空输入框）；用户改过的值
 /// 与其余顶层键一字不动，无改动就不落盘。
+///
+/// `osuTransport`（契约 v6）：`auto`（缺省，原生优先、读不到健康读数回落 tosu）/
+/// `native` / `tosu`（逃生开关：壳不打开任何内存句柄，页面继续用设置里的端点）。
+/// 语义实现见 `server/osu_source.rs`；旧配置文件没有该键 = `auto`。
 pub fn ensure_shell_config() {
     let Some(dir) = exe_dir() else {
         return;
@@ -226,7 +230,7 @@ fn ensure_shell_config_in(dir: &Path) {
     if !path.exists() {
         let _ = fs::write(
             &path,
-            "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
         );
         return;
     }

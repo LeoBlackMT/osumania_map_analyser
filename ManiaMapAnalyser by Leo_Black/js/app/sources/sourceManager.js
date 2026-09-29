@@ -122,8 +122,9 @@ function decide() {
     for (const s of PRIORITY) {
         if (inWindow(s)) return s; // 窗口过期后按优先级重选
     }
-    // L3' 存活回窗：tosu 在线（壳模式）→ osu（菜单态持续推送视为存活）
-    if (state.shellTosuOnline && state.externalBridgeAvailable) {
+    // L3' 存活回窗：tosu 在线（壳 state 帧）或 native 传输可用 → osu（菜单态持续推送视为存活）。
+    // native 位（契约 v6）必须进这条门：原生帧在菜单态同样持续到达，缺它就会把路由判成"无源"。
+    if ((state.shellTosuOnline || state.shellOsuNativeAlive) && state.externalBridgeAvailable) {
         return "osu";
     }
     // L4
@@ -176,11 +177,13 @@ export function routeAllowsExternal(source) {
 /** osu 的 beatmap 状态应用是否应挂起（败方门控）。
  * 仅当「壳桥在线且 tosu 离线」时 osu 才可能被外部源压制——浏览器模式
  * （无壳）或壳在线模式（tosu 存活）下 osu 恒为主数据面，绝不挂起。
+ * **native 传输可用时（契约 v6）同样绝不挂起**：原生帧不置 `shellTosuOnline`，
+ * 缺这一位会把每一次换图都当成"败方帧"缓冲掉（用户可见现象：换图不更新，DEC-21 ①）。
  * ⚠️ 端口守卫：必须限定在壳离线页（24061）。用户打开正常 tosu 浏览器页
  * （24050）时壳也可能在跑（externalBridgeAvailable=true、tosu 未运行），
  * 此时 osu 是页面唯一数据面，绝不能挂起——否则换图/mod 全部被缓冲吞掉。 */
 export function isOsuSuppressed() {
-    if (!state.externalBridgeAvailable || state.shellTosuOnline) {
+    if (!state.externalBridgeAvailable || state.shellTosuOnline || state.shellOsuNativeAlive) {
         return false;
     }
     if (typeof window === "undefined" || !window.location) {

@@ -1,15 +1,17 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**5**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> 版本：**6**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
 > v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > v2→v3 变更：新增第四数据源 **Malody 4.3.7 原生客户端**（零注入只读观察通道）——新增 `malody4_selection` 帧（八型）；`source` 枚举新增 `"malody4"`；`requestId` 新增 `n{seq}` 前缀；`identity` 新增 `mdy4:{md5}`；`sources` 新增 `malody4{alive,playing,screen,reason?,judge?}`；`meta` 新增可选 `judge`（Malody 4 判定档字母）。
 > v3→v4 变更：Malody V 通道新增**游戏内选曲桥**（BepInEx 插件 `POST /selection` → 壳 17653）——`sources.malody` 由 `{alive}` 扩为 `{alive,transport,screen,playing,eventSeq,judge}`；`song` 帧新增 `screen` / `judge` / `winScale`（仅桥通道携带）；`requestId` 新增 `b{eventSeq}`（真实事件）与 `b{eventSeq}r{k}`（重连补发）前缀；`identity` 的桥通道带 `u` 后缀（`mdy:…:{contentMd5}u`）；新增端口 **17653**；详情见 §11。**注**：v4 当时装的是上游插件，v5 起改为本仓库自建的 fork（§12），上面的历史描述保留原样。
+> v4→v5 变更：Malody V 选曲桥的判定档/Pro/Turbo 三字段进入契约（`POST /selection` 11 字段、`song` 帧 `pro`/`turbo`、`sources.malody` 八字段、`winScale` 可为 `null`）；详情见 §12。
+> v5→v6 变更：新增 **osu 原生传输的端点下发**——`sources.osu` 进入 state 帧（`{alive, osuTransport:{mode,host,port,wsPath,filesPath}, gate?, client?, reason?, degradedFields?, phase?, notice?, progress?}`），页面据此在 **socket 层**运行时切换 osu 数据面（**不写 `wsEndpoint`**，故切换**不清结果缓存**）；新增端口 **24062**（壳内 tosu 兼容子集 origin）；壳主窗在 `osuTransport != "tosu"` 时一律落 24061 本地页；详情见 §14。`phase`/`notice`/`progress` 三项是 2026-09-29 的**向后兼容追加**（L0 扫描提示，**契约版本仍为 v6**，见 §8）。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
 
 - 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback——解析 Origin 的 host 段**精确匹配** `127.0.0.1` / `localhost` / `[::1]`（子串匹配会放过 `localhost.evil.com` 类域）；24061 HTTP 侧同样校验 Host 头仅本机 24061。**17653 是另一个独立 listener（Malody 选曲桥的入站面向游戏插件，不是页面通道），只认 `POST /selection`，Host 头必须精确等于 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653`，且**任何** `Origin` 头出现即 403（见 §11）。**
-- 帧：`{v: 4, type, seq}`；`seq` 单向前递增。
+- 帧：`{v: 6, type, seq}`；`seq` 单向前递增。
 - type 全集（八型职责语义闭合）：
   | type | 方向 | 职责 |
   |---|---|---|
@@ -103,8 +105,12 @@
 ```
 { tosuOnline, errors[], sources: {
     etterna: { alive, playing, playingExpireAt },
-    malody:  { alive, transport, screen, playing, eventSeq, judge },
-    malody4: { alive, playing, screen, reason?, judge? }
+    malody:  { alive, transport, screen, playing, eventSeq, judge, pro, turbo },
+    malody4: { alive, playing, screen, reason?, judge? },
+    osu:     { alive, osuTransport: { mode, host, port, wsPath, filesPath },
+               gate?, client?, reason?, degradedFields?,
+               phase?, notice?, progress?: { filter, regions, bytes, elapsedMs } }
+                                                                 // v6 新增，见 §14；相位三项见下
 } }
 ```
 
@@ -119,6 +125,15 @@
   - 三者（`chart-not-indexed` / `chart-unresolved` / `chart-unknown-identity`）对**帧形态与卡片行为完全相同**（hidden 记录、卡片保留上一张谱面）：它们只让壳日志与页面状态行给出不同的说明，绝不门控或隐藏卡片；区别只在诊断面能否分辨"库里没有这张谱"（结论）、"还在给你找"（临时）与"索引还没建好"。
 - `malody4.reason` **变化即刻推 state 帧**（与 `alive` / `playing` / `screen` / `judge` 的变化一样）：不依赖 30s 周期帧，否则卡片上的临时提示与最终提示都要等下一拍周期才出现（真机复测的原始缺陷）。每 tick 值不变则**不**广播。
 - `errors[]`：壳侧推送错误面（如 payload 超限被丢弃提示），页面 status 行展示。
+- `osu`（v6 新增，见 §14）：`alive` = 原生传输可用（≡ `osuTransport.mode == "native"`）；`osuTransport` = 页面该用的 osu origin（`mode:"tosu"` 时字段仍在下发，但**页面不应用覆盖**，继续用自己设置里的 `wsEndpoint`）；`gate` = 读取器门状态（`idle`/`healthy`/`degraded`/`unhealthy`，仅诊断）；`client` = `stable`/`lazer`（未知不出现）；`reason` = 不可用原因（`osu/model.rs` 的 reason 闭集字面量，正常不出现）；`degradedFields` = 读取器上报的降级字段（正常不出现）。
+  - `degradedFields` 的**内容**（Step 10e 澄清，**契约版本仍为 v6**：字段名与语义都没变，只是写明它对 lazer 是什么）：它是"这一帧哪些载荷字段**没有来源**"的字符串清单，逐条都是 `<载荷字段>:<原因>`（如 `state.name:offsets-missing-screen-name-source`、`files.background:offsets-missing-BeatmapSetInfo.Files`），来源 = 读取器每帧的字段级降级清单——lazer 侧就是 `osu/lazer.rs::read_frame` 的 `gaps`（表缺口、链读失败、值域不符各写各的原因），它经 `osu/invariants.rs::evaluate` **原样并入**门的上报；表整体缺失/不可用时另有一份"因此没有来源"的整表清单（`lazer::missing_table_degraded_fields()`，随 `lazer-offsets-missing:<ver>` 一起下发）。页面只按"键在不在"/字符串前缀消费，不解析原因里的数字。
+- `osu.phase` / `osu.notice` / `osu.progress`（**2026-09-29 追加，契约版本仍为 v6**）：读取器 L0 附着/锚点定址相位的诊断字段，存在的理由是**用户可见现象**——冷启动与游戏重启后，L0 全量锚点扫描要 13–23 s（真机实测 12.6–18.6 s），这期间页面一个帧都收不到，卡片只会"毫无说明地停着"。三者都是**向后兼容扩展**（对页面是"键在不在"的存在性降级；旧页面收到也不消费，故不升 `CONTRACT_VERSION`，同 §8 的 `malody4.reason` 先例）：
+  - `phase`（闭集，逐字）：`waiting-for-game`（本会话从没附着过，且失败原因就是 `process-not-found` ⇒ 最可能"游戏没开"）/ `attaching`（目标丢了正在重附着，或失败原因不是"进程不在"）/ `scanning`（已附着、锚点未定址 ⇒ L0 正在跑：缓存验证或全量扫描）/ `healthy`（L1+ 正在出帧 ⇒ **提示必须消失**）/ `unavailable`（锚点已定址但门停帧；说明看 `reason`）。读取线程还没给出结论时不出现。
+  - `notice`：`phase` 对应的**英文提示句**，供页面显示（`scanning` = `Scanning osu! memory… (about 10–20 s)`、`attaching` = `Re-attaching to osu!…`、`waiting-for-game` = `Waiting for osu! to start…`）；`healthy` / `unavailable` 时**不出现**（页面据此撤提示）。
+  - `progress`：仅在 `phase == "scanning"` 出现，L0 全量扫描的**实测**读数（`filter` = 过滤器档位 0/1、`regions` = 该档枚举到的区域数、`bytes` = 该档已读字节、`elapsedMs` = 本次定址已耗时）。纯诊断：页面**无义务**渲染，供排查与证据。
+  - **提示与进度只在"原生传输可达"时下发**（`compat_bound && !forced_tosu`）：操作者强制 tosu 或 24062 未绑定时，原生读取器再健康也到不了页面，壳因此抽掉 `notice`/`progress`（`phase` 仍如实上报，它是读取器的诊断）。注意判据**不是** `mode`：冷启动（从没健康过）时 `mode` 恰是 `"tosu"`，而那一刻页面正需要这句提示。
+  - 壳侧日志（算子判据）：相位**跳变**时打一行稳定前缀 `[osu] phase=<相位> …`，跳进 `healthy` 的那一行带刚结束的扫描实测（`scan_ms=` / `filter=` / `regions=` / `bytes=`）。
+- `osu` 值变化（健康位/端点的任何字段）时**立即推 state 帧**（2s 一拍的变化检测），不依赖 30s 周期帧；值不变则不广播。相位三项也是这套"值变即推"的载体（扫描中的 `progress` 因此每 2 s 会随帧刷新）。
 - tosu 探测：`GET {ip}:{port}/` 健康探测，30s 周期重探测并推 state。
 
 ## 9. 皮肤状态文件（已废弃）
@@ -217,12 +232,13 @@
 
 | 壳 `hello.contract` | 页面行为 |
 |---|---|
-| `5` | 全功能（本文件） |
+| `6` | 全功能（本文件）：`sources.osu.osuTransport` 可把 osu 数据面切到壳内 origin（24062） |
+| `5` | 接受：`sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`（tosu 传输）；`sources.malody` 八字段齐全 |
 | `4` | 接受：`sources.malody` 无 `pro`/`turbo`，桥帧也无这两个字段；`winScale` 恒为数值（旧语义）。页面据此关闭动态 OD 并说明原因 |
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
-| `< 3` 或 `> 5` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
+| `< 3` 或 `> 6` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 5`，区间为 `[3,5]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 6`，区间为 `[3,6]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -253,7 +269,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **`CONTRACT_VERSION` 不变：仍为 5**（`desktop/src/frames.rs`）——本次新增端点与设置窗口**不升版本**，页面 `bridgeClient.js` 的常量继续保持 5，接受区间仍为 `[3,5]`（§11.8）。
+> **`CONTRACT_VERSION` 由 v6 起为 6**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v6 的升级来自 `/ws` 上的新字段（§14），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,6]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。
 
@@ -269,3 +285,39 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | `/ws` | WS | 帧通道（§0–§12 的八型 + diag） |
 
 改这一面（含状态码）只需更新本节与 `docs/features/desktop-shell.md` §3c；**只有当 `/ws` 上的帧字段/语义变化时才按 §10 升 `CONTRACT_VERSION`**。
+
+## 14. v5 → v6 差异（osu 原生传输的端点下发）
+
+变更动机：壳内已能只读读取 osu!stable（`desktop/src/osu/**`）并在 **24062** 上提供 tosu 兼容子集 origin（`desktop/src/server/osu_compat.rs`）。页面只有**一个 host 字符串**（`appContext.js:getSocketHost()`，DEC-20），所以"换数据面"必须由壳**下发端点**、页面在 socket 层切换；走设置路径会踩 `wsEndpoint ∈ SETTING_CACHE_KEYS` ⇒ 每次切换清空结果缓存（DEC-12）。
+
+| 面 | v5 | v6 | 原因 |
+|---|---|---|---|
+| `CONTRACT_VERSION` / `hello.contract` / 帧信封 `v` | 5 | **6** | §10 规则 |
+| `state.sources.osu` | 不存在 | **新增**：`{alive, osuTransport{mode,host,port,wsPath,filesPath}, gate?, client?, reason?, degradedFields?, phase?, notice?, progress?}` | 端点与健康位必须走 state 帧（页面据此切流），**不写** `wsEndpoint`；相位三项（`phase`/`notice`/`progress`，2026-09-29 追加、**不升版本**）见 §8 |
+| 推送节奏 | 30s 周期 + 各源跳变 | 30s 周期 + 各源跳变 + **`sources.osu` 值变即推（2s 一拍检测）** | 用户关/开 tosu 后必须马上看到切换，不能等下一拍 30s 周期帧 |
+| 监听端口 | 24060 / 24061 / 17653 | **+ 24062**（tosu 兼容子集 origin：WS `/websocket/v2`、WS `/websocket/commands` 黑洞、`GET /files/beatmap/{file,background}`，全部带 `Access-Control-Allow-Origin: *`，Host 门禁只放行本机 24062） | 页面零改动即可消费（同形端点） |
+| 页面接受区间 | `[3,5]` | **`[3,6]`** | §11.8 |
+| 壳主窗策略 | 在线（tosu 存活）⇒ 导航到 tosu 插件页 | 壳配置 `osuTransport != "tosu"`（缺省 `auto`）⇒ 一律落 **24061**；仅显式 `"tosu"` 才维持旧策略 | 主窗落 tosu 页时端点下发不可达（DEC-21 的缺陷②）；`"tosu"` 是"不打开任何内存句柄"的逃生开关（AV 误报排查） |
+
+### 14.1 `mode` 语义与页面行为
+
+| `osuTransport.mode` | 壳的条件 | 页面行为 |
+|---|---|---|
+| `native` | 读取器发布了载荷（`osu::healthy`：已附着且未 `unhealthy`）**且** 24062 绑定成功 **且** 壳配置未强制 `tosu` | 仅在**壳页**（`location.port === "24061"`）应用覆盖：`host:port` 成为 `getSocketHost()` 的取值 ⇒ WS（`/websocket/v2`、`/websocket/commands`）、`.osu`（`{filesPath}/file`）与背景图（`{filesPath}/background`）全部改由 24062 供给；`socket.setHost()` 关闭**曾创建过的全部** socket 并按新 host 重开 |
+| `tosu` | 其余全部情形（未附着 / `unhealthy` / 24062 未绑定 / 配置强制 / 无读取线程） | **不应用覆盖**：`getSocketHost()` 回到 `state.wsEndpoint`（浏览器模式与 v5 行为逐字节相同） |
+
+- 页面**校验** `wsPath`/`filesPath` 必须等于它自己会说的路径（`/websocket/v2`、`/files/beatmap`）；不符即拒绝覆盖（fail-closed，仍走 tosu）。这两个字段因而只描述端点布局，不是可自由改写的参数。
+- 端点切换**不清结果缓存**：页面只做 `socket.setHost()`，既不写 `state.wsEndpoint`、也不派发任何设置变更 ⇒ `clearResultCache()` 的失效路径（`settings.js` 的 `SETTING_CACHE_KEYS` 判定）不会被触发；同图同 mod 的下一帧 identity/modSignature 不变 ⇒ 页面走缓存命中、**不重算**。
+- `sources.osu.alive ≡ (mode == "native")`：native 位同时进页面的源路由（`sourceManager` 的 L3' 存活回窗与败方门控），否则原生帧会被当成"败方帧"缓冲掉（换图不更新，DEC-21 的缺陷①）。
+- **页面侧对 `notice` 的渲染**（Step 9e，唯一的消费点）：只在壳页（`location.port === "24061"`）+ 壳桥在线 + `sources.osu.notice` 非空时，把该句写进**既有状态行** `#status`（`hud.setStatus(text, "loading")`，DOM 文本 = `document.getElementById("status").textContent`）；不新造面板、不动画。`healthy`（壳不再下发 `notice`）、真数据帧到达（`socketHandlers` 的每条载荷）、或状态行已被别人改写（分析流程的 "Loading beatmap file…"）时立即撤销 —— 浏览器模式（无壳）不加载这条路径的任何副作用（逐字节不变）。
+- 24062 在读取器**未附着 / `unhealthy`** 时**一帧都不出**（`packet()` 为 `None`）、两条文件路由 **404**；
+  **字段级冻结**（DEC-18）时 WS 只发 `client` + `state`（省略 `beatmap`）、文件路由 404 —— 两种情形都**不伪造**谱面数据。
+  冻结在 `osu::healthy` 口径下仍算"已发布载荷" ⇒ `mode` 保持 `native`（避免抖动）；`unhealthy` 才回落 `tosu`。
+- **身份保持宽限**（Step 9g，行为细化，**不升版本**）：冻结由**身份指针**（I-06 `beatmap.object`）的
+  **瞬态**失败引起时，`IDENTITY_HOLD_GRACE`（2.5 s）内 WS 改发**最后一张好图**的
+  `beatmap`/`files`/`directPath`/`folders` + **本帧** `state`，两条文件路由改为供奉**同一张图**
+  的文件（200）——页面因此看不到任何身份变化，不会重抓、也不会把 404 渲染成用户可见的错误。
+  期限一到（或该身份失败**持续**超过窗口、读者已停帧超过该窗口、或换成任何非身份类硬失败）
+  行为逐字回到上面那条（冻结帧 + 404）；换图若**已对拍**（内存 md5 == 磁盘 `.osu` 的 md5）
+  则立即发布新图，绝不跨图保持。文件路由只在"被供奉那份与正在发布的图**身份逐字一致**"
+  且"距读者最后一次出帧仍在窗口内"时供奉。

@@ -1,37 +1,44 @@
-// 24062：tosu 兼容子集 origin —— **B1 回放版（临时）**。
+// 24062：tosu 兼容子集 origin —— **实时载荷为默认**（B1 回放降级为测试开关）。
 //
-// B1 replay origin — temporary; replaced by the real reader in later steps.
-// No memory reading in this file.
+// 本模块只做一件事：在 `127.0.0.1:24062` 上假装成 tosu 的三条端点，让页面指向它并渲染
+// 卡片（计划 §4 Step 4 / §3.3 端点路径表）。
 //
-// 本模块只做一件事：在 `127.0.0.1:24062` 上假装成 tosu 的三条端点，让页面
-// **零代码改动**地指向它并渲染卡片，从而在最便宜的节点上证伪/证实"壳内自建
-// origin"这条架构（计划 §4 Step 4 / §3.3 端点路径表）。数据面全部是**手写常量**：
-// 固定一张真实 `.osu`（磁盘直供）+ 每 150 ms 推一帧手写 tosu-v2 形状包。
-// 不读游戏内存、不附着进程、不写任何文件（只有 read-only 文件读取）。
-//
-// 固定谱面 = `D:\Games\osu!\Songs\2004024 Icon For Hire - Make a Move (Sped Up & Cut Ver)\`
-// 下的 `[2000s emo-rock type song]`（4K mania；657 个 hitobject；背景 `SHE IS PLAYING
-// TRIUMPH AND REGRET.jpg`、音频 `audio.mp3`；BeatmapID/SetID = 4167558/2004024；
-// `.osu` = 19 379 B、MD5 `589a91e2c0d7d5f3c96195e39ae05c6a`（**启动时实测**，不硬编码）；
-// firstObject = 4431 ms、lastObject = 48719 ms —— 末对象是 circle，故不需滑条时长推算）。
-// 选型与候选清单：`temp/osu-native-memory/evidence/B1-replay/tools/pick-map-shortlist.json`。
+// 数据面（Step 9 起）：
+// - **默认 = 实时（live）**：`/websocket/v2` 推壳内读取线程的最新载荷；两条文件路由供奉
+//   **当前选中的谱面**。
+//   · 未附着 / `unhealthy` ⇒ `packet()` 为 `None` ⇒ **一帧都不发**；两条文件路由 **404**；
+//   · **字段级冻结**（DEC-18：`frozen`）⇒ WS 只发 `client` + `state`（**省略 `beatmap`**），
+//     两条文件路由 **404**；
+//   · **身份保持**（Step 9g：`frozen` + `holding`，见 `invariants::IDENTITY_HOLD_GRACE`）⇒
+//     WS 发**最后一张好图**的 `beatmap`/`files`/`directPath`/`folders` + 本帧 `state`，
+//     两条文件路由供奉**同一张图**的文件（200）——页面看不到身份变化，不会重抓、不会把
+//     24062 的 404 渲染成用户可见的错误；窗口过后回落上面的冻结行为；
+//   · 任何情形都**绝不回落到固定回放图**（那会让页面拿到上一张图的假数据）。
+// - `MMA_OSU_COMPAT_REPLAY=1` = **B1 回放**（测试用）：固定一张真实 `.osu`（磁盘直供）
+//   + 每 150 ms 推一帧手写 tosu-v2 形状包，供"零内存读取"下证伪/证实架构。
+//   固定谱面 = `D:\Games\osu!\Songs\2004024 Icon For Hire - Make a Move (Sped Up & Cut Ver)\`
+//   下的 `[2000s emo-rock type song]`（4K mania；657 个 hitobject；背景 `SHE IS PLAYING
+//   TRIUMPH AND REGRET.jpg`、音频 `audio.mp3`；BeatmapID/SetID = 4167558/2004024；
+//   `.osu` = 19 379 B、MD5 `589a91e2c0d7d5f3c96195e39ae05c6a`（**启动时实测**，不硬编码）；
+//   firstObject = 4431 ms、lastObject = 48719 ms —— 末对象是 circle，故不需滑条时长推算）。
+//   选型与候选清单：`temp/osu-native-memory/evidence/B1-replay/tools/pick-map-shortlist.json`。
 //
 // 与 tosu 的差异（**有意的、记录在案**）：`play.hits`/`resultsScreen.hits` 只供 §3.3
 // 字段表要求的 6 键（真实 tosu 供 10/9 键，多出的 sliderBreaks 等页面不消费）；
 // `resultsScreen` 只给 `{hits,mods}`；帧速率固定 150 ms。其余字符串形状照
 // `evidence/P8/P8-precapture-notes.md` 的真实帧对齐。
 
+use crate::frames::{
+    OSU_COMPAT_BACKGROUND_ROUTE, OSU_COMPAT_FILE_ROUTE, OSU_COMPAT_PORT, OSU_COMPAT_WS_PATH,
+};
 use crate::server::{http, ws, Shared};
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-
-/// tosu 兼容子集 origin 的固定端口（计划 §4.0 单选结论：24050=tosu、24060=Malody 编辑器、
-/// 24061=壳页面、17653=Malody 选曲桥）。
-pub const OSU_COMPAT_PORT: u16 = 24062;
 
 /// 回放节奏：计划 §3.3 端点路径表写死 150 ms。
 const REPLAY_INTERVAL: Duration = Duration::from_millis(150);
@@ -39,6 +46,15 @@ const REPLAY_INTERVAL: Duration = Duration::from_millis(150);
 /// `REPLAY_INTERVAL`**：出帧判定是"`elapsed() >= 150ms` 就发"，若唤醒粒度也是
 /// 100 ms，实际节奏会被量化成 ~200 ms（实测 217 ms）。20 ms ⇒ 实测 153–158 ms。
 const READ_TIMEOUT: Duration = Duration::from_millis(20);
+
+/// 24062 是否已绑定成功。绑定失败时壳**不下发** native 端点（`sources.osu` 的决策入参），
+/// 否则页面会切到一个没人听的端口。
+static BOUND: AtomicBool = AtomicBool::new(false);
+
+/// 24062 是否可用（`server::osu_source` 的唯一入参来源）。
+pub fn bound() -> bool {
+    BOUND.load(Ordering::Relaxed)
+}
 
 // ---- 固定回放谱面（TEMPORARY B1 replay source）----
 
@@ -59,37 +75,64 @@ fn map_dir() -> PathBuf {
 
 // ---- 入站请求 ----
 
-/// **LIVE 模式开关**（C2 新增）：`MMA_OSU_COMPAT_LIVE=1` 时 `/websocket/v2` 改为推
-/// **壳内读取线程的最新载荷**，两条文件路由改为供奉**当前选中的谱面**；其它值/未设置
-/// = 保持 B1 的固定谱面回放（默认行为**逐字节不变**）。
-///
-/// 为什么默认关闭：页面切流是 Step 9 的事（本步只把能力接上，不指任何页面过来）；
-/// 对拍装置（`compare.rs`）也不走 24062，它是直接连 tosu 的。
-pub fn live_enabled() -> bool {
-    matches!(std::env::var("MMA_OSU_COMPAT_LIVE"), Ok(value) if value.trim() == "1")
+/// **回放开关**（测试用）：`MMA_OSU_COMPAT_REPLAY=1` 时回到 B1 的固定谱面回放。
+/// 默认关闭（= 实时载荷）。
+pub fn replay_enabled() -> bool {
+    matches!(std::env::var("MMA_OSU_COMPAT_REPLAY"), Ok(value) if value.trim() == "1")
 }
 
-/// 当前选中的谱面（LIVE 模式的文件路由用）：`(songs_folder, folder, filename, background)`。
+/// 实时载荷（**默认**，Step 9 起）：`/websocket/v2` 推**壳内读取线程的最新载荷**，两条
+/// 文件路由改为供奉**当前选中的谱面**。
 ///
-/// 全部来自读取线程的**最新快照**——没附着/被冻结/读不到路径 ⇒ `None` ⇒ 404
+/// 读取器未附着/`unhealthy` ⇒ `packet()` 为 `None` ⇒ **这一帧不发**，文件路由 404；
+/// 字段级冻结（`frozen` 且**不**处于身份保持期）⇒ 只发 `client` + `state`、文件路由 404；
+/// 身份保持期（Step 9g）⇒ 发最后一张好图的图表块 + 本帧 `state`，文件路由供奉同一张图（200）
+/// （都绝不回落到固定回放图——那会变成"页面拿到了上一张图"的假数据）。冻结帧在 `osu::healthy`
+/// 口径下**仍算已发布** ⇒ `mode` 保持 `native`（冻结是有界状态、且仍在发 `state`，回落 tosu
+/// 只会造成抖动）；`unhealthy` 才是回落条件。
+pub fn live_enabled() -> bool {
+    !replay_enabled()
+}
+
+/// 当前选中的谱面（实时模式的文件路由用）：`(songs_folder, folder, filename, background)`。
+///
+/// 全部来自读取线程的**载荷**——没附着/停帧/冻结（且不在身份保持期）⇒ `None` ⇒ 404
 /// （**绝不**回落到固定回放图，那会变成"页面拿到了上一张图"的假数据）。
+///
+/// **Step 9g 的身份保持**：读取线程的 I-06 瞬态失败期间（`IDENTITY_HOLD_GRACE` 内）它发布的是
+/// **最后一张好图**的图表块（WS 上页面看到的仍是同一张图的身份）。那段时间这里也供奉
+/// **同一份**文件（`RoutePayload::Held`）——理由：页面的一切都键在 identity 上，WS 说"还是这张图"
+/// 而文件路由 404 会让页面把 `Request failed with status 404` 原样渲染出来（用户报的那条）。
+/// 判据是纯函数 `packet::route_payload`：**只有**"保持期 **且** 被供奉那份与正在发布的图身份
+/// 逐字一致"才供奉；窗口过后或没有最后一张好图 ⇒ 404（既有行为）。
 fn live_map() -> Option<LiveMap> {
     let reader = crate::osu::instance()?;
     let state = reader.latest();
-    if state.packet.is_none() || state.frozen {
-        return None;
-    }
-    let snapshot = state.snapshot?;
-    let songs = snapshot.songs_folder?;
-    let folder = snapshot.folder.unwrap_or_default();
+    // 保持的"陈腐度"：读者每处理一帧都会刷新 `frame_at_ms`；停帧超过宽限窗口 ⇒ 不再供奉
+    // （无界的陈旧文件与"改动前的 404"是同一种安全侧）。
+    let held_fresh = crate::server::now_ms().saturating_sub(state.frame_at_ms)
+        <= crate::osu::invariants::IDENTITY_HOLD_GRACE.as_millis() as u64;
+    let payload = crate::osu::packet::route_payload(
+        live_enabled(),
+        state.frozen,
+        state.holding,
+        held_fresh,
+        state.packet.as_ref(),
+        state.held_packet.as_ref(),
+    )?;
+    let payload = match payload {
+        crate::osu::packet::RoutePayload::Current(payload) => payload,
+        crate::osu::packet::RoutePayload::Held(held) => held,
+    };
+    let files = crate::osu::packet::beatmap_files(payload)?;
     Some(LiveMap {
-        dir: map_dir_for(&songs, &folder),
-        filename: snapshot.filename?,
-        background: snapshot.background,
+        dir: map_dir_for(&files.songs_folder, &files.folder),
+        filename: files.filename,
+        background: files.background,
     })
 }
 
-/// LIVE 模式下的谱面目录（`songs \ folder`）。
+/// 实时模式下的谱面目录（`songs \ folder`）。
 fn map_dir_for(songs: &str, folder: &str) -> PathBuf {
     if folder.is_empty() {
         PathBuf::from(songs)
@@ -444,9 +487,9 @@ fn accept_loopback_ws(stream: TcpStream) -> Option<tungstenite::WebSocket<TcpStr
 
 /// `/websocket/v2`：每 150 ms 推一帧；入站消息一律忽略；Close 干净收场。
 ///
-/// - 默认（回放）：固定谱面的手写包（B1 行为，逐字节不变）
-/// - `MMA_OSU_COMPAT_LIVE=1`：读取线程的最新载荷；**`None` 时这一帧不发**
-///   （`unhealthy` 不许出帧——这就是"页面无假数据"的实现面）
+/// - 默认（实时）：读取线程的最新载荷；**`None` 时这一帧不发**
+///   （未附着/`unhealthy` 不许出帧——这就是"页面无假数据"的实现面）
+/// - `MMA_OSU_COMPAT_REPLAY=1`（回放）：固定谱面的手写包（B1 行为，逐字节不变）
 fn handle_v2_ws(stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
     let Some(mut ws) = accept_loopback_ws(stream) else {
@@ -501,9 +544,13 @@ fn handle_commands_ws(stream: TcpStream) {
 
 /// 24062 的 HTTP 面（§3.3 端点路径表）：Host 门禁 → 两条文件路由 → 其余 404。
 ///
-/// - 默认（回放）：读固定谱面目录下的文件；读失败 = 500（**不是** 404：路由命中过）
-/// - `MMA_OSU_COMPAT_LIVE=1`：供奉**当前选中的谱面**；没有当前谱面（未附着/冻结/缺路径）
-///   ⇒ 404（不是回落到固定图 —— 那会让页面拿到上一张图）
+/// - 默认（实时）：供奉**当前选中的谱面**；没有当前谱面（未附着/冻结/缺路径）⇒ 404
+///   （不是回落到固定图 —— 那会让页面拿到上一张图）
+/// - `MMA_OSU_COMPAT_REPLAY=1`（回放）：读固定谱面目录下的文件；读失败 = 500
+///   （**不是** 404：路由命中过）
+///
+/// 路由表直接匹配 `frames::OSU_COMPAT_{FILE,BACKGROUND}_ROUTE`：契约公布的 `filesPath`
+/// 与实现是同一来源。
 fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
     if !host_allowed(head) {
         write_json(stream, 403, r#"{"error":"forbidden host"}"#);
@@ -516,7 +563,7 @@ fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
     let live = live_enabled();
     let current = if live { live_map() } else { None };
     let (dir, file, ctype) = match path {
-        "/files/beatmap/file" => {
+        OSU_COMPAT_FILE_ROUTE => {
             let (dir, file) = match &current {
                 Some(map) => (map.dir.clone(), map.filename.clone()),
                 None if live => {
@@ -527,7 +574,7 @@ fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
             };
             (dir, file, "text/plain; charset=utf-8".to_string())
         }
-        "/files/beatmap/background" => {
+        OSU_COMPAT_BACKGROUND_ROUTE => {
             let (dir, file) = match &current {
                 Some(map) => match map.background.as_deref() {
                     Some(background) => (map.dir.clone(), background.to_string()),
@@ -572,7 +619,7 @@ fn handle_conn(mut stream: TcpStream) {
         let raw = peek_head(&stream);
         if let Some(req) = raw.as_deref().and_then(parse_head) {
             match (req.method.as_str(), req.path.as_str()) {
-                ("GET", "/websocket/v2") => return handle_v2_ws(stream),
+                ("GET", OSU_COMPAT_WS_PATH) => return handle_v2_ws(stream),
                 ("GET", "/websocket/commands") => return handle_commands_ws(stream),
                 _ => {
                     write_json(&mut stream, 404, r#"{"error":"not found"}"#);
@@ -628,6 +675,8 @@ pub fn spawn_osu_compat(shared: Arc<Shared>) {
     };
     // `shared` 只在绑定失败那一支用到——成功路径不持有它（本模块不发壳帧）。
     drop(shared);
+    // 绑定成功才置位：`sources.osu` 的 native 端点只在 24062 真的可用时下发。
+    BOUND.store(true, Ordering::Relaxed);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };

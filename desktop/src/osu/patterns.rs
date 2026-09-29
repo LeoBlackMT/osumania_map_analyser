@@ -42,6 +42,12 @@ pub struct Anchor {
 /// 文件大小 4541216 B、FileVersion `1.3.3.8`、PE machine `0x014C`（i386/32 位）、
 /// 磁盘映像 mtime `2026-09-26T04:20:47Z`。锚点地址**每次进程启动都会变**（ASLR），
 /// 所以本表只固化"签名 + 位移"，地址一律现场扫描得到。
+///
+/// ⚠️ 与 `osu/anchor_cache.rs`（Step 9c）的关系：**同一进程实例**内的重复定址（读失败重连 /
+/// 冻结窗口重解析）可以复用上一次的地址，但只能在**重新通过同一份验证之后**——签名复核
+/// （match 地址处的掩码签名）**加**结构自证（`mod.rs::anchor_proves_out`）。因此缓存来的锚点
+/// 的台账语义与"现场扫到"完全相同：仍然是"在 build Y 的地址 X 上签名成立"；键
+/// `(exe md5, bitness, module_base)` 一变即丢（绝不跨加载复用绝对地址）。
 pub const VERIFIED_BUILD_STABLE_MD5: &str = "f845ef10bf97c3260b818fc02e73e196";
 
 /// 验证时间（本机时区）。

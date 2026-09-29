@@ -44,6 +44,11 @@ impl Target {
     pub fn pid(&self) -> u32 {
         0
     }
+
+    /// 非 Windows 没有位数分派（DEC-03）：`None` = 分不出客户端。
+    pub fn client(&self) -> Option<crate::osu::model::Client> {
+        None
+    }
 }
 
 #[cfg(not(windows))]
@@ -63,6 +68,7 @@ pub use win32::*;
 #[cfg(windows)]
 mod win32 {
     use super::*;
+    use crate::osu::discovery;
     use std::path::{Path, PathBuf};
 
     /// ⚠️ 必须与 `malody4/anchor.rs` 的 `Handle = isize` 与结构体拼写**逐字一致**：
@@ -310,6 +316,39 @@ mod win32 {
         Err(Reason::SignatureMiss("module-base"))
     }
 
+    /// 目标进程的**模块表**（`(映像基址, 模块文件名)`；Step 10f）。
+    ///
+    /// 为什么需要它：`state.name` 那条链只能从运行期对象里读出**映像基址**（`Module` 对象上的
+    /// `image_base`），而"这是哪个程序集"是**进程事实**（基址每进程不同）——由 OS 的模块表给出
+    /// （基址在进程内唯一）。`MODULEENTRY32W.szModule` 就是基名（`osu.Game.dll`），与 IL 清单的
+    /// `assembly:<名字>` 同键。**只读**（快照 + 关闭句柄，不碰目标内存）。
+    pub fn module_list(pid: u32) -> Result<Vec<(u64, String)>, Reason> {
+        let snap = OwnedHandle(unsafe {
+            CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid)
+        });
+        if !snap.is_valid() {
+            return Err(Reason::from_win32_error(unsafe { GetLastError() }));
+        }
+        let mut entry: ModuleEntry32W = unsafe { std::mem::zeroed() };
+        entry.dwSize = std::mem::size_of::<ModuleEntry32W>() as u32;
+        let mut more = unsafe { Module32FirstW(snap.raw(), &mut entry) } != 0;
+        let mut out: Vec<(u64, String)> = Vec::new();
+        while more {
+            let base = entry.modBaseAddr as usize as u64;
+            let name = wide_to_string(&entry.szModule);
+            if base != 0 && !name.is_empty() {
+                out.push((base, name));
+            }
+            entry.dwSize = std::mem::size_of::<ModuleEntry32W>() as u32;
+            more = unsafe { Module32NextW(snap.raw(), &mut entry) } != 0;
+        }
+        if out.is_empty() {
+            return Err(Reason::SignatureMiss("module-list"));
+        }
+        out.sort_by_key(|(base, _)| *base);
+        Ok(out)
+    }
+
     /// 活进程的映像路径（`PROCESS_QUERY_INFORMATION` 足够）。
     pub fn live_image_path(handle: Handle, pid: u32) -> Option<PathBuf> {
         let mut buf = [0u16; 512];
@@ -370,6 +409,11 @@ mod win32 {
             self.handle
         }
 
+        /// 本目标的客户端（位数分派，DEC-19）：`0x8664` ⇒ lazer，`0x014C` ⇒ stable。
+        pub fn client(&self) -> Option<crate::osu::model::Client> {
+            crate::osu::model::Client::from_bitness(self.bitness)
+        }
+
         /// 该 target 的可扫区域：**命中缓存即复用，未命中才走 `VirtualQueryEx`**，
         /// 结果写回 `cache`（缓存的生命周期 = 本 `Target`，见 `scan::RegionCache`）。
         pub fn regions_cached(
@@ -403,14 +447,16 @@ mod win32 {
         })
     }
 
-    /// 进程选择（计划 §3.4 分派规则）：**32 位（PE machine 0x014C）的 `osu!.exe` 是
-    /// 稳定目标**；同名的 64 位进程（0x8664）是 lazer ⇒ 本步只记录其存在、不读它。
+    /// 进程选择（计划 §3.4 / DEC-19 的**位数分派**）：**32 位（PE machine `0x014C`）的
+    /// `osu!.exe` 走 stable 读取路径**，**64 位（`0x8664`）走 lazer 读取路径**——两者的
+    /// 进程名逐字相同，只有位数能分。
     ///
-    /// 判据表：
-    /// - 恰好 1 个 32 位实例 ⇒ `Ok(Target)`；存在 64 位实例 ⇒ 只记录（不进 reason）
-    /// - 0 个 32 位实例 + 有 64 位实例 ⇒ `client-ambiguous`（分派不出 stable）
-    /// - 0 个 `osu!.exe` ⇒ `process-not-found`
-    /// - ≥2 个 32 位实例 ⇒ `multiple-instances`（绝不猜跟哪一个）
+    /// 判据表（纯逻辑在 `osu::discovery::dispatch`，表驱动单测逐行钉住）：
+    /// - 恰 1 个 32 位实例 ⇒ `Attach{ Stable }`（唯一化的 stable 优先，lazer 的存在不改变它）
+    /// - 0 个 32 位实例 + 恰 1 个 64 位实例 ⇒ `Attach{ Lazer }`（**Step 10B 的修复点**：
+    ///   旧规则在这里报 `client-ambiguous`，于是"只开 lazer"永远读不到）
+    /// - 0 个 `osu!.exe` ⇒ `process-not-found`（兜底扫描）/ `client-ambiguous`（权威枚举）
+    /// - 同类 ≥2 个实例 ⇒ 既有规模规则（分不出 ⇒ `multiple-instances`，绝不猜）
     ///
     /// ⚠️ 发现阶段用 Toolhelp32（快，~1ms）**并且**保留一条 PID 扫描兜底：
     /// 实测本机存在"Toolhelp32 看不到 `osu!.exe`、但 `OpenProcess` + 读内存完全正常"
@@ -418,13 +464,17 @@ mod win32 {
     /// 一个 osu! 都没有，而同一进程 `--pid=15936` 打开读 `MZ` 头成功）。
     /// 发现不到就彻底不可用 ⇒ **枚举不是门，打不开才是门**；因此枚举空表时退化为
     /// 逐个 PID 试开 + 读映像路径判名（只多花几秒，且只在快路径失败时才发生）。
+    ///
+    /// ⚠️ 兜底扫描会看到"幻觉坐标"（不存在的 PID 开出指向同一进程的句柄，本机系统性存在
+    /// n+1..n+3 三个），因此**判据不是候选数而是候选集的跨次稳定性**——见 `osu::discovery`：
+    /// 单次抖动的扫描绝不升级 `multiple-instances`，同一候选集连续两次才算数。
     pub fn select_target() -> Result<Target, Reason> {
         if let Some(found) = discover_by_toolhelp()? {
             SWEPT.with(|slot| slot.set(false));
             eprintln!(
                 "[osu] discovery: toolhelp32 stable={} lazer={}",
                 found.stable.len(),
-                found.lazer_running
+                found.lazer.len()
             );
             return finish_selection(found);
         }
@@ -433,7 +483,7 @@ mod win32 {
         eprintln!(
             "[osu] discovery: pid-sweep stable={} lazer={} (toolhelp32 returned no osu!.exe)",
             swept.stable.len(),
-            swept.lazer_running
+            swept.lazer.len()
         );
         finish_selection(swept)
     }
@@ -441,6 +491,13 @@ mod win32 {
     /// 上一次目标发现是否用了兜底扫描。
     pub fn last_discovery_used_sweep() -> bool {
         SWEPT.with(|slot| slot.get())
+    }
+
+    /// 本次发现是否"**还没定论、但很快会有**"：`Decision::Retry` **且开出了候选**（候选集还在
+    /// 抖 / 进程表读不到真假）。调用方据此用短的附着重试间隔（2 s）而不是兜底扫描的 30 s；
+    /// 一个候选都没开出来的失败仍走长间隔（游戏没开时不要每 2 s 就全量重扫 65k 个 PID）。
+    pub fn retry_soon() -> bool {
+        RETRY_SOON.with(|slot| slot.get())
     }
 
     /// 候选进程指纹：只读（`PROCESS_QUERY_INFORMATION` 够用）。
@@ -462,16 +519,19 @@ mod win32 {
     ///
     /// 依据：本机真机实测的 stable 主进程私有提交约 600 MiB 量级，而同映像的辅助进程
     /// （PID 相近的那几个）都在 10 MiB 以下（见 B2 证据 `diag-fingerprint.txt`）。
-    pub const GAME_MIN_PRIVATE_BYTES: u64 = 128 * 1024 * 1024;
+    /// 判据本体在 `osu::discovery`（纯逻辑、可离线单测）；这里保留同路径的重导出，
+    /// 让诊断工具（`tools/osu-diag.rs`）的 `win::GAME_MIN_PRIVATE_BYTES` 继续可用。
+    pub use crate::osu::discovery::GAME_MIN_PRIVATE_BYTES;
 
     /// 诊断用：兜底 PID 扫描的原始结果（已按坐标去重，与 `discover_by_pid_sweep` 同一判据）。
     pub fn sweep_osu_pids() -> Vec<u32> {
         let mut found: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
         for pid in PID_SWEEP_RANGE {
-            if let Seen::Stable(path, private, regions) = see_pid(pid) {
-                found.push((pid, path, private, regions));
-            } else if matches!(see_pid(pid), Seen::Lazer) {
-                found.push((pid, PathBuf::from("<lazer>"), 0, 0));
+            match see_pid(pid) {
+                Seen::Stable(path, private, regions) | Seen::Lazer(path, private, regions) => {
+                    found.push((pid, path, private, regions));
+                }
+                Seen::Other | Seen::Unreadable => {}
             }
         }
         let (kept, _) = dedupe_by_coordinate(found);
@@ -580,28 +640,36 @@ mod win32 {
     /// 指纹 walk 的区域上限（只用于规模判断，不需要走完整个地址空间）。
     const REGION_WALK_LIMIT: usize = 4096;
 
-    /// 快路径：Toolhelp32 枚举 + 磁盘 PE machine 分派。
+    /// 快路径：Toolhelp32 枚举 + 磁盘 PE machine 分派（32 位 ⇒ `stable`、64 位 ⇒ `lazer`）。
+    ///
+    /// 这条路径是**权威**的（枚举的是进程，不是"试开坐标"）：候选都带各自的
+    /// `PROCESSENTRY32W.cntThreads`，供 `osu::discovery` 判"真进程 / 幻觉坐标"。
     fn discover_by_toolhelp() -> Result<Option<Candidates>, Reason> {
         let procs = list_osu_processes()?;
         if procs.is_empty() {
             return Ok(None);
         }
-        let mut stable: Vec<(u32, PathBuf, u64)> = Vec::new();
+        let mut stable: Vec<CandidateRow> = Vec::new();
+        let mut lazer: Vec<CandidateRow> = Vec::new();
         // 3 个进程的规模，逐个开句柄取映像路径 + 磁盘 PE machine 完全够用；
         // 开不上的（权限/退出竞争）记下错误码，但不阻断其它候选。
         for (pid, _name) in procs {
             match see_pid(pid) {
                 Seen::Stable(path, private, regions) => {
-                    stable.push((pid, path, private));
+                    stable.push((pid, path, private, toolhelp_entry(pid).0));
                     let _ = regions;
                 }
-                Seen::Lazer | Seen::Other | Seen::Unreadable => {}
+                Seen::Lazer(path, private, regions) => {
+                    lazer.push((pid, path, private, toolhelp_entry(pid).0));
+                    let _ = regions;
+                }
+                Seen::Other | Seen::Unreadable => {}
             }
         }
         Ok(Some(Candidates {
             stable,
-            lazer_running: lazer_seen(),
-            fallback_error: None,
+            lazer,
+            source: discovery::Source::Toolhelp,
         }))
     }
 
@@ -617,100 +685,176 @@ mod win32 {
     ///    这样"指向同一个进程"的坐标）。
     /// 判据因此是**坐标去重**：同一（映像路径, 区域数, 私有提交）只留最小 PID。
     /// 它只依赖读到的内容，与调用方上下文无关（`GetProcessId` 在本机不可靠，不用）。
+    /// 去重**不保证**合并干净（指纹在扫描过程中会漂移）⇒ 残留的坐标真假由 `osu::discovery`
+    /// 判：候选带 `cntThreads`（不在进程表里 = 幻觉坐标），并叠加"跨次扫描稳定"条件。
     fn discover_by_pid_sweep() -> Candidates {
-        let mut found: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
+        let mut found_stable: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
+        let mut found_lazer: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
         let mut opened = 0u32;
         for pid in PID_SWEEP_RANGE {
             match see_pid(pid) {
-                Seen::Stable(path, private, regions) => found.push((pid, path, private, regions)),
+                Seen::Stable(path, private, regions) => {
+                    found_stable.push((pid, path, private, regions))
+                }
+                Seen::Lazer(path, private, regions) => found_lazer.push((pid, path, private, regions)),
                 Seen::Unreadable => {}
-                Seen::Other | Seen::Lazer => opened += 1,
+                Seen::Other => opened += 1,
             }
         }
         if debug_enabled() {
             eprintln!(
-                "[osu] pid-sweep detail: readable-but-not-osu={} candidates={:?}",
+                "[osu] pid-sweep detail: readable-but-not-osu={} stable={:?} lazer={:?}",
                 opened,
-                found
-                    .iter()
-                    .map(|(pid, path, private, regions)| format!(
-                        "{pid}:{}:{}MB:{regions}",
-                        path.display(),
-                        private / (1024 * 1024)
-                    ))
-                    .collect::<Vec<_>>()
+                describe_candidates(&found_stable),
+                describe_candidates(&found_lazer)
             );
         }
-        let (stable, dropped) = dedupe_by_coordinate(found);
-        if !dropped.is_empty() {
-            eprintln!(
-                "[osu] pid-sweep: ignored {} duplicate coordinate(s) of the same process: {:?}",
-                dropped.len(),
-                dropped
-            );
-        }
-        // lazer 的存在由 `lazer_seen()` 单独记录（本步不读 lazer）。
+        let (stable, lazer) = dedupe_rows(found_stable, found_lazer);
+        // 只对**留下来的少量候选**查进程表（每次 `toolhelp_entry` 是一次全表枚举，
+        // 放进 65535 次的试开循环里是灾难）：`cntThreads == 0` = 该 PID 不在进程表里。
+        let stable: Vec<CandidateRow> = stable
+            .into_iter()
+            .map(|(pid, path, private)| {
+                let threads = toolhelp_entry(pid).0;
+                (pid, path, private, threads)
+            })
+            .collect();
+        let lazer: Vec<CandidateRow> = lazer
+            .into_iter()
+            .map(|(pid, path, private)| {
+                let threads = toolhelp_entry(pid).0;
+                (pid, path, private, threads)
+            })
+            .collect();
         Candidates {
             stable,
-            lazer_running: lazer_seen(),
-            fallback_error: Some(Reason::ProcessNotFound),
+            lazer,
+            source: discovery::Source::PidSweep,
         }
     }
 
+    /// 诊断行：候选的 `pid:映像:私有MB:区域数`（日志与证据用）。
+    fn describe_candidates(rows: &[(u32, PathBuf, u64, usize)]) -> Vec<String> {
+        rows.iter()
+            .map(|(pid, path, private, regions)| {
+                format!("{pid}:{}:{}MB:{regions}", path.display(), private / (1024 * 1024))
+            })
+            .collect()
+    }
+
+    /// 每个位数桶各自按坐标去重（幻觉坐标指向同一进程 ⇒ 与真候选同桶 ⇒ 同键）。
+    fn dedupe_rows(
+        stable: Vec<(u32, PathBuf, u64, usize)>,
+        lazer: Vec<(u32, PathBuf, u64, usize)>,
+    ) -> (
+        Vec<(u32, PathBuf, u64)>,
+        Vec<(u32, PathBuf, u64)>,
+    ) {
+        let (stable, dropped_stable) = dedupe_by_coordinate(stable);
+        let (lazer, dropped_lazer) = dedupe_by_coordinate(lazer);
+        if !dropped_stable.is_empty() || !dropped_lazer.is_empty() {
+            eprintln!(
+                "[osu] pid-sweep: ignored {} duplicate coordinate(s) of the same process: stable={:?} lazer={:?}",
+                dropped_stable.len() + dropped_lazer.len(),
+                dropped_stable,
+                dropped_lazer
+            );
+        }
+        (stable, lazer)
+    }
+
+    /// 候选集 → **纯决策**（`osu::discovery`）→ 开句柄。
+    ///
+    /// 「绝不从一次抖动的扫描升级」与「权威枚举里的两个真实例必须升级」都写在那边的判据表里；
+    /// 这里只做三件事：组装输入、把决策翻译成 reason（沿用既有闭集）、开句柄。
     fn finish_selection(candidates: Candidates) -> Result<Target, Reason> {
-        // 没有 32 位 osu!.exe ⇒ 分不出 stable；`fallback_error` 区分"根本没有 osu! 进程"
-        // 与"有 64 位进程（lazer）但本步不读它"。lazer 的存在另由 `lazer_seen()` 记录。
-        if candidates.stable.is_empty() {
-            return Err(match candidates.fallback_error {
-                Some(reason) if !candidates.lazer_running => reason,
-                _ => Reason::ClientAmbiguous,
-            });
-        }
-        // 唯一候选：直接用。
-        if candidates.stable.len() == 1 {
-            let (pid, path, _private) = candidates.stable.into_iter().next().expect("len == 1");
-            return open_target(pid, path, PE_MACHINE_I386);
-        }
-        // 多个候选：**按规模判定**——同一份 `osu!.exe` 映像会同时存在若干辅助进程
-        // （本机实测 4 个 PID 共用该映像），游戏本体是唯一一个私有提交在 100 MiB 量级的。
-        let mut ranked = candidates.stable;
-        ranked.sort_by(|a, b| b.2.cmp(&a.2));
-        let top = ranked[0].clone();
-        let second = ranked[1].clone();
-        let top_looks_like_game = top.2 >= GAME_MIN_PRIVATE_BYTES;
-        let separated = top.2 >= second.2.saturating_mul(2);
-        if top_looks_like_game && separated {
-            return open_target(top.0, top.1, PE_MACHINE_I386);
-        }
-        // 两个都像游戏（或都比不出高低）⇒ 不猜：reason `multiple-instances`。
-        Err(Reason::MultipleInstances)
+        let view = discovery::Discovery {
+            stable: rows_to_candidates(&candidates.stable),
+            lazer: rows_to_candidates(&candidates.lazer),
+            source: candidates.source,
+        };
+        let decision = STABILITY.with(|slot| slot.borrow_mut().decide(&view));
+        let reason = discovery::reason_for(decision);
+        // 短重试只给"候选集还在抖、很快会有定论"那一种：一个候选都没开出来的失败仍走
+        // 兜底扫描的长间隔（否则游戏没开时每 2 s 就全量重扫 65k 个 PID）。
+        let retry_soon = matches!(decision, discovery::Decision::Retry) && !view.all_pids().is_empty();
+        RETRY_SOON.with(|slot| slot.set(retry_soon));
+        let discovery::Decision::Attach { pid, client } = decision else {
+            eprintln!(
+                "[osu] discovery: decision={decision:?} reason={:?} source={:?} stable={:?} lazer={:?} repeats={} retry_soon={retry_soon}",
+                reason.as_ref().map(Reason::as_str),
+                view.source,
+                view.stable.iter().map(|c| c.pid).collect::<Vec<_>>(),
+                view.lazer.iter().map(|c| c.pid).collect::<Vec<_>>(),
+                STABILITY.with(|slot| slot.borrow().repeats())
+            );
+            return Err(reason.unwrap_or(Reason::ProcessNotFound));
+        };
+        // 决策只在"它所在的候选桶"里找路径；找不到说明决策与候选集不同源（调用方 bug）。
+        let rows = match client {
+            crate::osu::model::Client::Stable => &candidates.stable,
+            crate::osu::model::Client::Lazer => &candidates.lazer,
+        };
+        let Some((_pid, path, _private, threads)) = rows
+            .iter()
+            .find(|(candidate_pid, _, _, _)| *candidate_pid == pid)
+        else {
+            return Err(Reason::ProcessNotFound);
+        };
+        STABILITY.with(|slot| slot.borrow_mut().reset());
+        eprintln!(
+            "[osu] discovery: attach pid={pid} client={} source={:?} threads_in_toolhelp32={threads}",
+            client.as_str(),
+            view.source
+        );
+        let pe_machine = match client {
+            crate::osu::model::Client::Stable => PE_MACHINE_I386,
+            crate::osu::model::Client::Lazer => PE_MACHINE_AMD64,
+        };
+        open_target(pid, path.clone(), pe_machine)
+    }
+
+    /// 一行候选（`(pid, 映像路径, 私有提交字节数, `PROCESSENTRY32W.cntThreads`)`）。
+    type CandidateRow = (u32, PathBuf, u64, u32);
+
+    fn rows_to_candidates(rows: &[CandidateRow]) -> Vec<discovery::Candidate> {
+        rows.iter()
+            .map(|(pid, _path, private_bytes, threads)| discovery::Candidate {
+                pid: *pid,
+                private_bytes: *private_bytes,
+                threads: *threads,
+            })
+            .collect()
     }
 
     struct Candidates {
-        /// `(pid, 映像路径, 私有提交字节数)`。
-        stable: Vec<(u32, PathBuf, u64)>,
-        lazer_running: bool,
-        fallback_error: Option<Reason>,
+        /// 32 位候选（stable 读取路径）。
+        stable: Vec<CandidateRow>,
+        /// 64 位候选（lazer 读取路径；Step 10B 起会被真正附着）。
+        lazer: Vec<CandidateRow>,
+        /// 本候选集来自哪条发现路径（决定"候选数的可信度"，见 `osu::discovery`）。
+        source: discovery::Source,
     }
 
     thread_local! {
-        /// 本次目标发现里是否见到了 64 位 `osu!.exe`（lazer）。本步**不读** lazer，
-        /// 只记录它的存在（计划 §3.4：lazer 走另一条链，E 步才实现）。
-        static LAZER_SEEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         /// 上一次 `select_target()` 是否走了 PID 扫描兜底。
         static SWEPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    }
-
-    /// 上一次目标发现里是否见到 lazer（记录用，不参与分派）。
-    pub fn lazer_seen() -> bool {
-        LAZER_SEEN.with(|slot| slot.get())
+        /// 上一次发现是否"还没定论、但很快会有"（`Decision::Retry`）⇒ 用短重试间隔。
+        static RETRY_SOON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        /// **跨次扫描的候选集记忆**（进程选择的唯一状态；见 `osu::discovery::Stability`）。
+        static STABILITY: std::cell::RefCell<discovery::Stability> =
+            const { std::cell::RefCell::new(discovery::Stability::new()) };
     }
 
     /// 一次打开、一次判定（句柄只在本次调用内存在，RAII 关闭）。
     enum Seen {
+        /// 32 位 `osu!.exe`：stable 候选（附规模指纹，供既有"最像游戏本体"规则用）。
         Stable(PathBuf, u64, usize),
-        Lazer,
+        /// 64 位 `osu!.exe`：lazer 候选（Step 10B 起同样带指纹，分派规则与 stable 对称）。
+        Lazer(PathBuf, u64, usize),
+        /// 同名但不是 `osu!.exe`、或 PE machine 认不出。
         Other,
+        /// 打不开 / 取不到映像路径（权限、退出竞争）。
         Unreadable,
     }
 
@@ -734,10 +878,7 @@ mod win32 {
         let regions = walk_regions_count(h.raw());
         match pe_machine_from_file(&path) {
             Ok(PE_MACHINE_I386) => Seen::Stable(path, private, regions),
-            Ok(PE_MACHINE_AMD64) => {
-                LAZER_SEEN.with(|slot| slot.set(true));
-                Seen::Lazer
-            }
+            Ok(PE_MACHINE_AMD64) => Seen::Lazer(path, private, regions),
             _ => Seen::Other,
         }
     }
@@ -878,10 +1019,101 @@ mod win32 {
     /// `addr` 在这里按 `usize` 传递：x64 目标的地址放不进 `u32`（lazer 在 E 步）。
     pub fn read_exact_chunked_at(handle: Handle, addr: usize, buf: &mut [u8]) -> Result<(), u32> {
         for (index, chunk) in buf.chunks_mut(READ_CALL_MAX).enumerate() {
-            let at = addr.wrapping_add(index * READ_CALL_MAX);
-            read_exact_at(handle, at as u32, chunk)?;
+            let at = (addr as u64).wrapping_add((index * READ_CALL_MAX) as u64);
+            read_exact_at64(handle, at, chunk)?;
         }
         Ok(())
+    }
+
+    /// 单次 `ReadProcessMemory`（**64 位地址**；Step 10B：lazer 是 64 位目标）。
+    ///
+    /// 与 [`read_exact_at`] **同一份** fail-closed 约定（整段读满才算成功、短读即失败、
+    /// 单次上限 [`READ_CALL_MAX`]），差别只在地址宽度：`u32` 地址永远表示不了 >4 GiB 的对象。
+    pub fn read_exact_at64(handle: Handle, addr: u64, buf: &mut [u8]) -> Result<(), u32> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+        if buf.len() > READ_CALL_MAX {
+            return Err(87); // ERROR_INVALID_PARAMETER：超单次上限，调用方必须走 chunked
+        }
+        let mut got: usize = 0;
+        let ok = unsafe {
+            ReadProcessMemory(
+                handle,
+                addr as usize as *const u8,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut got,
+            )
+        };
+        if ok == 0 {
+            return Err(unsafe { GetLastError() });
+        }
+        if got != buf.len() {
+            return Err(ERROR_PARTIAL_COPY);
+        }
+        Ok(())
+    }
+
+    fn read_array64<const N: usize>(handle: Handle, addr: u64) -> Result<[u8; N], Reason> {
+        let mut buf = [0u8; N];
+        read_exact_at64(handle, addr, &mut buf).map_err(Reason::from_win32_error)?;
+        Ok(buf)
+    }
+
+    /// 64 位读（lazer 的指针与整数域；`u64` 地址 + 8 字节）。
+    pub fn read_u64(target: &Target, addr: u64) -> Result<u64, Reason> {
+        read_array64::<8>(target.handle(), addr).map(u64::from_le_bytes)
+    }
+
+    /// 64 位地址上的 4 字节读（lazer 的 `int` 域：`OnlineID` 等）。
+    pub fn read_u32_at64(target: &Target, addr: u64) -> Result<u32, Reason> {
+        read_array64::<4>(target.handle(), addr).map(u32::from_le_bytes)
+    }
+
+    pub fn read_i32_at64(target: &Target, addr: u64) -> Result<i32, Reason> {
+        read_u32_at64(target, addr).map(|value| value as i32)
+    }
+
+    pub fn read_f32_at64(target: &Target, addr: u64) -> Result<f32, Reason> {
+        read_array64::<4>(target.handle(), addr).map(f32::from_le_bytes)
+    }
+
+    pub fn read_f64_at64(target: &Target, addr: u64) -> Result<f64, Reason> {
+        read_array64::<8>(target.handle(), addr).map(f64::from_le_bytes)
+    }
+
+    /// **CoreCLR（x64）字符串**：`[+0x08]` int32 码元数 + `[+0x0C]` 起 UTF-16LE 正文。
+    ///
+    /// 布局的两个偏移由**表**给出（`System.String._stringLength` / `_firstChar`，生成器的
+    /// P4b#8 见证项）——`lazer.rs` 负责查表，本函数只吃已解析好的两个位移。防护与 32 位
+    /// 版本逐字相同：先读长度并夹取上限、正文一次读满、出现 NUL 即判无效。
+    pub fn read_csharp_string64_at(
+        target: &Target,
+        addr: u64,
+        length_offset: u64,
+        chars_offset: u64,
+    ) -> Result<String, Reason> {
+        if addr == 0 {
+            return Err(Reason::InvariantFailed("string-ptr-null"));
+        }
+        let len_addr = addr.checked_add(length_offset).ok_or(Reason::ReadError)?;
+        let len = read_i32_at64(target, len_addr)?;
+        if len <= 0 || len > MAX_CSHARP_STRING_UNITS as i32 {
+            return Err(Reason::InvariantFailed("string-length"));
+        }
+        let mut raw = vec![0u8; len as usize * 2];
+        let body_addr = addr.checked_add(chars_offset).ok_or(Reason::ReadError)?;
+        read_exact_at64(target.handle(), body_addr, &mut raw)
+            .map_err(Reason::from_win32_error)?;
+        let units: Vec<u16> = raw
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        if units.contains(&0) {
+            return Err(Reason::InvariantFailed("string-nul"));
+        }
+        String::from_utf16(&units).map_err(|_| Reason::InvariantFailed("string-utf16"))
     }
 
     /// 缩小重试的计划（**纯函数**，可单测；`scan.rs` 的读取策略就是它的产物）。

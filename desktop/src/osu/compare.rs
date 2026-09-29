@@ -281,7 +281,10 @@ pub fn record(
     result: Option<&stable::ResultRead>,
     tosu: Option<&Value>,
 ) -> Value {
-    let frozen = outcome.action == FrameAction::FreezeStateOnly;
+    let frozen = matches!(
+        outcome.action,
+        FrameAction::FreezeStateOnly | FrameAction::HoldLastGood
+    );
     let ours = OurShadow::from_snapshot_with(snapshot, outcome);
     let our_packet = if outcome.action == FrameAction::Stop {
         json!({})
@@ -361,6 +364,11 @@ pub fn record(
         map.insert("reason".to_string(), json!(outcome.reason.as_ref().map(Reason::as_str)));
         map.insert("health".to_string(), json!(outcome.state.map(|s| s.as_str())));
         map.insert("frozen".to_string(), json!(frozen));
+        // Step 9g：动作字面量（`publish` / `freeze-state-only` / `hold-last-good` / `stop`）。
+        // 保持帧与冻结帧在**本记录**里同形（都只有 `client`+`state`）：对拍侧手里只有本帧
+        // 快照，重建不出"上一份验证过的块"（见 `shadow.rs` 的同名注释）。这个字面量是
+        // 算子区分两者的唯一线索；页面实际收到的那份载荷由 `ReaderState.holding` 面承担。
+        map.insert("action".to_string(), json!(outcome.action.as_str()));
         map.insert("degraded_fields".to_string(), json!(outcome.degraded_fields));
     }
     json!({

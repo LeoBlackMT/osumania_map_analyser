@@ -284,6 +284,40 @@ html.shell-mode .dashboard {
     white-space: nowrap;
 }
 
+/* 壳相位提示（Step 9f）：`#osu-scan-hint` 与 `#status` 同排的**独立**元素（不新起一行 ⇒
+   卡片高度不变；文本短，不走走马灯）。样式对齐 `.status`：同字号、单行、溢出省略号；
+   颜色用 `.status.loading` 的黄（"等待中"语义）。写入者只有 js/app/sources/osuScanHint.js。 */
+.osu-scan-hint {
+    font-size: 15px;
+    line-height: 20px;
+    color: #ffe28a;
+    display: block;
+    /* 不抢状态行的伸缩空间：先按内容宽度排，只有装不下时才收缩（省略号），
+       左侧状态文本的 `flex: 1 1 0` 仍照旧分掉剩余宽度。 */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.osu-scan-hint[hidden] {
+    display: none;
+}
+
+/* 壳模式给状态行**留一行文本高度**：状态行当前高度 = 文本行高，而 `#status` 为空时行高会
+   塌到源圆点的 8px —— 提示出现/消失若带动行高变化，下面的星数块会跟着上下跳。预留之后
+   空状态行与提示那一行同高 ⇒ 提示出现零位移（浏览器模式不受影响：提示恒 hidden）。 */
+html.shell-mode .status-row {
+    min-height: 20px;
+}
+
+.main-card.bars-none .osu-scan-hint {
+    font-size: 16px;
+}
+
 .status.marquee {
     text-overflow: clip;
 }

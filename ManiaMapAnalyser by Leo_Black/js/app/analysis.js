@@ -19,6 +19,7 @@ import {
     getEndpoint,
     getActiveContentBar,
     contentBarShows,
+    isRuntimeOsuOverrideActive,
     mainCardEl,
     patternClustersEl,
     ppBarsEl,
@@ -81,6 +82,10 @@ import { detectVibro, detectVibroFromMetadata } from "../patterns/chartVibro.js"
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
 import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
+// Step 9g：壳原生端点上的瞬态抓取失败（结算/换图那一两帧读取线程正处在身份保持窗口 ⇒
+// 24062 的 `/files/beatmap/file` 404）静默重试一次，不让状态行出现 `Request failed with 404`。
+// tosu 通道不重试（判据在模块内，见 `shouldRetryNativeBeatmapFetch`）。
+import { fetchBeatmapTextWithRetry } from "./sources/beatmapFetchRetry.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -530,11 +535,12 @@ export async function fetchBeatmapFile(reason) {
                 setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                 return;
             }
-            const response = await fetch(getEndpoint(), {
-                method: "GET",
-                cache: "no-store",
+            const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
+                // 只有壳原生端点（24062）值得这一次静默重试：tosu 通道行为逐字节不变。
+                native: isRuntimeOsuOverrideActive(),
+                isStale: isStaleRequest,
             });
-            if (isStaleRequest()) return;
+            if (isStaleRequest() || response === null) return;
 
             if (!response.ok) {
                 throw new Error(`Request failed with status ${response.status}`);

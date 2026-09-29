@@ -26,7 +26,7 @@
 
 use crate::osu::invariants;
 use crate::osu::keys;
-use crate::osu::model::Snapshot;
+use crate::osu::model::{Client, LazerMod, Snapshot};
 use serde_json::{json, Map, Value};
 
 /// 合成 v2 包（§3.3 字段表）。
@@ -78,6 +78,140 @@ pub fn frozen_packet_from_snapshot(snapshot: &Snapshot) -> Value {
         root.insert("state".to_string(), json!({ "number": number }));
     }
     Value::Object(root)
+}
+
+/// **保持帧**（Step 9g）：以上一份**验证过**的载荷为底，只把 `client`/`state` 换成本帧读数。
+///
+/// 与 [`frozen_packet_from_snapshot`] 的分工（这是本步的核心）：冻结帧**省略**整个图表块，
+/// 页面据此重抓 `/files/beatmap/file` 并把 404 渲染给用户；保持帧**保留**它——那是同一张图上
+/// 一次验证过的值（[`invariants::IDENTITY_HOLD_GRACE`]）。页面把一切都键在 identity 上，
+/// 保持 ⇒ 看不到任何身份变化 ⇒ 不重抓、不报错；而它**不可能**变成另一张图（沿用同一份块）。
+///
+/// 本帧真正流动的只有 `state`（页面 L1 的 `isInPlayState` 与 60 s 路由窗口靠它维生）。
+/// 图表块（含 `beatmap.time.live`）在整个保持期内是**上一份**的读数——这是有意的：那几帧的
+/// 图表读数正是**不可信**的那部分（身份指针都读不到）。窗口期满或换成扣留行为后，冻结帧
+/// （无 `beatmap`）照旧。
+pub fn held_packet_from(held: &Value, snapshot: &Snapshot) -> Value {
+    let mut root = held.as_object().cloned().unwrap_or_default();
+    match snapshot.client {
+        Some(client) => {
+            root.insert("client".to_string(), json!(client.as_str()));
+        }
+        None => {
+            root.remove("client");
+        }
+    }
+    match (snapshot.state_number, snapshot.state_name.clone()) {
+        (Some(number), Some(name)) => {
+            root.insert("state".to_string(), json!({ "number": number, "name": name }));
+        }
+        (Some(number), None) => {
+            root.insert("state".to_string(), json!({ "number": number }));
+        }
+        // 本帧连状态都没读到 ⇒ 不沿用旧 `state`（保持的**只有**验证过的图表块）。
+        _ => {
+            root.remove("state");
+        }
+    }
+    Value::Object(root)
+}
+
+/// 文件路由可供奉的载荷（Step 9g §2；纯数据）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoutePayload<'a> {
+    /// 正常态：**本帧**发布的载荷。
+    Current(&'a Value),
+    /// 身份保持期：**最后一张好图**的载荷（见 [`invariants::IDENTITY_HOLD_GRACE`]）。
+    Held(&'a Value),
+}
+
+/// 文件路由的决策（**纯函数**；表驱动单测 `tests-local/osu_packet.rs`）。
+///
+/// 规则表（`live` = 24062 处于实时模式，见 `osu_compat::live_enabled`；
+/// `held_fresh` = 距读者**最后一次处理帧**仍在 [`invariants::IDENTITY_HOLD_GRACE`] 之内）：
+///
+/// | live | frozen | holding | held_fresh | 条件 | 结果 |
+/// |---|---|---|---|---|---|
+/// | false | * | * | * | 回放模式 | `None`（调用方走固定回放图，与本函数无关） |
+/// | true | * | * | * | 没有已发布载荷（未附着 / `unhealthy` 停帧） | `None` |
+/// | true | false | * | * | 正常态 | `Current` |
+/// | true | true | **true** | **true** | 保持期 + 身份逐字一致 | `Held`（200 供奉最后一张好图） |
+/// | true | true | **true** | **true** | 保持期但身份对不上 | `None`（**绝不**供奉别的图） |
+/// | true | true | * | **false** | 读者已停帧超过保持窗口（例如冻结窗口到期的重解析期） | `None` |
+/// | true | true | false | * | 冻结且不保持（窗口已过 / 非身份类冻结） | `None`（既有行为） |
+///
+/// 为什么身份要"逐字一致"才算：文件路由供的是**磁盘上的文件**，页面拿着它去解析成卡片。
+/// 只要被供奉的那份与"我们正在发布的图"不是同一张，页面就会把 A 图的分析挂到 B 图的
+/// 身份上（缓存键污染 + 用户看到的图不对）——宁可 404（缺数据的既有语义）。
+///
+/// 为什么要 `held_fresh`：保持是**逐帧刷新**的事实（读者每次处理帧都会重写 `packet`/`holding`）。
+/// 一旦读者不再出帧（冻结窗口到期的强制重解析、`unhealthy` 之前的空档），那份"最后一张好图"
+/// 就不再是"上一次发布"，而是一个**无界的陈旧值**——这条把它限死在同一个宽限窗口内，
+/// 窗口过后逐字回到 404（与改动前的冻结语义一致）。
+pub fn route_payload<'a>(
+    live: bool,
+    frozen: bool,
+    holding: bool,
+    held_fresh: bool,
+    published: Option<&'a Value>,
+    held: Option<&'a Value>,
+) -> Option<RoutePayload<'a>> {
+    if !live {
+        return None;
+    }
+    let published = published?;
+    if !frozen {
+        return Some(RoutePayload::Current(published));
+    }
+    if !holding || !held_fresh {
+        return None;
+    }
+    let held = held?;
+    if keys::identity_from_payload(published) != keys::identity_from_payload(held) {
+        return None;
+    }
+    Some(RoutePayload::Held(held))
+}
+
+/// 两条文件路由需要的事实（**相对名**）。
+///
+/// `songs_folder` 是壳自己解析出的**绝对**目录（`folders.songs`），`folder` 只是谱面
+/// **文件夹名**（`folders.beatmap`），`filename` 是**文件名**（`files.beatmap`）——
+/// 三者拼法见 `osu_compat::map_dir_for`（与 `directPath.*` 的 win32 形状同一份规则）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BeatmapFiles {
+    pub songs_folder: String,
+    pub folder: String,
+    pub filename: String,
+    pub background: Option<String>,
+}
+
+/// 从**载荷**取两条文件路由要供奉的那份谱面（缺 `songs`/`filename` ⇒ `None` ⇒ 404，绝不猜）。
+///
+/// 从载荷取（而不是从当帧快照）是刻意的：供给页面的必须是"**我们正在发布的那份**"——
+/// 保持期用的是最后一张好图的载荷，正常态用的是本帧载荷，两者都走这一份读法。
+pub fn beatmap_files(payload: &Value) -> Option<BeatmapFiles> {
+    let text = |pointer: &str| {
+        payload
+            .pointer(pointer)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+    };
+    let songs_folder = text("/folders/songs");
+    let filename = text("/files/beatmap");
+    if songs_folder.is_empty() || filename.is_empty() {
+        return None;
+    }
+    Some(BeatmapFiles {
+        songs_folder: songs_folder.to_string(),
+        folder: text("/folders/beatmap").to_string(),
+        filename: filename.to_string(),
+        background: payload
+            .pointer("/files/background")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
 }
 
 fn insert_beatmap(root: &mut Map<String, Value>, snapshot: &Snapshot) {
@@ -159,21 +293,27 @@ fn insert_files(root: &mut Map<String, Value>, snapshot: &Snapshot) {
         root.insert("files".to_string(), Value::Object(files));
     }
 
-    // `directPath.*` = `path.join(folder, name)` 的 win32 形态（`folder` 为空 ⇒ 名字本身）。
-    let joined = |folder: Option<&str>, name: Option<&str>| -> Option<String> {
-        name.map(|name| match folder {
-            Some(folder) if !folder.is_empty() => format!("{folder}\\{name}"),
-            _ => name.to_string(),
-        })
-    };
+    // `directPath.*` = `path.join(folder, name)` 的 win32 形态（`folder` 为空/`.` ⇒ 名字本身）。
     let mut direct = Map::new();
-    if let Some(value) = joined(snapshot.folder.as_deref(), snapshot.filename.as_deref()) {
+    if let Some(value) = snapshot
+        .filename
+        .as_deref()
+        .map(|name| direct_path_join(snapshot.folder.as_deref(), name))
+    {
         direct.insert("beatmapFile".to_string(), json!(value));
     }
-    if let Some(value) = joined(snapshot.folder.as_deref(), snapshot.background.as_deref()) {
+    if let Some(value) = snapshot
+        .background
+        .as_deref()
+        .map(|name| direct_path_join(snapshot.folder.as_deref(), name))
+    {
         direct.insert("beatmapBackground".to_string(), json!(value));
     }
-    if let Some(value) = joined(snapshot.folder.as_deref(), snapshot.audio.as_deref()) {
+    if let Some(value) = snapshot
+        .audio
+        .as_deref()
+        .map(|name| direct_path_join(snapshot.folder.as_deref(), name))
+    {
         direct.insert("beatmapAudio".to_string(), json!(value));
     }
     if let Some(folder) = snapshot.folder.as_deref() {
@@ -181,6 +321,27 @@ fn insert_files(root: &mut Map<String, Value>, snapshot: &Snapshot) {
     }
     if !direct.is_empty() {
         root.insert("directPath".to_string(), Value::Object(direct));
+    }
+}
+
+/// `path.join(folder, name)` 的 win32 形态（**唯一**实现，`invariants::i03` 也用它）。
+///
+/// 为什么不是朴素的 `folder\name`：lazer 的 `folders.beatmap` 逐字是 `"."`
+/// （参照实现 `safeJoin('')` = `path.join('')` = `'.'`，P8 golden 帧实测），而 Node 的
+/// `path.join('.', key)` 会把 `'.'` 段吃掉 ⇒ `directPath.beatmapFile == files.beatmap`
+/// （P5 的逐字节断言）。所以这里把空段与 `'.'` 段丢掉后拼接；**`..` 不做规约**
+/// （两个客户端的 `folder` 只会是真实目录名或 `'.'`，没有 `..` 形态——多写一条规约等于
+/// 凭空发明 tosu 没有的行为）。
+pub fn direct_path_join(folder: Option<&str>, name: &str) -> String {
+    let segments: Vec<&str> = folder
+        .unwrap_or("")
+        .split(['\\', '/'])
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+    if segments.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}\\{}", segments.join("\\"), name)
     }
 }
 
@@ -201,7 +362,28 @@ fn insert_folders(root: &mut Map<String, Value>, snapshot: &Snapshot) {
 }
 
 /// 三个 mods 键：**恒发**（值或 `null`），且按状态选取（`invariants::mask_for_state`）。
+///
+/// **lazer 分支**（Step 10B）：mods 不是位掩码（`ModsJson` 是 acronym 列表），所以走
+/// [`lazer_mods_value`] 的 v2 形状；槽位照 P8 golden 帧的形状——`play` 与 `resultsScreen`
+/// 发**同一份当前态** mods，`menu.mods` 恒 `null`（lazer 没有"菜单 mod"这个对象；
+/// 帧实测 `menu.mods: null`）。读不到 mods ⇒ 两个槽都发 `null`（**绝不**沿用上一帧签名）。
 fn insert_mods(root: &mut Map<String, Value>, snapshot: &Snapshot) {
+    if snapshot.client == Some(Client::Lazer) {
+        let current = snapshot.lazer_mods.as_deref().map(lazer_mods_value);
+        root.insert(
+            "menu".to_string(),
+            json!({ "mods": Value::Null }),
+        );
+        root.insert(
+            "play".to_string(),
+            json!({ "mods": current.clone().unwrap_or(Value::Null) }),
+        );
+        root.insert(
+            "resultsScreen".to_string(),
+            json!({ "mods": current.unwrap_or(Value::Null) }),
+        );
+        return;
+    }
     let (menu, play, result) = invariants::mask_for_state(snapshot);
     root.insert(
         "menu".to_string(),
@@ -215,6 +397,70 @@ fn insert_mods(root: &mut Map<String, Value>, snapshot: &Snapshot) {
         "resultsScreen".to_string(),
         json!({ "mods": result.map(keys::menu_mods_value) }),
     );
+}
+
+/// lazer 的 mods 对象（v2 形状）：`{number, name, array:[{acronym, settings?}], rate}`。
+///
+/// - `acronym` 逐字来自内存里的 mod（大写化后原样发出，**不过已知码白名单**——
+///   页面在 lazer 分支也是 `modCodes.add(acronym)`，见 `js/app/modData.js:164-167`）；
+/// - `settings.speed_change` / `settings.overall_difficulty` 是页面 `speedRate`/`odFlag`
+///   在 lazer 分支的**唯一**来源（`modData.js:150-180`）⇒ 有值就发；
+/// - `number` 由 acronym 反算**页面已知的那 6 位**（`keys::MOD_BIT_FLAGS`）：它只可能补出
+///   acronym 已经表达过的码，不可能引入新码；`name` 是 acronym 的拼接（页面按已知码做前缀
+///   匹配 ⇒ 码集与逐个 acronym 一致）；`rate` 取第一个 `speed_change`（页面不读它，仅供
+///   与 tosu 的 v2 对象同形）。
+pub fn lazer_mods_value(mods: &[LazerMod]) -> Value {
+    let acronyms: Vec<String> = mods
+        .iter()
+        .map(|mod_| mod_.acronym.trim().to_uppercase())
+        .filter(|acronym| !acronym.is_empty())
+        .collect();
+    let array: Vec<Value> = mods
+        .iter()
+        .filter(|mod_| !mod_.acronym.trim().is_empty())
+        .map(|mod_| {
+            let mut item = Map::new();
+            item.insert(
+                "acronym".to_string(),
+                json!(mod_.acronym.trim().to_uppercase()),
+            );
+            let mut settings = Map::new();
+            if let Some(speed_change) = mod_.speed_change {
+                if speed_change.is_finite() && speed_change > 0.0 {
+                    settings.insert("speed_change".to_string(), json!(speed_change));
+                }
+            }
+            if let Some(overall_difficulty) = mod_.overall_difficulty {
+                if overall_difficulty.is_finite() {
+                    settings.insert(
+                        "overall_difficulty".to_string(),
+                        json!(overall_difficulty),
+                    );
+                }
+            }
+            if !settings.is_empty() {
+                item.insert("settings".to_string(), Value::Object(settings));
+            }
+            Value::Object(item)
+        })
+        .collect();
+    let mut number = 0u32;
+    for (bit, code) in keys::MOD_BIT_FLAGS {
+        if acronyms.iter().any(|acronym| acronym == code) {
+            number |= bit;
+        }
+    }
+    let rate = mods
+        .iter()
+        .filter_map(|mod_| mod_.speed_change)
+        .find(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(1.0);
+    json!({
+        "number": number,
+        "name": acronyms.concat(),
+        "array": Value::Array(array),
+        "rate": rate,
+    })
 }
 
 /// hits：只发**该态**的那一条（`play` / `resultsScreen`），键集 = 页面消费的 6 键。

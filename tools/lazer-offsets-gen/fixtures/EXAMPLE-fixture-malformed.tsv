@@ -1,0 +1,12 @@
+# EXAMPLE-FIXTURE — 故意写坏的 sos-intermediate（自测 malformed input 用）
+# lazer-offsets-gen sos-intermediate v1
+#	provenance	fixture
+#	fixture	true
+#	lazer_version	2026.921.0.0
+#	runtime_version	10.0.12
+#	arch	x64
+#format	object	label	address	type	status	why
+object	game	0xBF000FDC	osu.Desktop.OsuGameDesktop	ok	fixture
+#format	field	address	object_type	field	offset	sos_type	vt	attr	value	module	token	deref
+# 下面这一行少了最后一列（deref）：严格读取器必须**报错并给出行号**，不得跳过。
+field	0xBF000FDC	osu.Desktop.OsuGameDesktop	<Storage>k__BackingField	1088	....Platform.Storage	No	instance	00000000bf000200	osu!.dll	040000ff
