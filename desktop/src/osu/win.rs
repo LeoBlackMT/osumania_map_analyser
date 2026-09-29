@@ -914,6 +914,11 @@ mod win32 {
         read_array::<4>(target.handle(), addr).map(u32::from_le_bytes)
     }
 
+    /// 16 位读（C2：hits 的计数域是 u16；`maxCombo` 同样是 u16）。
+    pub fn read_u16(target: &Target, addr: u32) -> Result<u16, Reason> {
+        read_array::<2>(target.handle(), addr).map(u16::from_le_bytes)
+    }
+
     pub fn read_i32(target: &Target, addr: u32) -> Result<i32, Reason> {
         read_u32(target, addr).map(|v| v as i32)
     }

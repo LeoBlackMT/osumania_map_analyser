@@ -7,6 +7,9 @@
 // 来源（只读页面代码）：
 // - `js/app/socketHandlers.js:196-268`（normalizeText / normalizePathText /
 //   normalizeNumberText / identity 四段降级链 `id:` → `hash:` → `path:` → `meta:`）
+// - `js/app/modData.js:11-26,73-149`（两套 mods 候选集 + 状态相关的选取 + 求码）
+// - `js/app/modeLogic.js:5-16`（`normalizeClientStateName` / `isPlayStateName`）
+// - `js/app/socketHandlers.js:37-44`（`preferPlayMods: state.isInPlayState`）
 // - `js/app/modData.js:184-229`（speedRate / odFlag / cvtFlag / classic 与 4 段签名）
 // - `config.js:121-131`（knownCodes 12 个 + bitFlags 6 个）
 
@@ -112,58 +115,197 @@ pub fn add_codes_from_number(codes: &mut Vec<&'static str>, number: u32) {
     }
 }
 
-/// 从一帧载荷（**我们的快照包或 tosu 的原始载荷都行**——这是 apples-to-apples 的关键）
-/// 提取页面会看到的 mod 代码集合。
+/// `modeLogic.js:5-10` 的 `normalizeClientStateName`：`String(value || "").trim()`
+/// → 小写 → 剥掉所有 `[^a-z]`。页面用它做状态名归一（`socketHandlers.js:151`）。
+pub fn normalize_client_state_name(value: Option<&str>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+    value
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_lowercase())
+        .collect()
+}
+
+/// `modeLogic.js:12-16` 的 `isPlayStateName`（**归一后**比较）：`play` / `gameplay` / `playing`。
 ///
-/// 取用顺序照 `modData.js:11-26,73-77`：`play.mods` 先，然后 `menu.mods`、
-/// `resultsScreen.mods`（`preferPlayMods` 为 false 时的默认顺序）。`null` 一律跳过
-/// （`:79`）。
-pub fn mod_codes_from_payload(payload: &Value, client: Client) -> Vec<&'static str> {
-    let mut codes: Vec<&'static str> = Vec::new();
-    for pointer in ["/play/mods", "/menu/mods", "/resultsScreen/mods"] {
-        let Some(mods) = payload.pointer(pointer).filter(|v| !v.is_null()) else {
-            continue;
+/// 页面把它写进 `state.isInPlayState`（`socketHandlers.js:154-160`），并在**同一条消息**里
+/// 立刻用于 mod 取值（`:42` 的 `preferPlayMods`、`:170` 的 `getModData`）⇒ 判定必须取
+/// **本帧自己**的 `state.name`。
+pub fn is_play_state_name(normalized: &str) -> bool {
+    matches!(normalized, "play" | "gameplay" | "playing")
+}
+
+/// 一帧载荷里"页面会看到的 mod 视图"（页面口径的唯一权威，见 [`page_mods`]）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PageMods {
+    /// 该侧自己的 `state.isInPlayState`（决定候选集：游玩态**只**取 `play`）。
+    pub in_play_state: bool,
+    /// 页面在这一态会取的槽（`modData.js:75-77` 的 `selectedModsCandidates`）。
+    pub participating: Vec<&'static str>,
+    /// 逐槽：`play`/`menu`/`resultsScreen` 是否**有** mods 值（非 `undefined`、非 `null`）。
+    /// **三个槽恒列出**（诊断用：能看出"页面为什么没看这一槽" = 不在 `participating` 里）。
+    pub by_key: Vec<(&'static str, bool)>,
+    /// 真正参与求码的槽名（`participating` ∩ 有值者，顺序 = 候选顺序）。
+    pub present: Vec<&'static str>,
+    /// 页面会看到的 mod 码集合（去重）。
+    pub codes: Vec<&'static str>,
+}
+
+impl PageMods {
+    /// 该侧**有没有** mods 对象（页面 `hasModPayload`，`modData.js:80`）。
+    ///
+    /// ⚠️ 口径是"**参与的那几个槽**里有没有值"，不是"三个槽里有没有值"：页面在游玩态
+    /// **只**取 `play.mods`，`play.mods = null` 时它不会回退去读 `menu.mods`
+    /// （`modData.js:79-80` 过滤后 `validMods` 为空 ⇒ `hasModPayload = false`）。
+    pub fn has_mod_payload(&self) -> bool {
+        !self.present.is_empty()
+    }
+
+    /// 诊断形态（落进对拍记录的 `mods.by_key` 与 `diag.mods_by_key`）。
+    pub fn to_json(&self) -> Value {
+        let mut by_key = serde_json::Map::new();
+        for (key, present) in &self.by_key {
+            by_key.insert((*key).to_string(), json!(present));
+        }
+        json!({
+            "in_play_state": self.in_play_state,
+            "participating": self.participating,
+            "present": self.present,
+            "codes": self.codes,
+            "by_key": Value::Object(by_key),
+        })
+    }
+}
+
+/// 页面在两套候选集之间的选择（`modData.js:11-26,73-77` + `socketHandlers.js:42`）：
+///
+/// ```js
+/// const selectedModsCandidates = preferPlayMods
+///     ? playModsCandidates                                    // [data?.play?.mods]
+///     : [...playModsCandidates, ...nonPlayModsCandidates];     // + menu/resultsScreen
+/// const validMods = selectedModsCandidates.filter((mods) => mods !== undefined && mods !== null);
+/// ```
+///
+/// **游玩态只取 `play.mods`**（`/play/mods`）；其余状态取
+/// `[play.mods, menu.mods, resultsScreen.mods]`（顺序即候选顺序）。
+///
+/// 与 [`mod_codes_from_payload`] 的关系：后者是**三槽无条件并集**（缓存键口径，`keys::derive`
+/// 用它），这里是**页面口径**（状态相关）。两者在 `play` 态下会不同：页面在游玩态**不看**
+/// `menu.mods`/`resultsScreen.mods`。
+///
+/// 已知**范围例外**（如实记录）：页面在锦标赛模式下还会读 `tourney.clients[].play.mods` 与
+/// `tourney.ipcClients[].gameplay.mods`（`modData.js:14-19`）。本装置不读它们——我们的载荷
+/// 不产出 `tourney` 块，且落盘投影默认丢弃它（`compare.rs::KEPT_TOP_LEVEL`），读它等于把
+/// "两个传输的差异"换成"锦标赛模式的差异"。
+pub fn page_mods(payload: &Value, client: Client) -> PageMods {
+    let in_play_state = is_play_state_name(&normalize_client_state_name(
+        payload.pointer("/state/name").and_then(|v| v.as_str()),
+    ));
+    let slots: &[&str] = if in_play_state {
+        &["play"]
+    } else {
+        &["play", "menu", "resultsScreen"]
+    };
+    mods_from_slots(payload, client, slots)
+}
+
+/// 从**指定槽**求页面码集合（[`page_mods`] 的实现，也是回放/诊断用的变体口径）。
+///
+/// 槽名 → 载荷指针：`play` → `/play/mods`、`menu` → `/menu/mods`、
+/// `resultsScreen` → `/resultsScreen/mods`。`by_key` 恒列三个槽（诊断），
+/// `participating` 才是页面这一态真正会取的槽。
+pub fn mods_from_slots(payload: &Value, client: Client, slots: &[&'static str]) -> PageMods {
+    let pointer = |slot: &str| match slot {
+        "play" => "/play/mods",
+        "menu" => "/menu/mods",
+        "resultsScreen" => "/resultsScreen/mods",
+        _ => "",
+    };
+    let in_play_state = is_play_state_name(&normalize_client_state_name(
+        payload.pointer("/state/name").and_then(|v| v.as_str()),
+    ));
+    let mut out = PageMods {
+        in_play_state,
+        participating: slots.to_vec(),
+        ..Default::default()
+    };
+    let has_value = |slot: &str| -> bool {
+        // `modData.js:79`：`undefined`（键不存在）与 `null` 都不算"有 mods"。
+        payload.pointer(pointer(slot)).filter(|v| !v.is_null()).is_some()
+    };
+    for slot in ["play", "menu", "resultsScreen"] {
+        out.by_key.push((slot, has_value(slot)));
+    }
+    for slot in slots {
+        let key: &'static str = match *slot {
+            "play" => "play",
+            "menu" => "menu",
+            "resultsScreen" => "resultsScreen",
+            _ => continue,
         };
-        // 裸数组（`modData.js:128-135`）与对象（`:87-127`）两种形态。
-        let object = if mods.is_array() { None } else { Some(mods) };
-        if let Some(obj) = object {
-            for key in ["name", "str", "acronym"] {
-                if let Some(text) = obj.get(key).and_then(|v| v.as_str()) {
-                    add_codes_from_string(&mut codes, text);
-                }
+        if !has_value(key) {
+            continue;
+        }
+        out.present.push(key);
+        let mods = payload.pointer(pointer(key)).expect("checked above");
+        add_codes_from_mods_value(&mut out.codes, mods, client);
+    }
+    out
+}
+
+/// 一个 mods 值（对象或裸数组）→ 页面会读到的码（`modData.js:87-149`）。
+pub fn add_codes_from_mods_value(codes: &mut Vec<&'static str>, mods: &Value, client: Client) {
+    // 裸数组（`modData.js:128-135`）与对象（`:87-127`）两种形态。
+    let object = if mods.is_array() { None } else { Some(mods) };
+    if let Some(obj) = object {
+        for key in ["name", "str", "acronym"] {
+            if let Some(text) = obj.get(key).and_then(|v| v.as_str()) {
+                add_codes_from_string(codes, text);
             }
-            for key in ["number", "num"] {
-                if let Some(num) = obj.get(key).and_then(|v| v.as_f64()) {
-                    if num.is_finite() {
-                        add_codes_from_number(&mut codes, num as u32);
-                    }
+        }
+        for key in ["number", "num"] {
+            if let Some(num) = obj.get(key).and_then(|v| v.as_f64()) {
+                if num.is_finite() {
+                    add_codes_from_number(codes, num as u32);
                 }
             }
         }
-        let array = if mods.is_array() {
-            mods.as_array()
-        } else {
-            mods.get("array").and_then(|v| v.as_array())
-        };
-        if let Some(items) = array {
-            for item in items {
-                if let Some(text) = item.as_str() {
-                    add_codes_from_string(&mut codes, text);
-                    continue;
-                }
-                if let Some(obj) = item.as_object() {
-                    // lazer 专属：array[].acronym 与 array[].settings（`:164-180`）。
-                    if let Some(acronym) = obj.get("acronym").and_then(|v| v.as_str()) {
-                        add_codes_from_string(&mut codes, acronym);
-                        if client == Client::Lazer {
-                            add_code_acronym(&mut codes, acronym);
-                        }
+    }
+    let array = if mods.is_array() {
+        mods.as_array()
+    } else {
+        mods.get("array").and_then(|v| v.as_array())
+    };
+    if let Some(items) = array {
+        for item in items {
+            if let Some(text) = item.as_str() {
+                add_codes_from_string(codes, text);
+                continue;
+            }
+            if let Some(obj) = item.as_object() {
+                // lazer 专属：array[].acronym 与 array[].settings（`:164-180`）。
+                if let Some(acronym) = obj.get("acronym").and_then(|v| v.as_str()) {
+                    add_codes_from_string(codes, acronym);
+                    if client == Client::Lazer {
+                        add_code_acronym(codes, acronym);
                     }
                 }
             }
         }
     }
-    codes
+}
+
+/// 从一帧载荷（**我们的快照包或 tosu 的原始载荷都行**——这是 apples-to-apples 的关键）
+/// 提取 mod 代码集合：`[play.mods, menu.mods, resultsScreen.mods]` 的**无条件并集**。
+///
+/// 口径：`modData.js:73-77` 的候选并集 + `:79` 的 `null` 过滤。**这是缓存键口径**
+/// （`modData.js:224-229` 的签名由它派生，`keys::derive` 走这里）；页面真正消费的
+/// 候选集是**状态相关**的 ⇒ 对拍那一格必须用 [`page_mods`]，不能用本函数。
+pub fn mod_codes_from_payload(payload: &Value, client: Client) -> Vec<&'static str> {
+    mods_from_slots(payload, client, &["play", "menu", "resultsScreen"]).codes
 }
 
 /// `modData.js:184-206` 的 speedRate / odFlag / cvtFlag。

@@ -59,6 +59,53 @@ fn map_dir() -> PathBuf {
 
 // ---- 入站请求 ----
 
+/// **LIVE 模式开关**（C2 新增）：`MMA_OSU_COMPAT_LIVE=1` 时 `/websocket/v2` 改为推
+/// **壳内读取线程的最新载荷**，两条文件路由改为供奉**当前选中的谱面**；其它值/未设置
+/// = 保持 B1 的固定谱面回放（默认行为**逐字节不变**）。
+///
+/// 为什么默认关闭：页面切流是 Step 9 的事（本步只把能力接上，不指任何页面过来）；
+/// 对拍装置（`compare.rs`）也不走 24062，它是直接连 tosu 的。
+pub fn live_enabled() -> bool {
+    matches!(std::env::var("MMA_OSU_COMPAT_LIVE"), Ok(value) if value.trim() == "1")
+}
+
+/// 当前选中的谱面（LIVE 模式的文件路由用）：`(songs_folder, folder, filename, background)`。
+///
+/// 全部来自读取线程的**最新快照**——没附着/被冻结/读不到路径 ⇒ `None` ⇒ 404
+/// （**绝不**回落到固定回放图，那会变成"页面拿到了上一张图"的假数据）。
+fn live_map() -> Option<LiveMap> {
+    let reader = crate::osu::instance()?;
+    let state = reader.latest();
+    if state.packet.is_none() || state.frozen {
+        return None;
+    }
+    let snapshot = state.snapshot?;
+    let songs = snapshot.songs_folder?;
+    let folder = snapshot.folder.unwrap_or_default();
+    Some(LiveMap {
+        dir: map_dir_for(&songs, &folder),
+        filename: snapshot.filename?,
+        background: snapshot.background,
+    })
+}
+
+/// LIVE 模式下的谱面目录（`songs \ folder`）。
+fn map_dir_for(songs: &str, folder: &str) -> PathBuf {
+    if folder.is_empty() {
+        PathBuf::from(songs)
+    } else {
+        PathBuf::from(format!("{songs}\\{folder}"))
+    }
+}
+
+struct LiveMap {
+    dir: PathBuf,
+    filename: String,
+    background: Option<String>,
+}
+
+// ---- 响应 ----
+
 /// 一条入站请求的解析结果（只取路由需要的两项）。
 struct RequestHead {
     method: String,
@@ -395,21 +442,31 @@ fn accept_loopback_ws(stream: TcpStream) -> Option<tungstenite::WebSocket<TcpStr
     .ok()
 }
 
-/// `/websocket/v2`：每 150 ms 推一帧回放包；入站消息一律忽略；Close 干净收场。
+/// `/websocket/v2`：每 150 ms 推一帧；入站消息一律忽略；Close 干净收场。
+///
+/// - 默认（回放）：固定谱面的手写包（B1 行为，逐字节不变）
+/// - `MMA_OSU_COMPAT_LIVE=1`：读取线程的最新载荷；**`None` 时这一帧不发**
+///   （`unhealthy` 不许出帧——这就是"页面无假数据"的实现面）
 fn handle_v2_ws(stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
     let Some(mut ws) = accept_loopback_ws(stream) else {
         return;
     };
     let map = replay_map();
+    let live = live_enabled();
     let mut last_push = Instant::now();
     loop {
         if last_push.elapsed() >= REPLAY_INTERVAL {
             last_push = Instant::now();
-            if ws
-                .send(tungstenite::Message::Text(replay_packet(map)))
-                .is_err()
-            {
+            let payload = if live {
+                match crate::osu::instance().and_then(|reader| reader.packet()) {
+                    Some(packet) => packet.to_string(),
+                    None => continue,
+                }
+            } else {
+                replay_packet(map)
+            };
+            if ws.send(tungstenite::Message::Text(payload)).is_err() {
                 return;
             }
         }
@@ -443,7 +500,10 @@ fn handle_commands_ws(stream: TcpStream) {
 // ---- HTTP ----
 
 /// 24062 的 HTTP 面（§3.3 端点路径表）：Host 门禁 → 两条文件路由 → 其余 404。
-/// 两条文件路由都读固定谱面目录下的文件；读失败 = 500（**不是** 404：路由命中过）。
+///
+/// - 默认（回放）：读固定谱面目录下的文件；读失败 = 500（**不是** 404：路由命中过）
+/// - `MMA_OSU_COMPAT_LIVE=1`：供奉**当前选中的谱面**；没有当前谱面（未附着/冻结/缺路径）
+///   ⇒ 404（不是回落到固定图 —— 那会让页面拿到上一张图）
 fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
     if !host_allowed(head) {
         write_json(stream, 403, r#"{"error":"forbidden host"}"#);
@@ -453,21 +513,44 @@ fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
         write_json(stream, 405, r#"{"error":"method not allowed"}"#);
         return;
     }
-    let (file, ctype) = match path {
-        "/files/beatmap/file" => (
-            MAP_FILE.to_string(),
-            "text/plain; charset=utf-8".to_string(),
-        ),
-        "/files/beatmap/background" => (
-            MAP_BACKGROUND.to_string(),
-            crate::server::mime_for(MAP_BACKGROUND),
-        ),
+    let live = live_enabled();
+    let current = if live { live_map() } else { None };
+    let (dir, file, ctype) = match path {
+        "/files/beatmap/file" => {
+            let (dir, file) = match &current {
+                Some(map) => (map.dir.clone(), map.filename.clone()),
+                None if live => {
+                    write_json(stream, 404, r#"{"error":"no current beatmap"}"#);
+                    return;
+                }
+                None => (map_dir(), MAP_FILE.to_string()),
+            };
+            (dir, file, "text/plain; charset=utf-8".to_string())
+        }
+        "/files/beatmap/background" => {
+            let (dir, file) = match &current {
+                Some(map) => match map.background.as_deref() {
+                    Some(background) => (map.dir.clone(), background.to_string()),
+                    None => {
+                        write_json(stream, 404, r#"{"error":"no background"}"#);
+                        return;
+                    }
+                },
+                None if live => {
+                    write_json(stream, 404, r#"{"error":"no current beatmap"}"#);
+                    return;
+                }
+                None => (map_dir(), MAP_BACKGROUND.to_string()),
+            };
+            let ctype = crate::server::mime_for(&file);
+            (dir, file, ctype)
+        }
         _ => {
             write_json(stream, 404, r#"{"error":"not found"}"#);
             return;
         }
     };
-    let full = map_dir().join(&file);
+    let full = dir.join(&file);
     match std::fs::read(&full) {
         Ok(bytes) => write_response(stream, 200, &ctype, &bytes),
         Err(e) => {

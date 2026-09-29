@@ -137,6 +137,11 @@ pub struct BeatmapFile {
     pub timing_points: Vec<TimingPoint>,
     pub first_last: FirstLast,
     pub slider_coverage: Option<SliderCoverage>,
+    /// `[Events]` 里第一条 `0,0,"<file>"` 的背景文件名（C2：`files.background` 的来源；
+    /// 与 tosu 同源——它同样解析这份 `.osu` 正文，见 `states/beatmap.ts:358`）。
+    pub background: Option<String>,
+    /// `[General] AudioFilename`（C2：`files.audio` 的来源）。
+    pub audio: Option<String>,
 }
 
 impl BeatmapFile {
@@ -265,11 +270,33 @@ pub fn parse(text: &str) -> BeatmapFile {
         match section.as_str() {
             "[General]" => {
                 if let Some((key, value)) = key_value(line) {
-                    if key == "SliderMultiplier" {
-                        if let Ok(parsed) = value.parse::<f64>() {
-                            if parsed.is_finite() && parsed > 0.0 {
-                                slider_multiplier_seen = Some(parsed);
+                    match key {
+                        "SliderMultiplier" => {
+                            if let Ok(parsed) = value.parse::<f64>() {
+                                if parsed.is_finite() && parsed > 0.0 {
+                                    slider_multiplier_seen = Some(parsed);
+                                }
                             }
+                        }
+                        // `AudioFilename: audio.mp3`（与 tosu 的 `files.audio` 同源：
+                        // 它同样解析 `.osu` 正文，不是内存字段）。
+                        "AudioFilename" if !value.is_empty() => {
+                            out.audio = Some(value.to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "[Events]" => {
+                // 背景行形如 `0,0,"bg.jpg",0,0`：取引号里的文件名。**不能**用
+                // `trim_matches('"')`——尾部的 `,0,0` 会把结果污染成 `bg.jpg",0,0`
+                // （B1 实现时踩过：它仍通过"非空"检查）。
+                if out.background.is_none() {
+                    if let Some(rest) = line.strip_prefix("0,0,") {
+                        let rest = rest.trim().trim_start_matches('"');
+                        let name = rest.split('"').next().unwrap_or("");
+                        if !name.is_empty() {
+                            out.background = Some(name.to_string());
                         }
                     }
                 }

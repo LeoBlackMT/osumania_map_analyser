@@ -13,9 +13,26 @@
 // 第一断言（§3.4）：跨传输键**逐字节相等** —— `identity` / `mod_signature` / `state_name`；
 // 数值（`first_object`/`last_object`）只做"相等性记录"（不设容差：两侧都是整毫秒）。
 
+use crate::osu::invariants::{FrameAction, FrameOutcome};
 use crate::osu::keys;
-use crate::osu::model::{Client, Snapshot};
+use crate::osu::model::{Client, Hits, Snapshot};
 use serde_json::{json, Map, Value};
+
+/// 被比较的字段名（**顺序即 JSONL 的 `cmp` 顺序**；`compare.rs` 在"没有 tosu 帧"时
+/// 用它生成全 `skipped:no-tosu-frame` 的记录）。
+pub const COMPARED_FIELDS: &[&str] = &[
+    "client",
+    "state_name",
+    "checksum",
+    "identity",
+    "mod_signature",
+    "first_object",
+    "last_object",
+    "songs_folder",
+    "play_hits",
+    "result_hits",
+    "health",
+];
 
 /// 一侧的取值：`Available` = 读到了；`Skipped` = 结构性缺失/按设计不比（**必须带原因**）。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,12 +119,18 @@ pub fn verdict(ours: &Side, theirs: &Side) -> Verdict {
 }
 
 /// 一条字段的比较记录。
+///
+/// `diag` = 该格的**诊断**（不参与判定）：目前只有 `mod_signature` 用（逐槽存在性
+/// `mods_by_key` + 缓存键口径的签名串）。留着它是为了让"以后某一格不相等"仍然**可解释**
+/// ——C2 矩阵会话（49430 条）的 6789 条 `false` 就是因为当时只有"签名串"一个读数、
+/// 看不出"是位置不同还是码不同"。
 #[derive(Clone, Debug)]
 pub struct FieldDiff {
     pub field: &'static str,
     pub verdict: Verdict,
     pub ours: Side,
     pub theirs: Side,
+    pub diag: Option<Value>,
 }
 
 impl FieldDiff {
@@ -118,7 +141,13 @@ impl FieldDiff {
             verdict,
             ours,
             theirs,
+            diag: None,
         }
+    }
+
+    fn with_diag(mut self, diag: Value) -> FieldDiff {
+        self.diag = Some(diag);
+        self
     }
 }
 
@@ -126,10 +155,18 @@ impl FieldDiff {
 #[derive(Clone, Debug, Default)]
 pub struct ShadowDiff {
     pub fields: Vec<FieldDiff>,
-    /// 我们的 mod 代码集合（页面 `modData.js` 的同一套规则）。
+    /// 我们的 mod 代码集合（**页面口径**：`keys::page_mods` ⇒ 状态相关的候选集）。
     pub our_mod_codes: Vec<&'static str>,
     /// tosu 的 mod 代码集合（同一套规则 ⇒ apples-to-apples）。
     pub their_mod_codes: Vec<&'static str>,
+    /// 我方逐槽 mod 视图（诊断：`mods.by_key`）。
+    pub our_page_mods: keys::PageMods,
+    /// tosu 逐槽 mod 视图（诊断：`mods.by_key`）。
+    pub their_page_mods: keys::PageMods,
+    /// 我方**缓存键口径**的签名串（三槽无条件并集；仅诊断，不参与判定）。
+    pub our_signature: Option<String>,
+    /// tosu 缓存键口径的签名串（仅诊断）。
+    pub their_signature: Option<String>,
     /// tosu 报的 `client`（"焦点客户端"，见 `client_diff_skipped`）。
     pub their_client: Option<String>,
 }
@@ -174,7 +211,7 @@ impl ShadowDiff {
         Value::Object(map)
     }
 
-    /// 差异清单（`diff` 段：只有不等/跳过的那些格子，带两侧原始值）。
+    /// 差异清单（`diff` 段：只有不等/跳过的那些格子，带两侧原始值与诊断）。
     pub fn detail_json(&self) -> Value {
         let mut map = Map::new();
         for field in &self.fields {
@@ -191,10 +228,24 @@ impl ShadowDiff {
                 }
                 Verdict::Equal => continue,
             }
+            if let Some(diag) = &field.diag {
+                entry.insert("diag".to_string(), diag.clone());
+            }
             map.insert(field.field.to_string(), Value::Object(entry));
         }
         Value::Object(map)
     }
+}
+
+/// 页面会看到的 mod 码集合的**渲染**（`{DT,NC}` / `{}`；排序 + 去重 ⇒ 与集合语义一致）。
+///
+/// 这是 `mod_signature` 一格的 `our`/`tosu` 取值形态：该格的判据是**码集合**（页面用它派生
+/// 签名与缓存键），不是签名串本身（签名串只在 `diag.signature` 里留档）。
+pub fn mods_view_text(codes: &[&'static str]) -> String {
+    let mut sorted: Vec<&str> = codes.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    format!("{{{}}}", sorted.join(","))
 }
 
 fn side_json(side: &Side) -> Value {
@@ -216,7 +267,37 @@ pub struct TosuShadow {
     pub first_object: Option<i64>,
     pub last_object: Option<i64>,
     pub songs_folder: Option<String>,
-    pub mod_codes: Vec<&'static str>,
+    /// **页面口径**的 mod 视图（`keys::page_mods` ⇒ 状态相关的候选集）。
+    pub page_mods: keys::PageMods,
+    /// `play.hits` 的 6 键称重串（10 键里取页面消费的 6 个）。
+    pub play_hits: Option<String>,
+    /// `resultsScreen.hits` 的 6 键称重串。
+    pub result_hits: Option<String>,
+}
+
+/// `{geki,300,katu,100,50,0}` → `Hits::canonical()` 的同形字符串。
+///
+/// 为什么不直接比较 JSON：tosu 发 10/9 键（多 `sliderBreaks` 等），我们发 6 键——
+/// 直接比 JSON 是"形状不同"而不是"计数不同"。两侧都先归一到 6 键再比。
+pub fn canonical_hits(value: Option<&Value>) -> Option<String> {
+    let object = value?.as_object()?;
+    let number = |key: &str| -> u32 {
+        object
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .filter(|v| v.is_finite())
+            .map(|v| v.max(0.0) as u32)
+            .unwrap_or(0)
+    };
+    let hits = Hits {
+        n300: number("300"),
+        n100: number("100"),
+        n50: number("50"),
+        geki: number("geki"),
+        katu: number("katu"),
+        miss: number("0"),
+    };
+    Some(hits.canonical())
 }
 
 impl TosuShadow {
@@ -256,12 +337,14 @@ impl TosuShadow {
             first_object: number("/beatmap/time/firstObject"),
             last_object: number("/beatmap/time/lastObject"),
             songs_folder: text("/folders/songs"),
-            mod_codes: keys::mod_codes_from_payload(payload, client_kind.unwrap_or(Client::Stable)),
+            page_mods: keys::page_mods(payload, client_kind.unwrap_or(Client::Stable)),
+            play_hits: canonical_hits(payload.pointer("/play/hits")),
+            result_hits: canonical_hits(payload.pointer("/resultsScreen/hits")),
         }
     }
 }
 
-/// 我们这一侧的取值（从快照派生；`play` 态的 mods 链属 C2，见下）。
+/// 我们这一侧的取值（从快照派生；C2 起局内/结算 mods 也有链）。
 pub struct OurShadow {
     pub client: Option<String>,
     pub state_name: Option<String>,
@@ -272,15 +355,55 @@ pub struct OurShadow {
     pub last_object: Option<i64>,
     pub songs_folder: Option<String>,
     pub songs_cfg_value: Option<String>,
-    pub mod_codes: Vec<&'static str>,
-    /// 我方状态是否是 `play`（局内 mods 链未实现 ⇒ mod 签名按设计跳过）。
+    /// **页面口径**的 mod 视图（`keys::page_mods` ⇒ 状态相关的候选集）。
+    pub page_mods: keys::PageMods,
+    /// 我方状态是否是 `play`（C2 保留了该字段：**载荷来源**诊断用，不再用于跳过比较）。
     pub in_play_state: bool,
+    /// 我方 `play.hits` / `resultsScreen.hits` 的 6 键称重串。
+    pub play_hits: Option<String>,
+    pub result_hits: Option<String>,
+    /// 本帧的健康状态与动作（`health` 一格的来源；`unhealthy` 帧不出载荷，
+    /// 与 tosu 的比较按"我们这边不可用"跳过）。
+    pub health: &'static str,
+    pub frozen: bool,
 }
 
 impl OurShadow {
     pub fn from_snapshot(snapshot: &Snapshot) -> OurShadow {
+        OurShadow::from_snapshot_with(
+            snapshot,
+            &FrameOutcome {
+                action: FrameAction::Publish,
+                state: None,
+                reason: None,
+                degraded_fields: Vec::new(),
+                transition: None,
+            },
+        )
+    }
+
+    /// 带门输出的一侧（门输出决定 `health` 一格与"是否冻结"）。
+    pub fn from_snapshot_with(snapshot: &Snapshot, outcome: &FrameOutcome) -> OurShadow {
         let payload = snapshot.to_packet();
         let client = snapshot.client.unwrap_or(Client::Stable);
+        // `page_mods` 取**本帧真正会发布出去的载荷**（`compare.rs::record` 的同一套形态）：
+        // 冻结帧 = 字段级冻结包、停帧 = 空对象 ⇒ 两者都**没有** mods 对象。页面收到的就是它，
+        // 所以 mod 一格的"我方视图"必须照此重建——否则停帧帧会拿快照里的 mods 去比一个
+        // 页面根本收不到的载荷（Step 8d 的 `our-gate-only` 跳过就是为这个形态准备的）。
+        let frozen_packet;
+        let stopped_packet;
+        let published: &Value = match outcome.action {
+            FrameAction::Stop => {
+                stopped_packet = json!({});
+                &stopped_packet
+            }
+            FrameAction::FreezeStateOnly => {
+                frozen_packet = snapshot.to_frozen_packet();
+                &frozen_packet
+            }
+            FrameAction::Publish => &payload,
+        };
+        let page_mods = keys::page_mods(published, client);
         OurShadow {
             client: snapshot.client.map(|c| c.as_str().to_string()),
             state_name: snapshot.state_name.clone(),
@@ -291,9 +414,49 @@ impl OurShadow {
             last_object: snapshot.last_object().map(|v| v as i64),
             songs_folder: snapshot.songs_folder.clone(),
             songs_cfg_value: snapshot.songs_cfg_value.clone(),
-            mod_codes: keys::mod_codes_from_payload(&payload, client),
-            in_play_state: snapshot.state_name.as_deref() == Some("play"),
+            in_play_state: page_mods.in_play_state,
+            page_mods,
+            play_hits: snapshot.play_hits.map(|hits| hits.canonical()),
+            result_hits: snapshot.result_hits.map(|hits| hits.canonical()),
+            health: outcome.state.map(|s| s.as_str()).unwrap_or("idle"),
+            frozen: outcome.action == FrameAction::FreezeStateOnly,
         }
+    }
+
+    /// **回放用**（dev-only，`compare::replay_mod_cell`）：从**记录里的我方载荷**重建一侧。
+    ///
+    /// 记录里的 `our` 对象 = 当时的载荷 + `reason`/`health`/`frozen`/`degraded_fields`
+    /// 四个对拍字段（`compare.rs::record`）⇒ 后两者按入参给，其余用与 `tosu` 侧**同一套**
+    /// 读法重建，保证回放与真机走同一个 `diff`。
+    pub fn from_recorded(payload: &Value, frozen: bool, health: &'static str) -> OurShadow {
+        let shared = TosuShadow::from_payload(payload);
+        OurShadow {
+            client: shared.client,
+            state_name: shared.state_name,
+            checksum: shared.checksum,
+            identity: shared.identity,
+            mod_signature: shared.mod_signature,
+            first_object: shared.first_object,
+            last_object: shared.last_object,
+            songs_folder: shared.songs_folder,
+            songs_cfg_value: None,
+            in_play_state: shared.page_mods.in_play_state,
+            page_mods: shared.page_mods,
+            play_hits: shared.play_hits,
+            result_hits: shared.result_hits,
+            health,
+            frozen,
+        }
+    }
+}
+
+/// 记录里的 `health` 字符串 → `&'static str`（回放用；未知值归 `idle`）。
+pub fn health_from_recorded(value: Option<&str>) -> &'static str {
+    match value {
+        Some("healthy") => "healthy",
+        Some("degraded") => "degraded",
+        Some("unhealthy") => "unhealthy",
+        _ => "idle",
     }
 }
 
@@ -302,13 +465,18 @@ impl OurShadow {
 /// 跳过的口径（每一条都要能在报告里被引用）：
 /// - `client`：tosu 报的是**前台焦点客户端**（P1-notes F1），这就是本装置存在的理由；
 ///   两侧不等 ⇒ `Skipped{focused-client-mismatch}`（我们读的进程与 tosu 供的不是同一个）。
-/// - `mod_signature`：仅当**我方**处于 `play` 态时跳过（局内 mods 链 = Step 8 / C2）；
-///   非 play 态照比。
+/// - `mod_signature`：见 [`mod_signature_field`]（判据 = **页面可见的 mod 码集合**，
+///   状态相关候选；任一侧没有 mods 对象 ⇒ `Skipped`，**不是** `false`）。
+/// - `play_hits`/`result_hits`：该态没有 hits（如菜单态）或未过时间门 ⇒ `Skipped`。
 /// - 任一字段我方/tosu 侧缺失 ⇒ `Skipped`（各自带原因）。
 pub fn diff(ours: &OurShadow, theirs: &TosuShadow) -> ShadowDiff {
     let mut out = ShadowDiff {
-        our_mod_codes: ours.mod_codes.clone(),
-        their_mod_codes: theirs.mod_codes.clone(),
+        our_mod_codes: ours.page_mods.codes.clone(),
+        their_mod_codes: theirs.page_mods.codes.clone(),
+        our_page_mods: ours.page_mods.clone(),
+        their_page_mods: theirs.page_mods.clone(),
+        our_signature: ours.mod_signature.clone(),
+        their_signature: theirs.mod_signature.clone(),
         their_client: theirs.client.clone(),
         ..Default::default()
     };
@@ -352,19 +520,7 @@ pub fn diff(ours: &OurShadow, theirs: &TosuShadow) -> ShadowDiff {
         option_side(&ours.identity, "packet.empty"),
         option_side(&theirs.identity, "tosu-frame-absent"),
     ));
-    out.fields.push(FieldDiff::new(
-        "mod_signature",
-        if ours.in_play_state {
-            Side::skipped("play-state-mods-chain-not-implemented")
-        } else {
-            option_side(&ours.mod_signature, "packet.empty")
-        },
-        if theirs.mod_signature.is_none() {
-            Side::skipped("tosu-mod-signature-absent")
-        } else {
-            option_side(&theirs.mod_signature, "tosu-mod-signature-absent")
-        },
-    ));
+    out.fields.push(mod_signature_field(ours, theirs));
     out.fields.push(FieldDiff::new(
         "first_object",
         number_side(ours.first_object, "osu-file-not-parsed"),
@@ -386,7 +542,93 @@ pub fn diff(ours: &OurShadow, theirs: &TosuShadow) -> ShadowDiff {
         ),
         option_side(&theirs.songs_folder, "tosu-folders-absent"),
     ));
+    out.fields.push(FieldDiff::new(
+        "play_hits",
+        if ours.frozen {
+            Side::skipped("frozen-field-level")
+        } else {
+            option_side(&ours.play_hits, "hits-not-published")
+        },
+        option_side(&theirs.play_hits, "tosu-play-absent"),
+    ));
+    out.fields.push(FieldDiff::new(
+        "result_hits",
+        option_side(&ours.result_hits, "hits-not-published"),
+        option_side(&theirs.result_hits, "tosu-results-absent"),
+    ));
+    out.fields.push(FieldDiff::new(
+        "health",
+        Side::available(ours.health.to_string()),
+        Side::skipped("our-gate-only"),
+    ));
     out
+}
+
+/// `mod_signature` 一格：**页面可见的 mod 码集合**比较（Step 8d 修正）。
+///
+/// ## 为什么改（旧判据的两处错）
+///
+/// 旧判据比的是**两侧各自派生的签名串**（`keys::mod_signature_from_payload`，三槽无条件并集）。
+/// 这在 C2 矩阵会话（49430 条）里产出 6789 条 `false`，而其中 **6723 条**是
+/// `1.00000|none|none|1` vs `1.50000|none|none|1` 这种"读数位置不同"造成的假差异
+/// （`temp/osu-native-memory/evidence/C2-stable-full/probe-mod-cell2.txt`）。判据错在两处：
+/// ① 页面**按状态**选候选（游玩态只看 `play.mods`），不是无条件三槽并集；
+/// ② "某一侧根本没有 mods 对象"（我们的门冻结/停帧、tosu 帧缺键）被记成 `false`，
+///    而它其实是**没得比**（B2 的教训：跳过必须显式）。
+///
+/// ## 判据（逐行照抄页面）
+///
+/// ```js
+/// // socketHandlers.js:37-44（页面自己的包装）
+/// function getModData(data) {
+///     return getModDataFromPayload(data, { …, preferPlayMods: state.isInPlayState });
+/// }
+/// // modData.js:11-26（两套候选集）
+/// function collectPlayModsCandidates(data) { return [data?.play?.mods]; }
+/// function collectNonPlayModsCandidates(data) { return [data?.menu?.mods, data?.resultsScreen?.mods]; }
+/// // modData.js:73-80（选取 + 有没有 mods 对象）
+/// const selectedModsCandidates = preferPlayMods ? playModsCandidates
+///                                              : [...playModsCandidates, ...nonPlayModsCandidates];
+/// const validMods = selectedModsCandidates.filter((mods) => mods !== undefined && mods !== null);
+/// const hasModPayload = validMods.length > 0;
+/// ```
+///
+/// 归一与游玩态判定取 `modeLogic.js:5-16`（`normalizeClientStateName` + `isPlayStateName`），
+/// 且**每条消息先更新 `state.isInPlayState` 再取值**（`socketHandlers.js:151-160` → `:170`）⇒
+/// 每一侧都用**自己这一帧**的 `state.name`。求码与集合语义在 `keys.rs`（同一份页面规则）。
+///
+/// 三值结局：
+/// - 我方冻结帧（字段级）⇒ `Skipped{frozen-field-level}`（载荷里没有 mods，不是"没读到"）；
+/// - 我方载荷**一个 mods 对象都没有**（停帧/门产物）⇒ `Skipped{our-gate-only}`；
+/// - tosu 侧一个都没有 ⇒ `Skipped{tosu-mods-absent}`；
+/// - 两侧都有 ⇒ 比**码集合**（顺序无关）；签名串只进 `diag.signature`（缓存键口径，不判定）。
+///
+/// “我方有没有 mods 对象”判的是**本帧发出去的**载荷（冻结帧只发 `client`+`state`、
+/// 停帧发空对象 ⇒ 两种都没有），不是内存里的快照值。
+fn mod_signature_field(ours: &OurShadow, theirs: &TosuShadow) -> FieldDiff {
+    let our_side = if ours.frozen {
+        Side::skipped("frozen-field-level")
+    } else if !ours.page_mods.has_mod_payload() {
+        Side::skipped("our-gate-only")
+    } else {
+        Side::available(mods_view_text(&ours.page_mods.codes))
+    };
+    let their_side = if theirs.page_mods.has_mod_payload() {
+        Side::available(mods_view_text(&theirs.page_mods.codes))
+    } else {
+        Side::skipped("tosu-mods-absent")
+    };
+    FieldDiff::new("mod_signature", our_side, their_side).with_diag(json!({
+        "mods_by_key": {
+            "ours": ours.page_mods.to_json(),
+            "tosu": theirs.page_mods.to_json(),
+        },
+        // 缓存键口径（三槽无条件并集）——**只诊断**：它与页面口径在游玩态下会不同。
+        "signature": {
+            "ours": ours.mod_signature,
+            "tosu": theirs.mod_signature,
+        },
+    }))
 }
 
 fn option_side(value: &Option<String>, why: &str) -> Side {
