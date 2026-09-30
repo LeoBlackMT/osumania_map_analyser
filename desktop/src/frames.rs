@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 5 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 6 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 5;
+pub const CONTRACT_VERSION: u32 = 6;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -22,6 +22,23 @@ pub const BRIDGE_MAX_BODY_BYTES: usize = 16 * 1024;
 pub const BRIDGE_STALE_AFTER: Duration = Duration::from_secs(8);
 /// 桥下发的谱面文件上限（沙箱闸）；`song` 帧的 `rawText` 另有 5MB 闸（`MAX_PAYLOAD_BYTES`）。
 pub const CHART_MAX_BYTES: u64 = 50 * 1024 * 1024;
+
+// ---- osu! 兼容子集 origin（24062，契约 v6）----
+/// 壳内 osu 原生读取器的 tosu 兼容子集 origin 端口（24050=tosu、24060=Malody 编辑器、
+/// 24061=壳页面、17653=Malody 选曲桥）——`sources.osu.osuTransport` 在 native 模式下
+/// 指向它。
+pub const OSU_COMPAT_PORT: u16 = 24062;
+/// 该 origin 的数据面路径（页面 WS；与 tosu 同形）。
+pub const OSU_COMPAT_WS_PATH: &str = "/websocket/v2";
+/// 该 origin 的文件面前缀（页面取谱面与背景图：`{filesPath}/file`、`{filesPath}/background`）。
+pub const OSU_COMPAT_FILES_PATH: &str = "/files/beatmap";
+/// 该 origin 的两条文件路由（与 `OSU_COMPAT_FILES_PATH` 同一来源：`osu_compat` 的路由表
+/// 直接匹配这两个常量，故契约里公布的路径后缀**不可能**与实现漂移）。
+pub const OSU_COMPAT_FILE_ROUTE: &str = "/files/beatmap/file";
+pub const OSU_COMPAT_BACKGROUND_ROUTE: &str = "/files/beatmap/background";
+/// tosu 默认端口（壳没探到 tosu.env 时 `mode:"tosu"` 的占位端点；页面在该模式下一律用
+/// 自己设置里的 `wsEndpoint`）。
+pub const TOSU_DEFAULT_PORT: u16 = 24050;
 
 // ---- 错误文本常量（编辑器 ShowMessage 直用）----
 
@@ -131,6 +148,75 @@ pub struct Malody4Source {
     pub reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub judge: Option<char>,
+}
+
+/// 壳下发给页面的 osu 端点描述（契约 v6 / DEC-12）。
+///
+/// 页面据此在 **socket 层**运行时切换 osu 数据面：**绝不写 `state.wsEndpoint`**
+/// （它在页面的 `SETTING_CACHE_KEYS` 里 ⇒ 走设置路径会每次切换清空结果缓存）。
+#[derive(Serialize, Clone, Default, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OsuTransport {
+    /// `native` = 用壳本机 origin（`host`/`port`）；`tosu` = 页面继续用自己设置里的端点
+    /// （**不应用覆盖**，行为与无壳时逐字节相同）。
+    pub mode: String,
+    pub host: String,
+    pub port: u16,
+    /// 数据面路径与文件面前缀：页面只接受与自身实现一致的取值（否则拒绝覆盖）。
+    pub ws_path: String,
+    pub files_path: String,
+}
+
+/// `sources.osu.progress`（契约 v6 / Step 9e，**诊断字段、页面无义务**）：L0 全量锚点扫描的
+/// 实测读数（只报量得出的数；`phase != "scanning"` 时不出现）。
+#[derive(Serialize, Clone, Default, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OsuScanProgress {
+    /// 过滤器档位（0 = 参考过滤器 RW/RWX，1 = 宽过滤器）。
+    pub filter: usize,
+    /// 本档枚举到的区域数（扫描的"面"）。
+    pub regions: usize,
+    /// 本档已读字节数。
+    pub bytes: u64,
+    /// 本次锚点定址已耗时（毫秒）。
+    pub elapsed_ms: u64,
+}
+
+/// `sources.osu`（契约 v6）：壳内读取器的健康位 + 下发的端点 + 诊断字段。
+///
+/// `alive` ≡ `osuTransport.mode == "native"`（原生传输可用）；其余情形壳一律发
+/// `mode:"tosu"`，页面清掉运行时覆盖回到 `wsEndpoint`。
+#[derive(Serialize, Clone, Default, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OsuSource {
+    pub alive: bool,
+    /// 字段名 = 契约里的 `osuTransport`（结构体名 `OsuTransport` 为避免与字段同名而分开）。
+    #[serde(rename = "osuTransport")]
+    pub transport: OsuTransport,
+    /// 读取器门状态（`idle` / `healthy` / `degraded` / `unhealthy`；诊断用）。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub gate: String,
+    /// 客户端类型（`stable` / `lazer`；未知不发）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// 不可用原因（`osu/model.rs` 的 reason 闭集字面量；正常时不发）。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reason: String,
+    /// 读取器上报的降级字段（页面只作诊断，不据它分支）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub degraded_fields: Vec<String>,
+    /// 读取器相位（Step 9e）：`waiting-for-game` / `attaching` / `scanning` / `healthy` /
+    /// `unavailable`（闭集见 `osu::Phase`）。诊断用；页面据 `notice` 决定是否提示。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub phase: String,
+    /// 相位对应的**英文提示句**（Step 9e；只在"用户在等"的三相非空）。
+    /// 原生传输结构性不可用时（操作者强制 tosu / 24062 未绑定）壳**不发**它——
+    /// 页面因此绝不解释一条它拿不到的数据路径。
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub notice: String,
+    /// L0 扫描的实测进度（Step 9e；只在 `phase == "scanning"` 时出现，诊断用）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<OsuScanProgress>,
 }
 
 #[derive(Serialize, Clone)]

@@ -1,6 +1,10 @@
 // mma-shell 桌面壳入口：
-// 在线（tosu.env 命中且存活）→ 导航到 tosu 插件页（设置/静态零适配）；
-// 离线 → 24061 本地页。窗口属性（透明/置顶/无边框）由 tauri.conf.json 配置。
+// 壳配置 `osuTransport != "tosu"`（缺省 auto）→ 主窗导航到**壳自己的页**（24061）：
+// 端点下发（契约 v6 的 `sources.osu`）只对壳页生效，主窗落 tosu 页会让原生传输不可达
+// （DEC-21 的缺陷②）；
+// 壳配置 `osuTransport: "tosu"`（逃生开关）→ 维持旧行为：在线（tosu.env 命中且存活）
+// 导航到 tosu 插件页，离线落 24061 本地页。
+// 窗口属性（透明/置顶/无边框）由 tauri.conf.json 配置。
 //
 // ---- 线程规则（改动本文件前先读）----
 // * **窗口 API 一律只在 `std::thread::spawn` 的独立线程里调用**（`settings_window.rs`
@@ -35,7 +39,16 @@ static WINDOW_STATE: Mutex<config::WindowState> = Mutex::new(config::WindowState
     click_through: false,
 });
 
-fn startup_url(tosu: &Option<config::TosuInfo>) -> String {
+/// 启动 URL（契约 v6，修 DEC-21 的缺陷②）。
+///
+/// 只有壳配置**显式** `osuTransport: "tosu"`（AV 误报排查用的逃生开关）才维持旧策略
+/// （在线 ⇒ tosu 插件页）；`auto`/`native`/缺省一律落 `http://127.0.0.1:24061/`——
+/// 主窗必须能跟壳说话：原生传输的端点下发（`sources.osu.osuTransport`）与桥（24061）
+/// 都只在壳自己的页面上生效，"tosu 在线 ⇒ 主窗去 tosu 页"会让 native 永远不可达。
+fn startup_url(tosu: &Option<config::TosuInfo>, shell_config: &serde_json::Value) -> String {
+    if !server::osu_source::forced_tosu(shell_config) {
+        return "http://127.0.0.1:24061/".to_string();
+    }
     let Some(info) = tosu else {
         return "http://127.0.0.1:24061/".to_string();
     };
@@ -322,7 +335,9 @@ fn main() {
     // 在线判定提到 main()：启动时的骨架生成与 HTTP 层的权威链共用同一个判据，
     // 避免两个位置各探一次得出不同结论（单一在线门控）。
     let online = tosu.as_ref().map(config::tosu_online).unwrap_or(false);
-    let url_text = startup_url(&tosu);
+    // 壳配置进 startup_url：`osuTransport: "tosu"` 才走旧的"在线即 tosu 页"策略。
+    let shell_config = config::read_shell_config();
+    let url_text = startup_url(&tosu, &shell_config);
     println!("plugin dir: {}", plugin_dir.display());
     println!("startup url: {}", url_text);
 

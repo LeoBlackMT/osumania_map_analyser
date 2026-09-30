@@ -1,0 +1,85 @@
+# EXAMPLE-FIXTURE — 生成器自测用的**运行期结构打印**（Step 10f，**不是真实 dump 的产物**）
+#
+# 真实路径上这三段文本由 `dotnet-dump analyze` 对一个真 dump 打印：
+#   dumpmt <MethodTable>      → Parent / Module / Name / mdToken / File / BaseSize / …
+#   dumpmodule <Module>       → Name / Assembly / BaseAddress / LoaderHeap / MetaData start address
+#   dumparray <array>         → Array: … Number of elements N + `[i] <addr>` 行
+# 本文件把三段打印照真实列宽誊写一遍（地址与名字都是虚构的），自测用它证明：
+#   1. 三个解析器能读出结构行；
+#   2. `runtime.rs` 的位移是**搜出来**的（SOS 打印值 vs dump 字节），不是常量；
+#   3. 任一位移搜不出来/有歧义/名字为空 ⇒ 该位移**不发布**（fail-closed）。
+# fixture 标记是硬要求：本文件带 `#fixture true`，只用于 `self-test`，永不进真实表。
+#fixture true
+
+--- dumpmt (synthetic EEType A, osu.Game.dll) ---
+Parent:              00007ffe2f9f3050
+Module:              00007FFE2F058918
+Name:                osu.Game.Screens.Menu.MainMenu
+mdToken:             00000000020009A2
+File:                C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+AssemblyLoadContext: 00000000BF37B6A0
+BaseSize:            0x468
+Has GC Pointers:     true
+Number of Methods:   222
+Number of IFaces in IFaceMap: 14
+
+--- dumpmt (synthetic EEType B, osu!.dll) ---
+Parent:              00007ffe2f2d7ee0
+Module:              00007FFE2EFA8B20
+Name:                osu.Desktop.OsuGameDesktop
+mdToken:             000000000200000F
+File:                C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu!.dll
+AssemblyLoadContext: 00000000BF37B670
+BaseSize:            0x730
+Has GC Pointers:     true
+Number of Methods:   243
+Number of IFaces in IFaceMap: 27
+
+--- dumpmt (empty name: the row must not be published) ---
+Parent:              00007ffe2f9f3050
+Module:              00007FFE2F058918
+Name:
+mdToken:             0000000002000ABC
+File:                C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+BaseSize:            0x100
+
+--- dumpmodule (osu.Game.dll) ---
+Name: C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Attributes:              PEFile 
+Assembly:                000001d7051fe440
+BaseAddress:             000001D707F60000
+LoaderHeap:              00007FFE8EDE6970
+TypeDefToMethodTableMap: 00007FFE2F070000
+TypeRefToMethodTableMap: 00007FFE2F07E2A8
+MethodDefToDescMap:      00007FFE2F0A1E98
+FieldDefToDescMap:       00007FFE2F104C90
+MemberRefToDescMap:      00007FFE2F080BC0
+FileReferencesMap:       0000000000000000
+AssemblyReferencesMap:   00007FFE2F135948
+MetaData start address:  000001D7081BE4CC (4412308 bytes)
+
+--- dumpmodule (osu!.dll) ---
+Name: C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu!.dll
+Attributes:              PEFile 
+Assembly:                000001d7051fd340
+BaseAddress:             000001D707720000
+LoaderHeap:              00007FFE8EDE6970
+TypeDefToMethodTableMap: 00007FFE2EF6C108
+TypeRefToMethodTableMap: 00007FFE2EF6C3B8
+MethodDefToDescMap:      00007FFE2EF6DAB0
+FieldDefToDescMap:       00007FFE2EF6E620
+MemberRefToDescMap:      00007FFE2EF6CC70
+FileReferencesMap:       0000000000000000
+AssemblyReferencesMap:   00007FFE2EF6F3A0
+MetaData start address:  000001D7077263C0 (60284 bytes)
+
+--- dumparray (the screen stack array) ---
+Name:        osu.Framework.Screens.IScreen[]
+MethodTable: 00007ffe30fc67b0
+EEClass:     00007ffe2eea2308
+Size:        88(0x58) bytes
+Array:       Rank 1, Number of elements 3, Type CLASS
+Element Methodtable: 00007ffe2f9f1e40
+[0] 00000000bf000200
+[1] 00000000bf000240
+[2] 00000000bf000280

@@ -1,0 +1,82 @@
+# EXAMPLE-FIXTURE — lazer-offsets-gen il-inventory（自测用，**不是真实程序集的产物**）
+#
+# 结构照真实元数据的形态誊写：类型名是**开放泛型**定义（元数据里就只有这个名字）、
+# 字段挂在**声明它的类型**上（所以 `#extends` 行是必需的：SOS 把继承字段打印在对象
+# 自己的类型名下）。token / order / 显式偏移都是虚构值。
+# 真实清单由 `il --lazer-dir <lazer 安装目录>` 从 `osu.Game.dll` / `osu.Framework.dll`
+# 等托管程序集的元数据里读出来，本文件只用于自测。
+# lazer-offsets-gen il-inventory v1
+#	provenance	assembly
+#	fixture	true
+#	lazer_dir	C:\Users\EXAMPLE\AppData\Local\osulazer\current
+#	assemblies_managed	3
+#	assemblies_native	12
+#	assemblies_failed	0
+#	field_rows	51
+#	assembly:osu!.dll	2026.921.0.0	1 fields	C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu!.dll
+#	assembly:osu.Game.dll	2026.921.0.0	42 fields	C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+#	assembly:osu.Framework.dll	2026.921.0.0	8 fields	C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+#	assembly:System.Collections.dll	10.0.0.0	2 fields	C:\Users\EXAMPLE\AppData\Local\osulazer\current\System.Collections.dll
+#format	extends	derived	base
+extends	osu.Desktop.OsuGameDesktop	osu.Game.OsuGame
+extends	osu.Game.OsuGame	osu.Game.OsuGameBase
+extends	osu.Game.OsuGameBase	osu.Framework.Game
+extends	osu.Framework.Bindables.NonNullableBindable`1	osu.Framework.Bindables.Bindable`1
+extends	osu.Framework.Bindables.Bindable`1	System.Object
+extends	osu.Framework.Bindables.BindableList`1	System.Object
+extends	osu.Game.Beatmaps.FramedBeatmapClock	osu.Framework.Graphics.Component
+extends	osu.Framework.Timing.InterpolatingFramedClock	System.Object
+#format	field	assembly	type	field	kind	type_kind	type_display	token	explicit_offset	order
+field	osu.Framework.dll	osu.Framework.Game	<Host>k__BackingField	instance	class	osu.Framework.Platform.GameHost	04000010	-	4
+field	osu.Game.dll	osu.Game.OsuGame	<ScreenStack>k__BackingField	instance	class	osu.Game.Screens.OsuScreenStack	04000056	-	30
+field	osu.Game.dll	osu.Game.OsuGameBase	<Storage>k__BackingField	instance	class	osu.Framework.Platform.Storage	040000ff	-	45
+field	osu.Game.dll	osu.Game.OsuGameBase	<VersionHash>k__BackingField	instance	string	System.String	040000f1	-	41
+field	osu.Game.dll	osu.Game.OsuGameBase	<Beatmap>k__BackingField	instance	class	osu.Framework.Bindables.Bindable`1<osu.Game.Beatmaps.WorkingBeatmap>	04000101	-	47
+field	osu.Game.dll	osu.Game.OsuGameBase	SelectedMods	instance	class	osu.Framework.Bindables.BindableList`1<osu.Game.Rulesets.Mods.Mod>	04000103	-	49
+field	osu.Game.dll	osu.Game.OsuGameBase	Ruleset	instance	class	osu.Framework.Bindables.Bindable`1<osu.Game.Rulesets.RulesetInfo>	04000102	-	48
+field	osu.Game.dll	osu.Game.OsuGameBase	beatmapClock	instance	class	osu.Game.Beatmaps.FramedBeatmapClock	04000112	-	41
+field	osu.Game.dll	osu.Game.Beatmaps.FramedBeatmapClock	interpolatedTrack	instance	class	osu.Framework.Timing.InterpolatingFramedClock	04005bc4	-	9
+field	osu.Framework.dll	osu.Framework.Timing.InterpolatingFramedClock	<CurrentTime>k__BackingField	instance	prim	System.Double	04000068	-	8
+field	osu.Game.dll	osu.Game.IO.OsuStorage	<BasePath>k__BackingField	instance	string	System.String	0400024a	-	1
+field	osu.Game.dll	osu.Game.IO.OsuStorage	<UnderlyingStorage>k__BackingField	instance	class	osu.Framework.Platform.Storage	04004e63	-	5
+field	osu.Framework.dll	osu.Framework.Platform.DesktopStorage	<BasePath>k__BackingField	instance	string	System.String	0400024a	-	1
+field	System.Private.CoreLib.dll	System.String	_stringLength	instance	prim	System.Int32	04000382	-	1
+field	System.Private.CoreLib.dll	System.String	_firstChar	instance	prim	System.Char	04000383	-	2
+field	System.Private.CoreLib.dll	System.String	Empty	static	string	System.String	04000381	-	1
+field	osu.Framework.dll	osu.Framework.Bindables.Bindable`1	value	instance	var	!0	0400127b	-	4
+field	osu.Framework.dll	osu.Framework.Bindables.Bindable`1	<Description>k__BackingField	instance	string	System.String	04001280	-	9
+field	osu.Framework.dll	osu.Framework.Bindables.Bindable`1	disabled	instance	prim	System.Boolean	0400127d	-	6
+field	osu.Framework.dll	osu.Framework.Bindables.BindableList`1	collection	instance	class	System.Collections.Generic.List`1<!0>	0400128b	-	3
+field	osu.Framework.dll	osu.Framework.Bindables.BindableList`1	disabled	instance	prim	System.Boolean	0400128e	-	6
+field	osu.Framework.dll	osu.Framework.Bindables.BindableList`1	<Description>k__BackingField	instance	string	System.String	0400128f	-	7
+field	osu.Framework.dll	osu.Framework.Graphics.Containers.Container	Name	instance	string	System.String	04000a89	-	9
+field	osu.Game.dll	osu.Game.Beatmaps.WorkingBeatmapCache+BeatmapManagerWorkingBeatmap	BeatmapInfo	instance	class	osu.Game.Beatmaps.BeatmapInfo	04005bf5	-	1
+field	osu.Game.dll	osu.Game.Beatmaps.WorkingBeatmapCache+BeatmapManagerWorkingBeatmap	BeatmapSetInfo	instance	class	osu.Game.Beatmaps.BeatmapSetInfo	04005bf6	-	2
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<DifficultyName>k__BackingField	instance	string	System.String	04005ada	-	18
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<Difficulty>k__BackingField	instance	class	osu.Game.Beatmaps.BeatmapDifficulty	04005adc	-	20
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<Metadata>k__BackingField	instance	class	osu.Game.Beatmaps.BeatmapMetadata	04005add	-	21
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<BeatmapSet>k__BackingField	instance	class	osu.Game.Beatmaps.BeatmapSetInfo	04005ae0	-	24
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<Hash>k__BackingField	instance	string	System.String	04005ae5	-	29
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<MD5Hash>k__BackingField	instance	string	System.String	04005ae7	-	31
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<Length>k__BackingField	instance	prim	System.Double	04005ae3	-	27
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<StarRating>k__BackingField	instance	prim	System.Double	04005ae6	-	30
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapInfo	<OnlineID>k__BackingField	instance	prim	System.Int32	04005ae2	-	26
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapSetInfo	<Metadata>k__BackingField	instance	class	osu.Game.Beatmaps.BeatmapMetadata	04005b02	-	3
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapSetInfo	<OnlineID>k__BackingField	instance	prim	System.Int32	04005b08	-	9
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<Title>k__BackingField	instance	string	System.String	04005b26	-	3
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<TitleUnicode>k__BackingField	instance	string	System.String	04005b27	-	4
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<Artist>k__BackingField	instance	string	System.String	04005b28	-	5
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<ArtistUnicode>k__BackingField	instance	string	System.String	04005b29	-	6
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<Author>k__BackingField	instance	class	osu.Game.Models.RealmUser	04005b2a	-	7
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<Source>k__BackingField	instance	string	System.String	04005b2b	-	8
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<AudioFile>k__BackingField	instance	string	System.String	04005b2f	-	12
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapMetadata	<BackgroundFile>k__BackingField	instance	string	System.String	04005b30	-	13
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapDifficulty	<DrainRate>k__BackingField	instance	prim	System.Single	04005a8a	-	1
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapDifficulty	<CircleSize>k__BackingField	instance	prim	System.Single	04005a8b	-	2
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapDifficulty	<OverallDifficulty>k__BackingField	instance	prim	System.Single	04005a8c	-	3
+field	osu.Game.dll	osu.Game.Beatmaps.BeatmapDifficulty	<ApproachRate>k__BackingField	instance	prim	System.Single	04005a8d	-	4
+field	osu.Game.dll	osu.Game.Models.RealmUser	<Username>k__BackingField	instance	string	System.String	04004d53	-	2
+field	osu.Game.dll	osu.Game.Screens.OsuScreenStack	stack	instance	class	System.Collections.Generic.List`1<osu.Framework.Screens.IScreen>	040001dc	-	12
+field	osu!.dll	osu.Desktop.OsuGameDesktop	<IsFirstRun>k__BackingField	instance	prim	System.Boolean	0400012c	-	1
+field	System.Collections.dll	System.Collections.Generic.Stack`1	_array	instance	array	!0[]	04000097	-	1
+field	System.Collections.dll	System.Collections.Generic.Stack`1	_size	instance	prim	System.Int32	04000098	-	2

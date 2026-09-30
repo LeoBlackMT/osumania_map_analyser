@@ -32,6 +32,7 @@ import { buildSongKey, resolveChangeKind } from "./changeKind.js";
 import { noteTelemetryActivity } from "./telemetry.js";
 import { isOsuSuppressed } from "./sources/sourceManager.js";
 import { notifySourceEvent } from "./sources/sourceManager.js";
+import { noteOsuScanPayloadArrival } from "./sources/osuScanHint.js";
 
 
 function getModData(data) {
@@ -278,6 +279,12 @@ export function applyBeatmapState(data) {
         const hasStateMismatch = nextBeatmapIdentity !== previousBeatmapIdentity
             || nextModSignature !== previousModSignature;
         if (!hasStateMismatch) return;
+        // Step 9f：**带谱面身份、且真的改动了卡片**的载荷 ⇒ 壳相位提示（若有）撤掉。
+        // 判据刻意收窄（两道门）：① 无 `beatmap` 的空帧、身份没变的重复帧都不是"真载荷"
+        // ——Step 9e 把钩子挂在每条 v2 帧上（含空帧），提示因此被自己的清理规则打掉、且同一
+        // 相位值不再复活（真机现象：只闪 ~300 ms；tosu 的 v2 是 ≈10 帧/s 的持续流）；
+        // ② 只有页面真的在读壳的原生端点时才算（在 `noteOsuScanPayloadArrival` 里判）。
+        noteOsuScanPayloadArrival();
         notifySourceEvent("osu");
 
         if (shouldApplyModState) {

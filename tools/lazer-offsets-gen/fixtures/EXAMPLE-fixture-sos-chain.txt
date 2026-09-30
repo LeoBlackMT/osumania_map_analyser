@@ -1,0 +1,276 @@
+# EXAMPLE-FIXTURE — osu!lazer `dumpobj` 输出摘录（自测用，**不是真实 dump 的产物**）
+#
+# 这份文件是给小规模自测用的**示例数据**：字段名/类型/列形态照我们自己的 P4b 证据
+# （temp/osu-native-memory/evidence/P4b/sos-dumpobj-chain.txt）誊写，**地址与偏移是虚构的**
+# （虚构值放在 0xBF000000 段），任何偏移都不得从本文件进入产品表。
+# 自测会把本文件里的 `Offset`/`Value` 列种进一份**合成的 minidump**，再用真实代码路径
+# （minidump 解析 → 锚点扫描 → 解引用自证 → 链路走通 → 双见证出表）跑一遍。
+#
+# 只有 fixture 才有的 `#fixture-address <addr>` 行：真实的分析器输出**不回显地址**
+# （块与命令按顺序对应），fixture 用它把块钉在具体地址上。
+#
+# 块 1：GameBase（osu.Desktop.OsuGameDesktop）
+#
+# 解析几何（与 P4 实测同形：`anchor - delta = site`，再由站点多跳解出 GameBase）：
+#   GameBase 0xBF000FD8
+#     +0x6D8 = 0xBF0016B0  站点（指向 ExternalLinkOpener 的引用字段）——探针的 `elo` 入口
+#     +0x6FC = 0xBF0016D4  锚点（ScalingContainerTargetDrawSize 的 Vector2(1024f,768f)）
+#   锚点 − 0x24 = 站点 ⇒ `spec::ANCHOR_SITE_DELTA = 0x24`
+# 字段名口径：站点那一行按 P4 探针的命名（`elo` = externalLinkOpener）；
+# 真实元数据里的字段名没有独立验证过，所以这里只当"位置与指针"用，不参与任何匹配。
+#fixture-address 0xBF000FD8
+Name:        osu.Desktop.OsuGameDesktop
+MethodTable: 00007ff9e7ef8970
+Size:        1840(0x730) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu!.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04000d70       10        System.Double  Yes instance 0.000000 <TransformDelay>k__BackingField
+0000000000000000 040000f1      3d0        System.String   No instance 00000000bf000800 <VersionHash>k__BackingField
+00007ff9e826ee40 040000ff      440 ....Platform.Storage   No instance 00000000bf000200 <Storage>k__BackingField
+00007ff9e91207a8 04000101      450 ...atmap, osu.Game]]   No instance 00000000bf000400 <Beatmap>k__BackingField
+00007ff9e8348f18 04000103      460 ...Private.CoreLib]]   No instance 00000000bf001800 SelectedMods
+00007ff9e8347f70 04000102      458 ...tInfo, osu.Game]]   No instance 00000000bf001900 Ruleset
+00007ff9e8611b70 04000056      620 ...ns.OsuScreenStack   No instance 00000000bf000900 <ScreenStack>k__BackingField
+00007ff9e8c30000 04000112      4d8 osu.Game.Beatmaps.FramedBeatmapClock   No instance 00000000bf001c00 beatmapClock
+00007ff9e7c762d8 04000010      338 ...Platform.GameHost   No instance 00000000bf000a00 <Host>k__BackingField
+0000000000000000 04000a44      6d8 ...ExternalLinkOpener   No instance 00000000bf001a00 <ExternalLinkOpener>k__BackingField
+0000000000000000 04000a43      6fc        osuTK.Vector2  Yes instance 00000000bf0016d4 ScalingContainerTargetDrawSize
+0000000000000000 04000a45        8                        No   static 00000000bf35adc0 total_count
+# 块 2：存储（osu.Game.IO.OsuStorage）
+#fixture-address 0xBF000200
+Name:        osu.Game.IO.OsuStorage
+MethodTable: 00007ff9e872d308
+Size:        72(0x48) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 0400024a        8        System.String   No instance 00000000bf000300 <BasePath>k__BackingField
+00007ff9e826ee40 04004e63       10 ....Platform.Storage   No instance 00000000bf000280 <UnderlyingStorage>k__BackingField
+00007ff9e872d248 04004e56       38         System.Int32  Yes instance                0 Error
+# 块 3：桌面存储（osu.Framework.Platform.DesktopStorage）
+#fixture-address 0xBF000280
+Name:        osu.Framework.Platform.DesktopStorage
+MethodTable: 00007ff9e8454de0
+Size:        32(0x20) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 0400024a        8        System.String   No instance 00000000bf000300 <BasePath>k__BackingField
+00007ff9e7c762d8 04000249       10 ...Platform.GameHost   No instance 00000000bf000a00 host
+# 块 4：字符串（System.String；BasePath 的实例）
+#fixture-address 0xBF000300
+Name:        System.String
+MethodTable: 00007ff9e7aedd88
+Size:        58(0x3a) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\System.Private.CoreLib.dll
+String:      D:\Games\osu!lazer
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04000382        8         System.Int32  Yes instance               18 _stringLength
+0000000000000000 04000383        c         System.Char  Yes instance               44 _firstChar
+0000000000000000 04000381        8        System.String   No   static 00000000bf000300 Empty
+# 块 5：当前谱面的 Bindable（泛型实例化；OPEN-03 的 `value`@+0x20）
+#fixture-address 0xBF000400
+Name:        osu.Framework.Bindables.NonNullableBindable`1[[osu.Game.Beatmaps.WorkingBeatmap, osu.Game]]
+MethodTable: 00007ff9e91ae888
+Size:        96(0x60) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e834d428 04001278        8 ..., osu.Framework]]   No instance 00000000bf000b80 ValueChanged
+0000000000000000 04001279       10                        No instance 0000000000000000 DisabledChanged
+00007ff9e79f47c0 0400127b       20       System.__Canon   No instance 00000000bf000500 value
+00007ff9e79f47c0 0400127c       28       System.__Canon   No instance 00000000bf000c40 defaultValue
+0000000000000000 04001280       40        System.String   No instance 0000000000000000 <Description>k__BackingField
+0000000000000000 0400127d       50       System.Boolean  Yes instance                0 disabled
+# 块 6：谱面持有者（WorkingBeatmapCache 的嵌套类型）
+#fixture-address 0xBF000500
+Name:        osu.Game.Beatmaps.WorkingBeatmapCache+BeatmapManagerWorkingBeatmap
+MethodTable: 00007ff9e978cfe0
+Size:        104(0x68) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e7f37748 04005bf5        8 ...tmaps.BeatmapInfo   No instance 00000000bf000600 BeatmapInfo
+00007ff9e7f389c0 04005bf6       10 ...ps.BeatmapSetInfo   No instance 00000000bf000700 BeatmapSetInfo
+00007ff9e82c6580 04005bf8       20 ...lationTokenSource   No instance 00000000bf000680 loadCancellationSource
+# 块 7：BeatmapInfo
+#fixture-address 0xBF000600
+Name:        osu.Game.Beatmaps.BeatmapInfo
+MethodTable: 00007ff9e7f37748
+Size:        280(0x118) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04005ada       18        System.String   No instance 00000000bf000880 <DifficultyName>k__BackingField
+00007ff9e7f365e8 04005adc       28 ...BeatmapDifficulty   No instance 00000000bf001200 <Difficulty>k__BackingField
+00007ff9e7f380b0 04005add       30 ...s.BeatmapMetadata   No instance 00000000bf001100 <Metadata>k__BackingField
+00007ff9e7f389c0 04005ae0       48 ...ps.BeatmapSetInfo   No instance 00000000bf000700 <BeatmapSet>k__BackingField
+0000000000000000 04005ae5       50        System.String   No instance 00000000bf000840 <Hash>k__BackingField
+0000000000000000 04005ae7       58        System.String   No instance 00000000bf000800 <MD5Hash>k__BackingField
+0000000000000000 04005ae3       70        System.Double  Yes instance 179325.000000 <Length>k__BackingField
+0000000000000000 04005ae6       80        System.Double  Yes instance 2.920454 <StarRating>k__BackingField
+0000000000000000 04005ae2       8c         System.Int32  Yes instance           829261 <OnlineID>k__BackingField
+# 块 8：BeatmapSetInfo
+#fixture-address 0xBF000700
+Name:        osu.Game.Beatmaps.BeatmapSetInfo
+MethodTable: 00007ff9e7f389c0
+Size:        168(0xa8) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04005b02       28 ...s.BeatmapMetadata   No instance 00000000bf001100 <Metadata>k__BackingField
+0000000000000000 04005b08       88         System.Int32  Yes instance           123456 <OnlineID>k__BackingField
+# 块 9：BeatmapMetadata
+#fixture-address 0xBF001100
+Name:        osu.Game.Beatmaps.BeatmapMetadata
+MethodTable: 00007ff9e7f380b0
+Size:        120(0x78) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04005b26       18        System.String   No instance 00000000bf001400 <Title>k__BackingField
+0000000000000000 04005b27       20        System.String   No instance 00000000bf001400 <TitleUnicode>k__BackingField
+0000000000000000 04005b28       28        System.String   No instance 00000000bf001440 <Artist>k__BackingField
+0000000000000000 04005b29       30        System.String   No instance 00000000bf001440 <ArtistUnicode>k__BackingField
+00007ff9e7f35428 04005b2a       38 ....Models.RealmUser   No instance 00000000bf001500 <Author>k__BackingField
+0000000000000000 04005b2b       40        System.String   No instance 00000000bf001400 <Source>k__BackingField
+0000000000000000 04005b2f       58        System.String   No instance 00000000bf001480 <AudioFile>k__BackingField
+0000000000000000 04005b30       60        System.String   No instance 00000000bf0014c0 <BackgroundFile>k__BackingField
+0000000000000000 04005b2e       68         System.Int32  Yes instance            68883 <PreviewTime>k__BackingField
+# 块 10：BeatmapDifficulty
+#fixture-address 0xBF001200
+Name:        osu.Game.Beatmaps.BeatmapDifficulty
+MethodTable: 00007ff9e7f365e8
+Size:        64(0x40) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04005a8a       28        System.Single  Yes instance 4.000000 <DrainRate>k__BackingField
+0000000000000000 04005a8b       2c        System.Single  Yes instance 4.000000 <CircleSize>k__BackingField
+0000000000000000 04005a8c       30        System.Single  Yes instance 4.500000 <OverallDifficulty>k__BackingField
+0000000000000000 04005a8d       34        System.Single  Yes instance 6.000000 <ApproachRate>k__BackingField
+# 块 11：RealmUser（mapper）
+#fixture-address 0xBF001500
+Name:        osu.Game.Models.RealmUser
+MethodTable: 00007ff9e7f35428
+Size:        56(0x38) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04004d53       18        System.String   No instance 00000000bf001580 <Username>k__BackingField
+0000000000000000 04004d52       28         System.Int32  Yes instance           896613 <OnlineID>k__BackingField
+# 块 12：屏幕栈（state.name 的来源）
+#fixture-address 0xBF000900
+Name:        osu.Game.Screens.OsuScreenStack
+MethodTable: 00007ff9e8611b70
+Size:        848(0x350) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e9c13808 040001dc      320 ..., osu.Framework]]   No instance 00000000bf000d00 stack
+0000000000000000 04000a4d       e0        System.UInt64  Yes instance                2 <ChildID>k__BackingField
+    Thread static values (Thread:Value)
+        5a54:00000000b725d9f0
+# 块 12b：屏幕栈的**元素容器**（Step 10f）：真机装的是 `Stack<IScreen>`（不是 List！），
+# `_array`/`_size` 就是"当前屏幕"的唯一来源（`Push` 写在 `_array[_size++]`）。
+#fixture-address 0xBF000D00
+Name:        System.Collections.Generic.Stack`1[[osu.Framework.Screens.IScreen, osu.Framework]]
+MethodTable: 00007ff9e7ef9998
+Size:        32(0x20) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\System.Collections.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e7ef9999 04000097        8     System.__Canon[]   No instance 00000000bf000d40 _array
+0000000000000000 04000098       10         System.Int32  Yes instance                2 _size
+0000000000000000 04000099       14         System.Int32  Yes instance               17 _version
+# 块 12c：屏幕对象数组（`dumpobj` 对数组只回 `Fields: None`；元素布局由 `dumparray` 见证，
+# 这里的两行只是把两个元素的**值**种进合成镜像，名字借用 `[i]`）
+#fixture-address 0xBF000D40
+Name:        osu.Framework.Screens.IScreen[]
+MethodTable: 00007ff9e7ef999a
+Size:        32(0x20) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e7ef3001 04000111       10   osu.Framework.Screens.IScreen   No instance 00000000bf000d80 [0]
+00007ff9e7ef3002 04000112       18   osu.Framework.Screens.IScreen   No instance 00000000bf000dc0 [1]
+# 块 12d/12e：栈里的两枚屏幕对象（栈顶 = `_array[_size-1]` = 0xBF000DC0 = MainMenu）
+#fixture-address 0xBF000D80
+Name:        osu.Game.Screens.Loader
+MethodTable: 00007ff9e7ef3001
+Size:        1128(0x468) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields: None
+#fixture-address 0xBF000DC0
+Name:        osu.Game.Screens.Menu.MainMenu
+MethodTable: 00007ff9e7ef3002
+Size:        1128(0x468) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields: None
+# 块 13：当前 mod 的持有者（真机元数据里 `SelectedMods` 的声明类型是
+# `Bindable<IReadOnlyList<Mod>>`，所以运行时对象是它的嵌套泛型实例化；
+# `BindableList<T>` 在 2026.921.0.0 **不**继承 Bindable）
+#fixture-address 0xBF001800
+Name:        osu.Framework.Bindables.Bindable`1[[System.Collections.Generic.IReadOnlyList`1[[osu.Game.Rulesets.Mods.Mod, osu.Game]], System.Private.CoreLib]]
+MethodTable: 00007ff9e91b0000
+Size:        96(0x60) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e79f47c0 0400127b       20       System.__Canon   No instance 00000000bf001820 value
+0000000000000000 0400127d       50       System.Boolean  Yes instance                0 disabled
+# 块 14：当前规则集（Bindable<RulesetInfo> 实例）
+#fixture-address 0xBF001900
+Name:        osu.Framework.Bindables.Bindable`1[[osu.Game.Rulesets.RulesetInfo, osu.Game]]
+MethodTable: 00007ff9e91c0000
+Size:        80(0x50) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e79f47c0 0400127b       20       System.__Canon   No instance 00000000bf001920 value
+0000000000000000 04001280       40        System.String   No instance 00000000bf001940 <Description>k__BackingField
+# 块 15：站点读出的指针目标（osu.Game.Online.Chat.ExternalLinkOpener；P4 探针的 `elo`）
+#   `spec::GAME_BASE_HOPS[1]`：`elo + 0x218 (536)` 读出 `APIAccess`
+#fixture-address 0xBF001A00
+Name:        osu.Game.Online.Chat.ExternalLinkOpener
+MethodTable: 00007ff9e8a10000
+Size:        640(0x280) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04007001      218 ...i.APIAccess]]   No instance 00000000bf001b00 <api>k__BackingField
+# 块 16：APIAccess（P4 探针的 `api`）；`spec::GAME_BASE_HOPS[2]`：`api + 0x310 (784)` 读出 `game`
+#   —— 读出的就是块 1 的 GameBase 地址（这条链在 P4 真机上与 tosu 日志逐位相等）
+#fixture-address 0xBF001B00
+Name:        osu.Game.Online.API.APIAccess
+MethodTable: 00007ff9e8b20000
+Size:        896(0x380) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04007002      310        System.Object   No instance 00000000bf000fd8 game
+# 块 17：游戏级谱面时钟（`OsuGameBase.beatmapClock`；Step 10e 的 `beatmap.time.live` 第 1 跳）
+#   真机对应：`beatmapClock`@+0x4D8 → `osu.Game.Beatmaps.FramedBeatmapClock`
+#fixture-address 0xBF001C00
+Name:        osu.Game.Beatmaps.FramedBeatmapClock
+MethodTable: 00007ff9e8c30000
+Size:        632(0x278) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Game.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+00007ff9e7f2eb28 04005bc4      230 ...latingFramedClock   No instance 00000000bf001c40 interpolatedTrack
+# 块 18：插值音轨时钟（`InterpolatingFramedClock`；Step 10e 的 `beatmap.time.live` 第 2 跳，
+#   它的 `<CurrentTime>k__BackingField`（double 毫秒）就是 live 值）
+#fixture-address 0xBF001C40
+Name:        osu.Framework.Timing.InterpolatingFramedClock
+MethodTable: 00007ff9e7f2eb28
+Size:        88(0x58) bytes
+File:        C:\Users\EXAMPLE\AppData\Local\osulazer\current\osu.Framework.dll
+Fields:
+              MT    Field   Offset                 Type   VT     Attr            Value Name
+0000000000000000 04000068       38        System.Double  Yes instance    123456.789000 <CurrentTime>k__BackingField
+# 杂音：分析器自己会打的、与字段无关的行（解析器必须忽略而不是报错）
+<Note: this object has an invalid CLASS field>
+Invalid object

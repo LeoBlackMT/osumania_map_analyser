@@ -6,6 +6,7 @@ import {
     ettSkillBarsEl,
     getActiveContentBar,
     hasAnyGraphModeEnabled,
+    isRuntimeOsuOverrideActive,
     mainCardEl,
     parseAutoModeValue,
     parseCardOpacityValue,
@@ -371,7 +372,10 @@ export function applyWsEndpointSetting(value) {
     const changed = state.wsEndpoint !== next;
     state.wsEndpoint = next;
 
-    if (changed && socket && typeof socket.setHost === "function") {
+    // 运行时覆盖激活期间（native 传输，契约 v6）**不重定向 socket**：`wsEndpoint` 只是
+    // "回落时用哪个端点"的取值。此时 setHost 会把连接指回 tosu，正好破坏刚生效的切换
+    // （壳的 settings 帧每 30s 推一次、用户改设置也推，切回是必然发生的）。
+    if (changed && !isRuntimeOsuOverrideActive() && socket && typeof socket.setHost === "function") {
         socket.setHost(next, true);
     }
 

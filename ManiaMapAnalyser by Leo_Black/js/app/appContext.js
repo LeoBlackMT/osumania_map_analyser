@@ -8,19 +8,102 @@ export { APP_CONFIG };
 export const ENDPOINT = APP_CONFIG.endpoint;
 export const SOCKET_HOST = APP_CONFIG.socketHost;
 
+/** osu 数据面的默认路径（= 现状常量；契约 v6 的 `osuTransport.{wsPath,filesPath}` 期望值）。 */
+const OSU_WS_PATH = "/websocket/v2";
+const OSU_FILES_PATH = "/files/beatmap";
+/** 壳页端口：只有壳自己的窗口（24061）接受运行时端点覆盖。 */
+const SHELL_PAGE_PORT = "24061";
+
+/**
+ * 单一 host 字符串（WS URL、`.osu` 端点、背景图全由它派生，DEC-20）：
+ * 运行时覆盖（契约 v6：壳经 state 帧下发 `sources.osu.osuTransport`）优先，
+ * 否则 = 设置里的 `wsEndpoint`（无壳 / `mode:"tosu"` 时行为逐字节不变）。
+ *
+ * **绝不写 `state.wsEndpoint`** —— 它在 `SETTING_CACHE_KEYS` 里（settings.js:783-789），
+ * 走设置路径会每次切换清空结果缓存（DEC-12）。
+ */
 export function getSocketHost() {
+    if (state.runtimeOsuHost) {
+        return state.runtimeOsuHost;
+    }
     const host = typeof state.wsEndpoint === "string" ? state.wsEndpoint.trim() : "";
     return host || SOCKET_HOST;
 }
 
+/** 运行时覆盖是否激活（native 传输）。覆盖只由壳页的 state 帧写入。 */
+export function isRuntimeOsuOverrideActive() {
+    return Boolean(state.runtimeOsuHost);
+}
+
+/**
+ * 本页是否是**壳自己的页**（24061）。只有它接受运行时端点覆盖（见 `normalizeOsuTransport`）
+ * 与壳的相位提示（`sources/osuScanHint.js`）：浏览器 tosu 页（24050）上壳也可能在跑，
+ * 但那页面的数据面是 tosu，壳的读取器状态与它无关。
+ */
+export function isShellPage() {
+    return typeof window !== "undefined"
+        && Boolean(window.location)
+        && String(window.location.port) === SHELL_PAGE_PORT;
+}
+
 export function getEndpoint() {
-    return `http://${getSocketHost()}/files/beatmap/file`;
+    return `http://${getSocketHost()}${OSU_FILES_PATH}/file`;
+}
+
+/**
+ * 归一化壳下发的 osu 端点描述：不合格一律 `null`（= 回落 `wsEndpoint`，绝不猜）。
+ *
+ * 页面的 WS 路径与文件路径是硬编码的，故壳声明的 `wsPath`/`filesPath` 必须与之一致；
+ * 对不上说明这个 origin 与页面对不上话，**拒绝覆盖**（fail-closed，仍走 tosu）。
+ */
+function normalizeOsuTransport(transport) {
+    if (!transport || transport.mode !== "native") {
+        return null;
+    }
+    if (!isShellPage()) {
+        return null; // 浏览器 tosu 页：osu 是唯一数据面，绝不被壳换掉端点
+    }
+    const host = typeof transport.host === "string" ? transport.host.trim() : "";
+    const port = Number(transport.port);
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+        return null;
+    }
+    if (transport.wsPath !== OSU_WS_PATH || transport.filesPath !== OSU_FILES_PATH) {
+        console.warn(`mma shell: refusing osu transport with unknown paths (wsPath=${transport.wsPath}, filesPath=${transport.filesPath})`);
+        return null;
+    }
+    return { host: `${host}:${port}` };
+}
+
+/**
+ * 应用壳下发的 osu 端点（契约 v6 的 `sources.osu.osuTransport`）。
+ *
+ * - 只接受 `mode:"native"` 且字段/路径合格的端点（见 `normalizeOsuTransport`）；
+ * - 其余（`mode:"tosu"` / 字段缺失 / 端口非法 / 路径不符）⇒ 清覆盖，`getSocketHost()`
+ *   回到 `state.wsEndpoint`；
+ * - 覆盖变化只做 `socket.setHost(...)`（关掉旧连接 + 按新 host 重开）。**不碰结果缓存**：
+ *   既不写 `state.wsEndpoint`，也不派发设置变更 ⇒ `wsEndpoint` 的缓存失效路径不会被触发。
+ * @param {object|null} transport 壳 state 帧里的 `sources.osu.osuTransport`
+ * @returns {boolean} 覆盖是否变化（true = 已按新端点重开 socket）
+ */
+export function applyOsuTransport(transport) {
+    const next = normalizeOsuTransport(transport);
+    const host = next ? next.host : "";
+    if (host === state.runtimeOsuHost) {
+        return false;
+    }
+    state.runtimeOsuHost = host;
+    socket.setHost(getSocketHost(), true);
+    return true;
 }
 
 export const STAR_BG_STOPS = APP_CONFIG.starStops.background;
 export const STAR_TEXT_STOPS = APP_CONFIG.starStops.text;
 
 export const statusEl = document.getElementById("status");
+// 壳相位提示的**专属**元素（Step 9f）：与 `#status` 同排但写入者只有 `sources/osuScanHint.js`
+// —— 共享状态行由分析流程掌控，提示借写在那里会被任何一次外部改写打掉（Step 9e 实测只闪 300 ms）。
+export const osuScanHintEl = document.getElementById("osu-scan-hint");
 export const reworkStarEl = document.getElementById("rework-star");
 export const reworkDiffEl = document.getElementById("rework-diff");
 export const reworkRightCapsuleEl = document.getElementById("rework-right-capsule");
@@ -157,6 +240,17 @@ export const state = {
     initialSettingsResolver: null,
     analysisRequestSeq: 0,
     wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
+    // 运行时 osu 端点覆盖（契约 v6 / DEC-12）：壳页的 state 帧写入；空 = 用 wsEndpoint。
+    // 只被 getSocketHost() 读，绝不参与设置路径（见 applyOsuTransport）。
+    runtimeOsuHost: "",
+    // 壳 `sources.osu` 的传输位：native 传输可用（sourceManager 的败方门控据此把 osu 当活源）。
+    shellOsuNativeAlive: false,
+    // 壳 `sources.osu` 的相位诊断（契约 v6 / Step 9e）：`waiting-for-game` / `attaching` /
+    // `scanning` / `healthy` / `unavailable`。提示句 `notice` 由**壳**给（英文），
+    // 页面只渲染它、不做自己的文案；`shellOsuProgress` 只作诊断（算子可读，页面不渲染）。
+    shellOsuPhase: null,
+    shellOsuNotice: null,
+    shellOsuProgress: null,
 };
 
 export const MODE_TAG_OPTIONS = APP_CONFIG.options.modeTag;
