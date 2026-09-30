@@ -1,6 +1,6 @@
 # 多数据源：Etterna、Malody V、Malody 4 接入
 
-> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/shell-guide.md` 与 `bridges/` 下的安装说明。Malody 4.3.7 原生客户端源的完整说明（只读观察通道、版本门、索引、帧与限制）见 [malody4-source.md](malody4-source.md)；其动态判定 OD 见 [malody-od.md](malody-od.md)。
+> 面向 AI 的技术文档。给人类的使用安装说明见 `docs/shell-guide.md` 与 `bridges/` 下的安装说明。Malody 4.3.7 原生客户端源的完整说明（只读观察通道、版本门、索引、帧与限制）见 [malody4-source.md](malody4-source.md)；其动态判定 OD 见 [malody-od.md](malody-od.md)；**osu 源的第二套传输（壳内原生读取 + 24062 兼容 origin）见 [osu-native-source.md](osu-native-source.md)**。
 
 ## 功能说明
 
@@ -28,11 +28,26 @@ Malody 4.3.7（原生客户端，零注入只读观察：ReadProcessMemory 读�
   → 分析结果展示在壳窗口卡片（不回写 txt 到游戏内）
 ```
 
-- 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版在线（tosu 存活）双活数据面。
+- 双宿主：浏览器版（无壳）自动降级 osu 单源；壳版的数据面是**多源并存**——osu 走"原生传输优先、tosu 兜底"（见下节），Etterna/Malody V/Malody 4 走壳的桥/观察器。
 - **Malody V 游戏内选曲桥通道说明**：游戏侧是 BepInEx 6 IL2CPP 插件（`local.mma.malody.selection`），源码在 `bridges/malody/bepinex/plugin/`，安装走 `bridges/install-bridge.ps1 -Game MalodyBridge`。插件把选曲/游玩/结算的观察 POST 到 `127.0.0.1:17653/selection`（先 8 字段，现 11 字段），壳侧归一化、去重、按内容六元组（含 Pro 与 Turbo）判定真实事件，再广播 song/state 帧。**它不需要用户打开任何面板**：判定档与 Pro 都由插件主动读取（判定档来自播放设置记录，Pro 来自 `Malody.Play.boq` 的 `bcgh`），面板记录仅作交叉校验。**不得与上游 `MalodyInsightBridge` 共存**（双 Hook）。
 - Malody 编辑器通道说明：Malody `WriteFile` 只能写当前谱面目录且强制加谱面名前缀（`<base>_mma_request.json`）；`DoRequest` 的 POST+body 被 Malody 网络层拒绝（`invalid url: {body}`）；壳用 request 文件名 base 锁定同目录 `<base>.mc|.osu`（与命名/格式无关，.osu 谱也可分析）。不装插件时这是 Malody V 的唯一通道。
 - Malody 4.3.7 通道说明：**不向游戏目录写入任何文件**、不注入 DLL、不用 BepInEx/Lua、不修改游戏内存；只支持 4.3.7 这一个二进制（PE `TimeDateStamp = 0x5D79AC91` 且文件大小 `4,750,848`，不符则整条通道不可用并给出 `target-mismatch:*` 原因），且仅 Windows。
-- 契约：`desktop/docs/CONTRACT.md`（**版本 5**：`song` 帧与 `sources.malody` 都新增 `pro`/`turbo`、`winScale` 可为 `null`；页面接受 `[3,5]`。帧型与领域清单见该文件）。
+- 契约：`desktop/docs/CONTRACT.md`（**版本 6**：`state.sources.osu` 端点下发（见下节）；`song` 帧与 `sources.malody` 带 `pro`/`turbo`、`winScale` 可为 `null`；页面接受 `[3,6]`。帧型与领域清单见该文件）。
+
+## osu 传输层（原生源 + tosu 兜底 + 浏览器模式不变式）
+
+osu 源在壳版里有**两条传输**，页面只看一条（`DECISIONS.md` DEC-04 / DEC-12 / DEC-20）：
+
+| 传输 | 数据面 | 何时生效 |
+|---|---|---|
+| `native` | 壳内只读内存读取器（`desktop/src/osu/**`）经 **24062** tosu 兼容子集 origin 供数（WS `/websocket/v2` + `GET /files/beatmap/{file,background}`，全部带 ACAO） | 读取器健康且 24062 已绑定、且壳配置没强制 tosu（`desktop/src/server/osu_source.rs:83-111`）；页面**只在壳页（24061）**接受覆盖 |
+| `tosu` | 用户设置里的 `wsEndpoint`（默认 24050），行为与无壳时逐字节相同 | 其余全部情形：未附着 / `unhealthy` 掉线超过 25 s / 24062 未绑定 / 壳配置显式 `"osuTransport": "tosu"` |
+
+- **端点怎么换**：壳把 `sources.osu.osuTransport{mode,host,port,wsPath,filesPath}` 放进 state 帧（值变即推，不等 30 s 周期），页面在 **socket 层**运行时切换（`js/app/appContext.js` 的 `applyOsuTransport` → `socket.setHost()`）——**绝不写 `state.wsEndpoint`**（它在 `SETTING_CACHE_KEYS` 里，走设置路径会每次切换清空结果缓存）。
+- **原生位进路由**：`state.shellOsuNativeAlive` 是"覆盖真的生效"的位，进 L3' 存活回窗（`sourceManager.js:127`）与 osu 败方门控（`sourceManager.js:186`）——否则原生帧会被当"败方帧"静默缓冲（用户可见现象：换图不更新）。
+- **浏览器模式不变式（硬约束）**：无壳 / 浏览器 tosu 页（24050）永不接受端点覆盖（`isShellPage()` 门控），`state.wsEndpoint` 与结果缓存的语义一字不变；原生传输的失败面（reason 闭集、`degradedFields`、冻结/保持）只出现在壳页。
+- **能力边界（逐客户端）**：stable 供计划 §3.3 的完整字段表；lazer 供身份/状态/时间/`.osu` 解析面，mods 三槽 / hits 两枚 / 背景音频共 **7 条字段缺口**逐条进 `sources.osu.degradedFields`（详见 [osu-native-source.md](osu-native-source.md) §6）。
+- 域内细节（架构、reason 闭集、L0–L3 健康机、锚点失效定位、lazer 偏移表重建、自检清单）一律以 [osu-native-source.md](osu-native-source.md) 为唯一权威，本节只描述它在多源体系里的位置。
 
 ## 转换器
 
@@ -81,7 +96,7 @@ analyze 事件新增 `client` 字段（osu/etterna/malody/**malody4**，取值�
 
 # Multi-source: Etterna, Malody V and Malody 4
 
-Technical document for AI readers. Human installation guides: `docs/shell-guide.md` and per-bridge READMEs. The Malody 4.3.7 native-client source has its own full document ([malody4-source.md](malody4-source.md)) and its dynamic judge OD table lives in [malody-od.md](malody-od.md).
+Technical document for AI readers. Human installation guides: `docs/shell-guide.md` and per-bridge READMEs. The Malody 4.3.7 native-client source has its own full document ([malody4-source.md](malody4-source.md)) and its dynamic judge OD table lives in [malody-od.md](malody-od.md); the osu source's second transport (in-shell native reader + the 24062 compatible origin) lives in [osu-native-source.md](osu-native-source.md).
 
 Adds Etterna, Malody V and the Malody 4.3.7 native client as live data sources beside osu!mania/tosu, with automatic follow on game switch. **Zero algorithm-layer changes**: `.sm/.ssc/.mc` are converted to `.osu` text and enter the existing pipeline. Each source has its own identity prefix: osu keeps id/hash/path, Etterna `ett:`, Malody V `mdy:`, Malody 4 `mdy4:{md5}` (independent prefixes that never collide).
 
@@ -90,7 +105,8 @@ Adds Etterna, Malody V and the Malody 4.3.7 native client as live data sources b
 - Router: `js/app/sources/sourceManager.js` decision table L1–L4+L3' (play-state > 60s fresh-event window with hold/preempt > priority reselect > tosu-alive re-entry > none); priority `osu > Etterna > Malody 4 > Malody`; forced `gameClient` (also `Malody 4`); the malody4 L2 window is renewed only by a non-heartbeat selection frame with a non-empty `path`; source dot uses each game's brand color (osu! pink / Etterna purple / Malody 4 cyan `#22d3ee` / Malody V blue).
 - osu gate: beatmap-state handler suspended while another source routes (signals exempt, buffered replay on return).
 - Malody V has two channels: the in-game song-selection bridge (`bridges/malody/bepinex/`, a BepInEx 6 IL2CPP plugin built from this repo, GUID `local.mma.malody.selection`) which POSTs observations to `127.0.0.1:17653/selection` and follows selection, gameplay and results with **no user action required**, and the editor Lua plugin (`mma_request.json`) which remains as the fallback when the bridge is not installed. Never co-install the upstream `MalodyInsightBridge` (double hooking).
-- Bridge contract: `desktop/docs/CONTRACT.md` (v5: `song` and `sources.malody` both carry `pro`/`turbo`, `winScale` may be `null`; the page accepts `[3,5]`).
+- Bridge contract: `desktop/docs/CONTRACT.md` (**v6**: `state.sources.osu` endpoint delivery — see below; `song` and `sources.malody` both carry `pro`/`turbo`, `winScale` may be `null`; the page accepts `[3,6]`).
+- osu transport layer: inside the shell the osu source has **two transports** — `native` (the in-shell read-only memory reader behind the **24062** tosu-compatible subset origin, WS `/websocket/v2` + `GET /files/beatmap/{file,background}` with ACAO) and `tosu` (the user's `wsEndpoint`, byte-identical to the no-shell behaviour). The shell publishes `sources.osu.osuTransport` in the state frame and the page switches at the **socket layer** (`appContext.applyOsuTransport` → `socket.setHost()`), **never** writing `state.wsEndpoint` (it sits in `SETTING_CACHE_KEYS`, so the settings path would clear the result cache on every switch). The native bit (`state.shellOsuNativeAlive`) also feeds the router's alive re-entry and the osu gate, otherwise native frames would be buffered as "losing-side" frames (visible symptom: chart changes stop updating). **Browser-mode invariant (hard)**: the no-shell page and the browser tosu page (24050) never accept an endpoint override; `state.wsEndpoint` and the result-cache semantics stay unchanged. Per-client capability boundary: stable publishes the full §3.3 field table, while lazer publishes the identity/state/time/`.osu`-parsed surface and reports its **7 remaining field gaps** (three mod slots, two hit sets, background/audio) one by one in `sources.osu.degradedFields`. Domain details (architecture, `reason` closed set, L0–L3 health machine, locating an anchor failure, regenerating the lazer offset table, self-check list) live in [osu-native-source.md](osu-native-source.md).
 - Telemetry: analyze `client` field (values include `malody4`), dashboard Client pie with Version on its own row.
 - Boundaries documented: Malody V results only via editor POST (resolve by title/path); malody4 follows the game's own anchor md5 and indexes `.mc` only; rate→speedRate; devMsd8 dev-only; pause/livePP not implemented for non-osu; malody4 needs no admin rights and writes nothing into the game folder. Skin display removed (2026-09).
 - Known gaps: external cover consumption, live PoC items (DoRequest/ReadFileSelect/PlayMeta), malody4 screen-based display gating, `.osu` indexing, multi-library/multi-instance, the Malody V judge-window table and FAIR modelling, browser end-to-end pending environment. This source was previously ruled out (`.omo/plans/malody-v-bepinex-selection-bridge.md:19`) and was reinstated once the zero-injection read-only channel was verified in practice.

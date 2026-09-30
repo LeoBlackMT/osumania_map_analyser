@@ -412,6 +412,22 @@ export async function fetchBeatmapFile(reason) {
     let errors = [];
     const genAtStart = resultCacheGeneration();
     const analysisStartedAt = performance.now();
+    // 遥测 client（DEC-10）：本次分析的**数据源**，取值 =
+    // `lazer` / `stable`（壳内 native 内存读取）/ `lazer(tosu)` / `stable(tosu)`（tosu 供数）/
+    // `malody` / `malody4` / `etterna`（后端 `daily_agg` 直接以它为维度：不新增字段、不改后端）。
+    // **在请求开始处快照** —— 分析是长流程（抓取 → worker → WASM），期间可能发生
+    // native→tosu 回落，载荷值必须对整张谱面稳定。
+    //   - Malody / Etterna 源：直接取 `state.activeSource`（`malody` 覆盖 BepInEx 通道与编辑器插件）；
+    //   - osu 源：先定**游戏客户端**（`state.client`：native 下是我们自己载荷里的 client，tosu 下是
+    //     tosu 的 client，两处都是 `stable`/`lazer`；非 lazer 一律计 stable），再定**谁在供数** ——
+    //     运行时覆盖真的生效（壳页 24061 且端点/路径校验通过）⇒ 裸值；否则（无壳 / 浏览器 tosu 页 /
+    //     旧壳 ≤v5 / native 已回落）⇒ 加 `(tosu)` 后缀。fail-silent：缺字段绝不猜成 native 侧的值。
+    const telemetryNativeOsu = !!(state.runtimeOsuHost || state.shellOsuNativeAlive);
+    const telemetryOsuClient = String(state.client || "").toLowerCase() === "lazer" ? "lazer" : "stable";
+    const telemetryClient = state.activeSource === "malody4" ? "malody4"
+        : state.activeSource === "malody" ? "malody"
+            : state.activeSource === "etterna" ? "etterna"
+                : telemetryNativeOsu ? telemetryOsuClient : `${telemetryOsuClient}(tosu)`;
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
     // 取出 socket 层判定的本次变化类型并清空，避免之后纯改设置的 recompute
@@ -1325,7 +1341,7 @@ export async function fetchBeatmapFile(reason) {
             const payload = {
                 algorithm: state.estimatorAlgorithm,
                 ...(telemetryActualAlgorithm ? { actualAlgorithm: telemetryActualAlgorithm } : {}),
-                client: state.activeSource || "osu",
+                client: telemetryClient,
                 keycount: Number(rework.columnCount),
                 mods: state.modCodes || [],
                 speedRate: Number(state.speedRate) || 1,
