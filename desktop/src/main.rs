@@ -37,6 +37,7 @@ static WINDOW_STATE: Mutex<config::WindowState> = Mutex::new(config::WindowState
     h: 680,
     topmost: true,
     click_through: false,
+    settings: None,
 });
 
 /// 启动 URL（契约 v6，修 DEC-21 的缺陷②）。
@@ -597,7 +598,7 @@ fn main() {
                     }
                     _ => {}
                 },
-                // 设置窗口：几何写**独立文件** mma-shell-settings-window.json。
+                // 设置窗口：几何合并写入 mma-shell-state.json 的 settings 字段。
                 // 事件载荷是 **Physical** 坐标/尺寸（tauri-runtime-2.11.3/src/window.rs:32,34），
                 // 与 settings_window.rs 的 Physical* 建窗参数同一约定：**原样存储**，
                 // 绝不做 logical/DPI 换算。
@@ -607,12 +608,18 @@ fn main() {
                         state.x = position.x;
                         state.y = position.y;
                         config::write_settings_window_state(&state);
+                        if let Ok(mut st) = WINDOW_STATE.lock() {
+                            st.settings = Some(state);
+                        }
                     }
                     tauri::WindowEvent::Resized(size) => {
                         let mut state = config::read_settings_window_state();
                         state.w = size.width;
                         state.h = size.height;
                         config::write_settings_window_state(&state);
+                        if let Ok(mut st) = WINDOW_STATE.lock() {
+                            st.settings = Some(state);
+                        }
                     }
                     // 关闭与销毁都要复位标志并恢复主窗置顶（两条路径都可能先到）。
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {

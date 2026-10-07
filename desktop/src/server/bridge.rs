@@ -1012,10 +1012,11 @@ fn resolve_settings(shared: &Shared, payload: &BridgeSelection, rate: f64) -> Re
             judge_unavailable_log(config_path.as_deref(), fallback.is_some()),
         ));
     }
-    // `winScale` 判不出来 ⇒ 一条 info 说明原因（`null` 会原样进 song 帧）。
+    // `winScale` 判不出来 ⇒ 一条 debug 说明原因（`null` 会原样进 song 帧）。
+    // 在 1.00x 常规倍率下 winScale=null 是常态，不应在 info 级别刷屏。
     if win_scale.is_none() {
         logs.push((
-            "info",
+            "debug",
             LogKind::WinScale,
             win_scale_fallback_log(turbo, rate),
         ));

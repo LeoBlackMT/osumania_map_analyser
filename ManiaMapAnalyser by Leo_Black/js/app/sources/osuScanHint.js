@@ -55,6 +55,7 @@ export function syncOsuScanHint() {
         shellOnline: state.externalBridgeAvailable === true,
         shellPage: isShellPage(),
         framesFlowing: latch.payloadSeen,
+        activeSource: state.activeSource,
     });
     applyOsuScanHintText(hint.active ? hint.text : "");
 }

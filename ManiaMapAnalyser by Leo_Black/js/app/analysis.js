@@ -397,8 +397,8 @@ export async function fetchBeatmapFile(reason) {
     const isShellOfflinePage = typeof window !== "undefined"
         && window.location
         && String(window.location.port) === "24061";
-    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable
-        && !state.shellTosuOnline && !state.tosuDataSeen) {
+    if (reason === "initial load" && isShellOfflinePage
+        && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive()) {
         setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
         return;
     }
@@ -545,9 +545,9 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty external beatmap content.");
             }
         } else {
-            // 壳离线页（24061）无 tosu 数据面时任何 osu 抓取都守卫：Waiting 而非报错。
-            if (isShellOfflinePage && state.externalBridgeAvailable
-                && !state.shellTosuOnline && !state.tosuDataSeen && !state.pendingSourceText) {
+            // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
+            if (isShellOfflinePage
+                && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive() && !state.pendingSourceText) {
                 setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                 return;
             }

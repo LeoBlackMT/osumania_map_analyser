@@ -473,6 +473,15 @@ fn run(reader: Reader) {
                     // 的实测回调填）。写在 `attached = Some(target)` 之前：`win::Target` 不实现
                     // `Clone`，`pid` 只能借在移动之前。
                     publish_phase(&reader, Phase::Scanning, None, &format!("pid={}", target.pid));
+                    crate::server::log::log_at(
+                        "info",
+                        &format!(
+                            "[osu] attached to {:?} (pid={}, image={})",
+                            target.client(),
+                            target.pid,
+                            target.image_path.display()
+                        ),
+                    );
                     attached = Some(target);
                     anchors = None;
                     lazer_attach = None;
@@ -585,6 +594,13 @@ fn run(reader: Reader) {
                                 "[osu] lazer L0 failed (attempt {}): {detail}",
                                 scan_fail_attempt + 1
                             );
+                            crate::server::log::log_at(
+                                "warn",
+                                &format!(
+                                    "[osu] lazer L0 failed (attempt {}): {detail}",
+                                    scan_fail_attempt + 1
+                                ),
+                            );
                             last_scan_fail = Some(std::time::Instant::now());
                             let outcome = gate.on_anchor_failure(reason.clone(), now_ms);
                             log_transition(&outcome);
@@ -695,6 +711,13 @@ fn run(reader: Reader) {
                                 "[osu] anchor scan failed (attempt {}): {detail}",
                                 scan_fail_attempt + 1
                             );
+                            crate::server::log::log_at(
+                                "warn",
+                                &format!(
+                                    "[osu] anchor scan failed (attempt {}): {detail}",
+                                    scan_fail_attempt + 1
+                                ),
+                            );
                             last_scan_fail = Some(std::time::Instant::now());
                             let outcome = gate.on_anchor_failure(reason.clone(), now_ms);
                             log_transition(&outcome);
@@ -803,6 +826,10 @@ fn run(reader: Reader) {
                 Err(reason) => {
                     let detail = reason.as_str();
                     eprintln!("[osu] read failed, detaching: {detail}");
+                    crate::server::log::log_at(
+                        "warn",
+                        &format!("[osu] read failed, detaching: {detail}"),
+                    );
                     let outcome = gate.on_anchor_failure(reason.clone(), now_ms);
                     log_transition(&outcome);
                     publish_outcome(&reader, &gate, &outcome, None, None, Some(client));
@@ -881,6 +908,7 @@ fn publish_phase(reader: &Reader, phase: Phase, scan: Option<ScanProgress>, deta
     };
     if let Some(line) = transition {
         eprintln!("{line}");
+        crate::server::log::log_at("info", &format!("[osu] {line}"));
     }
 }
 

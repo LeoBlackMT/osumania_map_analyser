@@ -28,6 +28,10 @@ export function deriveOsuScanHint(input) {
     if (!input || !input.shellOnline || !input.shellPage) {
         return { active: false, text: "" }; // 无壳 / 非壳页：绝不提示（浏览器行为逐字节不变）
     }
+    // 非 osu 来源处于活跃状态（如用户正在使用 Malody / Etterna / Malody 4）时，不显示 osu 提示
+    if (input.activeSource && input.activeSource !== "osu") {
+        return { active: false, text: "" };
+    }
     if (input.framesFlowing) {
         return { active: false, text: "" }; // 真载荷已流动 ⇒ 提示必须消失
     }

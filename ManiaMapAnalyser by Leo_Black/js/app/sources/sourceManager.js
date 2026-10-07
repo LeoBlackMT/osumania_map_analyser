@@ -23,6 +23,7 @@
 // 一条 tosu 包，切回 osu 时先回放再 recompute（缓存键对齐）。
 
 import { state } from "../appContext.js";
+import { syncOsuScanHint } from "./osuScanHint.js";
 
 const FRESH_WINDOW_MS = 60000;
 const DEBOUNCE_MS = 200;
@@ -158,6 +159,7 @@ function scheduleApply() {
         state.lastSourceRoute = next;
         state.activeSource = next;
         syncDot(next);
+        syncOsuScanHint();
         if (onApplied && prev !== next) {
             onApplied(next, prev);
         }

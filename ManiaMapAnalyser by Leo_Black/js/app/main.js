@@ -1,5 +1,5 @@
 import { fetchBeatmapFile } from "./analysis.js";
-import { state } from "./appContext.js";
+import { isRuntimeOsuOverrideActive, state } from "./appContext.js";
 import { startGraphAnimationLoop } from "./graph.js";
 import {
     updateCardPlayVisibility,
@@ -68,8 +68,8 @@ export async function initialize() {
     const isShellOfflinePage = typeof window !== "undefined"
         && window.location
         && String(window.location.port) === "24061";
-    const shellOffline = isShellOfflinePage && state.externalBridgeAvailable
-        && !state.shellTosuOnline && !state.tosuDataSeen;
+    const shellOffline = isShellOfflinePage
+        && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive();
     if (shellOffline) {
         // 兜底定时器登记在 state.recalcTimerId 上：窗口期内 tosu 载荷到达时，
         // socketHandlers 的 scheduleRecompute 会清掉它并在 200ms 内计算，
