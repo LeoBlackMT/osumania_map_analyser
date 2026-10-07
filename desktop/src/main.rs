@@ -318,6 +318,18 @@ fn main() {
                         &format!("existing instance: open-settings FAILED: {}", e),
                     ),
                 }
+            } else {
+                // 无 --settings：唤醒/聚焦既有实例的主窗口
+                match shell_http_request("POST", "/show-main", "Content-Length: 0\r\n") {
+                    Ok(response) => server::log::log_line(&format!(
+                        "existing instance: show-main forwarded ({})",
+                        response.lines().next().unwrap_or("(no status line)")
+                    )),
+                    Err(e) => server::log::log_at(
+                        "error",
+                        &format!("existing instance: show-main FAILED: {}", e),
+                    ),
+                }
             }
             // 无论是否带 --settings：既有实例在前，本进程一个窗口都不建。
             std::process::exit(0);
@@ -591,10 +603,11 @@ fn main() {
                         WINDOW_STATE.lock().unwrap().h = size.height;
                         merge_disk_flags_and_persist();
                     }
-                    tauri::WindowEvent::CloseRequested { .. } => {
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         merge_disk_flags_and_persist();
-                        // 主窗关闭 ⇒ 连带关闭设置窗口（子窗不该独自存活）。
+                        // 主窗关闭 ⇒ 连带关闭设置窗口并退出进程（避免留下无窗口僵尸进程占用端口）。
                         settings_window::close(window.app_handle());
+                        std::process::exit(0);
                     }
                     _ => {}
                 },

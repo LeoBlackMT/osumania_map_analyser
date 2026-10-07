@@ -235,6 +235,27 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         return;
     }
 
+    // POST /show-main：聚焦/显示主悬浮窗（第二实例启动时无 --settings 则转交此端点）。
+    if method == "POST" && path == "/show-main" {
+        let app = shared.app.lock().unwrap().clone();
+        match app {
+            Some(app) => {
+                let app2 = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    use tauri::Manager;
+                    if let Some(main_win) = app2.get_webview_window("main") {
+                        let _ = main_win.unminimize();
+                        let _ = main_win.show();
+                        let _ = main_win.set_focus();
+                    }
+                });
+                respond_json(&mut stream, 200, "{}");
+            }
+            None => respond_json(&mut stream, 503, r#"{"error":"no app handle"}"#),
+        }
+        return;
+    }
+
     if path == "/settings" {
         // 优先级：tosu 在线设置文件 > tosu 设置文件（离线）> mma-settings.json >
         // settings.json 生成默认。见 config::resolve_plugin_settings。
