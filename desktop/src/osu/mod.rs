@@ -1409,12 +1409,21 @@ pub fn anchor_proves_out(
             .map(|pointer| pointer != 0 && region_contains(regions, pointer))
             .unwrap_or(false),
         "getAudioLengthPtr" => match win::read_u32(target, addr.wrapping_add(0x7)) {
-            // best-effort：只要求"槽是落区内的对齐非空指针"（槽指向的对象的**值**在读取侧
-            // 用 `mp3_length_is_sane` 判域）。首轮真机实测把判据加深到"对象也必须是可读区
-            // 内的对齐指针"时会拒绝该候选（`[[A+7]]` 读出来不像对象），于是 mp3Length 恒降级
-            // ⇒ 放宽到本判据（该字段不在 §3.3 的承诺面里，属对齐项）。
+            // best-effort：槽必须是对齐落区的全局指针；若音频对象已装载（非 0），对象本身也须对齐落区。
             Ok(slot) => match plausible_object(regions, slot) {
-                None => true,
+                None => match win::read_u32(target, slot) {
+                    Ok(0) => true,
+                    Ok(obj) => match plausible_object(regions, obj) {
+                        None => true,
+                        Some(why) => {
+                            eprintln!(
+                                "[osu] diag {key} candidate=0x{addr:08X} reject=object obj=0x{obj:08X} why={why}"
+                            );
+                            false
+                        }
+                    },
+                    Err(_) => false,
+                },
                 Some(why) => {
                     eprintln!(
                         "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"

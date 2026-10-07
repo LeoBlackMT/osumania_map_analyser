@@ -146,22 +146,23 @@ pub const RULESETS_ADDR: Anchor = Anchor {
     evidence: "真机（P1 主轮次 + C2 复现，不同进程实例）：两过滤器下各 1 次命中；命中地址回退 `-0xB` 后 4 字节对齐。候选自证（本仓库）：`[A-0xB]` 与 `[[A-0xB]+0x4]` 都必须是可读区内的对齐非空指针、且规则集 `+0x0`（MethodTable）同样成立——C2 真机在 stable/菜单态实读 `slot=0x048F43CC` → `ruleset=0x271476B4`（通过）；同时记录的『多一跳』对照解 `[[[A-0xB]]+0x4]=0x00000A00` 不是对象 ⇒ 该拓扑是**两读一加**（`[[A-0xB]+4]`）。⚠️ **未关闭**：`ruleset+0x64`（局内）/`+0x38`（结算）两条下游链只在 play/resultScreen 态有值，本轮会话未进入那两个态 ⇒ 其 mod 掩码与 hits 键映射的对拍证据仍在收集中（诊断已就位：`compare.rs` 每帧落 8 个候选槽 + tosu 的 6 键）",
 };
 
-/// 音频时长锚点（C2 新增，**best-effort**）：`mp3Length = round(f64(read_pointer(anchor + 0x7) + 0x4))`。
+/// 音频时长锚点（C2 新增，**best-effort**）：`mp3Length = round(f64(read_pointer(read_pointer(anchor + 0x7)) + 0x4))`。
 ///
 /// 推导：`55 8B EC`（`push ebp; mov ebp,esp`）+ `83 EC 08`（`sub esp,8`）是标准函数序言，
-/// 紧随 `A1 <addr>` + `85 C0`：访问器先取全局的"音频/媒体"对象再判空。`A1` 在 match+6、
-/// 其地址立即数在 match+7 ⇒ `offset = 0x7`。
+/// 紧随 `A1 <addr>` + `85 C0`：访问器先取全局的"音频/媒体"对象指针槽再判空。`A1` 在 match+6、
+/// 其地址立即数在 match+7 ⇒ 槽指向音频对象，对象 `+0x4` 处是毫秒双精度浮点时长
+/// （位移在链里显式施加，offset 保持 0，与 `playTimeAddr` 同约定）。
 ///
 /// 缺席（签名未命中或链读不出来）**只降级 `beatmap.time.mp3Length`**，不进 `missing()`
 /// （该字段不在 §3.3 的"页面消费面"里，属可选对齐项，见 `BEST_EFFORT_KEYS`）。
 pub const GET_AUDIO_LENGTH_PTR: Anchor = Anchor {
     key: "getAudioLengthPtr",
     pattern: "55 8B EC 83 EC 08 A1 ?? ?? ?? ?? 85 C0",
-    offset: 0x7,
-    derivation: "`push ebp/mov ebp,esp/sub esp,8` 序言 + `A1 <addr>`（装载全局）+ `test eax,eax` 的「判空访问器」形状；`A1` 在 match+6、地址立即数在 match+7 ⇒ 该槽是音频对象的指针槽，`+0x4` 处是秒/毫秒浮点时长",
+    offset: 0,
+    derivation: "`push ebp/mov ebp,esp/sub esp,8` 序言 + `A1 <addr>`（装载全局）+ `test eax,eax` 的「判空访问器」形状；`A1` 在 match+6、地址立即数在 match+7 ⇒ 该槽是音频对象的指针槽，其对象 `+0x4` 处是毫秒浮点时长（位移在链里显式施加，offset 保持 0）",
     verified_build: VERIFIED_BUILD_STABLE_MD5,
     verified_at: VERIFIED_AT,
-    evidence: "真机（P1 主轮次 + C2 复现）：两过滤器下各 1 次命中；P1 的 `getAudioLengthPtr`=98682 对照同时刻 tosu `beatmap.time.mp3Length`。C2 的候选自证：槽与解引用对象都必须落在可读区内且对齐（值域只在读取侧判）",
+    evidence: "真机（P1 主轮次 + C2 复现 + P1-5 闭合）：两过滤器下各 1 次命中；`[[anchor+0x7]+0x4]` 读出双精度浮点毫秒并四舍五入为整型，随选歌实时变动",
 };
 
 /// 本步扫描的锚点（顺序即扫描顺序；每枚只取首个命中）。
