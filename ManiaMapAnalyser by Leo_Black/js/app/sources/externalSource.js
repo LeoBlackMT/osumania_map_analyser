@@ -25,6 +25,7 @@ import { computeOd } from "../../parser/judgeOdTable.js";
 import { resolveOd } from "./odResolver.js";
 import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
+import { syncOsuScanHint } from "./osuScanHint.js";
 import { setStatus } from "../hud.js";
 
 function looksLikeOsu(text) {
@@ -238,6 +239,7 @@ export function handleSongFrame(payload) {
     if (bridgeFrame) {
         state.cardOwner = "malody-bridge";
     }
+    syncOsuScanHint();
     // 进管线的速率（Context §3f，唯一写入者 = 本函数）：**桥帧一律用真实倍率**，与 osu 的
     // DT/HT 同口径——倍率提高密度、压缩反应时间，这件事与 Mod 是否同时改判定窗口无关。
     // ⚠️ 这里曾写成 `winScale < 1 ? 1 : state.speedRate`，把 `winScale`（一个**倒数**）当成

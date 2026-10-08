@@ -13,8 +13,11 @@
 //   永久打死（Step 9f 的真机现象：只闪 ~300 ms）。Step 9f 起提示有自己的元素，这里也不接受
 //   任何状态行入参。
 
-/** 会带提示的相位（壳侧闭集字面量，见 `desktop/src/osu/mod.rs::Phase` 与 CONTRACT.md §8）。 */
-export const OSU_HINT_PHASES = Object.freeze(["waiting-for-game", "attaching", "scanning"]);
+/** 会带提示的相位（壳侧闭集字面量，见 `desktop/src/osu/mod.rs::Phase` 与 CONTRACT.md §8）。
+ * 仅在 L0 内存扫描（scanning，约 10–20s）与重附着（attaching）等耗时等待阶段展示提示；
+ * 游戏未启动态（waiting-for-game）由卡片自身 status 承担等待指示，不展示黄字以避免并排冲突。
+ */
+export const OSU_HINT_PHASES = Object.freeze(["attaching", "scanning"]);
 
 /**
  * 提示的纯派生。
@@ -28,8 +31,8 @@ export function deriveOsuScanHint(input) {
     if (!input || !input.shellOnline || !input.shellPage) {
         return { active: false, text: "" }; // 无壳 / 非壳页：绝不提示（浏览器行为逐字节不变）
     }
-    // 非 osu 来源处于活跃状态（如用户正在使用 Malody / Etterna / Malody 4）时，不显示 osu 提示
-    if (input.activeSource && input.activeSource !== "osu") {
+    // 非 osu 来源处于活跃状态（如用户正在使用 Malody / Etterna / Malody 4）时，绝不显示 osu 提示
+    if (input.isNonOsu || (input.activeSource && input.activeSource !== "osu")) {
         return { active: false, text: "" };
     }
     if (input.framesFlowing) {
@@ -37,7 +40,7 @@ export function deriveOsuScanHint(input) {
     }
     const phase = typeof input.phase === "string" ? input.phase : "";
     if (!OSU_HINT_PHASES.includes(phase)) {
-        return { active: false, text: "" }; // healthy / unavailable / 未知相位 / 旧壳
+        return { active: false, text: "" }; // healthy / unavailable / waiting-for-game / 未知相位
     }
     const notice = typeof input.notice === "string" ? input.notice : "";
     if (!notice) {

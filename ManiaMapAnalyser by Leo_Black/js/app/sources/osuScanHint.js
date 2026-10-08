@@ -33,6 +33,7 @@ import {
     noteOsuScanPayload,
     observeOsuScanPhase,
 } from "./osuScanHintRules.js";
+import { currentRoute } from "./sourceManager.js";
 
 export { OSU_HINT_PHASES, deriveOsuScanHint } from "./osuScanHintRules.js";
 
@@ -49,6 +50,17 @@ let latch = createOsuScanLatch();
 export function syncOsuScanHint() {
     const phase = typeof state.shellOsuPhase === "string" ? state.shellOsuPhase : "";
     latch = observeOsuScanPhase(latch, phase);
+    let route = null;
+    try {
+        route = typeof currentRoute === "function" ? currentRoute() : null;
+    } catch {
+        route = null;
+    }
+    const isNonOsu = (route && route !== "osu")
+        || (state.activeSource && state.activeSource !== "osu")
+        || (state.cardOwner && state.cardOwner !== "osu")
+        || Boolean(state.externalSourceActive);
+    const hasDisplayedBeatmap = Boolean(state.lastBeatmapIdentity);
     const hint = deriveOsuScanHint({
         phase,
         notice: state.shellOsuNotice,
@@ -56,6 +68,8 @@ export function syncOsuScanHint() {
         shellPage: isShellPage(),
         framesFlowing: latch.payloadSeen,
         activeSource: state.activeSource,
+        isNonOsu,
+        hasDisplayedBeatmap,
     });
     applyOsuScanHintText(hint.active ? hint.text : "");
 }

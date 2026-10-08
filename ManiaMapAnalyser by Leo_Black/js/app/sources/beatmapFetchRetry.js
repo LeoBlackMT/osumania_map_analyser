@@ -56,7 +56,19 @@ export async function fetchBeatmapTextWithRetry(url, { native, isStale }, deps =
         || ((input) => fetch(input, { method: "GET", cache: "no-store" }));
     const sleep = deps.sleep
         || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-    let response = await request(url);
+    let response = null;
+    try {
+        response = await request(url);
+    } catch (err) {
+        if (!native) {
+            throw err;
+        }
+        await sleep(NATIVE_FETCH_RETRY_DELAY_MS);
+        if (isStale()) {
+            return null;
+        }
+        response = await request(url);
+    }
     if (isStale()) {
         return null;
     }

@@ -66,6 +66,7 @@ export function notifySourceEvent(source) {
         // （handleSongFrame 里赋值在 notifySourceEvent 之后），故此处不会误清。
         state.analysisRate = null;
     }
+    syncOsuScanHint();
     scheduleApply();
 }
 
@@ -152,6 +153,7 @@ function scheduleApply() {
         const next = currentRoute();
         if (next === activeSource) {
             syncDot(next);
+            syncOsuScanHint();
             return;
         }
         const prev = activeSource;

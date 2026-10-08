@@ -76,11 +76,11 @@ export function applyShellState(payload) {
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
     state.shellOsuProgress = osu && osu.progress ? osu.progress : null;
+    reEvaluate();
     syncOsuScanHint();
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
     // 30s 周期帧写它会把心跳之间的在线状态冲成假离线。
     syncUnknownIdentityNotice();
-    reEvaluate();
 }
 
 /** 页面侧已处理的桥事件序号（边沿基线）。 */

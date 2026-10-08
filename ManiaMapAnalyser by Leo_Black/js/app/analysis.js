@@ -1358,6 +1358,19 @@ export async function fetchBeatmapFile(reason) {
         }
     } catch (error) {
         if (isStaleRequest()) return;
+        // 壳离线页（24061）无 tosu 数据面且无原生传输可用时，抓取失败（如 404 / Failed to fetch）
+        // 属于数据源尚未就绪的等待态，绝不弹阻断性的全屏错误框（避免"始终处于 Load failed 状态"）。
+        const isShellOfflinePage = typeof window !== "undefined"
+            && window.location
+            && String(window.location.port) === "24061";
+        if (isShellOfflinePage && !state.shellTosuOnline && !isRuntimeOsuOverrideActive()) {
+            setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+            resetReworkDisplay();
+            patternClustersEl.innerHTML = "";
+            ettSkillBarsEl.innerHTML = "";
+            ppBarsEl.innerHTML = "";
+            return;
+        }
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
         resetReworkDisplay();
         patternClustersEl.innerHTML = contentBarShows("Pattern")
