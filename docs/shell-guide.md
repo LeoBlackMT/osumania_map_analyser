@@ -162,7 +162,7 @@ Malody V 有两个互不影响的通道，按需要选：
 | 命令行 | `mma-shell.exe --settings`。已有一个壳在运行时，它把请求转交给那个实例并**立即退出**（不会开出第二个叠加窗口，也不会闪一下主窗口） |
 | 浏览器直开 | `http://127.0.0.1:24061/settings.html`（仅本机；从其他地址打开时页面只显示提示 `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`） |
 
-窗口的导航顺序为 **Shell → Card Settings → Presets**：**Shell**（`gameClient`、三个游戏根目录与实际采纳路径、快捷键、日志级别；改根目录会立刻反映实际采纳的路径，改快捷键会提示需要重启）、**Card Settings**（叠加卡片自身的设置：与 tosu 设置界面同一套键、按 `settings.json` 的分组排列，改一项即保存）、**Presets**（完整的预设管理，与 `presets.html` 相同）。窗口的位置与大小记忆在 exe 旁的 `mma-shell-settings-window.json`（与主窗口的 `mma-shell-state.json` 分开，互不影响）；设置窗口打开期间主窗口的置顶会临时取消（关闭或建窗失败后按原状态恢复，此过程不写主窗口状态文件）。
+窗口的导航顺序为 **Shell → Card Settings → Presets**：**Shell**（`gameClient`、三个游戏根目录与实际采纳路径、快捷键、日志级别；改根目录会立刻反映实际采纳的路径，改快捷键会提示需要重启）、**Card Settings**（叠加卡片自身的设置：与 tosu 设置界面同一套键、按 `settings.json` 的分组排列，改一项即保存）、**Presets**（完整的预设管理，与 `presets.html` 相同）。窗口的位置与大小记忆在 exe 旁的 `mma-shell-state.json` 的 `settings` 字段（向前兼容读取遗留的 `mma-shell-settings-window.json`）；设置窗口打开期间主窗口的置顶会临时取消（关闭或建窗失败后按原状态恢复，此过程不写主窗口状态文件）。
 
 **Card Settings 的表单由 `settings.json` 生成**（每项设置都不需要为设置页写代码）：
 
@@ -384,8 +384,8 @@ The window's navigation order is **Shell → Card Settings → Presets**: **Shel
 with the paths actually adopted, hotkeys, log level; root changes show the adopted path right away and hotkey changes
 tell you a restart is needed), **Card Settings** (the overlay card's own settings: the same keys as the tosu settings
 UI, grouped as in `settings.json`; every change is saved immediately) and **Presets** (the full preset manager,
-identical to `presets.html`). The window remembers its own position and size in `mma-shell-settings-window.json` next to
-the exe (separate from the main window's `mma-shell-state.json`, so the two never interfere); while it is open the main
+identical to `presets.html`). The window remembers its own position and size in `mma-shell-state.json`'s `settings` field
+next to the exe (with backward compatibility for the legacy `mma-shell-settings-window.json`); while it is open the main
 window's always-on-top is temporarily cancelled (restored per the saved state when the settings window closes or fails
 to build — the main window's state file is not touched by this).
 

@@ -19,6 +19,7 @@ import {
     getEndpoint,
     getActiveContentBar,
     contentBarShows,
+    isRuntimeOsuOverrideActive,
     mainCardEl,
     patternClustersEl,
     ppBarsEl,
@@ -81,6 +82,10 @@ import { detectVibro, detectVibroFromMetadata } from "../patterns/chartVibro.js"
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
 import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
+// Step 9g：壳原生端点上的瞬态抓取失败（结算/换图那一两帧读取线程正处在身份保持窗口 ⇒
+// 24062 的 `/files/beatmap/file` 404）静默重试一次，不让状态行出现 `Request failed with 404`。
+// tosu 通道不重试（判据在模块内，见 `shouldRetryNativeBeatmapFetch`）。
+import { fetchBeatmapTextWithRetry } from "./sources/beatmapFetchRetry.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -392,8 +397,8 @@ export async function fetchBeatmapFile(reason) {
     const isShellOfflinePage = typeof window !== "undefined"
         && window.location
         && String(window.location.port) === "24061";
-    if (reason === "initial load" && isShellOfflinePage && state.externalBridgeAvailable
-        && !state.shellTosuOnline && !state.tosuDataSeen) {
+    if (reason === "initial load" && isShellOfflinePage
+        && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive()) {
         setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
         return;
     }
@@ -407,6 +412,22 @@ export async function fetchBeatmapFile(reason) {
     let errors = [];
     const genAtStart = resultCacheGeneration();
     const analysisStartedAt = performance.now();
+    // 遥测 client（DEC-10）：本次分析的**数据源**，取值 =
+    // `lazer` / `stable`（壳内 native 内存读取）/ `lazer(tosu)` / `stable(tosu)`（tosu 供数）/
+    // `malody` / `malody4` / `etterna`（后端 `daily_agg` 直接以它为维度：不新增字段、不改后端）。
+    // **在请求开始处快照** —— 分析是长流程（抓取 → worker → WASM），期间可能发生
+    // native→tosu 回落，载荷值必须对整张谱面稳定。
+    //   - Malody / Etterna 源：直接取 `state.activeSource`（`malody` 覆盖 BepInEx 通道与编辑器插件）；
+    //   - osu 源：先定**游戏客户端**（`state.client`：native 下是我们自己载荷里的 client，tosu 下是
+    //     tosu 的 client，两处都是 `stable`/`lazer`；非 lazer 一律计 stable），再定**谁在供数** ——
+    //     运行时覆盖真的生效（壳页 24061 且端点/路径校验通过）⇒ 裸值；否则（无壳 / 浏览器 tosu 页 /
+    //     旧壳 ≤v5 / native 已回落）⇒ 加 `(tosu)` 后缀。fail-silent：缺字段绝不猜成 native 侧的值。
+    const telemetryNativeOsu = !!(state.runtimeOsuHost || state.shellOsuNativeAlive);
+    const telemetryOsuClient = String(state.client || "").toLowerCase() === "lazer" ? "lazer" : "stable";
+    const telemetryClient = state.activeSource === "malody4" ? "malody4"
+        : state.activeSource === "malody" ? "malody"
+            : state.activeSource === "etterna" ? "etterna"
+                : telemetryNativeOsu ? telemetryOsuClient : `${telemetryOsuClient}(tosu)`;
     const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
 
     // 取出 socket 层判定的本次变化类型并清空，避免之后纯改设置的 recompute
@@ -524,17 +545,18 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty external beatmap content.");
             }
         } else {
-            // 壳离线页（24061）无 tosu 数据面时任何 osu 抓取都守卫：Waiting 而非报错。
-            if (isShellOfflinePage && state.externalBridgeAvailable
-                && !state.shellTosuOnline && !state.tosuDataSeen && !state.pendingSourceText) {
+            // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
+            if (isShellOfflinePage
+                && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive() && !state.pendingSourceText) {
                 setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                 return;
             }
-            const response = await fetch(getEndpoint(), {
-                method: "GET",
-                cache: "no-store",
+            const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
+                // 只有壳原生端点（24062）值得这一次静默重试：tosu 通道行为逐字节不变。
+                native: isRuntimeOsuOverrideActive(),
+                isStale: isStaleRequest,
             });
-            if (isStaleRequest()) return;
+            if (isStaleRequest() || response === null) return;
 
             if (!response.ok) {
                 throw new Error(`Request failed with status ${response.status}`);
@@ -1319,7 +1341,7 @@ export async function fetchBeatmapFile(reason) {
             const payload = {
                 algorithm: state.estimatorAlgorithm,
                 ...(telemetryActualAlgorithm ? { actualAlgorithm: telemetryActualAlgorithm } : {}),
-                client: state.activeSource || "osu",
+                client: telemetryClient,
                 keycount: Number(rework.columnCount),
                 mods: state.modCodes || [],
                 speedRate: Number(state.speedRate) || 1,
@@ -1336,6 +1358,19 @@ export async function fetchBeatmapFile(reason) {
         }
     } catch (error) {
         if (isStaleRequest()) return;
+        // 壳离线页（24061）无 tosu 数据面且无原生传输可用时，抓取失败（如 404 / Failed to fetch）
+        // 属于数据源尚未就绪的等待态，绝不弹阻断性的全屏错误框（避免"始终处于 Load failed 状态"）。
+        const isShellOfflinePage = typeof window !== "undefined"
+            && window.location
+            && String(window.location.port) === "24061";
+        if (isShellOfflinePage && !state.shellTosuOnline && !isRuntimeOsuOverrideActive()) {
+            setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+            resetReworkDisplay();
+            patternClustersEl.innerHTML = "";
+            ettSkillBarsEl.innerHTML = "";
+            ppBarsEl.innerHTML = "";
+            return;
+        }
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
         resetReworkDisplay();
         patternClustersEl.innerHTML = contentBarShows("Pattern")

@@ -34,7 +34,7 @@ pub fn spawn_http_ws(shared: Arc<Shared>, listener: TcpListener) {
 }
 
 /// peek 前 1KB 判断是否 WS 升级请求（peek 不消费；accept_hdr 需要原文在流中）。
-fn probe_is_ws(stream: &TcpStream) -> bool {
+pub(crate) fn probe_is_ws(stream: &TcpStream) -> bool {
     let mut probe = [0u8; 1024];
     for _ in 0..250 {
         match stream.peek(&mut probe) {
@@ -230,6 +230,27 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 respond_json(&mut stream, 200, "{}");
             }
             // 无窗口模式（app 句柄未注入）→ 503（状态码固定，body 形状不参与判定）。
+            None => respond_json(&mut stream, 503, r#"{"error":"no app handle"}"#),
+        }
+        return;
+    }
+
+    // POST /show-main：聚焦/显示主悬浮窗（第二实例启动时无 --settings 则转交此端点）。
+    if method == "POST" && path == "/show-main" {
+        let app = shared.app.lock().unwrap().clone();
+        match app {
+            Some(app) => {
+                let app2 = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    use tauri::Manager;
+                    if let Some(main_win) = app2.get_webview_window("main") {
+                        let _ = main_win.unminimize();
+                        let _ = main_win.show();
+                        let _ = main_win.set_focus();
+                    }
+                });
+                respond_json(&mut stream, 200, "{}");
+            }
             None => respond_json(&mut stream, 503, r#"{"error":"no app handle"}"#),
         }
         return;

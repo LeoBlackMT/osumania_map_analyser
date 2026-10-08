@@ -51,6 +51,7 @@ const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:2
 
 const statusBarEl = document.getElementById("settings-status");
 const linksRootEl = document.getElementById("settings-links-root");
+const navRootEl = document.getElementById("settings-nav-root");
 const settingsRootEl = document.getElementById("settings-root");
 const shellConfigRootEl = document.getElementById("shell-config-root");
 const presetsAppEl = document.getElementById("presets-app");
@@ -200,8 +201,10 @@ function renderOriginNotice() {
 // ---------------------------------------------------------------------------
 
 function buildLayout() {
+    if (navRootEl) {
+        populateNav(navRootEl);
+    }
     settingsRootEl.textContent = "";
-    settingsRootEl.appendChild(buildNav());
     readOnlyEl = buildReadOnlyView();
     settingsRootEl.appendChild(readOnlyEl);
 
@@ -226,13 +229,12 @@ function buildLayout() {
     settingsRootEl.appendChild(section);
 }
 
-function buildNav() {
-    const nav = document.createElement("nav");
-    nav.className = "settings-nav";
+function populateNav(nav) {
+    nav.textContent = "";
     for (const [href, label] of [
-        ["#shell-config-section", "Shell"],
+        ["#shell-config-section", "Shell Configuration"],
         ["#settings-form-section", "Card Settings"],
-        ["#presets-app", "Presets"],
+        ["#presets-app", "Presets Manager"],
     ]) {
         const link = document.createElement("a");
         link.className = "settings-nav-link";
@@ -240,7 +242,46 @@ function buildNav() {
         link.textContent = label;
         nav.appendChild(link);
     }
-    return nav;
+    setupNavScrollspy(nav);
+}
+
+let scrollspyBound = false;
+function setupNavScrollspy(nav) {
+    function updateActive() {
+        const links = Array.from(nav.querySelectorAll(".settings-nav-link"));
+        if (!links.length) return;
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 50) {
+            links.forEach((link, idx) => {
+                link.classList.toggle("active", idx === links.length - 1);
+            });
+            return;
+        }
+        const scrollY = window.scrollY + 140;
+        let activeIdx = 0;
+        for (let i = 0; i < links.length; i++) {
+            const id = (links[i].getAttribute("href") || "").replace("#", "");
+            const target = id ? document.getElementById(id) : null;
+            if (target && target.getBoundingClientRect().top + window.scrollY <= scrollY) {
+                activeIdx = i;
+            }
+        }
+        links.forEach((link, idx) => {
+            link.classList.toggle("active", idx === activeIdx);
+        });
+    }
+
+    if (!scrollspyBound) {
+        scrollspyBound = true;
+        window.addEventListener("scroll", updateActive, { passive: true });
+        window.addEventListener("resize", updateActive, { passive: true });
+    }
+    requestAnimationFrame(updateActive);
+    setTimeout(updateActive, 300);
+    setTimeout(updateActive, 1000);
+}
+
+if (navRootEl) {
+    setupNavScrollspy(navRootEl);
 }
 
 function buildReadOnlyView() {

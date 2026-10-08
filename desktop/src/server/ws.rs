@@ -70,7 +70,7 @@ pub fn parse_result_payload(text: &str) -> Option<ResultInbound> {
 /// Origin 仅允许 loopback（契约 §0）：解析 origin 的 host 段**精确比较**
 /// `127.0.0.1` / `localhost` / `[::1]`——子串匹配（contains）会放过
 /// `localhost.evil.com` 这类域，形同虚设。
-fn is_loopback_origin(origin: &str) -> bool {
+pub(crate) fn is_loopback_origin(origin: &str) -> bool {
     let rest = match origin.split_once("://") {
         Some((_, r)) => r,
         None => return false,

@@ -279,23 +279,59 @@ export function updatePauseCountVisibility() {
     pauseCountEl.hidden = false;
 }
 
+export function isCurrentSourcePlaying() {
+    switch (state.activeSource) {
+        case "osu":
+            return Boolean(state.isInPlayState);
+        case "malody":
+            return Boolean(state.malodyPlaying);
+        case "malody4":
+            return Boolean(state.malody4Playing);
+        case "etterna":
+            return Boolean(state.etternaPlaying);
+        default:
+            return false;
+    }
+}
+
+export function isCurrentSourceMenu() {
+    switch (state.activeSource) {
+        case "osu":
+            return state.clientStateName === "menu";
+        case "malody":
+            return state.malodyScreen === "other";
+        case "malody4":
+            return state.malody4Screen === "other";
+        default:
+            return false;
+    }
+}
+
 export function updateCardPlayVisibility() {
     if (!mainCardEl) {
         return;
     }
 
-    // Always hide the card when on the menu screen.
-    if (state.clientStateName === "menu") {
+    // 无活跃数据源时（如未开游戏、已退出游戏）：始终显示卡片以展示等待提示，防止卡片位置丢失
+    if (!state.activeSource) {
+        mainCardEl.classList.toggle("card-hidden-by-play", false);
+        mainCardEl.setAttribute("aria-hidden", "false");
+        return;
+    }
+
+    // 活跃游戏处于主菜单时，始终隐藏卡片
+    if (isCurrentSourceMenu()) {
         mainCardEl.classList.toggle("card-hidden-by-play", true);
         mainCardEl.setAttribute("aria-hidden", "true");
         return;
     }
 
     let shouldHide = false;
+    const isPlaying = isCurrentSourcePlaying();
     if (state.cardVisibility === "DuringPlay") {
-        shouldHide = !state.isInPlayState;
+        shouldHide = !isPlaying;
     } else if (state.cardVisibility === "OutsidePlay") {
-        shouldHide = state.isInPlayState;
+        shouldHide = isPlaying;
     }
     mainCardEl.classList.toggle("card-hidden-by-play", shouldHide);
     mainCardEl.setAttribute("aria-hidden", shouldHide ? "true" : "false");

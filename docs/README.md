@@ -41,8 +41,9 @@
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
-| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界） |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、契约 v3、窗口操控、构建发布） |
+| [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v6**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v6 端点下发与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
 | [features/malody-od.md](features/malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD，**覆盖两个客户端**：Malody 4.3.7 的 PC 表（20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 局限）**与 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、复算工装） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
@@ -68,6 +69,7 @@
 | [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | 人类/AI | Malody 4 动态判定 OD 破坏性说明（写死 OD 9 → 判定档 × 速率 `-4.56~16.42`、`modSignature` 4 段扩 5 段即自动失效、仅 `malody4` 源受影响） |
 | [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | 人类/AI | Malody V 选曲桥 fork 化破坏性说明（上游 DLL → `MMAMalodySelection.dll`、叠加界面移除、载荷 8→11 字段、壳契约 v4→v5、动态 OD、缓存键 7 段、安装器不写 cfg） |
 | [breakings/2026-09-26-local-settings-window.md](breakings/2026-09-26-local-settings-window.md) | 人类/AI | 本地设置窗口与离线权威链破坏性说明（权威链收敛为"在线 tosu / 离线本地 `mma-settings.json`"、原"离线读 tosu 文件"一级删除、新增 `settings.html` 第二窗口与三入口、`/shell-config`+`/open-settings` 端点、离线读改写与广播；契约版本/帧型/版本号均不变） |
+| [breakings/2026-09-30-osu-native-memory.md](breakings/2026-09-30-osu-native-memory.md) | 人类/AI | osu! 原生内存传输破坏性说明（壳内只读内存读取 + 24062 tosu 兼容子集 origin、契约 v5→v6 的 `sources.osu` 端点下发、壳主窗恒落 24061、扫描提示与原生抓取重试、插件版本 2.1.0→2.2.0；回滚 = `osuTransport:"tosu"` + git revert） |
 
 # English
 
@@ -109,8 +111,9 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
-| [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries) |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v5, local 24061 endpoints, window controls, settings window, build & release) |
+| [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; a transport-layer section: native osu source + tosu fallback + the browser-only invariant) |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v6, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! native source document (in-shell read-only memory layer: stable signature scan vs the lazer offset table, the 24062 tosu-compatible subset origin, contract v6 endpoint delivery and the page's socket-layer switch, capability boundaries, the `reason` closed set with freeze/hold semantics, the L0–L3 health machine, two manuals (locating an anchor failure / regenerating the lazer offset table) and the self-check list) |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
 | [features/malody-od.md](features/malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, recompute tool) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
@@ -136,3 +139,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-09-21-malody4-dynamic-judge-od.md](breakings/2026-09-21-malody4-dynamic-judge-od.md) | Human/AI | Malody 4 dynamic judge OD breaking note (hard-coded OD 9 → judge level × rate `-4.56~16.42`, `modSignature` growing from 4 to 5 segments as automatic invalidation, only the `malody4` source affected) |
 | [breakings/2026-09-24-malody-v-selection-bridge-fork.md](breakings/2026-09-24-malody-v-selection-bridge-fork.md) | Human/AI | Malody V selection bridge forked (upstream DLL → `MMAMalodySelection.dll`, overlay removed, payload 8→11 fields, shell contract v4→v5, dynamic OD, 7-segment cache key, installer writes no cfg) |
 | [breakings/2026-09-26-local-settings-window.md](breakings/2026-09-26-local-settings-window.md) | Human/AI | Local settings window and the offline authority chain breaking note (chain collapsed to "online tosu / offline local `mma-settings.json`", the old "read the tosu file offline" level deleted, a new `settings.html` second window with three entry points, `/shell-config` + `/open-settings` endpoints, offline read-modify-write with broadcast; contract version, frame types and version numbers all unchanged) |
+| [breakings/2026-09-30-osu-native-memory.md](breakings/2026-09-30-osu-native-memory.md) | Human/AI | osu! native memory transport breaking note (in-shell read-only memory reader plus the 24062 tosu-compatible subset origin, contract v5→v6 with `sources.osu` endpoint delivery, the main window always landing on 24061, the scan hint and the native beatmap-fetch retry, plugin version 2.1.0→2.2.0; rollback = `osuTransport:"tosu"` + git revert) |

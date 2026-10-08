@@ -625,6 +625,15 @@ struct ReasonLog {
 
 impl ReasonLog {
     fn due(&mut self, reason: &str, now: Instant) -> bool {
+        // "process-not-found" 是未运行 Malody 4 时的常态，绝不在整个会话中每 30s 刷屏。
+        // 每个附着周期（从启动或重连重置起）只打一条。
+        if reason == "process-not-found" {
+            if self.last.contains_key(reason) {
+                return false;
+            }
+            self.last.insert(reason.to_string(), now);
+            return true;
+        }
         match self.last.get(reason) {
             Some(at) if now.duration_since(*at) < ACTION_LOG_THROTTLE => false,
             _ => {
@@ -1000,6 +1009,7 @@ impl Runtime {
                     );
                     self.attached = Some(Attached { target, attachment });
                     self.attach_error = None;
+                    self.reason_log.last.clear();
                     // 新的附着窗口：交叉校验重新开一次（窗口内的分歧才值得提示）
                     self.attached_at = Some(now);
                     self.settings_cross_checked = false;

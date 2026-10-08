@@ -18,7 +18,7 @@
 // 调用则请求经 event loop proxy 派发、主线程继续跑事件循环，等待才会返回。
 //
 // ---- 几何约定 ----
-// 设置窗口几何（`mma-shell-settings-window.json` 的 x/y/w/h）来自 `Moved`/`Resized` 的
+// 设置窗口几何（`mma-shell-state.json` 的 `settings` 字段）来自 `Moved`/`Resized` 的
 // **physical** 载荷（px）；恢复必须用 `tauri::PhysicalPosition` / `tauri::PhysicalSize`
 // 构造——builder 的 `position`/`inner_size` 是 **logical**，混用会在高 DPI 下逐次漂移
 // （同 `main.rs:126-128` 主窗的既有约定）。

@@ -68,14 +68,27 @@
    subtype list instead of clipping it; min-height keeps the resting height
    stable. */
 .main-card.bars-pattern {
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 8px;
     height: auto;
-    min-height: 575px;
+    min-height: 540px;
     max-height: none;
+}
+
+.main-card.bars-pattern .ett-skill-bars,
+.main-card.bars-pattern .pp-bars,
+.main-card.bars-pattern .body-graph-wrap {
+    display: none;
 }
 
 /* 键型细分列表随卡片高度整体展开；底部留出 margin 避开绝对定位的
    mode-tag 胶囊（bottom:10px、高约 21px）。 */
 .main-card.bars-pattern .cluster-bars {
+    min-height: max-content;
+    height: auto;
+    max-height: none;
     overflow-y: visible;
     margin-bottom: 28px;
 }

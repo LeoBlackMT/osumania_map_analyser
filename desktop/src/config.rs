@@ -213,6 +213,10 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
 /// 文件**已存在**时只补缺：hotkeys 里缺失/空串的键按下面的默认值补齐并落盘
 /// （功能新增前写下的旧文件缺 `settings`，设置页会显示成空输入框）；用户改过的值
 /// 与其余顶层键一字不动，无改动就不落盘。
+///
+/// `osuTransport`（契约 v6）：`auto`（缺省，原生优先、读不到健康读数回落 tosu）/
+/// `native` / `tosu`（逃生开关：壳不打开任何内存句柄，页面继续用设置里的端点）。
+/// 语义实现见 `server/osu_source.rs`；旧配置文件没有该键 = `auto`。
 pub fn ensure_shell_config() {
     let Some(dir) = exe_dir() else {
         return;
@@ -226,7 +230,7 @@ fn ensure_shell_config_in(dir: &Path) {
     if !path.exists() {
         let _ = fs::write(
             &path,
-            "{\n  \"gameClient\": \"Auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
         );
         return;
     }
@@ -714,8 +718,14 @@ fn scan_malody4_candidates(candidates: &[&str]) -> Option<PathBuf> {
 }
 
 // ---- 窗口状态记忆（mma-shell-state.json，exe 旁）----
+// 主窗口几何与状态，以及设置窗口几何（settings 嵌套字段）。
+// 统一记录在 mma-shell-state.json 中；兼容读取遗留的独立文件 mma-shell-settings-window.json。
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub const WINDOW_STATE_FILE: &str = "mma-shell-state.json";
+pub const LEGACY_SETTINGS_WINDOW_STATE_FILE: &str = "mma-shell-settings-window.json";
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(default)]
 pub struct WindowState {
     pub x: i32,
     pub y: i32,
@@ -723,11 +733,21 @@ pub struct WindowState {
     pub h: u32,
     pub topmost: bool,
     pub click_through: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<SettingsWindowState>,
 }
 
 impl Default for WindowState {
     fn default() -> Self {
-        Self { x: i32::MIN, y: 0, w: 520, h: 680, topmost: true, click_through: false }
+        Self {
+            x: i32::MIN,
+            y: 0,
+            w: 520,
+            h: 680,
+            topmost: true,
+            click_through: false,
+            settings: None,
+        }
     }
 }
 
@@ -735,31 +755,55 @@ pub fn read_window_state() -> WindowState {
     let Some(dir) = exe_dir() else {
         return WindowState::default();
     };
-    let path = dir.join("mma-shell-state.json");
-    fs::read_to_string(path)
+    read_window_state_in(&dir)
+}
+
+pub fn read_window_state_in(dir: &Path) -> WindowState {
+    let path = dir.join(WINDOW_STATE_FILE);
+    let mut state: WindowState = fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // 兼容迁移：如果 state.settings 为空，但存在遗留的 mma-shell-settings-window.json，读入
+    if state.settings.is_none() {
+        let legacy = dir.join(LEGACY_SETTINGS_WINDOW_STATE_FILE);
+        if let Ok(s) = fs::read_to_string(legacy) {
+            if let Ok(leg) = serde_json::from_str::<SettingsWindowState>(&s) {
+                state.settings = Some(leg);
+            }
+        }
+    }
+    state
 }
 
 pub fn write_window_state(state: &WindowState) {
     let Some(dir) = exe_dir() else {
         return;
     };
-    let path = dir.join("mma-shell-state.json");
+    write_window_state_in(&dir, state);
+}
+
+pub fn write_window_state_in(dir: &Path, state: &WindowState) {
+    let path = dir.join(WINDOW_STATE_FILE);
+    let mut to_write = *state;
+    // 如果传入的 state 没有 settings，但现有磁盘文件有 settings，保留磁盘上的 settings
+    if to_write.settings.is_none() {
+        let existing = read_window_state_in(dir);
+        if existing.settings.is_some() {
+            to_write.settings = existing.settings;
+        }
+    }
     let tmp = path.with_extension("state.tmp");
-    if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
-        let _ = fs::rename(&tmp, &path);
+    if let Ok(serialized) = serde_json::to_string_pretty(&to_write) {
+        if fs::write(&tmp, serialized).is_ok() {
+            let _ = fs::rename(&tmp, &path);
+        }
     }
 }
 
-// ---- 设置窗口几何（mma-shell-settings-window.json，exe 旁）----
-// **独立文件**：与主窗 WindowState / mma-shell-state.json 完全分离——主窗的 4 条
-// 写通道与 5s persister 只碰 WindowState，两窗几何不会互相踩。
+// ---- 设置窗口几何（嵌入在 mma-shell-state.json 的 settings 字段中）----
 
-const SETTINGS_WINDOW_STATE_FILE: &str = "mma-shell-settings-window.json";
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(default)]
 pub struct SettingsWindowState {
     pub x: i32,
@@ -783,11 +827,9 @@ pub fn read_settings_window_state() -> SettingsWindowState {
 }
 
 /// `read_settings_window_state` 的可注入路径版（缺失/损坏 → 默认；单测打在这条缝上）。
-fn read_settings_window_state_in(dir: &Path) -> SettingsWindowState {
-    fs::read_to_string(dir.join(SETTINGS_WINDOW_STATE_FILE))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+pub fn read_settings_window_state_in(dir: &Path) -> SettingsWindowState {
+    let state = read_window_state_in(dir);
+    state.settings.unwrap_or_default()
 }
 
 pub fn write_settings_window_state(state: &SettingsWindowState) {
@@ -797,11 +839,20 @@ pub fn write_settings_window_state(state: &SettingsWindowState) {
     write_settings_window_state_in(&dir, state);
 }
 
-fn write_settings_window_state_in(dir: &Path, state: &SettingsWindowState) {
-    let path = dir.join(SETTINGS_WINDOW_STATE_FILE);
+pub fn write_settings_window_state_in(dir: &Path, state: &SettingsWindowState) {
+    let mut main_state = read_window_state_in(dir);
+    main_state.settings = Some(*state);
+    let path = dir.join(WINDOW_STATE_FILE);
     let tmp = path.with_extension("state.tmp");
-    if fs::write(&tmp, serde_json::to_string(state).unwrap_or_default()).is_ok() {
-        let _ = fs::rename(&tmp, &path);
+    if let Ok(serialized) = serde_json::to_string_pretty(&main_state) {
+        if fs::write(&tmp, serialized).is_ok() {
+            let _ = fs::rename(&tmp, &path);
+            // 兼容性清理：如果存在遗留的独立旧文件，顺带清理
+            let legacy = dir.join(LEGACY_SETTINGS_WINDOW_STATE_FILE);
+            if legacy.exists() {
+                let _ = fs::remove_file(legacy);
+            }
+        }
     }
 }
 

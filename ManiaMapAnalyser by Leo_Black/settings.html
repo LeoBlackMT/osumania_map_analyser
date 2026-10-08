@@ -12,8 +12,13 @@
     <!-- Help links (settings.json button entries) — first content of the page,
          above the anchor nav, so they are visible the moment the window opens. -->
     <div id="settings-links-root"></div>
-    <div id="settings-root"></div>
+    <nav id="settings-nav-root" class="settings-nav">
+        <a class="settings-nav-link active" href="#shell-config-section">Shell Configuration</a>
+        <a class="settings-nav-link" href="#settings-form-section">Card Settings</a>
+        <a class="settings-nav-link" href="#presets-app">Presets Manager</a>
+    </nav>
     <div id="shell-config-root"></div>
+    <div id="settings-root"></div>
     <div id="presets-app"></div>
     <script type="module" src="./js/app/settingsPage/index.js"></script>
 </body>

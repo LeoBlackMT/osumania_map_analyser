@@ -15,7 +15,7 @@
 | 定时器门控 | 三条检测均无来源门控 | 本地 `mma-settings.json` 检测加 `if !online`（stat→read→stat），tosu 文件检测加 `if online`，壳配置检测**不加门控**（在线也要 ≤30s 生效） |
 | 页面预设存储 | 只有 tosu 路径（依赖 `window.COUNTER_PATH`） | 新增 preset transport 注入点（`setPresetTransport`/`getPresetTransport`）：`presets/tosuTransport.js` 与原逻辑等价，`presets/shellTransport.js` 走 24061（全量基点 + 有界重试），设置页用薄适配器组合 |
 | 实例探测 | 无（第二实例先建主窗口再退出） | `main()` 开头探测 24061：命中本壳 → 带 `--settings` 则转交 `POST /open-settings`，然后**一律 `exit(0)`（不建任何窗口）**；端口被外部进程占用 → `exit(2)` |
-| 设置窗口几何 | — | 独立文件 `mma-shell-settings-window.json`（与主窗 `mma-shell-state.json` 完全分离） |
+| 设置窗口几何 | — | 合并写入 `mma-shell-state.json` 的 `settings` 字段（向前兼容读取遗留的 `mma-shell-settings-window.json`） |
 
 **不变的部分（同等重要）**：`CONTRACT_VERSION`（`desktop/src/frames.rs`）**仍为 5**，页面 `bridgeClient.js` 的常量同步保持 5，接受区间仍为 `[3,5]`；帧类型集合与各帧 schema 未增删（八型 + diag）；`server/ws.rs` 未改；`tauri.conf.json` 未改；**插件版本号未 bump**（`index.js` `_VERSION` 与 `metadata.txt` `Version` 仍为 `2.1.0`）；未加任何 Cargo 依赖。
 
@@ -77,7 +77,7 @@
 | Timer gating | none of the three detectors was source-gated | local `mma-settings.json` gains `if !online` (stat→read→stat), the tosu file gains `if online`, the shell config stays **ungated** (online changes must still land within ~30s) |
 | Page preset storage | tosu only (relied on `window.COUNTER_PATH`) | preset transport injection (`setPresetTransport`/`getPresetTransport`): `presets/tosuTransport.js` is the old logic verbatim, `presets/shellTransport.js` talks to 24061 (full-object base + bounded retry), and the settings page composes them through a thin adapter |
 | Instance probe | none (a second instance built the main window, then exited) | a probe at the top of `main()`: our own shell → forward `POST /open-settings` when `--settings` was given, then **always `exit(0)` without creating any window**; a foreign process on the port → `exit(2)` |
-| Settings-window geometry | — | its own file `mma-shell-settings-window.json` (fully separate from the main window's `mma-shell-state.json`) |
+| Settings-window geometry | — | merged into `mma-shell-state.json`'s `settings` field (backward compatible with legacy `mma-shell-settings-window.json`) |
 
 **What does not change (equally important)**: `CONTRACT_VERSION` (`desktop/src/frames.rs`) is **still 5**, the page's `bridgeClient.js` constant stays 5 and the accepted range stays `[3,5]`; the frame-type set and every frame schema are untouched (eight types + diag); `server/ws.rs` is untouched; `tauri.conf.json` is untouched; **the plugin version is not bumped** (`index.js` `_VERSION` and `metadata.txt` `Version` stay `2.1.0`); no Cargo dependency was added.
 

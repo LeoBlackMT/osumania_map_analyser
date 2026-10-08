@@ -55,6 +55,71 @@ After adding a new MinaCalc version (a new `.wasm`) to `ManiaMapAnalyser by Leo_
 - **No JS glue changes needed**: `calc.js`'s `mapOutputValues` passes through the 8 skill values from wasm directly; higher outputs flow through naturally.
 - **After changing wasm bytes**, bump `WASM_ASSET_VERSION` in `ManiaMapAnalyser by Leo_Black/js/ett/constants.js` (used for browser cache busting) so users do not load a stale wasm.
 
+## lazer-offsets-gen（osu!lazer 偏移表生成器）
+
+### 这个工具是做什么的（What it does）
+
+桌面壳要只读地读 osu!lazer 的内存，就必须有一张 `Type.Field → offset` 表；而 lazer 是每周级更新的游戏，这张表**只能从那一版构建自己身上提取**（ClrMD 读不了本机 lazer 的自包含 dump，走 SOS 提取 + IL 差分 + 结构证明，见 `DECISIONS.md` OPEN-03）。本工具就是那次提取的**可重跑实现**：`collect`（采 dump）→ `extract`（扫锚点 + `dumpobj` 逐级解引用 + dump 字节自证）→ `il`（读安装目录里托管程序集的元数据当第二见证 + 跨版本 diff）→ `emit`（只有**同时**有 SOS 行与 IL 结构行的字段才出表，对不上就丢弃并逐条报告）。
+
+它属于**每次 lazer 更新都要用**的维护工具，所以**入库**（DEC-23 取代 DEC-16 ②：放 `temp/` 会随验收被删，"≤ 1 天恢复"就变成"先重建工具再计时"）。它不参与产品运行时：产品侧一律走 `ReadProcessMemory`（只读），dump 采集只存在于本工具。
+
+The desktop shell reads osu!lazer memory read-only and therefore needs a `Type.Field → offset` table. lazer ships weekly, and that table can only be extracted from the build in front of you (ClrMD cannot read the self-contained lazer dump on this machine — the verdict is SOS extraction + IL diff + structural proof, `DECISIONS.md` OPEN-03). This tool is the re-runnable implementation of exactly that pipeline: `collect` (dump) → `extract` (anchor scan + chained `dumpobj` + dump-byte dereference proof) → `il` (CLR metadata of the shipped assemblies as the second witness + cross-version diff) → `emit` (a field is published only when it has **both** an SOS line and an IL structural line; disagreement drops the field and lists it in the report). Because it is needed on **every** lazer update it lives in the repo (DEC-23 replaced DEC-16 ②; a `temp/` tool would be deleted at acceptance and "≤ 1 day" would become "rebuild the tool first"). It is never part of the product runtime: the product reads memory read-only, and dump collection exists only here.
+
+### 原理（How it works）
+
+- 单文件工具集（`main.rs` + 5 个模块），裸 `rustc` 编译，**零外部依赖**，与 `tools/malody4-anchor-check` 同一路子：只读、不注入、不写游戏、不挂调试器。
+- `collect` 按**位数**区分进程（stable 是 32 位、lazer 是 x64，进程名都叫 `osu!.exe`），采一份 dump 实测 **2.96 GiB / ~70 s 游戏挂起**（挂起就是 `createdump` 写盘的时间）。
+- `extract` 自己解析 dump 的内存范围表并在其中扫**我们自己的锚点模式**，再按 `spec.rs::SITE_DELTAS` 找**站点**、按 `spec.rs::GAME_BASE_HOPS` 多跳解出 GameBase（候选必须过"`dumpobj` 类型"与"有表时 `[gameBase] == 表 vtable`"两条判据，逐条尝试都逐字打印）；随后照着 `spec.rs::CHAIN` 逐级解引用（地址来自上一层 `dumpobj` 的 Value 列），并用 dump 的**原始字节**核对 SOS 打印的每个值 —— 这同时机械证明了"SOS 的 Offset 基准 = 对象地址"。
+- `il` 直接解析 PE/CLI 元数据（ECMA-335 表 + `#Strings`/`#Blob` 堆 + 字段签名解码 + `#extends` 继承链），得到"字段存在性/实例性/类型/声明顺序/显式布局"的结构行；**元数据推导的偏移永不出表**。
+- `emit` 用双见证校验出表（`desktop/src/osu/offsets.rs::load` 的 JSON 形状），另有 fixture/溯源/版本三道拒绝门；`self-test` 用**合成 minidump + fixture** 把同一条代码路径跑通（29 个用例，无需游戏）。
+
+- Single-file tool (`main.rs` + five modules), built with bare `rustc`, **zero external dependencies**, same style as `tools/malody4-anchor-check`: read-only, no injection, no writes into the game, no debugger attach.
+- `collect` separates the two clients by **bitness** (stable is 32-bit, lazer is x64, both processes are named `osu!.exe`) and collects a dump — measured **2.96 GiB / ~70 s of game suspension** (the suspension is `createdump` writing the file).
+- `extract` parses the dump's own memory ranges, scans them for **our own anchor pattern**, then resolves GameBase as `site = anchor − spec::SITE_DELTAS[i]` followed by the `spec::GAME_BASE_HOPS` dereference chain (every candidate must pass the `dumpobj` type check and, when a table vtable is supplied, the `[gameBase] == table vtable` check; every attempt is printed verbatim), then walks `spec.rs::CHAIN` level by level (the next address comes from the previous `dumpobj`'s Value column) and checks every SOS-printed value against the **dump bytes** — which also mechanically proves that "SOS offsets are object-address based".
+- `il` parses PE/CLI metadata directly (ECMA-335 tables, `#Strings`/`#Blob` heaps, field signature decoding, the `#extends` base chain) to produce structural rows (existence, instance-ness, type, declaration order, explicit layout); **metadata-derived offsets are never published**.
+- `emit` publishes only two-witness fields in the JSON shape `desktop/src/osu/offsets.rs::load` accepts, behind three refusal gates (fixture, provenance, version); `self-test` runs the same code paths on a **synthetic minidump + fixtures** (29 cases, no game needed).
+
+### 使用方法（Usage）
+
+完整手册（前置条件、端到端命令、输出格式、判据表、维护承诺、已知边界）在 **`tools/lazer-offsets-gen/README.md`**。最短路径：
+
+The full manual (prerequisites, end-to-end commands, output format, acceptance rules, maintenance promise, known limits) is in **`tools/lazer-offsets-gen/README.md`**. Shortest path:
+
+```powershell
+# 构建
+rustc --edition 2021 -O -A dead_code -o temp/lazer-offsets-gen.exe tools/lazer-offsets-gen/main.rs
+
+# 自测（不需要游戏）
+temp/lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work temp/lazer-offsets-gen-selftest
+
+# 端到端（lazer 在跑）：干跑 → 采 dump → 提取 → IL → 出表
+temp/lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1 --dry-run
+temp/lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1
+temp/lazer-offsets-gen.exe extract --dump %TEMP%\lazer-offsets-gen\run1\lazer-<ts>.dmp --out %TEMP%\lazer-offsets-gen\run1
+temp/lazer-offsets-gen.exe il --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv --out %TEMP%\lazer-offsets-gen\run1 --diff <上一次的 il-inventory.tsv>
+temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv --il %TEMP%\lazer-offsets-gen\run1\il-inventory-<ts>.tsv --deploy "<mma-shell.exe 所在目录>"
+```
+
+- 退出码：`0` 完成 / `2` 用法错误 / `3` 前置拒绝（游戏没在跑、fixture 未加 `--allow-fixtures`、版本不一致……）/ `4` 输入错误（不是 minidump、中间件格式错、锚点没命中）/ `1` 自测有失败。
+- **在受限上下文里 `Toolhelp32` 看不见游戏进程**（与 B2 真机记录同族）：从工作区外（如 `%TEMP%`）或普通 shell 启动本工具即可。
+- `MMA_LAZER_GEN_SIMULATE=no-lazer|stable-only|two-instances` 是**仅 dev 的自检钩子**，用来把"游戏没开/只有 stable/多实例"三条失败路径真的跑一遍。
+
+- Exit codes: `0` done / `2` usage error / `3` precondition refused (game not running, fixture without `--allow-fixtures`, version mismatch, …) / `4` input error (not a minidump, malformed intermediate, anchor not found) / `1` self-test failures.
+- **In a restricted context `Toolhelp32` cannot see the game process** (same family as the B2 machine finding): start the tool from outside the workspace (e.g. `%TEMP%`) or from a normal shell.
+- `MMA_LAZER_GEN_SIMULATE=no-lazer|stable-only|two-instances` is a **dev-only self-check hook** that makes the three discovery failure paths actually runnable.
+
+### 注意事项（Notes）
+
+- 工具与自测产物一律落在 `temp/`（gitignored）；仓库里只提交 `main.rs`/`*.rs`/`README.md`/`fixtures/`。
+- **fixture 规则**：fixture 文件名带 `EXAMPLE-fixture-`、文件内带 `#fixture true`，出的表必然带 `EXAMPLE-FIXTURE` 标记（文件名 + `verified_build`/`evidence` 内各一处）；没有 `--allow-fixtures` 时 fixture 输入直接拒绝出表。
+- 工具**不负责**运行时校验（L1 结构证明在产品侧 `osu/lazer.rs` + `invariants.rs`）；`offsets.rs` 只提供 `load()` 与"默认拒绝"的就近回落钩子。
+- 采集会**短暂挂起游戏全部线程**（实测 ~70 s），只在开发者机器上、由操作员在场时执行。
+
+- Tool and self-test artifacts always land in `temp/` (gitignored); only `main.rs`/`*.rs`/`README.md`/`fixtures/` are committed.
+- **Fixture rule**: fixture files are named `EXAMPLE-fixture-*` and carry `#fixture true`; any table produced from them necessarily carries the `EXAMPLE-FIXTURE` mark (file name plus one occurrence inside `verified_build` and `evidence`); without `--allow-fixtures` fixture inputs are refused outright.
+- The tool does **not** do runtime validation (the L1 structural proof lives in the product: `osu/lazer.rs` + `invariants.rs`); `offsets.rs` only offers `load()` and the refuse-by-default nearest-version hook.
+- Collection **suspends every game thread** for a moment (measured ~70 s) and is meant to run on a developer machine with the operator present.
+
 ## malody4-anchor-check（Malody 4.3.7 只读观察通道诊断）
 
 ### 这个工具是做什么的（What it does）

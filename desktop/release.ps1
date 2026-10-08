@@ -3,6 +3,10 @@
 # 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/ 下
 #       插件 zip（插件目录 + exe + bridges 安装素材；开发产物与插件源码不入包）。
 
+param(
+    [switch]$SkipBuild
+)
+
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
@@ -19,12 +23,26 @@ if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
 }
 
-Push-Location $desktop
-cargo build --release
-if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
-Pop-Location
+if (-not $env:CARGO_TARGET_DIR) {
+    $env:CARGO_TARGET_DIR = Join-Path $env:TEMP "cargo-target"
+}
 
-$exeSrc = Join-Path $desktop "target\release\mma-shell.exe"
+if (-not $SkipBuild) {
+    Push-Location $desktop
+    try {
+        Write-Host "Building release binary..."
+        cargo build --release
+        if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+    } finally {
+        Pop-Location
+    }
+}
+
+$exeSrc = if ($env:CARGO_TARGET_DIR -and (Test-Path (Join-Path $env:CARGO_TARGET_DIR "release\mma-shell.exe"))) {
+    Join-Path $env:CARGO_TARGET_DIR "release\mma-shell.exe"
+} else {
+    Join-Path $desktop "target\release\mma-shell.exe"
+}
 if (-not (Test-Path $exeSrc)) { throw "release exe missing: $exeSrc" }
 
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
@@ -39,7 +57,20 @@ if (Test-Path $zip) { Remove-Item $zip }
 $stage = Join-Path $env:TEMP "mma-release-stage-$PID"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 Copy-Item -Recurse $pluginDir $stage
+# 排除开发依赖（如 companella ORT 的 node_modules）
+Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
+
+# 拷贝 lazer 偏移表（lazer 原生内存读取必需）
+$lazerOffsetsCandidates = @(
+    (Join-Path $desktop "lazer-offsets"),
+    (Join-Path $desktop "target\release\lazer-offsets"),
+    (Join-Path $desktop "target\debug\lazer-offsets")
+)
+$lazerOffsetsSrc = $lazerOffsetsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($lazerOffsetsSrc) {
+    Copy-Item -Recurse $lazerOffsetsSrc (Join-Path $stage "lazer-offsets")
+}
 
 $bridgesSrc = Join-Path $root "bridges"
 $bridgesDst = Join-Path $stage "bridges"
@@ -60,7 +91,7 @@ Get-ChildItem -LiteralPath $pluginStage -File |
 
 # 兜底断言：开发产物一个都不许进包
 $forbidden = Get-ChildItem $stage -Recurse -Directory |
-    Where-Object { $_.Name -in @('.tools', 'tests') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
+    Where-Object { $_.Name -in @('.tools', 'tests', 'node_modules') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
 if ($forbidden) {
     throw ("refusing to package dev artefacts: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
 }

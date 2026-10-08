@@ -11,10 +11,11 @@
 // Malody V 选曲桥（契约 v4）同样由 state 帧驱动：`sources.malody` 的六个字段进页面状态，
 // 并在**桥事件边沿 + 卡片归属为桥**时清空卡片（规则见下方 maybeClearBridgeCard）。
 
-import { state } from "../appContext.js";
-import { setStatus } from "../hud.js";
+import { applyOsuTransport, isRuntimeOsuOverrideActive, state } from "../appContext.js";
+import { setStatus, updateCardPlayVisibility } from "../hud.js";
 import { invokeCardClear } from "../analysis.js";
 import { currentRoute, notifySourceEvent, reEvaluate } from "./sourceManager.js";
+import { syncOsuScanHint } from "./osuScanHint.js";
 
 /** 心跳 2s + 容忍丢一拍 → 6s 未见 selection 帧即视为本源离场。 */
 const MALODY4_ALIVE_WINDOW_MS = 6000;
@@ -61,10 +62,35 @@ export function applyShellState(payload) {
     state.malody4Screen = malody4.screen || null;
     state.malody4Reason = malody4.reason || null;
     state.malody4Judge = malody4.judge || null;
+    // 契约 v6：`sources.osu`（读取器健康位 + 端点描述）。端点交给 socket 层运行时切换
+    // （DEC-12）；native 位供 sourceManager 的败方门控把 osu 当**活源**。
+    // native 位 = "覆盖真的生效了"（`applyOsuTransport` 内部已校验壳页端口 + 字段 + 路径）：
+    // 浏览器 tosu 页（24050）上覆盖永远不会激活 ⇒ 该位恒 false，行为与无壳时逐字节相同。
+    // 缺 `sources.osu` 的旧壳（≤v5）二者都保持默认 ⇒ 回落 tosu，同上。
+    const osuTransport = sources.osu ? sources.osu.osuTransport : null;
+    applyOsuTransport(osuTransport);
+    // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
+    // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
+    const osu = sources.osu || null;
+    state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
+    state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
+    state.shellOsuProgress = osu && osu.progress ? osu.progress : null;
+
+    const isOsuReaderHealthy = Boolean(
+        osu && osu.gate !== "unhealthy" && osu.phase !== "waiting-for-game" && osu.phase !== "attaching"
+    );
+    state.shellOsuNativeAlive = Boolean(isRuntimeOsuOverrideActive() && isOsuReaderHealthy);
+    if (!isOsuReaderHealthy && state.activeSource === "osu") {
+        state.clientStateName = "";
+        state.isInPlayState = false;
+    }
+
+    reEvaluate();
+    syncOsuScanHint();
+    updateCardPlayVisibility();
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
     // 30s 周期帧写它会把心跳之间的在线状态冲成假离线。
     syncUnknownIdentityNotice();
-    reEvaluate();
 }
 
 /** 页面侧已处理的桥事件序号（边沿基线）。 */
