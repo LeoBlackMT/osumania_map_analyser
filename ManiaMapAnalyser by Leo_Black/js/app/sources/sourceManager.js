@@ -24,6 +24,7 @@
 
 import { state } from "../appContext.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
+import { updateCardPlayVisibility } from "../hud.js";
 
 const FRESH_WINDOW_MS = 60000;
 const DEBOUNCE_MS = 200;
@@ -154,14 +155,20 @@ function scheduleApply() {
         if (next === activeSource) {
             syncDot(next);
             syncOsuScanHint();
+            updateCardPlayVisibility();
             return;
         }
         const prev = activeSource;
         activeSource = next;
         state.lastSourceRoute = next;
         state.activeSource = next;
+        if (prev === "osu" && next !== "osu") {
+            state.clientStateName = "";
+            state.isInPlayState = false;
+        }
         syncDot(next);
         syncOsuScanHint();
+        updateCardPlayVisibility();
         if (onApplied && prev !== next) {
             onApplied(next, prev);
         }

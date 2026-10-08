@@ -12,7 +12,7 @@
 // 并在**桥事件边沿 + 卡片归属为桥**时清空卡片（规则见下方 maybeClearBridgeCard）。
 
 import { applyOsuTransport, isRuntimeOsuOverrideActive, state } from "../appContext.js";
-import { setStatus } from "../hud.js";
+import { setStatus, updateCardPlayVisibility } from "../hud.js";
 import { invokeCardClear } from "../analysis.js";
 import { currentRoute, notifySourceEvent, reEvaluate } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
@@ -78,6 +78,7 @@ export function applyShellState(payload) {
     state.shellOsuProgress = osu && osu.progress ? osu.progress : null;
     reEvaluate();
     syncOsuScanHint();
+    updateCardPlayVisibility();
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
     // 30s 周期帧写它会把心跳之间的在线状态冲成假离线。
     syncUnknownIdentityNotice();
