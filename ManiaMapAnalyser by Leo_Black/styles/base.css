@@ -4,6 +4,10 @@
     box-sizing: border-box;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 :root {
     --text-primary: #f5f7ff;
     --text-soft: #a9b1d2;
