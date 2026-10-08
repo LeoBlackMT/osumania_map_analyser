@@ -17,6 +17,10 @@
     --settings-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -65,7 +69,6 @@ body {
    Column layout
 --------------------------------------------------------------------------- */
 
-.settings-page-container,
 #settings-root,
 #settings-links-root,
 #shell-config-root,
@@ -83,7 +86,9 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 12px 0 14px;
+    width: calc(100% - 36px);
+    max-width: 1004px;
+    margin: 12px auto 14px;
     padding: 8px 12px;
     background: rgba(32, 35, 43, 0.94);
     backdrop-filter: blur(8px);

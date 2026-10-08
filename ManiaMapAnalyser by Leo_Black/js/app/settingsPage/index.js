@@ -202,8 +202,7 @@ function renderOriginNotice() {
 
 function buildLayout() {
     if (navRootEl) {
-        navRootEl.textContent = "";
-        navRootEl.appendChild(buildNav());
+        populateNav(navRootEl);
     }
     settingsRootEl.textContent = "";
     readOnlyEl = buildReadOnlyView();
@@ -230,9 +229,8 @@ function buildLayout() {
     settingsRootEl.appendChild(section);
 }
 
-function buildNav() {
-    const nav = document.createElement("nav");
-    nav.className = "settings-nav";
+function populateNav(nav) {
+    nav.textContent = "";
     for (const [href, label] of [
         ["#shell-config-section", "Shell Configuration"],
         ["#settings-form-section", "Card Settings"],
@@ -245,21 +243,24 @@ function buildNav() {
         nav.appendChild(link);
     }
     setupNavScrollspy(nav);
-    return nav;
 }
 
+let scrollspyBound = false;
 function setupNavScrollspy(nav) {
-    const links = Array.from(nav.querySelectorAll(".settings-nav-link"));
-
     function updateActive() {
-        const targets = links.map((link) => {
-            const id = (link.getAttribute("href") || "").replace("#", "");
-            return id ? document.getElementById(id) : null;
-        });
-        const scrollY = window.scrollY + 120;
+        const links = Array.from(nav.querySelectorAll(".settings-nav-link"));
+        if (!links.length) return;
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 50) {
+            links.forEach((link, idx) => {
+                link.classList.toggle("active", idx === links.length - 1);
+            });
+            return;
+        }
+        const scrollY = window.scrollY + 140;
         let activeIdx = 0;
-        for (let i = 0; i < targets.length; i++) {
-            const target = targets[i];
+        for (let i = 0; i < links.length; i++) {
+            const id = (links[i].getAttribute("href") || "").replace("#", "");
+            const target = id ? document.getElementById(id) : null;
             if (target && target.getBoundingClientRect().top + window.scrollY <= scrollY) {
                 activeIdx = i;
             }
@@ -269,10 +270,18 @@ function setupNavScrollspy(nav) {
         });
     }
 
-    window.addEventListener("scroll", updateActive, { passive: true });
-    window.addEventListener("resize", updateActive, { passive: true });
+    if (!scrollspyBound) {
+        scrollspyBound = true;
+        window.addEventListener("scroll", updateActive, { passive: true });
+        window.addEventListener("resize", updateActive, { passive: true });
+    }
     requestAnimationFrame(updateActive);
-    setTimeout(updateActive, 200);
+    setTimeout(updateActive, 300);
+    setTimeout(updateActive, 1000);
+}
+
+if (navRootEl) {
+    setupNavScrollspy(navRootEl);
 }
 
 function buildReadOnlyView() {
