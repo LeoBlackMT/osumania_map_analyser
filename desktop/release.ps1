@@ -23,6 +23,10 @@ if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
 }
 
+if (-not $env:CARGO_TARGET_DIR) {
+    $env:CARGO_TARGET_DIR = Join-Path $env:TEMP "cargo-target"
+}
+
 if (-not $SkipBuild) {
     Push-Location $desktop
     try {
@@ -34,10 +38,10 @@ if (-not $SkipBuild) {
     }
 }
 
-$exeSrc = Join-Path $desktop "target\release\mma-shell.exe"
-if (-not (Test-Path $exeSrc) -and $env:CARGO_TARGET_DIR) {
-    $alt = Join-Path $env:CARGO_TARGET_DIR "release\mma-shell.exe"
-    if (Test-Path $alt) { $exeSrc = $alt }
+$exeSrc = if ($env:CARGO_TARGET_DIR -and (Test-Path (Join-Path $env:CARGO_TARGET_DIR "release\mma-shell.exe"))) {
+    Join-Path $env:CARGO_TARGET_DIR "release\mma-shell.exe"
+} else {
+    Join-Path $desktop "target\release\mma-shell.exe"
 }
 if (-not (Test-Path $exeSrc)) { throw "release exe missing: $exeSrc" }
 

@@ -314,6 +314,8 @@ pub struct Snapshot {
     pub lazer_mods: Option<Vec<LazerMod>>,
     /// lazer 解引用链的地址（诊断/证据用；**不进载荷**）。
     pub lazer_chain: Option<crate::osu::lazer::ChainAddrs>,
+    /// lazer 当前谱面集的全部文件清单（`(filename, storage_path)`；用于反查背景/音频）。
+    pub lazer_files: Vec<(String, String)>,
     /// 观测集外的状态索引（I-01 的降级上报）。
     pub degraded_fields: Vec<String>,
 }

@@ -56,10 +56,11 @@ export function syncOsuScanHint() {
     } catch {
         route = null;
     }
-    const isNonOsu = (route && route !== "osu")
-        || (state.activeSource && state.activeSource !== "osu")
-        || (state.cardOwner && state.cardOwner !== "osu")
-        || Boolean(state.externalSourceActive);
+    const isOtherSourceAlive = Boolean(
+        (state.malodyAlive && (state.activeSource === "malody" || route === "malody"))
+        || (state.malody4Alive && (state.activeSource === "malody4" || route === "malody4"))
+        || (state.etternaAlive && (state.activeSource === "etterna" || route === "etterna"))
+    );
     const hasDisplayedBeatmap = Boolean(state.lastBeatmapIdentity);
     const hint = deriveOsuScanHint({
         phase,
@@ -68,7 +69,7 @@ export function syncOsuScanHint() {
         shellPage: isShellPage(),
         framesFlowing: latch.payloadSeen,
         activeSource: state.activeSource,
-        isNonOsu,
+        isNonOsu: isOtherSourceAlive,
         hasDisplayedBeatmap,
     });
     applyOsuScanHintText(hint.active ? hint.text : "");

@@ -544,6 +544,109 @@ fn is_hex(text: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// 从 BeatmapSetInfo.<Files> 读取文件表：`Vec<(filename, lazer_store_path)>`。
+pub fn read_beatmap_set_files(
+    source: &dyn Source,
+    beatmap_set: u64,
+    layout: StringLayout,
+) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    let Some(files_list) = read_ptr_field(source, beatmap_set, 0x20) else {
+        return files;
+    };
+    let Some(size_addr) = field_addr(files_list, 0x10) else {
+        return files;
+    };
+    let Some(size) = read_i32(source, size_addr) else {
+        return files;
+    };
+    if size <= 0 || size > 1000 {
+        return files;
+    }
+    let Some(items_array) = read_ptr_field(source, files_list, 0x08) else {
+        return files;
+    };
+    let Some(len_addr) = field_addr(items_array, 0x08) else {
+        return files;
+    };
+    let Some(arr_len) = read_i32(source, len_addr) else {
+        return files;
+    };
+    if arr_len <= 0 {
+        return files;
+    }
+    let count = (size.min(arr_len) as usize).min(1000);
+    for i in 0..count {
+        let elem_offset = 0x10 + (i as i64) * 8;
+        let Some(usage_ptr) = read_ptr_field(source, items_array, elem_offset) else {
+            continue;
+        };
+        let ptr_a = read_ptr_field(source, usage_ptr, 0x18);
+        let ptr_b = read_ptr_field(source, usage_ptr, 0x20);
+        let (filename_opt, file_ptr_opt) = match (ptr_a, ptr_b) {
+            (Some(a), Some(b)) => {
+                if let Some(s) = read_string(source, a, layout) {
+                    (Some(s), Some(b))
+                } else if let Some(s) = read_string(source, b, layout) {
+                    (Some(s), Some(a))
+                } else {
+                    (None, None)
+                }
+            }
+            _ => (None, None),
+        };
+        let Some(filename) = filename_opt else {
+            continue;
+        };
+        let Some(file_ptr) = file_ptr_opt else {
+            continue;
+        };
+        let hash_opt = read_ptr_field(source, file_ptr, 0x18)
+            .and_then(|h_ptr| read_string(source, h_ptr, layout))
+            .or_else(|| {
+                read_ptr_field(source, file_ptr, 0x20)
+                    .and_then(|h_ptr| read_string(source, h_ptr, layout))
+            });
+        let Some(hash) = hash_opt else {
+            continue;
+        };
+        if let Some(lazer_path) = to_lazer_path(&hash) {
+            files.push((filename, lazer_path));
+        }
+    }
+    files
+}
+
+/// 在文件表里按背景图文件名检索仓库路径；未指定或未匹配时按图像后缀回退。
+pub fn find_background_file(files: &[(String, String)], target_name: Option<&str>) -> Option<String> {
+    if let Some(target) = target_name {
+        let clean = target.trim().trim_matches('"');
+        if !clean.is_empty() {
+            for (filename, path) in files {
+                if filename.eq_ignore_ascii_case(clean) {
+                    return Some(path.clone());
+                }
+            }
+            let leaf = std::path::Path::new(clean)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(clean);
+            for (filename, path) in files {
+                if filename.eq_ignore_ascii_case(leaf) {
+                    return Some(path.clone());
+                }
+            }
+        }
+    }
+    for (filename, path) in files {
+        let lower = filename.to_lowercase();
+        if lower.ends_with(".jpg") || lower.ends_with(".png") || lower.ends_with(".jpeg") || lower.ends_with(".webp") {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
 // ---- EEType → 类型名（Step 10f）----
 //
 // 这一段的唯一职责：把一个**对象地址**变成**类型名**（或一条逐字原因）。位移全部来自表的
@@ -1970,15 +2073,24 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             .and_then(|offset| read_ptr_field(source, info, *offset));
         if let Some(set) = chain.beatmap_set {
             snapshot.set_id = field_i32(source, set, &resolved.set_online_id, "beatmap.set", &mut gaps);
+            if let Some(layout) = layout {
+                snapshot.lazer_files = read_beatmap_set_files(source, set, layout);
+            }
         } else if let Err(error) = &resolved.beatmap_set {
             gaps.push(offsets_gap("beatmap.set", error));
         } else {
             gaps.push(gap("beatmap.set", "read"));
         }
+        let mut bg_name_from_meta = None;
         if let Some(metadata) = chain.metadata {
             snapshot.title = read_text_field(source, metadata, &resolved.metadata_title, "beatmap.title", layout, &mut gaps);
             snapshot.artist =
                 read_text_field(source, metadata, &resolved.metadata_artist, "beatmap.artist", layout, &mut gaps);
+            if let Some(layout) = layout {
+                // <BackgroundFile>k__BackingField offset 96 (0x60)
+                bg_name_from_meta = read_ptr_field(source, metadata, 96)
+                    .and_then(|ptr| read_string(source, ptr, layout));
+            }
             // mapper：`<Author>` 是 RealmUser（**不是字符串**，P4b 的纠正）⇒ 再跳一跳。
             chain.realm_user = resolved
                 .metadata_author
@@ -2001,6 +2113,11 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             gaps.push(gap("beatmap.title", "read"));
             gaps.push(gap("beatmap.artist", "read"));
             gaps.push(gap("beatmap.mapper", "read"));
+        }
+        if !snapshot.lazer_files.is_empty() {
+            if let Some(bg_path) = find_background_file(&snapshot.lazer_files, bg_name_from_meta.as_deref()) {
+                snapshot.background = Some(bg_path);
+            }
         }
     }
 

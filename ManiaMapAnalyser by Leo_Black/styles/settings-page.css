@@ -65,6 +65,7 @@ body {
    Column layout
 --------------------------------------------------------------------------- */
 
+.settings-page-container,
 #settings-root,
 #settings-links-root,
 #shell-config-root,
@@ -99,13 +100,17 @@ body {
     background: var(--settings-panel-2);
     border: 1px solid var(--settings-border);
     font-size: 13px;
+    transition: all 0.15s ease;
 }
 
-.settings-nav-link:hover {
+.settings-nav-link:hover,
+.settings-nav-link.active {
     border-color: var(--settings-accent);
     color: var(--settings-accent);
+    background: rgba(93, 198, 255, 0.15);
 }
 
+#presets-app,
 .settings-panel {
     margin-bottom: 18px;
     padding: 16px 18px 18px;
@@ -113,7 +118,7 @@ body {
     border: 1px solid var(--settings-border);
     border-radius: var(--settings-radius);
     box-shadow: var(--settings-shadow);
-    scroll-margin-top: 90px;
+    scroll-margin-top: 100px;
 }
 
 .settings-panel h2 {

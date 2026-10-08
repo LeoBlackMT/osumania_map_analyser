@@ -51,6 +51,7 @@ const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:2
 
 const statusBarEl = document.getElementById("settings-status");
 const linksRootEl = document.getElementById("settings-links-root");
+const navRootEl = document.getElementById("settings-nav-root");
 const settingsRootEl = document.getElementById("settings-root");
 const shellConfigRootEl = document.getElementById("shell-config-root");
 const presetsAppEl = document.getElementById("presets-app");
@@ -200,8 +201,11 @@ function renderOriginNotice() {
 // ---------------------------------------------------------------------------
 
 function buildLayout() {
+    if (navRootEl) {
+        navRootEl.textContent = "";
+        navRootEl.appendChild(buildNav());
+    }
     settingsRootEl.textContent = "";
-    settingsRootEl.appendChild(buildNav());
     readOnlyEl = buildReadOnlyView();
     settingsRootEl.appendChild(readOnlyEl);
 
@@ -230,9 +234,9 @@ function buildNav() {
     const nav = document.createElement("nav");
     nav.className = "settings-nav";
     for (const [href, label] of [
-        ["#shell-config-section", "Shell"],
+        ["#shell-config-section", "Shell Configuration"],
         ["#settings-form-section", "Card Settings"],
-        ["#presets-app", "Presets"],
+        ["#presets-app", "Presets Manager"],
     ]) {
         const link = document.createElement("a");
         link.className = "settings-nav-link";
@@ -240,7 +244,35 @@ function buildNav() {
         link.textContent = label;
         nav.appendChild(link);
     }
+    setupNavScrollspy(nav);
     return nav;
+}
+
+function setupNavScrollspy(nav) {
+    const links = Array.from(nav.querySelectorAll(".settings-nav-link"));
+
+    function updateActive() {
+        const targets = links.map((link) => {
+            const id = (link.getAttribute("href") || "").replace("#", "");
+            return id ? document.getElementById(id) : null;
+        });
+        const scrollY = window.scrollY + 120;
+        let activeIdx = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const target = targets[i];
+            if (target && target.getBoundingClientRect().top + window.scrollY <= scrollY) {
+                activeIdx = i;
+            }
+        }
+        links.forEach((link, idx) => {
+            link.classList.toggle("active", idx === activeIdx);
+        });
+    }
+
+    window.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive, { passive: true });
+    requestAnimationFrame(updateActive);
+    setTimeout(updateActive, 200);
 }
 
 function buildReadOnlyView() {

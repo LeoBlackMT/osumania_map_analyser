@@ -69,13 +69,22 @@ export function applyShellState(payload) {
     // 缺 `sources.osu` 的旧壳（≤v5）二者都保持默认 ⇒ 回落 tosu，同上。
     const osuTransport = sources.osu ? sources.osu.osuTransport : null;
     applyOsuTransport(osuTransport);
-    state.shellOsuNativeAlive = isRuntimeOsuOverrideActive();
     // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
     // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
     const osu = sources.osu || null;
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
     state.shellOsuProgress = osu && osu.progress ? osu.progress : null;
+
+    const isOsuReaderHealthy = Boolean(
+        osu && osu.gate !== "unhealthy" && osu.phase !== "waiting-for-game" && osu.phase !== "attaching"
+    );
+    state.shellOsuNativeAlive = Boolean(isRuntimeOsuOverrideActive() && isOsuReaderHealthy);
+    if (!isOsuReaderHealthy && state.activeSource === "osu") {
+        state.clientStateName = "";
+        state.isInPlayState = false;
+    }
+
     reEvaluate();
     syncOsuScanHint();
     updateCardPlayVisibility();

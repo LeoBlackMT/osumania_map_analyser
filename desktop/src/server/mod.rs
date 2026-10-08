@@ -448,7 +448,7 @@ pub(crate) fn apply_tosu_online_transition(shared: &Shared, online: bool) {
 /// 兜底的周期帧是 30s（`spawn_timers`），页面等不起——用户关掉/打开 tosu 后必须马上
 /// 看到传输切换（照 `malody4` poller 的"值变即推"先例）。首拍（值还没记过）也推一帧：
 /// 页面因此不必等 30s 才知道自己是 tosu 还是 native。
-const OSU_SOURCE_WATCH_INTERVAL: Duration = Duration::from_secs(2);
+const OSU_SOURCE_WATCH_INTERVAL: Duration = Duration::from_millis(100);
 
 fn spawn_osu_source_watcher(shared: Arc<Shared>) {
     thread::spawn(move || {

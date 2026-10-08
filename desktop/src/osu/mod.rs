@@ -1792,6 +1792,7 @@ pub fn resolve_songs_folder(image_path: &std::path::Path, value: &str) -> String
 /// 任何一步失败都只在证据里留 `beatmap_file_error`，**不影响发布**（C6 是对拍项，不是门）。
 /// 顺带算一次磁盘 MD5（I-09 的软不变量）与两个文件名（`files.background`/`files.audio`）。
 fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>) {
+    let previous_bg = snapshot.background.clone();
     snapshot.beatmap_file = None;
     snapshot.beatmap_file_error = None;
     snapshot.beatmap_file_md5 = None;
@@ -1831,7 +1832,16 @@ fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>
     match entry.loaded.as_ref() {
         Ok((file, md5)) => {
             snapshot.beatmap_file_md5 = Some(md5.clone());
-            snapshot.background = file.background.clone();
+            if snapshot.client == Some(Client::Lazer) {
+                snapshot.background = previous_bg.or_else(|| {
+                    lazer::find_background_file(
+                        &snapshot.lazer_files,
+                        file.background.as_deref(),
+                    )
+                });
+            } else {
+                snapshot.background = file.background.clone();
+            }
             snapshot.audio = file.audio.clone();
             snapshot.beatmap_file_mismatches = mismatches_for(file, snapshot);
             snapshot.beatmap_file = Some(file.clone());

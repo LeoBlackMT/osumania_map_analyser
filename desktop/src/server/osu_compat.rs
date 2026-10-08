@@ -599,7 +599,22 @@ fn handle_http(stream: &mut TcpStream, head: &str, method: &str, path: &str) {
     };
     let full = dir.join(&file);
     match std::fs::read(&full) {
-        Ok(bytes) => write_response(stream, 200, &ctype, &bytes),
+        Ok(bytes) => {
+            let resolved_ctype = if ctype == "application/octet-stream" {
+                if bytes.starts_with(b"\xFF\xD8\xFF") {
+                    "image/jpeg".to_string()
+                } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                    "image/png".to_string()
+                } else if bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+                    "image/webp".to_string()
+                } else {
+                    ctype
+                }
+            } else {
+                ctype
+            };
+            write_response(stream, 200, &resolved_ctype, &bytes)
+        }
         Err(e) => {
             crate::server::log::log_at(
                 "error",
