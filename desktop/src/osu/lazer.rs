@@ -858,7 +858,10 @@ fn read_screen_state(
     chain.screen_top_module = Some(read.module);
     chain.screen_top_image_base = Some(read.image_base);
     let type_name = read.type_name.clone().unwrap_or_default();
-    match screen_state_for(&type_name) {
+    let mapped_state = table
+        .screen_state_for(&type_name)
+        .or_else(|| screen_state_for(&type_name));
+    match mapped_state {
         Some(state) => match OBSERVED_STATE_NAMES
             .iter()
             .find(|(_, name)| *name == state)
@@ -1454,44 +1457,73 @@ pub fn load_table(
         }
     }
 
-    let dir = table_dir.join(TABLE_DIR);
-    let expected = dir.join(table_file_name(
+    let mut candidate_dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(offsets_dir) = std::env::var("MMA_OFFSETS_DIR") {
+        candidate_dirs.push(PathBuf::from(&offsets_dir).join("lazer"));
+        candidate_dirs.push(PathBuf::from(&offsets_dir));
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        candidate_dirs.push(
+            PathBuf::from(appdata)
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join("lazer"),
+        );
+    }
+    candidate_dirs.push(table_dir.join("offsets").join("lazer"));
+    candidate_dirs.push(table_dir.join("offset").join("lazer"));
+    candidate_dirs.push(table_dir.join(TABLE_DIR));
+
+    let expected_name = table_file_name(
         &info.lazer_version,
         &info.runtime_version,
         &info.arch,
-    ));
+    );
 
-    // ② 文件命名约定的精确命中。
-    if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
-        if usable(&table).is_ok() {
-            return Ok(LoadedTable {
-                mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
-                table,
-                origin: TableOrigin::Exact,
-                path: expected,
-            });
+    // ② 文件命名约定的精确命中（按梯子顺序扫描各目录）。
+    for dir in &candidate_dirs {
+        let expected = dir.join(&expected_name);
+        if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
+            if usable(&table).is_ok() {
+                return Ok(LoadedTable {
+                    mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
+                    table,
+                    origin: TableOrigin::Exact,
+                    path: expected,
+                });
+            }
+            eprintln!(
+                "[osu] lazer offsets: {} rejected: {}",
+                expected.display(),
+                usable(&table).err().unwrap_or_default()
+            );
         }
-        eprintln!(
-            "[osu] lazer offsets: {} rejected: {}",
-            expected.display(),
-            usable(&table).err().unwrap_or_default()
-        );
     }
 
-    // ③ 同目录下**任意**同键表（文件名被改过；键完全相同 ⇒ 不需要回落）。
-    // ④ 同一批候选里挑最近的（**必须**过 L1 证明，且大声记日志）。
+    // ③ 同目录下任意同键表（文件名被改过；键完全相同 ⇒ 不需要回落）。
+    // ④ 同一批候选里挑最近的（必须过 L1 证明，且大声记日志）。
     let mut tables: Vec<(PathBuf, OffsetTable)> = Vec::new();
-    for path in files.list_json(&dir) {
-        if path == expected {
-            continue;
-        }
-        let Some(Ok(table)) = files.read(&path).map(|bytes| OffsetTable::load(&bytes)) else {
-            continue;
-        };
-        if usable(&table).is_ok() {
-            tables.push((path, table));
+    let mut seen_paths: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    for dir in &candidate_dirs {
+        for path in files.list_json(dir) {
+            if !seen_paths.insert(path.clone()) {
+                continue;
+            }
+            let Some(Ok(table)) = files.read(&path).map(|bytes| OffsetTable::load(&bytes)) else {
+                continue;
+            };
+            if usable(&table).is_ok() {
+                tables.push((path, table));
+            }
         }
     }
+
+    // 将编译期内嵌默认表作为零 IO 候选加入
+    let embedded_default = crate::osu::offsets::default_lazer_table();
+    if !tables.iter().any(|(_, t)| t.key() == embedded_default.key()) {
+        tables.push((PathBuf::from("<embedded>"), embedded_default));
+    }
+
     let target = info.target();
     if let Some((path, table)) = tables
         .iter()
@@ -1499,7 +1531,7 @@ pub fn load_table(
     {
         return Ok(LoadedTable {
             table: table.clone(),
-            origin: TableOrigin::SameKey,
+            origin: if path == &PathBuf::from("<embedded>") { TableOrigin::Exact } else { TableOrigin::SameKey },
             path: path.clone(),
             mismatch: None,
         });
@@ -1510,14 +1542,12 @@ pub fn load_table(
     match OffsetTable::nearest_table(&candidates, &target, NEAREST_MAX_DISTANCE, &policy) {
         Ok(nearest) => {
             let key = nearest.key();
-            // 候选里同键的那一份就是它的落点（表可能来自任意文件名）。
             let path = tables
                 .iter()
                 .find(|(_, table)| table.key() == key)
                 .map(|(path, _)| path.clone())
-                .unwrap_or_else(|| dir.clone());
+                .unwrap_or_else(|| candidate_dirs.first().cloned().unwrap_or_default());
             let mismatch = nearest.mismatch(&info.lazer_version, &info.runtime_version, &info.arch);
-            // **大声记日志**（计划 §4.0 / Step 10 的硬要求）：回落是有代价的选择。
             eprintln!(
                 "[osu] lazer offsets: FALLBACK TABLE — target key {}/{}/{} not present; using nearest {} (distance<= {}) because the L1 structural proof (site chain + table field probe) passed. candidates=[{}]",
                 info.lazer_version,

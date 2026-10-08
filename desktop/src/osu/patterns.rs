@@ -315,6 +315,19 @@ pub fn is_aligned(addr: u32) -> bool {
     addr % 4 == 0
 }
 
+/// 获取指定锚点键的 IDA 模式串与位移（优先查 StableTable，缺席时回退台账默认常量）。
+pub fn anchor_pattern_and_offset<'a>(
+    key: &str,
+    table: Option<&'a crate::osu::offsets::StableTable>,
+) -> Option<(&'a str, i32)> {
+    if let Some(tbl) = table {
+        if let Some(def) = tbl.anchor(key) {
+            return Some((def.pattern.as_str(), def.offset));
+        }
+    }
+    ANCHORS.iter().find(|a| a.key == key).map(|a| (a.pattern, a.offset))
+}
+
 #[cfg(test)]
 #[path = "../../tests-local/osu_patterns.rs"]
 mod tests_patterns;

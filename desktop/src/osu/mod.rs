@@ -388,6 +388,7 @@ pub fn instance() -> Option<Reader> {
 fn run(reader: Reader) {
     let mut attached: Option<win::Target> = None;
     let mut anchors: Option<patterns::AnchorTable> = None;
+    let mut stable_table: Option<offsets::StableTable> = None;
     // Step 10B：lazer 目标（64 位）的 L0 产物（表 + gameBase + 目标环境读数）。
     // 与 `anchors` 互斥：同一时刻只有一个客户端被附着。
     let mut lazer_attach: Option<lazer::Attach> = None;
@@ -442,6 +443,7 @@ fn run(reader: Reader) {
                 gate.reason()
             );
             anchors = None;
+            stable_table = None;
             lazer_attach = None;
             osu_cache = None;
             last_scan_fail = None;
@@ -484,6 +486,7 @@ fn run(reader: Reader) {
                     );
                     attached = Some(target);
                     anchors = None;
+                    stable_table = None;
                     lazer_attach = None;
                     regions = scan::RegionCache::new();
                     previous_live = None;
@@ -642,8 +645,18 @@ fn run(reader: Reader) {
                 // ②.a **缓存路径**（Step 9c）：同一个 `(exe md5, bitness, module_base)` 的重复
                 //     定址只重新验证地址（签名复核 + 结构自证，判据与扫描时逐字相同），不重扫
                 //     4 GB。验证不过 ⇒ 丢掉条目、落到 ②.b 全量扫描（日志已写明哪一枚哪一项失败）。
+                if client == Client::Stable && stable_table.is_none() {
+                    let exe_dir = target.image_path.parent();
+                    let loaded = offsets::find_stable_table(exe_dir)
+                        .unwrap_or_else(|_| offsets::default_stable_table());
+                    eprintln!(
+                        "[osu] stable table loaded: client={} ver={} verified_build={}",
+                        loaded.client, loaded.version, loaded.verified_build
+                    );
+                    stable_table = Some(loaded);
+                }
                 if let Some((entry, validated_ms)) =
-                    cached_anchors(target, &mut regions, &mut anchor_cache)
+                    cached_anchors(target, &mut regions, &mut anchor_cache, stable_table.as_ref())
                 {
                     eprintln!(
                         "[osu] anchors from cache validated in {}ms: {} unresolved={:?}",
@@ -661,7 +674,7 @@ fn run(reader: Reader) {
                     // Step 9e：实测进度只从这条路径上报（缓存验证是毫秒级，不报进度）。
                     let mut on_progress =
                         |progress: ScanProgress| publish_scan_progress(&reader, progress);
-                    match resolve_anchors(target, &mut regions, &mut on_progress) {
+                    match resolve_anchors(target, &mut regions, stable_table.as_ref(), &mut on_progress) {
                         Ok((table, elapsed_ms)) => {
                             eprintln!(
                                 "[osu] anchors resolved in {}ms: statusPtr=0x{:08X} baseAddr=0x{:08X} playTimeAddr=0x{:08X} rulesetsAddr=0x{:08X} menuModsPtr=0x{:08X} getAudioLengthPtr=0x{:08X} settingsClassAddr=0x{:08X}",
@@ -691,7 +704,7 @@ fn run(reader: Reader) {
                             // 或冻结窗口（≥30 s）才发生，实证拿不到验证耗时（见 D-notes §10）。
                             if anchor_cache_selftest() {
                                 let started = std::time::Instant::now();
-                                match cached_anchors(target, &mut regions, &mut anchor_cache) {
+                                match cached_anchors(target, &mut regions, &mut anchor_cache, stable_table.as_ref()) {
                                     Some((entry, validated_ms)) => eprintln!(
                                         "[osu] selftest: anchors from cache validated in {}ms ({}us): {} unresolved={:?}",
                                         validated_ms,
@@ -778,7 +791,7 @@ fn run(reader: Reader) {
                 }),
                 None => {
                     let table = anchors.as_ref().expect("anchors");
-                    read_frame(target, table, previous_live)
+                    read_frame(target, table, stable_table.as_ref(), previous_live)
                 }
             };
             match read {
@@ -786,7 +799,7 @@ fn run(reader: Reader) {
                     // `.osu` 解析（C6）：按 checksum 缓存；只有换图时才真的读盘。
                     attach_beatmap_file(&mut frame.snapshot, &mut osu_cache);
                     // hits 的时间门需要 firstObject ⇒ 只能在解析之后应用。
-                    apply_hits(&mut frame.snapshot);
+                    apply_hits_with_topo(&mut frame.snapshot, stable_table.as_ref().map(|t| &t.topology));
                     previous_live = frame.snapshot.play_time;
                     let outcome = gate.on_frame(&frame.snapshot, now_ms);
                     log_transition(&outcome);
@@ -1136,6 +1149,7 @@ fn write_record(
 fn resolve_anchors(
     target: &win::Target,
     regions: &mut scan::RegionCache,
+    stable_table: Option<&offsets::StableTable>,
     progress: &mut dyn FnMut(ScanProgress),
 ) -> Result<(patterns::AnchorTable, u128), Reason> {
     use std::time::Instant;
@@ -1173,28 +1187,29 @@ fn resolve_anchors(
             if table.get(key).is_some() {
                 continue;
             }
-            let Some(anchor) = patterns::ANCHORS.iter().find(|a| a.key == *key) else {
+            let Some((pattern_str, offset)) = patterns::anchor_pattern_and_offset(key, stable_table) else {
                 continue;
             };
-            let pattern = scan::Pattern::parse(anchor.pattern)
-                .map_err(|_| Reason::SignatureMiss(anchor.key))?;
+            let pattern = scan::Pattern::parse(pattern_str)
+                .map_err(|_| Reason::SignatureMiss(key))?;
             // 同一签名可能出现多次（P1 实测 `configurationAddr` 有 2 处，其中一处只是同形状
             // 代码），所以取列表再**逐个自证**：只有解引用后落在结构上说得通的那一个才算。
             let candidates = scan::find_in_regions(
                 target.handle(),
                 &regions,
                 &pattern,
-                anchor.offset,
+                offset,
                 ANCHOR_HIT_LIMIT,
                 &mut stats,
             );
+            let topo = stable_table.map(|t| &t.topology);
             let chosen = candidates
                 .iter()
                 .copied()
-                .find(|addr| anchor_proves_out(target, *key, *addr, &regions));
+                .find(|addr| anchor_proves_out_with_topo(target, *key, *addr, &regions, topo));
             eprintln!(
                 "[osu] scan {} -> {} hit(s) {} chosen={:?}",
-                anchor.key,
+                key,
                 candidates.len(),
                 candidates
                     .iter()
@@ -1204,7 +1219,7 @@ fn resolve_anchors(
                 chosen.map(|a| format!("0x{a:08X}"))
             );
             match chosen {
-                Some(addr) => table.set(anchor.key, addr),
+                Some(addr) => table.set(key, addr),
                 None => {
                     if !degraded.contains(key) {
                         degraded.push(key);
@@ -1269,6 +1284,7 @@ fn cached_anchors(
     target: &win::Target,
     regions: &mut scan::RegionCache,
     cache: &mut anchor_cache::AnchorCache,
+    stable_table: Option<&offsets::StableTable>,
 ) -> Option<(anchor_cache::AnchorEntry, u128)> {
     use std::time::Instant;
     let key = anchor_cache_key(target)?;
@@ -1290,17 +1306,18 @@ fn cached_anchors(
     }
     let started = Instant::now();
     let region_list = target.regions_cached(regions, FILTER_READY[0], REGION_LIMIT);
+    let topo = stable_table.map(|t| &t.topology);
     let outcome = cache.resolve(&key, |anchor_key, addr| {
         // ① 签名复核：把 match 地址（`addr - offset`；位移只在扫描时施加一次）处的
         //    `pattern.len()` 字节读回来，用台账里同一份掩码签名再匹配一次。
-        if !signature_still_matches(target, anchor_key, addr) {
+        if !signature_still_matches(target, anchor_key, addr, stable_table) {
             eprintln!(
                 "[osu] anchor cache invalid: {anchor_key} signature no longer matches at 0x{addr:08X}"
             );
             return false;
         }
         // ② 结构自证（与扫描时同一份判据）。
-        if !anchor_proves_out(target, anchor_key, addr, &region_list) {
+        if !anchor_proves_out_with_topo(target, anchor_key, addr, &region_list, topo) {
             eprintln!(
                 "[osu] anchor cache invalid: {anchor_key} structure check failed at 0x{addr:08X}"
             );
@@ -1339,17 +1356,22 @@ fn anchor_cache_key(target: &win::Target) -> Option<anchor_cache::CacheKey> {
 /// 缓存地址的**签名复核**：读 `match = addr - offset` 处的 `pattern.len()` 字节，用同一份
 /// 掩码签名再匹配一次。读失败/签名不再匹配/台账里没有这个键 ⇒ `false`（该锚点不成立）。
 #[cfg(windows)]
-fn signature_still_matches(target: &win::Target, key: &str, addr: u32) -> bool {
-    let Some(anchor) = patterns::ANCHORS.iter().find(|anchor| anchor.key == key) else {
+fn signature_still_matches(
+    target: &win::Target,
+    key: &str,
+    addr: u32,
+    stable_table: Option<&offsets::StableTable>,
+) -> bool {
+    let Some((pattern_str, offset)) = patterns::anchor_pattern_and_offset(key, stable_table) else {
         return false;
     };
-    let Ok(pattern) = scan::Pattern::parse(anchor.pattern) else {
+    let Ok(pattern) = scan::Pattern::parse(pattern_str) else {
         return false;
     };
     let mut buf = vec![0u8; pattern.len()];
     // 位移在扫描时已施加一次（`find_in_regions` 的 `hit + offset`），这里逆回去；
     // 用 i64 再截断回 u32（`statusPtr` 的 -0x4 在 u32 上会下溢）。
-    let match_addr = (addr as i64 - anchor.offset as i64) as u32;
+    let match_addr = (addr as i64 - offset as i64) as u32;
     if win::read_exact_at(target.handle(), match_addr, &mut buf).is_err() {
         return false;
     }
@@ -1357,110 +1379,113 @@ fn signature_still_matches(target: &win::Target, key: &str, addr: u32) -> bool {
 }
 
 /// 逐候选自证（L1 结构校验）：只有"解引用后说得通"的候选才被采纳。
-///
-/// 为什么不是"取首个命中"：同一签名可能出现多次（同形状代码），而 P1 的探针取首个并全部
-/// 命中，是在**另一份进程实例**（ASLR 不同、且当时映像路径不同）上发生的。B2 在真机上把
-/// **原始命中地址与各候选位移**逐个打印核对（`evidence/B2-stable-minimal/diag-probe-offsets.txt`），
-/// 结论：`statusPtr` 必须 `-0x4`、`menuModsPtr` 必须 `+0x9`——两处的原始命中地址读出来都
-/// 不是指针，位移之后才是指针。因此判据写成**可自证的结构**（不依赖 tosu，离线同样成立）：
-/// - `statusPtr`：`read_pointer(addr)` 落在小整数状态域（`0..=15`，覆盖观测到的 0/2/5/7）
-/// - `baseAddr`：`read_pointer(addr - 0xC)` 是非空指针，且落在可读区域里
-/// - `playTimeAddr`（C2）：`[addr+0x5]` 是落在可读区里的对齐指针，且 `[[addr+0x5]]` 落在
-///   毫秒域（`±27 h`）——两条同时成立才采纳
-/// - `rulesetsAddr`（C2）：`[addr-0xB]` 与 `[[addr-0xB]+0x4]` 都是落区内的对齐非空指针，
-///   且规则集 `+0x0`（MethodTable）同样成立（比前两枚更严，因为它一次串起两条链）
-/// - `menuModsPtr`：`read_pointer(addr)` 的**第一跳**落在可读区域里（掩码本体是什么值
-///   由 L2 不变量管，不在这里判——真机实测该掩码此时是 `0x20000000`（ScoreV2 位），
-///   只有"已知位"的白名单会误判成假阳性）
-/// - `getAudioLengthPtr` / `settingsClassAddr`：best-effort，判据见各自分支
-///
-/// 校验失败 ⇒ 该键进 `unresolved`，由调用方给出 `signature-miss:<key>`（必需键）或降级
-/// （best-effort 键）。
 pub fn anchor_proves_out(
     target: &win::Target,
     key: &str,
     addr: u32,
     regions: &[scan::Region],
 ) -> bool {
+    anchor_proves_out_with_topo(target, key, addr, regions, None)
+}
+
+pub fn anchor_proves_out_with_topo(
+    target: &win::Target,
+    key: &str,
+    addr: u32,
+    regions: &[scan::Region],
+    topo: Option<&offsets::StableTopology>,
+) -> bool {
     match key {
         "statusPtr" => win::read_pointer(target, addr)
             .map(|value| value <= STATE_INDEX_MAX)
             .unwrap_or(false),
-        "baseAddr" => win::read_pointer(target, addr.wrapping_sub(0xC))
-            .map(|object| object != 0 && region_contains(regions, object))
-            .unwrap_or(false),
-        "playTimeAddr" => match win::read_u32(target, addr.wrapping_add(0x5)) {
-            Ok(slot) => {
-                if let Some(why) = plausible_object(regions, slot) {
-                    eprintln!(
-                        "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
-                    );
-                    return false;
-                }
-                match win::read_u32(target, slot) {
-                    Ok(value) => {
-                        (value as i32).unsigned_abs()
-                            <= invariants::PLAY_TIME_MAX_MS as u32
+        "baseAddr" => {
+            let offset = topo.map(|t| t.beatmap_from_base).unwrap_or(0xC);
+            win::read_pointer(target, addr.wrapping_sub(offset))
+                .map(|object| object != 0 && region_contains(regions, object))
+                .unwrap_or(false)
+        }
+        "playTimeAddr" => {
+            let offset = topo.map(|t| t.play_time_from_anchor).unwrap_or(0x5);
+            match win::read_u32(target, addr.wrapping_add(offset)) {
+                Ok(slot) => {
+                    if let Some(why) = plausible_object(regions, slot) {
+                        eprintln!(
+                            "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
+                        );
+                        return false;
                     }
-                    Err(_) => false,
-                }
-            }
-            Err(_) => false,
-        },
-        "rulesetsAddr" => match win::read_u32(target, addr.wrapping_sub(0xB)) {
-            Ok(slot) => {
-                if let Some(why) = plausible_object(regions, slot) {
-                    eprintln!(
-                        "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
-                    );
-                    return false;
-                }
-                match win::read_u32(target, slot.wrapping_add(0x4)) {
-                    Ok(ruleset) => {
-                        if let Some(why) = plausible_object(regions, ruleset) {
-                            eprintln!(
-                                "[osu] diag {key} candidate=0x{addr:08X} reject=ruleset ruleset=0x{ruleset:08X} why={why}"
-                            );
-                            return false;
+                    match win::read_u32(target, slot) {
+                        Ok(value) => {
+                            (value as i32).unsigned_abs()
+                                <= invariants::PLAY_TIME_MAX_MS as u32
                         }
-                        match win::read_u32(target, ruleset) {
-                            Ok(vtable) => plausible_object(regions, vtable).is_none(),
-                            Err(_) => false,
-                        }
+                        Err(_) => false,
                     }
-                    Err(_) => false,
                 }
+                Err(_) => false,
             }
-            Err(_) => false,
-        },
+        }
+        "rulesetsAddr" => {
+            let anchor_off = topo.map(|t| t.ruleset_from_anchor).unwrap_or(0xB);
+            let list_off = topo.map(|t| t.ruleset_list_offset).unwrap_or(0x4);
+            match win::read_u32(target, addr.wrapping_sub(anchor_off)) {
+                Ok(slot) => {
+                    if let Some(why) = plausible_object(regions, slot) {
+                        eprintln!(
+                            "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
+                        );
+                        return false;
+                    }
+                    match win::read_u32(target, slot.wrapping_add(list_off)) {
+                        Ok(ruleset) => {
+                            if let Some(why) = plausible_object(regions, ruleset) {
+                                eprintln!(
+                                    "[osu] diag {key} candidate=0x{addr:08X} reject=ruleset ruleset=0x{ruleset:08X} why={why}"
+                                );
+                                return false;
+                            }
+                            match win::read_u32(target, ruleset) {
+                                Ok(vtable) => plausible_object(regions, vtable).is_none(),
+                                Err(_) => false,
+                            }
+                        }
+                        Err(_) => false,
+                    }
+                }
+                Err(_) => false,
+            }
+        }
         "menuModsPtr" => win::read_u32(target, addr)
             .map(|pointer| pointer != 0 && region_contains(regions, pointer))
             .unwrap_or(false),
-        "getAudioLengthPtr" => match win::read_u32(target, addr.wrapping_add(0x7)) {
-            // best-effort：槽必须是对齐落区的全局指针；若音频对象已装载（非 0），对象本身也须对齐落区。
-            Ok(slot) => match plausible_object(regions, slot) {
-                None => match win::read_u32(target, slot) {
-                    Ok(0) => true,
-                    Ok(obj) => match plausible_object(regions, obj) {
-                        None => true,
-                        Some(why) => {
-                            eprintln!(
-                                "[osu] diag {key} candidate=0x{addr:08X} reject=object obj=0x{obj:08X} why={why}"
-                            );
-                            false
-                        }
+        "getAudioLengthPtr" => {
+            let offset = topo.map(|t| t.mp3_length_from_anchor).unwrap_or(0x7);
+            match win::read_u32(target, addr.wrapping_add(offset)) {
+                Ok(slot) => match plausible_object(regions, slot) {
+                    None => match win::read_u32(target, slot) {
+                        Ok(0) => true,
+                        Ok(obj) => match plausible_object(regions, obj) {
+                            None => true,
+                            Some(why) => {
+                                eprintln!(
+                                    "[osu] diag {key} candidate=0x{addr:08X} reject=object obj=0x{obj:08X} why={why}"
+                                );
+                                false
+                            }
+                        },
+                        Err(_) => false,
                     },
-                    Err(_) => false,
+                    Some(why) => {
+                        eprintln!(
+                            "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
+                        );
+                        false
+                    }
                 },
-                Some(why) => {
-                    eprintln!(
-                        "[osu] diag {key} candidate=0x{addr:08X} reject=slot slot=0x{slot:08X} why={why}"
-                    );
-                    false
-                }
-            },
-            Err(_) => false,
-        },
+                Err(_) => false,
+            }
+        }
         "settingsClassAddr" => match win::read_pointer(target, addr) {
             Ok(object) => {
                 if let Some(why) = plausible_object(regions, object) {
@@ -1546,6 +1571,7 @@ struct FrameRead {
 fn read_frame(
     target: &win::Target,
     table: &patterns::AnchorTable,
+    stable_table: Option<&offsets::StableTable>,
     previous_live: Option<i32>,
 ) -> Result<FrameRead, Reason> {
     let mut snapshot = Snapshot {
@@ -1554,19 +1580,22 @@ fn read_frame(
         ..Default::default()
     };
     let mut degraded: Vec<String> = Vec::new();
+    let topo = stable_table.map(|t| &t.topology);
 
     if let Some(status_ptr) = table.status_ptr {
         let raw = win::read_pointer(target, status_ptr)?;
         let index = raw as i32;
         snapshot.state_number = Some(index);
-        let name = model::state_name_for(index);
+        let name = stable_table
+            .and_then(|t| t.state_name(index))
+            .unwrap_or_else(|| model::state_name_for(index));
         snapshot.state_name = Some(name.to_string());
         // I-01：观测集外 → 发布 "" 并上报降级（**不**判 unhealthy）——那是 L2 的事，
         // 这里只保证"名字表之外的整数不会变成编造的名字"。
     }
 
     if let Some(play_time_addr) = table.play_time_addr {
-        match stable::read_play_time(target, play_time_addr) {
+        match stable::read_play_time_with_topo(target, play_time_addr, topo) {
             Ok(Some(live)) => {
                 snapshot.play_time = Some(live);
                 snapshot.paused = Some(stable::paused_from_previous(previous_live, Some(live)));
@@ -1583,7 +1612,8 @@ fn read_frame(
     }
 
     if let Some(base_addr) = table.base_addr {
-        let beatmap_addr = base_addr.wrapping_sub(stable::BEATMAP_FROM_BASE);
+        let beatmap_offset = topo.map(|t| t.beatmap_from_base).unwrap_or(stable::BEATMAP_FROM_BASE);
+        let beatmap_addr = base_addr.wrapping_sub(beatmap_offset);
         let object = win::read_pointer(target, beatmap_addr)?;
         snapshot.beatmap_object = Some(object);
         if object != 0 {
@@ -1605,16 +1635,26 @@ fn read_frame(
                     }
                 }
             };
-            snapshot.checksum = read_string(0x6C, "beatmap.md5");
-            snapshot.filename = read_string(0x90, "files.beatmap");
-            snapshot.folder = read_string(0x78, "folders.beatmap");
-            snapshot.version = read_string(0xAC, "beatmap.version");
-            snapshot.artist = read_string(0x18, "beatmap.artist");
-            snapshot.title = read_string(0x24, "beatmap.title");
-            snapshot.mapper = read_string(0x7C, "beatmap.mapper");
-            snapshot.map_id = win::read_i32(target, object.wrapping_add(0xC8)).ok();
-            snapshot.set_id = win::read_i32(target, object.wrapping_add(0xCC)).ok();
-            snapshot.map_id_bits = win::read_u32(target, object.wrapping_add(0xC8)).ok();
+            let md5_off = topo.map(|t| t.beatmap_md5).unwrap_or(0x6C);
+            let fn_off = topo.map(|t| t.beatmap_filename).unwrap_or(0x90);
+            let fold_off = topo.map(|t| t.beatmap_folder).unwrap_or(0x78);
+            let ver_off = topo.map(|t| t.beatmap_version).unwrap_or(0xAC);
+            let art_off = topo.map(|t| t.beatmap_artist).unwrap_or(0x18);
+            let tit_off = topo.map(|t| t.beatmap_title).unwrap_or(0x24);
+            let map_off = topo.map(|t| t.beatmap_mapper).unwrap_or(0x7C);
+            let map_id_off = topo.map(|t| t.beatmap_id).unwrap_or(0xC8);
+            let set_id_off = topo.map(|t| t.beatmap_set_id).unwrap_or(0xCC);
+
+            snapshot.checksum = read_string(md5_off, "beatmap.md5");
+            snapshot.filename = read_string(fn_off, "files.beatmap");
+            snapshot.folder = read_string(fold_off, "folders.beatmap");
+            snapshot.version = read_string(ver_off, "beatmap.version");
+            snapshot.artist = read_string(art_off, "beatmap.artist");
+            snapshot.title = read_string(tit_off, "beatmap.title");
+            snapshot.mapper = read_string(map_off, "beatmap.mapper");
+            snapshot.map_id = win::read_i32(target, object.wrapping_add(map_id_off)).ok();
+            snapshot.set_id = win::read_i32(target, object.wrapping_add(set_id_off)).ok();
+            snapshot.map_id_bits = win::read_u32(target, object.wrapping_add(map_id_off)).ok();
         }
     }
 
@@ -1629,12 +1669,12 @@ fn read_frame(
     let mut probe = None;
     let mut result_read = None;
     if let Some(rulesets_addr) = table.rulesets_addr {
-        match stable::resolve_ruleset(target, rulesets_addr) {
+        match stable::resolve_ruleset_with_topo(target, rulesets_addr, topo) {
             Ok((ruleset, chain_probe)) => {
                 snapshot.ruleset_base = Some(ruleset);
                 probe = Some(chain_probe);
                 if let Some(base_addr) = table.base_addr {
-                    let in_game = stable::read_in_game(target, ruleset, base_addr);
+                    let in_game = stable::read_in_game_with_topo(target, ruleset, base_addr, topo);
                     snapshot.gameplay_base = in_game.gameplay_base;
                     snapshot.score_base = in_game.score_base;
                     snapshot.play_mods_mask = in_game.play_mods_mask;
@@ -1646,7 +1686,7 @@ fn read_frame(
                         degraded.push("play.mods".to_string());
                     }
                 }
-                let result = stable::read_result(target, ruleset);
+                let result = stable::read_result_with_topo(target, ruleset, topo);
                 snapshot.result_base = result.result_base;
                 snapshot.result_mods_mask = result.result_mods_mask;
                 snapshot.result_hits_candidates = result.hits_candidates.clone();
@@ -1665,7 +1705,7 @@ fn read_frame(
     }
 
     if let Some(audio_length_ptr) = table.audio_length_ptr {
-        match stable::read_mp3_length(target, audio_length_ptr) {
+        match stable::read_mp3_length_with_topo(target, audio_length_ptr, topo) {
             Ok(length) => snapshot.mp3_length = Some(length),
             Err(_) => degraded.push("beatmap.time.mp3Length".to_string()),
         }
@@ -1720,13 +1760,17 @@ fn read_frame(
 ///
 /// 任何一道门不过 ⇒ 该键**整个不出现在载荷里**（绝不发半截值，也绝不沿用上一帧）。
 pub fn apply_hits(snapshot: &mut Snapshot) {
+    apply_hits_with_topo(snapshot, None);
+}
+
+pub fn apply_hits_with_topo(snapshot: &mut Snapshot, topo: Option<&offsets::StableTopology>) {
     snapshot.play_hits = if invariants::play_hits_publishable(snapshot) {
-        stable::hits_from_candidates(&snapshot.hits_candidates)
+        stable::hits_from_candidates_topo(&snapshot.hits_candidates, topo)
     } else {
         None
     };
     snapshot.result_hits = if invariants::result_hits_publishable(snapshot) {
-        stable::hits_from_candidates(&snapshot.result_hits_candidates)
+        stable::hits_from_candidates_topo(&snapshot.result_hits_candidates, topo)
     } else {
         None
     };
@@ -1885,6 +1929,7 @@ fn read_songs_cfg_value(_target: &win::Target, _addr: u32) -> Option<String> {
 fn resolve_anchors(
     _target: &win::Target,
     _regions: &mut scan::RegionCache,
+    _stable_table: Option<&offsets::StableTable>,
     _progress: &mut dyn FnMut(ScanProgress),
 ) -> Result<(patterns::AnchorTable, u128), Reason> {
     Err(Reason::PlatformUnsupported)

@@ -61,7 +61,13 @@ Copy-Item -Recurse $pluginDir $stage
 Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
 
-# 拷贝 lazer 偏移表（lazer 原生内存读取必需）
+# 拷贝统一偏移表（desktop/offsets，包含 stable 与 lazer 原生内存读取必需的纯数据表）
+$offsetsSrc = Join-Path $desktop "offsets"
+if (Test-Path $offsetsSrc) {
+    Copy-Item -Recurse $offsetsSrc (Join-Path $stage "offsets")
+}
+
+# 拷贝旧版 lazer-offsets 目录（向后兼容）
 $lazerOffsetsCandidates = @(
     (Join-Path $desktop "lazer-offsets"),
     (Join-Path $desktop "target\release\lazer-offsets"),

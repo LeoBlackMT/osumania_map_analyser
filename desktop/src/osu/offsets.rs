@@ -75,6 +75,8 @@
 // （两者必须一致，否则生成器拒绝出表）。
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use crate::osu::model::Reason;
 
 /// 查一个「类型 + 字段」的**结构化查法**（不写死类型名的完整拼写）。
 ///
@@ -160,10 +162,40 @@ pub const MIN_FIELD_OFFSET: i64 = 0x08;
 /// 超出即判"表坏了/查错了键"，**不给假值**。
 pub const MAX_FIELD_OFFSET: i64 = 0x4000;
 
+pub const DEFAULT_STABLE_TABLE_JSON: &str = include_str!("../../offsets/stable/stable__x86.json");
+pub const DEFAULT_LAZER_TABLE_JSON: &str = include_str!("../../offsets/lazer/2026.1005.0.0__10.0.12__x64.json");
+
+/// lazer 锚点与多跳拓扑段（可选，未配置时使用既有静态默认值）
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct LazerAnchorsSection {
+    #[serde(default = "default_lazer_marker_pattern")]
+    pub marker_pattern: String,
+    #[serde(default = "default_lazer_site_deltas")]
+    pub site_deltas: Vec<i64>,
+    #[serde(default = "default_lazer_game_base_hops")]
+    pub game_base_hops: Vec<(String, u64)>,
+}
+
+fn default_lazer_marker_pattern() -> String {
+    "01 01 00 00 00 00 80 44 00 00 40 44".to_string()
+}
+
+fn default_lazer_site_deltas() -> Vec<i64> {
+    vec![0x24, 0x28, 0x2c, 0x20, 0x30, 0x1c, 0x34]
+}
+
+fn default_lazer_game_base_hops() -> Vec<(String, u64)> {
+    vec![
+        ("external_link_opener".to_string(), 0x0),
+        ("api_access".to_string(), 0x218),
+        ("game".to_string(), 0x310),
+    ]
+}
+
 /// 一张偏移表（一个 `(lazer 版本, runtime 版本, 架构)` 组合一份）。
 ///
 /// 字段顺序/命名与生成器的 JSON 同形，`load` 直接反序列化。
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct OffsetTable {
     /// lazer 版本（`sq.version` / runtime log 里的 `Running osu <ver>`）。
     pub lazer_version: String,
@@ -173,6 +205,12 @@ pub struct OffsetTable {
     pub arch: String,
     /// `GameBase` 的 MethodTable（vtable）。`None` = 本表未提取到（按字段降级）。
     pub game_base_vtable: Option<u64>,
+    /// 锚点与多跳拓扑（可选；缺席时回落静态默认值）。
+    #[serde(default)]
+    pub anchors: Option<LazerAnchorsSection>,
+    /// 屏幕类型名 → 状态名映射（可选；缺席时回落静态默认映射）。
+    #[serde(default)]
+    pub screen_states: Option<BTreeMap<String, String>>,
     /// `Type.Field → offset`（`BTreeMap`：JSON 对象键序不稳定，用有序表保证可复现）。
     pub types: BTreeMap<String, BTreeMap<String, i64>>,
     /// **运行时结构段**（Step 10f；见文件头）：EEType→类型名 这条链的位移与 RID 表。
@@ -186,7 +224,7 @@ pub struct OffsetTable {
 }
 
 /// `runtime` 段里的一个位移（`witness` = 生成器留下的证据行；读取侧只读 `offset`/`shift`）。
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct RuntimeEntry {
     /// 对象基准（EEType / Module / 数组对象）上的位移。
     pub offset: i64,
@@ -209,7 +247,7 @@ impl RuntimeEntry {
 }
 
 /// 运行时结构段（见文件头）。每一组都是 `名字 → 位移`。
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct RuntimeSection {
     /// `token`（TypeDef RID 的来源）/ `loader_module`（Module 指针）。
     #[serde(default)]
@@ -279,6 +317,8 @@ pub enum LoadError {
     Json(String),
     /// 版本/架构/证明缺失（空串也算缺：空版本号落不进任何键）。
     EmptyField(&'static str),
+    /// 纯数据 Schema 校验失败（不变量违规/数值越界/危险内容）。
+    Validation(String),
 }
 
 impl std::fmt::Display for LoadError {
@@ -286,6 +326,7 @@ impl std::fmt::Display for LoadError {
         match self {
             LoadError::Json(message) => write!(f, "offsets-load: {message}"),
             LoadError::EmptyField(field) => write!(f, "offsets-load: empty {field}"),
+            LoadError::Validation(message) => write!(f, "offsets-load: {message}"),
         }
     }
 }
@@ -307,7 +348,51 @@ impl OffsetTable {
                 return Err(LoadError::EmptyField(field));
             }
         }
+        validate_lazer_schema(&table).map_err(|e| LoadError::Validation(e.to_string()))?;
         Ok(table)
+    }
+
+    /// 标记模式（来自表或默认值）。
+    pub fn marker_pattern(&self) -> &str {
+        self.anchors
+            .as_ref()
+            .map(|a| a.marker_pattern.as_str())
+            .unwrap_or("01 01 00 00 00 00 80 44 00 00 40 44")
+    }
+
+    /// 站点候选位移序列（来自表或默认值）。
+    pub fn site_deltas(&self) -> &[i64] {
+        self.anchors
+            .as_ref()
+            .map(|a| a.site_deltas.as_slice())
+            .unwrap_or(&[0x24, 0x28, 0x2c, 0x20, 0x30, 0x1c, 0x34])
+    }
+
+    /// 站点到 GameBase 的多跳链路（来自表或默认值）。
+    pub fn game_base_hops(&self) -> Vec<(&str, u64)> {
+        if let Some(anchors) = &self.anchors {
+            anchors
+                .game_base_hops
+                .iter()
+                .map(|(label, offset)| (label.as_str(), *offset))
+                .collect()
+        } else {
+            vec![
+                ("external_link_opener", 0x0),
+                ("api_access", 0x218),
+                ("game", 0x310),
+            ]
+        }
+    }
+
+    /// 屏幕类型名 → 状态名（若表定义了自定义映射优先使用）。
+    pub fn screen_state_for(&self, type_name: &str) -> Option<&str> {
+        if let Some(states) = &self.screen_states {
+            if let Some(name) = states.get(type_name) {
+                return Some(name.as_str());
+            }
+        }
+        None
     }
 
     /// 表键（版本 + runtime + 架构）——日志与证据里的唯一标识。
@@ -689,7 +774,743 @@ fn parse_component(text: &str) -> u32 {
     text.trim().parse::<u32>().unwrap_or(0)
 }
 
+// ---- stable 纯数据表模型与校验 ----
+
+/// stable 锚点定义
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableAnchorDef {
+    pub pattern: String,
+    pub offset: i32,
+    #[serde(default)]
+    pub derivation: String,
+    #[serde(default)]
+    pub evidence: String,
+}
+
+/// stable 多跳链路与偏移拓扑
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableTopology {
+    #[serde(default = "default_play_time_from_anchor")]
+    pub play_time_from_anchor: u32,
+    #[serde(default = "default_beatmap_from_base")]
+    pub beatmap_from_base: u32,
+    #[serde(default = "default_info_from_base")]
+    pub info_from_base: u32,
+    #[serde(default = "default_retries_offset")]
+    pub retries_offset: u32,
+    #[serde(default = "default_plays_offset")]
+    pub plays_offset: u32,
+    #[serde(default = "default_ruleset_from_anchor")]
+    pub ruleset_from_anchor: u32,
+    #[serde(default = "default_ruleset_list_offset")]
+    pub ruleset_list_offset: u32,
+    #[serde(default = "default_gameplay_from_ruleset")]
+    pub gameplay_from_ruleset: u32,
+    #[serde(default = "default_result_from_ruleset")]
+    pub result_from_ruleset: u32,
+    #[serde(default = "default_score_from_gameplay")]
+    pub score_from_gameplay: u32,
+    #[serde(default = "default_mods_container")]
+    pub mods_container: u32,
+    #[serde(default = "default_mods_xor_high")]
+    pub mods_xor_high: u32,
+    #[serde(default = "default_mods_xor_low")]
+    pub mods_xor_low: u32,
+    #[serde(default = "default_score_processor_from_score")]
+    pub score_processor_from_score: u32,
+    #[serde(default = "default_scorev2_bit")]
+    pub scorev2_bit: u32,
+    #[serde(default = "default_result_score_offset")]
+    pub result_score_offset: u32,
+    #[serde(default = "default_result_max_combo_offset")]
+    pub result_max_combo_offset: u32,
+    #[serde(default = "default_result_player_name_offset")]
+    pub result_player_name_offset: u32,
+    #[serde(default = "default_result_online_id_offset")]
+    pub result_online_id_offset: u32,
+    #[serde(default = "default_mp3_length_from_anchor")]
+    pub mp3_length_from_anchor: u32,
+    #[serde(default = "default_mp3_length_field")]
+    pub mp3_length_field: u32,
+    #[serde(default = "default_hits_candidate_offsets")]
+    pub hits_candidate_offsets: Vec<u32>,
+    #[serde(default = "default_hits_slot_mapping")]
+    pub hits_slot_mapping: Vec<(usize, String)>,
+    #[serde(default = "default_beatmap_md5")]
+    pub beatmap_md5: u32,
+    #[serde(default = "default_beatmap_filename")]
+    pub beatmap_filename: u32,
+    #[serde(default = "default_beatmap_folder")]
+    pub beatmap_folder: u32,
+    #[serde(default = "default_beatmap_version")]
+    pub beatmap_version: u32,
+    #[serde(default = "default_beatmap_artist")]
+    pub beatmap_artist: u32,
+    #[serde(default = "default_beatmap_title")]
+    pub beatmap_title: u32,
+    #[serde(default = "default_beatmap_mapper")]
+    pub beatmap_mapper: u32,
+    #[serde(default = "default_beatmap_id")]
+    pub beatmap_id: u32,
+    #[serde(default = "default_beatmap_set_id")]
+    pub beatmap_set_id: u32,
+}
+
+fn default_play_time_from_anchor() -> u32 { 0x5 }
+fn default_beatmap_from_base() -> u32 { 0xC }
+fn default_info_from_base() -> u32 { 0x33 }
+fn default_retries_offset() -> u32 { 0x8 }
+fn default_plays_offset() -> u32 { 0xC }
+fn default_ruleset_from_anchor() -> u32 { 0xB }
+fn default_ruleset_list_offset() -> u32 { 0x4 }
+fn default_gameplay_from_ruleset() -> u32 { 0x64 }
+fn default_result_from_ruleset() -> u32 { 0x38 }
+fn default_score_from_gameplay() -> u32 { 0x38 }
+fn default_mods_container() -> u32 { 0x1C }
+fn default_mods_xor_high() -> u32 { 0xC }
+fn default_mods_xor_low() -> u32 { 0x8 }
+fn default_score_processor_from_score() -> u32 { 0x54 }
+fn default_scorev2_bit() -> u32 { 0x2000_0000 }
+fn default_result_score_offset() -> u32 { 0x78 }
+fn default_result_max_combo_offset() -> u32 { 0x68 }
+fn default_result_player_name_offset() -> u32 { 0x28 }
+fn default_result_online_id_offset() -> u32 { 0x4 }
+fn default_mp3_length_from_anchor() -> u32 { 0x7 }
+fn default_mp3_length_field() -> u32 { 0x4 }
+fn default_beatmap_md5() -> u32 { 0x6C }
+fn default_beatmap_filename() -> u32 { 0x90 }
+fn default_beatmap_folder() -> u32 { 0x78 }
+fn default_beatmap_version() -> u32 { 0xAC }
+fn default_beatmap_artist() -> u32 { 0x18 }
+fn default_beatmap_title() -> u32 { 0x24 }
+fn default_beatmap_mapper() -> u32 { 0x7C }
+fn default_beatmap_id() -> u32 { 0xC8 }
+fn default_beatmap_set_id() -> u32 { 0xCC }
+fn default_hits_candidate_offsets() -> Vec<u32> {
+    vec![0x88, 0x8A, 0x8C, 0x8E, 0x90, 0x92, 0x94, 0x68]
+}
+fn default_hits_slot_mapping() -> Vec<(usize, String)> {
+    vec![
+        (0, "100".to_string()),
+        (1, "300".to_string()),
+        (2, "50".to_string()),
+        (3, "geki".to_string()),
+        (4, "katu".to_string()),
+        (5, "miss".to_string()),
+    ]
+}
+
+impl Default for StableTopology {
+    fn default() -> Self {
+        StableTopology {
+            play_time_from_anchor: default_play_time_from_anchor(),
+            beatmap_from_base: default_beatmap_from_base(),
+            info_from_base: default_info_from_base(),
+            retries_offset: default_retries_offset(),
+            plays_offset: default_plays_offset(),
+            ruleset_from_anchor: default_ruleset_from_anchor(),
+            ruleset_list_offset: default_ruleset_list_offset(),
+            gameplay_from_ruleset: default_gameplay_from_ruleset(),
+            result_from_ruleset: default_result_from_ruleset(),
+            score_from_gameplay: default_score_from_gameplay(),
+            mods_container: default_mods_container(),
+            mods_xor_high: default_mods_xor_high(),
+            mods_xor_low: default_mods_xor_low(),
+            score_processor_from_score: default_score_processor_from_score(),
+            scorev2_bit: default_scorev2_bit(),
+            result_score_offset: default_result_score_offset(),
+            result_max_combo_offset: default_result_max_combo_offset(),
+            result_player_name_offset: default_result_player_name_offset(),
+            result_online_id_offset: default_result_online_id_offset(),
+            mp3_length_from_anchor: default_mp3_length_from_anchor(),
+            mp3_length_field: default_mp3_length_field(),
+            hits_candidate_offsets: default_hits_candidate_offsets(),
+            hits_slot_mapping: default_hits_slot_mapping(),
+            beatmap_md5: default_beatmap_md5(),
+            beatmap_filename: default_beatmap_filename(),
+            beatmap_folder: default_beatmap_folder(),
+            beatmap_version: default_beatmap_version(),
+            beatmap_artist: default_beatmap_artist(),
+            beatmap_title: default_beatmap_title(),
+            beatmap_mapper: default_beatmap_mapper(),
+            beatmap_id: default_beatmap_id(),
+            beatmap_set_id: default_beatmap_set_id(),
+        }
+    }
+}
+
+/// stable 映射段（状态名枚举、mods 映射等）
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableMappings {
+    #[serde(default = "default_stable_states")]
+    pub states: BTreeMap<String, String>,
+}
+
+fn default_stable_states() -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    map.insert("0".to_string(), "menu".to_string());
+    map.insert("1".to_string(), "edit".to_string());
+    map.insert("2".to_string(), "play".to_string());
+    map.insert("4".to_string(), "selectEdit".to_string());
+    map.insert("5".to_string(), "selectPlay".to_string());
+    map.insert("7".to_string(), "resultScreen".to_string());
+    map
+}
+
+impl Default for StableMappings {
+    fn default() -> Self {
+        StableMappings {
+            states: default_stable_states(),
+        }
+    }
+}
+
+/// stable 偏移表（纯数据模型，对应 stable__x86.json）
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableTable {
+    #[serde(default = "default_stable_client")]
+    pub client: String,
+    pub version: String,
+    pub arch: String,
+    pub anchors: BTreeMap<String, StableAnchorDef>,
+    #[serde(default)]
+    pub topology: StableTopology,
+    #[serde(default)]
+    pub mappings: StableMappings,
+    pub verified_build: String,
+    pub evidence: String,
+}
+
+fn default_stable_client() -> String {
+    "stable".to_string()
+}
+
+impl StableTable {
+    pub fn load(bytes: &[u8]) -> Result<StableTable, LoadError> {
+        let table: StableTable =
+            serde_json::from_slice(bytes).map_err(|e| LoadError::Json(e.to_string()))?;
+        for (field, value) in [
+            ("client", &table.client),
+            ("version", &table.version),
+            ("arch", &table.arch),
+            ("verified_build", &table.verified_build),
+            ("evidence", &table.evidence),
+        ] {
+            if value.trim().is_empty() {
+                return Err(LoadError::EmptyField(field));
+            }
+        }
+        validate_stable_schema(&table).map_err(|e| LoadError::Validation(e.to_string()))?;
+        Ok(table)
+    }
+
+    pub fn anchor(&self, key: &str) -> Option<&StableAnchorDef> {
+        self.anchors.get(key)
+    }
+
+    pub fn state_name(&self, index: i32) -> Option<&str> {
+        self.mappings.states.get(&index.to_string()).map(|s| s.as_str())
+    }
+}
+
+// ---- Schema 纯数据校验器 ----
+
+/// Schema 不变量违规错误
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ValidationError {
+    ExecutableContent(String),
+    HopDepthExceeded(usize),
+    DisplacementOutOfRange(String, i64),
+    StringTooLong(String, usize),
+    InvalidPattern(String),
+    UnknownStateName(String),
+    InvalidAlignment(String, i64),
+    MissingRequiredField(String),
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationError::ExecutableContent(desc) => {
+                write!(f, "validation-error: executable content detected ({desc})")
+            }
+            ValidationError::HopDepthExceeded(depth) => {
+                write!(f, "validation-error: hop depth {depth} exceeds limit 16")
+            }
+            ValidationError::DisplacementOutOfRange(field, val) => {
+                write!(f, "validation-error: displacement out of range: {field}={val}")
+            }
+            ValidationError::StringTooLong(field, len) => {
+                write!(f, "validation-error: string too long: {field} (len {len} > 512)")
+            }
+            ValidationError::InvalidPattern(pat) => {
+                write!(f, "validation-error: invalid pattern: {pat}")
+            }
+            ValidationError::UnknownStateName(name) => {
+                write!(f, "validation-error: unknown state name '{name}' not in allowed set")
+            }
+            ValidationError::InvalidAlignment(field, val) => {
+                write!(f, "validation-error: unaligned offset: {field}={val}")
+            }
+            ValidationError::MissingRequiredField(field) => {
+                write!(f, "validation-error: missing required field '{field}'")
+            }
+        }
+    }
+}
+
+pub const ALLOWED_STATE_NAMES: &[&str] = &[
+    "menu",
+    "edit",
+    "play",
+    "selectEdit",
+    "selectPlay",
+    "resultScreen",
+    "resultsScreen",
+    "multiplayer",
+    "unknown",
+    "",
+];
+
+fn check_string_safety(field: &str, s: &str) -> Result<(), ValidationError> {
+    check_string_safety_bounded(field, s, 512)
+}
+
+fn check_long_string_safety(field: &str, s: &str) -> Result<(), ValidationError> {
+    check_string_safety_bounded(field, s, 65_536)
+}
+
+fn check_string_safety_bounded(field: &str, s: &str, max_len: usize) -> Result<(), ValidationError> {
+    if s.len() > max_len {
+        return Err(ValidationError::StringTooLong(field.to_string(), s.len()));
+    }
+    let lower = s.to_ascii_lowercase();
+    for needle in ["<script", "javascript:", "eval(", "exec(", "onload=", "onerror="] {
+        if lower.contains(needle) {
+            return Err(ValidationError::ExecutableContent(format!(
+                "{field} contains forbidden token '{needle}'"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn check_pattern_safety(field: &str, pattern: &str) -> Result<(), ValidationError> {
+    check_string_safety(field, pattern)?;
+    let tokens: Vec<&str> = pattern.split_whitespace().collect();
+    if tokens.is_empty() || tokens.len() > 64 {
+        return Err(ValidationError::InvalidPattern(format!(
+            "{field}: token count {} out of range 1..=64",
+            tokens.len()
+        )));
+    }
+    for token in tokens {
+        if token == "??" {
+            continue;
+        }
+        if token.len() != 2 || !token.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(ValidationError::InvalidPattern(format!(
+                "{field}: invalid token '{token}' in pattern"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_stable_schema(table: &StableTable) -> Result<(), ValidationError> {
+    check_string_safety("client", &table.client)?;
+    check_string_safety("version", &table.version)?;
+    check_string_safety("arch", &table.arch)?;
+    check_string_safety("verified_build", &table.verified_build)?;
+    check_long_string_safety("evidence", &table.evidence)?;
+
+    if table.anchors.is_empty() || table.anchors.len() > 16 {
+        return Err(ValidationError::HopDepthExceeded(table.anchors.len()));
+    }
+
+    for (key, def) in &table.anchors {
+        check_pattern_safety(&format!("anchor.{key}.pattern"), &def.pattern)?;
+        check_long_string_safety(&format!("anchor.{key}.derivation"), &def.derivation)?;
+        check_long_string_safety(&format!("anchor.{key}.evidence"), &def.evidence)?;
+        if def.offset < -4096 || def.offset > 1_048_576 {
+            return Err(ValidationError::DisplacementOutOfRange(
+                format!("anchor.{key}.offset"),
+                def.offset as i64,
+            ));
+        }
+    }
+
+    let topo = &table.topology;
+    for (name, val) in [
+        ("play_time_from_anchor", topo.play_time_from_anchor),
+        ("beatmap_from_base", topo.beatmap_from_base),
+        ("info_from_base", topo.info_from_base),
+        ("retries_offset", topo.retries_offset),
+        ("plays_offset", topo.plays_offset),
+        ("ruleset_from_anchor", topo.ruleset_from_anchor),
+        ("ruleset_list_offset", topo.ruleset_list_offset),
+        ("gameplay_from_ruleset", topo.gameplay_from_ruleset),
+        ("result_from_ruleset", topo.result_from_ruleset),
+        ("score_from_gameplay", topo.score_from_gameplay),
+        ("mods_container", topo.mods_container),
+        ("mods_xor_high", topo.mods_xor_high),
+        ("mods_xor_low", topo.mods_xor_low),
+        ("score_processor_from_score", topo.score_processor_from_score),
+        ("result_score_offset", topo.result_score_offset),
+        ("result_max_combo_offset", topo.result_max_combo_offset),
+        ("result_player_name_offset", topo.result_player_name_offset),
+        ("result_online_id_offset", topo.result_online_id_offset),
+        ("mp3_length_from_anchor", topo.mp3_length_from_anchor),
+        ("mp3_length_field", topo.mp3_length_field),
+        ("beatmap_md5", topo.beatmap_md5),
+        ("beatmap_filename", topo.beatmap_filename),
+        ("beatmap_folder", topo.beatmap_folder),
+        ("beatmap_version", topo.beatmap_version),
+        ("beatmap_artist", topo.beatmap_artist),
+        ("beatmap_title", topo.beatmap_title),
+        ("beatmap_mapper", topo.beatmap_mapper),
+        ("beatmap_id", topo.beatmap_id),
+        ("beatmap_set_id", topo.beatmap_set_id),
+    ] {
+        if val > 1_048_576 {
+            return Err(ValidationError::DisplacementOutOfRange(name.to_string(), val as i64));
+        }
+    }
+
+    if topo.hits_candidate_offsets.len() > 16 {
+        return Err(ValidationError::HopDepthExceeded(topo.hits_candidate_offsets.len()));
+    }
+    for (i, offset) in topo.hits_candidate_offsets.iter().enumerate() {
+        if *offset > 1_048_576 {
+            return Err(ValidationError::DisplacementOutOfRange(
+                format!("hits_candidate_offsets[{i}]"),
+                *offset as i64,
+            ));
+        }
+        if *offset % 2 != 0 {
+            return Err(ValidationError::InvalidAlignment(
+                format!("hits_candidate_offsets[{i}]"),
+                *offset as i64,
+            ));
+        }
+    }
+
+    if topo.hits_slot_mapping.len() > 16 {
+        return Err(ValidationError::HopDepthExceeded(topo.hits_slot_mapping.len()));
+    }
+
+    for (idx_str, name) in &table.mappings.states {
+        check_string_safety("mappings.states.key", idx_str)?;
+        check_string_safety("mappings.states.val", name)?;
+        if !ALLOWED_STATE_NAMES.contains(&name.as_str()) {
+            return Err(ValidationError::UnknownStateName(name.clone()));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError> {
+    check_string_safety("lazer_version", &table.lazer_version)?;
+    check_string_safety("runtime_version", &table.runtime_version)?;
+    check_string_safety("arch", &table.arch)?;
+    check_string_safety("verified_build", &table.verified_build)?;
+    check_long_string_safety("evidence", &table.evidence)?;
+
+    if let Some(anchors) = &table.anchors {
+        check_pattern_safety("anchors.marker_pattern", &anchors.marker_pattern)?;
+        if anchors.site_deltas.len() > 16 {
+            return Err(ValidationError::HopDepthExceeded(anchors.site_deltas.len()));
+        }
+        for (i, delta) in anchors.site_deltas.iter().enumerate() {
+            if *delta < -4096 || *delta > 4096 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("anchors.site_deltas[{i}]"),
+                    *delta,
+                ));
+            }
+        }
+        if anchors.game_base_hops.len() > 16 {
+            return Err(ValidationError::HopDepthExceeded(anchors.game_base_hops.len()));
+        }
+        for (label, offset) in &anchors.game_base_hops {
+            check_string_safety("anchors.game_base_hops.label", label)?;
+            if *offset > 16_777_216 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("anchors.game_base_hops.{label}"),
+                    *offset as i64,
+                ));
+            }
+        }
+    }
+
+    if let Some(states) = &table.screen_states {
+        if states.len() > 128 {
+            return Err(ValidationError::HopDepthExceeded(states.len()));
+        }
+        for (screen, state) in states {
+            check_string_safety("screen_states.key", screen)?;
+            check_string_safety("screen_states.val", state)?;
+            if !ALLOWED_STATE_NAMES.contains(&state.as_str()) {
+                return Err(ValidationError::UnknownStateName(state.clone()));
+            }
+        }
+    }
+
+    // Types sanity checks
+    for (type_name, fields) in &table.types {
+        check_string_safety("types.key", type_name)?;
+        for (field_name, offset) in fields {
+            check_string_safety("types.field", field_name)?;
+            if *offset < 0 || *offset > MAX_FIELD_OFFSET * 16 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("{type_name}.{field_name}"),
+                    *offset,
+                ));
+            }
+        }
+    }
+
+    // Runtime section checks
+    if let Some(runtime) = &table.runtime {
+        check_long_string_safety("runtime.witness", &runtime.witness)?;
+        for (group_name, map) in [
+            ("eetype", &runtime.eetype),
+            ("module", &runtime.module),
+            ("screen_array", &runtime.screen_array),
+        ] {
+            for (entry_name, entry) in map {
+                check_long_string_safety(&format!("runtime.{group_name}.{entry_name}.witness"), &entry.witness)?;
+                if entry.offset < 0 || entry.offset > MAX_FIELD_OFFSET * 16 {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("runtime.{group_name}.{entry_name}.offset"),
+                        entry.offset,
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn default_stable_table() -> StableTable {
+    StableTable::load(DEFAULT_STABLE_TABLE_JSON.as_bytes())
+        .expect("compiled-in stable table must be valid")
+}
+
+pub fn default_lazer_table() -> OffsetTable {
+    OffsetTable::load(DEFAULT_LAZER_TABLE_JSON.as_bytes())
+        .expect("compiled-in lazer table must be valid")
+}
+
+/// stable 表发现梯子
+pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason> {
+    // 1. 显式环境变量 $MMA_STABLE_OFFSETS
+    if let Ok(env_file) = std::env::var("MMA_STABLE_OFFSETS") {
+        let p = PathBuf::from(env_file);
+        if p.exists() {
+            if let Ok(bytes) = std::fs::read(&p) {
+                if let Ok(table) = StableTable::load(&bytes) {
+                    return Ok(table);
+                }
+            }
+        }
+    }
+
+    // 2. 统一偏移目录环境变量 $MMA_OFFSETS_DIR
+    if let Ok(offsets_dir) = std::env::var("MMA_OFFSETS_DIR") {
+        let p = PathBuf::from(offsets_dir).join("stable").join("stable__x86.json");
+        if p.exists() {
+            if let Ok(bytes) = std::fs::read(&p) {
+                if let Ok(table) = StableTable::load(&bytes) {
+                    return Ok(table);
+                }
+            }
+        }
+    }
+
+    // 3. APPDATA 缓存目录
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let p = PathBuf::from(appdata)
+            .join("ManiaMapAnalyser")
+            .join("offsets")
+            .join("stable")
+            .join("stable__x86.json");
+        if p.exists() {
+            if let Ok(bytes) = std::fs::read(&p) {
+                if let Ok(table) = StableTable::load(&bytes) {
+                    return Ok(table);
+                }
+            }
+        }
+    }
+
+    // 4. dir_hint 目录（如 exe 同级目录）
+    if let Some(hint) = dir_hint {
+        let candidates = [
+            hint.join("offsets").join("stable").join("stable__x86.json"),
+            hint.join("offset").join("stable").join("stable__x86.json"),
+        ];
+        for p in &candidates {
+            if p.exists() {
+                if let Ok(bytes) = std::fs::read(p) {
+                    if let Ok(table) = StableTable::load(&bytes) {
+                        return Ok(table);
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. 当前可执行文件同级目录
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let p = exe_dir.join("offsets").join("stable").join("stable__x86.json");
+            if p.exists() {
+                if let Ok(bytes) = std::fs::read(&p) {
+                    if let Ok(table) = StableTable::load(&bytes) {
+                        return Ok(table);
+                    }
+                }
+            }
+        }
+    }
+
+    // 6. 内置编译期兜底（Zero IO 永不失败）
+    Ok(default_stable_table())
+}
+
 #[cfg(test)]
-#[path = "../../tests-local/osu_offsets.rs"]
-mod tests_offsets;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_tables_are_valid() {
+        let stable = default_stable_table();
+        assert!(validate_stable_schema(&stable).is_ok());
+
+        let lazer = default_lazer_table();
+        assert!(validate_lazer_schema(&lazer).is_ok());
+    }
+
+    #[test]
+    fn on_disk_stable_table_loads_and_validates() {
+        let path = std::path::Path::new("offsets/stable/stable__x86.json");
+        if path.exists() {
+            let bytes = std::fs::read(path).expect("read stable__x86.json");
+            let table = StableTable::load(&bytes).expect("load stable__x86.json");
+            assert_eq!(table.client, "stable");
+            assert_eq!(table.arch, "x86");
+            assert!(table.anchors.contains_key("statusPtr"));
+            assert!(table.anchors.contains_key("baseAddr"));
+            assert_eq!(table.state_name(2), Some("play"));
+            assert_eq!(table.state_name(5), Some("selectPlay"));
+            assert_eq!(table.state_name(7), Some("resultScreen"));
+        }
+    }
+
+    #[test]
+    fn stable_schema_rejects_script_injection() {
+        let mut table = default_stable_table();
+        table.client = "<script>alert(1)</script>".to_string();
+        assert!(matches!(
+            validate_stable_schema(&table),
+            Err(ValidationError::ExecutableContent(_))
+        ));
+
+        let mut table2 = default_stable_table();
+        table2.evidence = "normal text with javascript:evil() inside".to_string();
+        assert!(matches!(
+            validate_stable_schema(&table2),
+            Err(ValidationError::ExecutableContent(_))
+        ));
+
+        let mut table3 = default_stable_table();
+        table3.version = "eval(foo)".to_string();
+        assert!(matches!(
+            validate_stable_schema(&table3),
+            Err(ValidationError::ExecutableContent(_))
+        ));
+    }
+
+    #[test]
+    fn stable_schema_rejects_out_of_range_displacement() {
+        let mut table = default_stable_table();
+        table.topology.beatmap_from_base = 2_000_000;
+        assert!(matches!(
+            validate_stable_schema(&table),
+            Err(ValidationError::DisplacementOutOfRange(..))
+        ));
+
+        let mut table2 = default_stable_table();
+        table2.topology.hits_candidate_offsets[0] = 5_000_000;
+        assert!(matches!(
+            validate_stable_schema(&table2),
+            Err(ValidationError::DisplacementOutOfRange(..))
+        ));
+    }
+
+    #[test]
+    fn stable_schema_rejects_unaligned_hits_offset() {
+        let mut table = default_stable_table();
+        table.topology.hits_candidate_offsets[0] = 0x89; // odd offset
+        assert!(matches!(
+            validate_stable_schema(&table),
+            Err(ValidationError::InvalidAlignment(..))
+        ));
+    }
+
+    #[test]
+    fn stable_schema_rejects_hop_depth_exceeded() {
+        let mut table = default_stable_table();
+        for i in 0..20 {
+            table.anchors.insert(
+                format!("extra_anchor_{i}"),
+                StableAnchorDef {
+                    pattern: "90 90".to_string(),
+                    offset: 0,
+                    derivation: String::new(),
+                    evidence: String::new(),
+                },
+            );
+        }
+        assert!(matches!(
+            validate_stable_schema(&table),
+            Err(ValidationError::HopDepthExceeded(_))
+        ));
+    }
+
+    #[test]
+    fn stable_schema_rejects_unknown_state_names() {
+        let mut table = default_stable_table();
+        table
+            .mappings
+            .states
+            .insert("99".to_string(), "malicious_state".to_string());
+        assert!(matches!(
+            validate_stable_schema(&table),
+            Err(ValidationError::UnknownStateName(_))
+        ));
+    }
+
+    #[test]
+    fn lazer_schema_rejects_out_of_range_displacement() {
+        let mut table = default_lazer_table();
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("evil_field".to_string(), 100_000_000);
+        table.types.insert("Some.Type".to_string(), fields);
+        assert!(matches!(
+            validate_lazer_schema(&table),
+            Err(ValidationError::DisplacementOutOfRange(..))
+        ));
+    }
+
+    #[test]
+    fn find_stable_table_returns_valid_table() {
+        let table = find_stable_table(None).expect("must find table or compile-time fallback");
+        assert_eq!(table.client, "stable");
+        assert!(validate_stable_schema(&table).is_ok());
+    }
+}
 
