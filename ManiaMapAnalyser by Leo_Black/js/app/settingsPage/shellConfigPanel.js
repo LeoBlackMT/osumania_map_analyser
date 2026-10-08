@@ -14,6 +14,10 @@
 
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
+export const OFFSETS_STATUS_URL = "/offsets/status";
+export const OFFSETS_GENERATE_URL = "/offsets/generate";
+export const OFFSETS_UPDATE_URL = "/offsets/update";
+export const SHADOW_RESET_URL = "/shadow/reset";
 
 /** `gameClient` values the plugin's source router understands (Auto = decide). */
 const GAME_CLIENT_OPTIONS = ["Auto", "osu!", "Etterna", "Malody", "Malody 4"];
@@ -62,6 +66,10 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     let statusKind = "info";
     let saveHint = "";
 
+    let offsetsInfo = null;
+    let offsetsActionMsg = "";
+    let offsetsActionKind = "info";
+
     async function requestJson(url, init) {
         try {
             const response = await fetchImpl(url, init);
@@ -86,8 +94,59 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         statusKind = kind || "info";
     }
 
+    async function fetchOffsetsStatus() {
+        const result = await requestJson(OFFSETS_STATUS_URL, { cache: "no-store" });
+        if (result.ok && result.body) {
+            offsetsInfo = result.body;
+        }
+    }
+
+    async function generateOffsets() {
+        offsetsActionMsg = "Scanning running osu! and generating offsets…";
+        offsetsActionKind = "saving";
+        render();
+        const result = await requestJson(OFFSETS_GENERATE_URL, { method: "POST" });
+        if (!result.ok) {
+            const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
+            offsetsActionMsg = `Generation failed: ${detail}`;
+            offsetsActionKind = "error";
+        } else {
+            const msg = result.body && result.body.message ? result.body.message : "Offsets generated and verified successfully.";
+            offsetsActionMsg = msg;
+            offsetsActionKind = "ok";
+        }
+        await fetchOffsetsStatus();
+        render();
+    }
+
+    async function updateOffsets() {
+        offsetsActionMsg = "Checking remote manifest and verifying signatures…";
+        offsetsActionKind = "saving";
+        render();
+        const result = await requestJson(OFFSETS_UPDATE_URL, { method: "POST" });
+        if (!result.ok) {
+            const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
+            offsetsActionMsg = `Update failed: ${detail}`;
+            offsetsActionKind = "error";
+        } else {
+            const updated = result.body && typeof result.body.updated === "number" ? result.body.updated : 0;
+            const msg = result.body && result.body.message ? result.body.message : (updated > 0 ? `Updated ${updated} table(s) successfully.` : "Offsets are up to date.");
+            offsetsActionMsg = msg;
+            offsetsActionKind = "ok";
+        }
+        await fetchOffsetsStatus();
+        render();
+    }
+
+    async function resetShadow() {
+        await requestJson(SHADOW_RESET_URL, { method: "POST" });
+        await fetchOffsetsStatus();
+        render();
+    }
+
     /** GET /shell-config → config + resolved; a 400 renders a read-only notice. */
     async function load() {
+        await fetchOffsetsStatus();
         const result = await requestJson(SHELL_CONFIG_URL, { cache: "no-store" });
         if (!result.ok || !result.body || !result.body.config || typeof result.body.config !== "object") {
             config = null;
@@ -180,6 +239,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             }
             section.appendChild(buildHotkeysRow());
             section.appendChild(buildLogLevelRow());
+            if (offsetsInfo) {
+                section.appendChild(buildOffsetsSection());
+                if (offsetsInfo.shadow) {
+                    section.appendChild(buildShadowSection());
+                }
+            }
         }
         root.appendChild(section);
     }
@@ -311,6 +376,135 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             write({ logLevel: select.value });
         });
         return buildRow("logLevel", "Log level", "Takes effect immediately.", select);
+    }
+
+    function buildOffsetsSection() {
+        const wrap = document.createElement("div");
+        wrap.className = "shell-config-subsection";
+
+        const header = document.createElement("h3");
+        header.className = "settings-group-title";
+        header.textContent = "Memory Offsets Management";
+        wrap.appendChild(header);
+
+        const stableInfo = offsetsInfo.stable || {};
+        const stableDesc = stableInfo.loaded
+            ? `Active (${stableInfo.anchors_count || 7} anchors verified, arch: ${stableInfo.arch || "x86"})`
+            : "Fallback table active";
+        const stableBadge = document.createElement("span");
+        stableBadge.className = `shell-config-badge ${stableInfo.loaded ? "badge-ok" : "badge-warn"}`;
+        stableBadge.textContent = stableInfo.loaded ? "Active" : "Fallback";
+        wrap.appendChild(buildRow("offsetsStable", "osu!stable Offsets", stableDesc, stableBadge));
+
+        const lazerInfo = offsetsInfo.lazer || {};
+        const lazerDesc = lazerInfo.loaded
+            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)`
+            : "Fallback table active";
+        const lazerBadge = document.createElement("span");
+        lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
+        lazerBadge.textContent = lazerInfo.loaded ? "Active" : "Fallback";
+        wrap.appendChild(buildRow("offsetsLazer", "osu!lazer Offsets", lazerDesc, lazerBadge));
+
+        const actionsWrap = document.createElement("div");
+        actionsWrap.className = "shell-config-actions";
+
+        const genBtn = document.createElement("button");
+        genBtn.type = "button";
+        genBtn.className = "settings-action-btn";
+        genBtn.textContent = "1-Click Live Generator";
+        genBtn.title = offsetsInfo.generator_ready
+            ? "Extract offsets from running osu! with zero .NET SDK"
+            : "gen.exe not detected";
+        genBtn.disabled = !offsetsInfo.generator_ready;
+        genBtn.addEventListener("click", () => generateOffsets());
+        actionsWrap.appendChild(genBtn);
+
+        const updateBtn = document.createElement("button");
+        updateBtn.type = "button";
+        updateBtn.className = "settings-action-btn";
+        updateBtn.textContent = "Check Remote Updates";
+        updateBtn.title = "Verify Ed25519 signed manifest and sync updated tables";
+        updateBtn.addEventListener("click", () => updateOffsets());
+        actionsWrap.appendChild(updateBtn);
+
+        if (offsetsActionMsg) {
+            const statusEl = document.createElement("div");
+            statusEl.className = `shell-config-action-status shell-config-status-${offsetsActionKind}`;
+            statusEl.textContent = offsetsActionMsg;
+            actionsWrap.appendChild(statusEl);
+        }
+
+        wrap.appendChild(buildRow("offsetsActions", "Offsets Actions", "Update or generate memory layout tables for osu! clients.", actionsWrap));
+
+        return wrap;
+    }
+
+    function buildShadowSection() {
+        const wrap = document.createElement("div");
+        wrap.className = "shell-config-subsection";
+
+        const header = document.createElement("h3");
+        header.className = "settings-group-title";
+        header.textContent = "Shadow Diagnostics (Native vs Tosu)";
+        wrap.appendChild(header);
+
+        const shadow = offsetsInfo.shadow || {};
+        const total = shadow.total_compared || 0;
+        const matches = shadow.matched_frames || 0;
+        const mismatches = shadow.mismatched_frames || 0;
+        const rate = typeof shadow.match_rate === "number" ? shadow.match_rate.toFixed(1) : "0.0";
+
+        const desc = total === 0
+            ? (shadow.tosu_connected
+                ? "tosu connected — awaiting compared frames"
+                : "Waiting for concurrent tosu and native data streams…")
+            : `${total} frames compared: ${matches} matched (${rate}%), ${mismatches} mismatched`;
+
+        const badge = document.createElement("span");
+        if (total === 0) {
+            badge.className = "shell-config-badge badge-idle";
+            badge.textContent = "Idle";
+        } else if (mismatches === 0) {
+            badge.className = "shell-config-badge badge-ok";
+            badge.textContent = "100% Match";
+        } else {
+            badge.className = "shell-config-badge badge-error";
+            badge.textContent = `${mismatches} Differ`;
+        }
+
+        wrap.appendChild(buildRow("shadowStatus", "Comparison Status", desc, badge));
+
+        if (mismatches > 0 && Array.isArray(shadow.last_mismatches) && shadow.last_mismatches.length > 0) {
+            const diffDesc = `Last differing fields: ${shadow.last_mismatches.join(", ")}`;
+            const diffTag = document.createElement("span");
+            diffTag.className = "shell-config-diff-tag";
+            diffTag.textContent = shadow.last_mismatches.join(", ");
+            wrap.appendChild(buildRow("shadowDiffs", "Discrepancy Details", diffDesc, diffTag));
+        }
+
+        const actionsWrap = document.createElement("div");
+        actionsWrap.className = "shell-config-actions";
+
+        const refreshBtn = document.createElement("button");
+        refreshBtn.type = "button";
+        refreshBtn.className = "settings-action-btn";
+        refreshBtn.textContent = "Refresh Stats";
+        refreshBtn.addEventListener("click", async () => {
+            await fetchOffsetsStatus();
+            render();
+        });
+        actionsWrap.appendChild(refreshBtn);
+
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.className = "settings-action-btn";
+        resetBtn.textContent = "Reset Counts";
+        resetBtn.addEventListener("click", () => resetShadow());
+        actionsWrap.appendChild(resetBtn);
+
+        wrap.appendChild(buildRow("shadowActions", "Diagnostics Controls", "Manage shadow verification metrics.", actionsWrap));
+
+        return wrap;
     }
 
     return {

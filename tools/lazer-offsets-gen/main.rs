@@ -22,6 +22,7 @@
 mod chain;
 mod emit;
 mod ilmeta;
+mod live;
 mod minidump;
 mod names;
 mod runtime;
@@ -65,6 +66,7 @@ USAGE:
                               [--assembly <dll>]... [--diff <old-il.tsv>]
   lazer-offsets-gen emit      --sos <tsv> --il <tsv> [--out <json>] [--deploy <shell-exe-dir>]
                               [--report-dir <dir>] [--allow-fixtures] [--allow-version-mismatch]
+  lazer-offsets-gen live      [--out <dir>] [--lazer-dir <dir>] [--pid <n>] [--json]
   lazer-offsets-gen self-test --fixtures <dir> [--work <dir>]
   lazer-offsets-gen -h | --help
 
@@ -75,6 +77,8 @@ END-TO-END (lazer running):
   4. il      --sos <run1>\\sos-intermediate-<ts>.tsv --out <run1>
   5. emit    --sos <run1>\\sos-intermediate-<ts>.tsv --il <run1>\\il-inventory-<ts>.tsv \\
              --deploy <dir with mma-shell.exe>
+  OR 1-CLICK LIVE:
+  lazer-offsets-gen live --json
 
 ACCEPTANCE (see README.md):
   every emitted offset must have (a) an SOS `dumpobj` line and (b) an IL structural line;
@@ -113,6 +117,7 @@ fn run(raw: &[String]) -> i32 {
         Ok(Cmd::Extract(options)) => extract(&options),
         Ok(Cmd::Il(options)) => il(&options),
         Ok(Cmd::Emit(options)) => emit_table(&options),
+        Ok(Cmd::Live(options)) => live::run_live(&options),
         Ok(Cmd::SelfTest(options)) => selftest::run(&options),
         Err(message) => {
             eprintln!("usage error: {message}");
@@ -161,11 +166,12 @@ enum Cmd {
     Extract(Options),
     Il(Options),
     Emit(Options),
+    Live(Options),
     SelfTest(Options),
     Help,
 }
 
-const COMMANDS: &[&str] = &["collect", "extract", "il", "emit", "self-test"];
+const COMMANDS: &[&str] = &["collect", "extract", "il", "emit", "self-test", "live"];
 
 /// 每个命令认得的开关（未知开关一律报错：拼错一个字母不该静默变成"没给"）。
 fn known_options(command: &str) -> &'static [&'static str] {
@@ -185,6 +191,7 @@ fn known_options(command: &str) -> &'static [&'static str] {
         ],
         "il" => &["--out", "--lazer-dir", "--sos", "--assembly", "--diff"],
         "emit" => &["--sos", "--il", "--out", "--deploy", "--report-dir"],
+        "live" => &["--out", "--lazer-dir", "--pid"],
         "self-test" => &["--fixtures", "--work"],
         _ => &[],
     }
@@ -194,6 +201,7 @@ fn known_flags(command: &str) -> &'static [&'static str] {
     match command {
         "collect" => &["--dry-run", "--force"],
         "emit" => &["--allow-fixtures", "--allow-version-mismatch"],
+        "live" => &["--json", "--dry-run"],
         _ => &[],
     }
 }
@@ -254,6 +262,7 @@ fn parse(raw: &[String]) -> Result<Cmd, String> {
         "extract" => Cmd::Extract(options),
         "il" => Cmd::Il(options),
         "emit" => Cmd::Emit(options),
+        "live" => Cmd::Live(options),
         "self-test" => Cmd::SelfTest(options),
         _ => unreachable!(),
     })
@@ -2292,30 +2301,59 @@ fn emit_table(options: &Options) -> i32 {
 // ------------------------------------------------------------- Win32 ----
 
 #[cfg(windows)]
-type Handle = isize;
+pub(crate) type Handle = isize;
 #[cfg(windows)]
-const INVALID_HANDLE_VALUE: Handle = -1isize;
+pub(crate) const INVALID_HANDLE_VALUE: Handle = -1isize;
 #[cfg(windows)]
-const TH32CS_SNAPPROCESS: u32 = 0x2;
+pub(crate) const TH32CS_SNAPPROCESS: u32 = 0x2;
 #[cfg(windows)]
-const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+pub(crate) const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+#[cfg(windows)]
+pub(crate) const PROCESS_VM_READ: u32 = 0x0010;
+#[cfg(windows)]
+pub(crate) const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+
+#[cfg(windows)]
+pub(crate) const MEM_COMMIT: u32 = 0x1000;
+#[cfg(windows)]
+pub(crate) const PAGE_READWRITE: u32 = 0x04;
+#[cfg(windows)]
+pub(crate) const PAGE_EXECUTE_READWRITE: u32 = 0x40;
+#[cfg(windows)]
+pub(crate) const PAGE_GUARD: u32 = 0x100;
+#[cfg(windows)]
+pub(crate) const PAGE_NOACCESS: u32 = 0x01;
 
 /// `PROCESSENTRY32W`（MSVC x64 布局，align 8，`size_of == 568`；与
 /// `desktop/src/malody4/anchor.rs` 同一份声明口径）。
 #[cfg(windows)]
 #[repr(C)]
 #[allow(non_snake_case)]
-struct PROCESSENTRY32W {
-    dwSize: u32,
-    cntUsage: u32,
-    th32ProcessID: u32,
-    th32DefaultHeapID: usize,
-    th32ModuleID: u32,
-    cntThreads: u32,
-    th32ParentProcessID: u32,
-    pcPriClassBase: i32,
-    dwFlags: u32,
-    szExeFile: [u16; 260],
+pub(crate) struct PROCESSENTRY32W {
+    pub(crate) dwSize: u32,
+    pub(crate) cntUsage: u32,
+    pub(crate) th32ProcessID: u32,
+    pub(crate) th32DefaultHeapID: usize,
+    pub(crate) th32ModuleID: u32,
+    pub(crate) cntThreads: u32,
+    pub(crate) th32ParentProcessID: u32,
+    pub(crate) pcPriClassBase: i32,
+    pub(crate) dwFlags: u32,
+    pub(crate) szExeFile: [u16; 260],
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub(crate) struct MEMORY_BASIC_INFORMATION {
+    pub(crate) BaseAddress: *mut std::ffi::c_void,
+    pub(crate) AllocationBase: *mut std::ffi::c_void,
+    pub(crate) AllocationProtect: u32,
+    pub(crate) PartitionId: u16,
+    pub(crate) RegionSize: usize,
+    pub(crate) State: u32,
+    pub(crate) Protect: u32,
+    pub(crate) Type: u32,
 }
 
 /// 布局断言写成编译期常量：布局一旦不对就直接编译失败（`dwSize` 传错会让快照枚举直接失败）。
@@ -2343,17 +2381,31 @@ struct SYSTEMTIME {
 #[cfg(windows)]
 #[link(name = "kernel32")]
 extern "system" {
-    fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> Handle;
-    fn Process32FirstW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
-    fn Process32NextW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
-    fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
-    fn CloseHandle(hObject: Handle) -> i32;
-    fn QueryFullProcessImageNameW(
+    pub(crate) fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> Handle;
+    pub(crate) fn Process32FirstW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
+    pub(crate) fn Process32NextW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
+    pub(crate) fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
+    pub(crate) fn CloseHandle(hObject: Handle) -> i32;
+    pub(crate) fn QueryFullProcessImageNameW(
         hProcess: Handle,
         dwFlags: u32,
         lpExeName: *mut u16,
         lpdwSize: *mut u32,
     ) -> i32;
+    pub(crate) fn VirtualQueryEx(
+        hProcess: Handle,
+        lpAddress: *const std::ffi::c_void,
+        lpBuffer: *mut MEMORY_BASIC_INFORMATION,
+        dwLength: usize,
+    ) -> usize;
+    pub(crate) fn ReadProcessMemory(
+        hProcess: Handle,
+        lpBaseAddress: *const std::ffi::c_void,
+        lpBuffer: *mut std::ffi::c_void,
+        nSize: usize,
+        lpNumberOfBytesRead: *mut usize,
+    ) -> i32;
+    pub(crate) fn IsWow64Process(hProcess: Handle, Wow64Process: *mut i32) -> i32;
     fn GetDiskFreeSpaceExW(
         lpDirectoryName: *const u16,
         lpFreeBytesAvailableToCaller: *mut u64,

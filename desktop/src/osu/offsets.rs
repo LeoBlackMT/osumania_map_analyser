@@ -77,6 +77,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use crate::osu::model::Reason;
+use sha2::{Digest, Sha256};
+use ed25519_compact::{PublicKey, Signature};
 
 /// 查一个「类型 + 字段」的**结构化查法**（不写死类型名的完整拼写）。
 ///
@@ -1381,6 +1383,125 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
     Ok(default_stable_table())
 }
 
+/// ManiaMapAnalyser 远端表发布主公钥（Ed25519 32 字节）
+pub const ED25519_MASTER_PUBLIC_KEY: [u8; 32] = [
+    206, 229, 44, 102, 228, 179, 117, 67, 18, 115, 220, 52, 238, 212, 17, 70,
+    95, 211, 253, 148, 249, 231, 59, 153, 109, 26, 243, 174, 121, 135, 167, 119,
+];
+
+/// 远端表清单中的单表条目
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RemoteManifestTable {
+    pub filename: String,
+    pub client: String,
+    pub game_version: String,
+    pub runtime_version: String,
+    pub arch: String,
+    pub sha256: String,
+    pub signature: String,
+}
+
+/// 远端表清单（manifest.json）
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RemoteManifest {
+    pub schema_version: u32,
+    pub updated_at: String,
+    pub tables: Vec<RemoteManifestTable>,
+}
+
+/// 验签函数：同时核验 SHA-256 与 Ed25519 签名
+pub fn verify_table_signature(
+    content: &[u8],
+    expected_sha256: &str,
+    signature_str: &str,
+    public_key_bytes: &[u8; 32],
+) -> Result<(), &'static str> {
+    // 1. SHA-256 核验
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    let hash_hex = format!("{:x}", hasher.finalize());
+    if !hash_hex.eq_ignore_ascii_case(expected_sha256.trim()) {
+        return Err("sha256_mismatch");
+    }
+
+    // 2. 解码签名（支持十六进制 128 字符或标准 Base64）
+    let sig_bytes = decode_signature_str(signature_str).ok_or("signature_format_error")?;
+    let signature = Signature::from_slice(&sig_bytes).map_err(|_| "signature_length_error")?;
+
+    // 3. Ed25519 公钥验签
+    let pk = PublicKey::from_slice(public_key_bytes).map_err(|_| "invalid_public_key")?;
+    pk.verify(content, &signature).map_err(|_| "signature_verification_failed")?;
+
+    Ok(())
+}
+
+pub fn decode_signature_str(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim();
+    if s.len() == 128 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return decode_hex(s);
+    }
+    decode_base64(s)
+}
+
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    for chunk in s.as_bytes().chunks_exact(2) {
+        let h1 = char::from(chunk[0]).to_digit(16)?;
+        let h2 = char::from(chunk[1]).to_digit(16)?;
+        out.push(((h1 << 4) | h2) as u8);
+    }
+    Some(out)
+}
+
+fn decode_base64(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &b in s.as_bytes() {
+        let val = match b {
+            b'A'..=b'Z' => (b - b'A') as u32,
+            b'a'..=b'z' => (b - b'a' + 26) as u32,
+            b'0'..=b'9' => (b - b'0' + 52) as u32,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' | b' ' | b'\r' | b'\n' => continue,
+            _ => return None,
+        };
+        buf = (buf << 6) | val;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
+/// 将已验签并通过 schema 校验的表原子落盘至本地缓存目录
+pub fn save_remote_table(
+    client: &str,
+    filename: &str,
+    content: &[u8],
+) -> Result<PathBuf, std::io::Error> {
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let target_dir = PathBuf::from(appdata)
+        .join("ManiaMapAnalyser")
+        .join("offsets")
+        .join(client);
+    std::fs::create_dir_all(&target_dir)?;
+
+    let target_file = target_dir.join(filename);
+    let temp_file = target_dir.join(format!("{filename}.tmp-{}", std::process::id()));
+    std::fs::write(&temp_file, content)?;
+    std::fs::rename(&temp_file, &target_file)?;
+
+    Ok(target_file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1511,6 +1632,136 @@ mod tests {
         let table = find_stable_table(None).expect("must find table or compile-time fallback");
         assert_eq!(table.client, "stable");
         assert!(validate_stable_schema(&table).is_ok());
+    }
+
+    #[test]
+    fn ed25519_signature_verification_and_tamper_detection() {
+        use ed25519_compact::KeyPair;
+        let keypair = KeyPair::generate();
+        let content = br#"{"lazer_version":"2026.1005.0.0","arch":"x64"}"#;
+
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        let sha256_hex = format!("{:x}", hasher.finalize());
+
+        let sig = keypair.sk.sign(content, None);
+        let sig_hex: String = sig.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+
+        // 1. 正确签名验签通过
+        assert!(verify_table_signature(content, &sha256_hex, &sig_hex, keypair.pk.as_slice().try_into().unwrap()).is_ok());
+
+        // 2. 篡改内容 -> SHA-256 不符直接拒绝
+        let tampered_content = br#"{"lazer_version":"2026.1005.0.0","arch":"x86"}"#;
+        assert_eq!(
+            verify_table_signature(tampered_content, &sha256_hex, &sig_hex, keypair.pk.as_slice().try_into().unwrap()),
+            Err("sha256_mismatch")
+        );
+
+        // 3. 篡改签名 -> 签名验证失败
+        let mut bad_sig_hex = sig_hex.clone();
+        bad_sig_hex.replace_range(0..2, "00");
+        assert_eq!(
+            verify_table_signature(content, &sha256_hex, &bad_sig_hex, keypair.pk.as_slice().try_into().unwrap()),
+            Err("signature_verification_failed")
+        );
+
+        // 4. 伪造公钥 -> 签名验证失败
+        let other_keypair = KeyPair::generate();
+        assert_eq!(
+            verify_table_signature(content, &sha256_hex, &sig_hex, other_keypair.pk.as_slice().try_into().unwrap()),
+            Err("signature_verification_failed")
+        );
+    }
+
+    #[test]
+    fn remote_manifest_roundtrip() {
+        let manifest_json = r#"{
+            "schema_version": 2,
+            "updated_at": "2026-10-08T12:00:00Z",
+            "tables": [
+                {
+                    "filename": "2026.1005.0.0__10.0.12__x64.json",
+                    "client": "lazer",
+                    "game_version": "2026.1005.0.0",
+                    "runtime_version": "10.0.12",
+                    "arch": "x64",
+                    "sha256": "abcdef123456",
+                    "signature": "sig123"
+                }
+            ]
+        }"#;
+
+        let manifest: RemoteManifest = serde_json::from_str(manifest_json).expect("parse manifest");
+        assert_eq!(manifest.schema_version, 2);
+        assert_eq!(manifest.tables.len(), 1);
+        assert_eq!(manifest.tables[0].client, "lazer");
+        assert_eq!(manifest.tables[0].filename, "2026.1005.0.0__10.0.12__x64.json");
+    }
+
+    #[test]
+    fn save_remote_table_writes_atomically() {
+        let content = b"test table data";
+        let path = save_remote_table("lazer", "test_table.json", content).expect("save remote table");
+        assert!(path.exists());
+        let read_back = std::fs::read(&path).expect("read back");
+        assert_eq!(read_back, content);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_master_keypair_and_manifest_generation() {
+        use ed25519_compact::{Seed, KeyPair};
+        let seed_bytes = [
+            0x4d, 0x4d, 0x41, 0x5f, 0x4f, 0x46, 0x46, 0x53, // "MMA_OFFS"
+            0x45, 0x54, 0x53, 0x5f, 0x4d, 0x41, 0x53, 0x54, // "ETS_MAST"
+            0x45, 0x52, 0x5f, 0x53, 0x45, 0x45, 0x44, 0x5f, // "ER_SEED_"
+            0x32, 0x30, 0x32, 0x36, 0x31, 0x30, 0x30, 0x38, // "20261008"
+        ];
+        let seed = Seed::from_slice(&seed_bytes).unwrap();
+        let keypair = KeyPair::from_seed(seed);
+        assert_eq!(keypair.pk.as_ref(), &ED25519_MASTER_PUBLIC_KEY);
+
+        let table_files = [
+            ("stable", "stable__x86.json", "stable", "x86", "2026-latest", "CLRv4"),
+            ("lazer", "2026.1005.0.0__10.0.12__x64.json", "lazer", "x64", "2026.1005.0.0", "10.0.12"),
+            ("lazer", "2026.921.0.0__10.0.12__x64.json", "lazer", "x64", "2026.921.0.0", "10.0.12"),
+        ];
+
+        let mut manifest_tables = Vec::new();
+        for (sub_dir, file_name, client, arch, g_ver, r_ver) in &table_files {
+            let path = PathBuf::from("offsets").join(sub_dir).join(file_name);
+            if path.exists() {
+                let bytes = std::fs::read(&path).unwrap();
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                let sha256_hex = format!("{:x}", hasher.finalize());
+                let sig = keypair.sk.sign(&bytes, None);
+                let sig_hex: String = sig.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+
+                // 验证自洽
+                assert!(verify_table_signature(&bytes, &sha256_hex, &sig_hex, &ED25519_MASTER_PUBLIC_KEY).is_ok());
+
+                manifest_tables.push(RemoteManifestTable {
+                    filename: file_name.to_string(),
+                    client: client.to_string(),
+                    game_version: g_ver.to_string(),
+                    runtime_version: r_ver.to_string(),
+                    arch: arch.to_string(),
+                    sha256: sha256_hex,
+                    signature: sig_hex,
+                });
+            }
+        }
+
+        if !manifest_tables.is_empty() {
+            let manifest = RemoteManifest {
+                schema_version: 2,
+                updated_at: "2026-10-08T12:00:00Z".to_string(),
+                tables: manifest_tables,
+            };
+            let json = serde_json::to_string_pretty(&manifest).unwrap();
+            let _ = std::fs::write("offsets/manifest.json", json);
+        }
     }
 }
 

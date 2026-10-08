@@ -51,12 +51,39 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 
 - **结构常数**（来自我们自己的 P4 探针，`osu/lazer.rs:12`）：12 字节标记模式、站点位移候选表 `SITE_DELTAS`（首项 `0x24`）、GameBase 多跳 `site → +0x0 → +0x218 → +0x310`。
 - **偏移表**（来自 `tools/lazer-offsets-gen/`，SOS + IL 双见证）：每个 `Type.Field → offset`、`game_base_vtable`、版本键 `(lazer 版本, runtime 版本, 架构)`。
-- **表梯子**（唯一实现 `lazer.rs::load_table`，`lazer.rs:16-30`）：① `$MMA_LAZER_OFFSETS` → ② `<壳 exe 目录>\lazer-offsets\<lazer>__<runtime>__<arch>.json` → ③ 同目录任意键完全匹配的 `*.json` → ④ 同目录最近版本的表（**必须**过 L1 结构证明且**大声记日志**）→ ⑤ 都没有 ⇒ reason `lazer-offsets-missing:<ver>` + 全字段降级清单（`lazer.rs:350-381` 的 `TABLE_BACKED_FIELDS`，20 项）。
+- **表梯子**（`desktop/src/osu/offsets.rs::resolve_lazer_table`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`default_table()`，**绝不回落到不存在的状态**）。
 - **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`lazer.rs:28-30`）。
 - **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`lazer.rs:60-` 的整段注释；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里 2284 条 typedef 名字解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
 - **`Bindable<T>.value` 的偏移依赖 `T`**：查表键必须包含实例化实参，多个实例化命中 ⇒ 拒读并降级（OPEN-03 的修正：`NonNullableBindable<WorkingBeatmap>` 上是 `+0x20`，`+0x40` 是 `<Description>`）。
 - **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`lazer.rs:345-348`）。
+
+### 3.4 纯数据表化、Schema 校验与全自动分发体系（P2）
+
+为了实现游戏更新后"只换表、不换二进制"，P2 引入了完整的表数据化与全自动生命周期体系：
+
+1. **统一数据表目录（`desktop/offsets/`）**：
+   - `desktop/offsets/stable/stable__x86.json`：包含 stable 的 7 枚锚点、特征字节码（含通配符 `??`）、相对位移与验证信息。
+   - `desktop/offsets/lazer/*.json`：包含 lazer 的类型字段偏移映射、游戏版本、运行时版本与架构。
+   - `desktop/offsets/manifest.json`：各表的 SHA-256 与 Ed25519 签名清单。
+2. **纯数据红线与 Schema 严格校验**：
+   - 内存特征表为纯静态 JSON，**严禁包含任何可执行代码、宏或脚本语义**（解析器防御性拦截包含 `<script>`、`eval`、`javascript:` 等字符串）。
+   - 严格类型与范围校验（`validate_stable_schema`, `validate_lazer_schema`）：校验 pattern 字符合法性、签名长度（`4..=64` 字节）、位移合理范围（`±1048576` 字节）、字符串字段长度限制（≤256 字符），任何非法结构立即拒绝加载。
+3. **随包分发的 1-Click 生成器（`gen.exe`）**：
+   - 基于 `tools/lazer-offsets-gen/main.rs` 与 `live.rs` 编译为轻量独立工具随 `release.ps1` 一同打包。
+   - **零 .NET SDK、零游戏挂起**：通过 `OpenProcess` 只读句柄在 1 秒内完成内存扫描定位，解析 MethodTable 与字段布局。
+   - **活体自校验门禁**：生成后立即在运行中游戏的真实内存上执行解引用多跳验证：`site → GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash`，唯有验证出 32 字符合法十六进制哈希并成功解析屏幕栈顶部状态名，才允许落盘。
+   - 提供 HTTP 端点 `POST /offsets/generate` 与壳设置页一键按钮。
+4. **Ed25519 签名远端表与静默离线回落**：
+   - 壳内固化 Master 公钥（32 字节 Ed25519 公钥）。
+   - 提供 `POST /offsets/update` 端点，从官方源获取 `manifest.json`，在本地用 Master 公钥验证每张表的数字签名与 SHA-256 哈希。
+   - 校验通过后原子写入本地缓存目录（`%APPDATA%\ManiaMapAnalyser\offsets\`）。若无网络或校验失败，静默使用随包或编译期内嵌表，零报错打扰用户。
+5. **stable 维护者专用探测生成器**：
+   - `tools/stable-offsets-gen/main.rs`：针对 32 位 `osu!.exe` 执行签名扫描与自证验证，全自动导出符合 `mma-offset-v2` 格式的稳定版特征表。
+6. **L3 影子比对诊断面板（Topic 12）**：
+   - 在线运行时，壳在 `osu/compare.rs` 实时比对 Native 内存直读与 tosu 的 11 项核心字段（`COMPARED_FIELDS`），记录比对总帧数、匹配率与逐字段差异计数。
+   - 提供 `GET /offsets/status`、`GET /shadow/status` 与 `POST /shadow/reset` 端点。
+   - 设置页的 Shell Configuration 面板内提供特征表状态监控、生成/更新操作按钮与影子对拍诊断看板。
 
 ### 3.3 共享的读门槛
 
@@ -280,7 +307,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 - **运行位置**：在受限的工作区上下文里 Toolhelp32 只能看到自己那一族进程（表现为"游戏没在跑"）——**从工作区外（如 `%TEMP%`）或普通 shell 启动**即可正常发现游戏（与壳自身的 B2 结论同族）。
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。
 - **版本键**：表按 **`(lazer 版本, runtime 版本, 架构)`** 建键，文件名 `<lazer>__<runtime>__<arch>.json`（本机 = `2026.921.0.0__10.0.12__x64.json`）。runtime 版本变了 ⇒ **新表另存一份**，旧表保留（回落梯子靠它）；`arch` 不同 ⇒ **永不回落**（`offsets.rs` 的架构不匹配不回落）。
-- **表落点**：`<壳 exe 目录>\lazer-offsets\<同名文件>`（`emit --deploy <壳 exe 目录>` 就是这个位置；也可用 `$MMA_LAZER_OFFSETS` 指一个显式文件）。表是**随壳分发的产物**，不放进游戏安装目录。⚠️ `desktop/release.ps1` 当前只复制 `mma-shell.exe`（`release.ps1:42`），**不**自动带上 `lazer-offsets/` —— 打包时需要手工把该目录复制到 exe 旁（本仓库当前的发布脚本尚未包含这一步）。
+- **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`desktop/release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与签名 `manifest.json`，用户亦可通过设置页一键活体生成或检查远端更新。
 - **自测**：`temp/lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work temp/lazer-offsets-gen-selftest`（不需要 lazer / dump / 分析器；当前 **35/35**），跑的是真实代码路径（合成 minidump → 锚点扫描 → 链走法 → dump 字节自证 → SOS 中间件装配 → emit 双见证）。
 - **刷新前先看差分**：`il --diff <上一版清单>` 的 `ADDED/REMOVED/CHANGED` 段就是"这次更新到底变了什么"，再对照 `emit-report` 的 `omitted` 清单。要发布新字段时改 `spec.rs::WANTED` 后**只重跑 `emit`**（中间件里存了每个被 dump 对象的全部字段行，不必重采 dump）。
 
@@ -297,18 +324,17 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 | 7 | 端点探针（WS） | `node -e` 用内置 `WebSocket` 连 `ws://127.0.0.1:24062/websocket/v2`（Node 24 有全局 WebSocket） | 101；实时模式 ≈6.45 帧/s（真机 `avg_fps 6.45`）；回放模式（`MMA_OSU_COMPAT_REPLAY=1`）32 帧/5 s、帧间隔 153–158 ms；`/websocket/commands` 101 且 0 帧 |
 | 8 | 契约版本三处一致 | `grep`：`desktop/src/frames.rs`、页面 `js/app/sources/bridgeClient.js`、`desktop/docs/CONTRACT.md` | 三处都是 `6`，页面接受区间 `[3,6]` |
 | 9 | 破坏性签名测试 | 按 §9 第 5 条复制源码到工作区外打补丁、编译、跑 | 变体 A ⇒ `signature-miss:statusPtr` + 0 伪造帧；变体 B ⇒ 冻结帧（带 `state.name`、无 `beatmap`）→ `unhealthy` 停帧，解除锚点到 unhealthy ≈1.4 s |
-| 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\lazer-offsets\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
+| 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\offsets\lazer\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
 | 11 | 零写入审计 | `grep -rn "WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx" desktop/src/osu` | 0 命中 |
 | 12 | 页面语法 | `Get-Content -Raw -Encoding utf8 <file> \| node --input-type=module --check` | exit=0（⚠ 必须用 `--input-type=module --check` 走 stdin：Node 24 的 `node --check <file>.js` 在模块语法推断路径上会**假绿**，见 `.omo/evidence/osu-native-memory-transport/task-9-build.txt` §4） |
 | 13 | 版本同步 | `grep`：`ManiaMapAnalyser by Leo_Black/index.js` 的 `_VERSION` 与 `metadata.txt` 的 `Version` | 两者**逐字相同**（当前 `2.2.0`）；`cargo test` 与页面语法检查同时通过 |
 
 ## 12. 已知限制与未完成（如实标注）
 
-- **stable 锚点/位移是构建相关**：本机台账固定 `osu!.exe` MD5 `f845ef10bf97c3260b818fc02e73c196`（32 位、FileVersion 1.3.3.8）；换构建就得重扫并按 reason 定位（§9）。
-- **lazer 表是构建相关的**：表键不同 ⇒ 就近回落（**仅在 L1 结构证明通过时**，且大声记日志），或者直接缺表回落 tosu；`arch` 不同一律不回落。
+- **stable 锚点/位移是构建相关**：本机台账固定 `osu!.exe` MD5 `f845ef10bf97c3260b818fc02e73c196`（32 位、FileVersion 1.3.3.8）；换构建就得重扫并按 reason 定位（可使用维护者探测工具 `tools/stable-offsets-gen` 自动提取）。
+- **lazer 表是构建相关的**：表键不同 ⇒ 就近回落（**仅在 L1 结构证明通过时**，且大声记日志），或者通过生成器/远端更新生成新表，否则缺表回落 tosu；`arch` 不同一律不回落。
 - **lazer 的 7 条字段缺口**（§6.3）需要一次**带 mod 的选歌/游玩态 dump** 与一次表格式扩展（数组元素见证）才能关；在此之前 lazer 的 `modSignature` 只在 NM 时与 tosu 逐字节相等。
 - **lazer 状态映射**只对 `selectPlay` / `menu` 有真机对照（§6.2）；其余四态的类型名与规则已就位但**未核实**（需用户走到那些态时用同一条探针复测）。
-- **散装发布的表**：`release.ps1` 不带 `lazer-offsets/`（§10）；分发包的 exe 旁若没有表，lazer 会如实报 `lazer-offsets-missing:<ver>` 并回落 tosu。
 - **首次附着/锚点失效后的检测时间由扫描决定**：stable 冷启动首次全量扫描实测 7–15 s、破坏性测试现场 11.2 s；lazer 冷路径 12.6–18.6 s（`scan_ms=14426` 为其一例）——这期间页面靠 `#osu-scan-hint` 的提示而不是假数据。
 - **`MIN_DWELL` 未接线**（§8）；**保持期内的图表读数是上一份的**（`state.name` 实时，`beatmap.time.live`/hits 是最后一张好图的值，≤2.5 s 或到恢复完成为止，结算界面不可见）。
 - **tosu 4.25.1 的已知缺陷（我们的有意偏离）**：它在非结算态发布垃圾 `resultsScreen.mods`（观测 `number=1529628200`），页面在非游玩态取三槽并集 ⇒ tosu 模式下 NM 图会被算成 DT；我们的 native 路径只在结算态发布它（更正确但与 tosu 不同）。见计划 Step 9 进度记录与 `D-notes.md`。

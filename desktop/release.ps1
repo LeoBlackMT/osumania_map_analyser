@@ -61,6 +61,15 @@ Copy-Item -Recurse $pluginDir $stage
 Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
 
+# 编译随包分发的点击即用偏移生成器 gen.exe（P2 Topic 9）
+$genSrc = Join-Path $root "tools\lazer-offsets-gen\main.rs"
+if (Test-Path $genSrc) {
+    Write-Host "Building gen.exe (offsets generator)..."
+    $genDst = Join-Path $stage "gen.exe"
+    & rustc --edition 2021 -O -A dead_code -o $genDst $genSrc
+    if ($LASTEXITCODE -ne 0) { throw "rustc build of gen.exe failed" }
+}
+
 # 拷贝统一偏移表（desktop/offsets，包含 stable 与 lazer 原生内存读取必需的纯数据表）
 $offsetsSrc = Join-Path $desktop "offsets"
 if (Test-Path $offsetsSrc) {
