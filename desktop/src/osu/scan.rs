@@ -7,7 +7,6 @@
 //   单次 `ReadProcessMemory` 硬上限 1 MiB；失败就**对半缩小重试**（`ERROR_PARTIAL_COPY` 的
 //   典型处置）；**绝不零填充**——失败的块直接跳过并计数，不拿去匹配（否则 0 字节会伪造命中）。
 
-#[cfg(windows)]
 use crate::osu::win;
 
 /// 单次 `ReadProcessMemory` 的硬上限（1 MiB）——**权威定义在 `win::READ_CALL_MAX`**，
@@ -34,13 +33,11 @@ pub struct Region {
 ///
 /// ⚠️ 故意**不**做失效检测（真机实测：菜单态下区域集没有可见变化；进程活着时 VAD 变动
 /// 也是低频事件）——锚点扫描失败时调用方 detach → 缓存随附着一起重建，那是唯一的刷新路径。
-#[cfg(windows)]
 #[derive(Debug, Default, Clone)]
 pub struct RegionCache {
     entries: Vec<(u32, Vec<Region>)>,
 }
 
-#[cfg(windows)]
 impl RegionCache {
     pub fn new() -> RegionCache {
         RegionCache::default()

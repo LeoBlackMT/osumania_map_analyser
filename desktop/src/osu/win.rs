@@ -31,10 +31,62 @@ pub const DESIRED_ACCESS: u32 = 0x0010 | 0x0400; // PROCESS_VM_READ | PROCESS_QU
 pub const PE_MACHINE_I386: u16 = 0x014C;
 pub const PE_MACHINE_AMD64: u16 = 0x8664;
 
+pub const MEM_COMMIT: u32 = 0x1000;
+pub const PAGE_NOACCESS: u32 = 0x01;
+pub const PAGE_READONLY: u32 = 0x02;
+pub const PAGE_READWRITE: u32 = 0x04;
+pub const PAGE_WRITECOPY: u32 = 0x08;
+pub const PAGE_EXECUTE_READ: u32 = 0x20;
+pub const PAGE_EXECUTE_READWRITE: u32 = 0x40;
+pub const PAGE_EXECUTE_WRITECOPY: u32 = 0x80;
+pub const PAGE_GUARD: u32 = 0x100;
+
+/// 参考过滤器（P1 的 filter A）：`MEM_COMMIT & (PAGE_READWRITE|PAGE_EXECUTE_READWRITE)`。
+pub const FILTER_RW: u32 = PAGE_READWRITE | PAGE_EXECUTE_READWRITE;
+
+/// 宽过滤器（P1 的 filter B）：任何有读权限的已提交区。
+pub const FILTER_READABLE: u32 = PAGE_READONLY
+    | PAGE_READWRITE
+    | PAGE_WRITECOPY
+    | PAGE_EXECUTE_READ
+    | PAGE_EXECUTE_READWRITE
+    | PAGE_EXECUTE_WRITECOPY;
+
+/// 单次 `ReadProcessMemory` 的**硬上限**（1 MiB）。与 `scan::CHUNK_MAX` **同值**
+/// （层内常量按 §3.4 的"单次读上限 1 MiB"取整；`scan.rs` 直接引用本常量）。
+pub const READ_CALL_MAX: usize = 1024 * 1024;
+
+/// `ERROR_PARTIAL_COPY`：请求的区间**不是整段可访问**（跨区/页尾）。
+/// `ReadProcessMemory` 的典型失败形态，处置 = 缩小重试（见 `plan_shrink_sequence`）。
+pub const ERROR_PARTIAL_COPY: u32 = 299;
+
+/// 缩小重试的计划（**纯函数**，可单测；`scan.rs` 的读取策略就是它的产物）。
+///
+/// 语义：从 `want` 起，每次失败就把请求长度**减半**再试，直到小于 `floor` 为止；
+/// 返回的是"依次尝试的请求长度"。`want` 先被 [`READ_CALL_MAX`] 夹取（单次硬上限）。
+///
+/// - 空计划 = 不尝试（`floor == 0` 或 `want == 0`）；
+/// - 计划里**不会出现 0 长度**的请求（0 长度读毫无意义，且会掩盖"读不到"）。
+pub fn plan_shrink_sequence(want: usize, floor: usize) -> Vec<usize> {
+    let mut plan = Vec::new();
+    if floor == 0 {
+        return plan;
+    }
+    let mut len = want.min(READ_CALL_MAX);
+    while len >= floor {
+        plan.push(len);
+        len /= 2;
+    }
+    plan
+}
+
 // ---- 非 Windows 桩 ----
 //
 // 与 `malody4/anchor.rs:779-821` 同形：同名同签名的 stub，让 crate 在 Linux 上照常
 // 编译（CI/交叉检查），行为恒为 "platform-unsupported" 式的空目标。
+
+#[cfg(not(windows))]
+pub type Handle = isize;
 
 #[cfg(not(windows))]
 pub struct Target;
@@ -49,11 +101,119 @@ impl Target {
     pub fn client(&self) -> Option<crate::osu::model::Client> {
         None
     }
+
+    pub fn handle(&self) -> Handle {
+        -1
+    }
+
+    pub fn regions_cached(
+        &self,
+        _cache: &mut crate::osu::scan::RegionCache,
+        _access_mask: u32,
+        _limit: usize,
+    ) -> Vec<crate::osu::scan::Region> {
+        Vec::new()
+    }
 }
 
 #[cfg(not(windows))]
 pub fn select_target() -> Result<Target, Reason> {
     Err(Reason::ProcessNotFound)
+}
+
+#[cfg(not(windows))]
+pub fn last_discovery_used_sweep() -> bool {
+    false
+}
+
+#[cfg(not(windows))]
+pub fn retry_soon() -> bool {
+    false
+}
+
+#[cfg(not(windows))]
+pub fn module_list(_pid: u32) -> Result<Vec<(u64, String)>, Reason> {
+    Err(Reason::ProcessNotFound)
+}
+
+#[cfg(not(windows))]
+pub fn read_exact_at(_handle: Handle, _addr: u32, _buf: &mut [u8]) -> Result<(), u32> {
+    Err(ERROR_PARTIAL_COPY)
+}
+
+#[cfg(not(windows))]
+pub fn read_exact_chunked_at(_handle: Handle, _addr: usize, _buf: &mut [u8]) -> Result<(), u32> {
+    Err(ERROR_PARTIAL_COPY)
+}
+
+#[cfg(not(windows))]
+pub fn read_exact_at64(_handle: Handle, _addr: u64, _buf: &mut [u8]) -> Result<(), u32> {
+    Err(ERROR_PARTIAL_COPY)
+}
+
+#[cfg(not(windows))]
+pub fn read_u64(_target: &Target, _addr: u64) -> Result<u64, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_u32_at64(_target: &Target, _addr: u64) -> Result<u32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_i32_at64(_target: &Target, _addr: u64) -> Result<i32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_f32_at64(_target: &Target, _addr: u64) -> Result<f32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_f64_at64(_target: &Target, _addr: u64) -> Result<f64, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_csharp_string64_at(
+    _target: &Target,
+    _addr: u64,
+    _length_offset: u64,
+    _chars_offset: u64,
+) -> Result<String, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_u32(_target: &Target, _addr: u32) -> Result<u32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_u16(_target: &Target, _addr: u32) -> Result<u16, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_i32(_target: &Target, _addr: u32) -> Result<i32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_f64(_target: &Target, _addr: u32) -> Result<f64, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_pointer(_target: &Target, _addr: u32) -> Result<u32, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_csharp_string(_target: &Target, _addr: u32) -> Result<String, Reason> {
+    Err(Reason::PlatformUnsupported)
 }
 
 /// C# 字符串长度硬上限（码元数）：4096 足够覆盖最长路径/文件名（MAX_PATH=260），
@@ -83,25 +243,8 @@ mod win32 {
     /// 壳是 64 位、stable 是 32 位：**两个模块标志都要给**，否则看不见 32 位模块。
     const TH32CS_SNAPMODULE32: u32 = 0x0000_0010;
 
-    const MEM_COMMIT: u32 = 0x1000;
-    const PAGE_NOACCESS: u32 = 0x01;
-    const PAGE_READONLY: u32 = 0x02;
-    const PAGE_READWRITE: u32 = 0x04;
-    const PAGE_WRITECOPY: u32 = 0x08;
-    const PAGE_EXECUTE_READ: u32 = 0x20;
-    const PAGE_EXECUTE_READWRITE: u32 = 0x40;
-    const PAGE_EXECUTE_WRITECOPY: u32 = 0x80;
-    const PAGE_GUARD: u32 = 0x100;
+    use super::{MEM_COMMIT, PAGE_GUARD, PAGE_NOACCESS};
 
-    /// 参考过滤器（P1 的 filter A）：`MEM_COMMIT & (PAGE_READWRITE|PAGE_EXECUTE_READWRITE)`。
-    pub const FILTER_RW: u32 = PAGE_READWRITE | PAGE_EXECUTE_READWRITE;
-    /// 宽过滤器（P1 的 filter B）：任何有读权限的已提交区。
-    pub const FILTER_READABLE: u32 = PAGE_READONLY
-        | PAGE_READWRITE
-        | PAGE_WRITECOPY
-        | PAGE_EXECUTE_READ
-        | PAGE_EXECUTE_READWRITE
-        | PAGE_EXECUTE_WRITECOPY;
 
     /// `MEMORY_BASIC_INFORMATION`（x64 调用方布局，`size_of == 48`）。
     #[repr(C)]
@@ -963,18 +1106,6 @@ mod win32 {
         out
     }
 
-    /// 单次 `ReadProcessMemory` 的**硬上限**（1 MiB）。与 `scan::CHUNK_MAX` **同值**
-    /// （层内常量按 §3.4 的"单次读上限 1 MiB"取整；`scan.rs` 直接引用本常量）。
-    ///
-    /// 为什么要在这里再夹一次：`scan.rs` 的分块是"扫描策略"（它还要带尾接、要按区推进），
-    /// 而本函数是**产品侧唯一的下发点**——字符串/字段读若哪天被传进一个大缓冲（例如
-    /// 64 MiB 的 lazer 扫描），没有这道夹取就会变成"一次请求 64 MiB"，
-    /// 与 §3.4 的约定不符。
-    pub const READ_CALL_MAX: usize = 1024 * 1024;
-
-    /// `ERROR_PARTIAL_COPY`：请求的区间**不是整段可访问**（跨区/页尾）。
-    /// `ReadProcessMemory` 的典型失败形态，处置 = 缩小重试（见 `plan_shrink_sequence`）。
-    pub const ERROR_PARTIAL_COPY: u32 = 299;
 
     /// 单次 `ReadProcessMemory`：**必须整段读满**，否则报错（含 `ERROR_PARTIAL_COPY`）。
     ///
@@ -1114,26 +1245,6 @@ mod win32 {
             return Err(Reason::InvariantFailed("string-nul"));
         }
         String::from_utf16(&units).map_err(|_| Reason::InvariantFailed("string-utf16"))
-    }
-
-    /// 缩小重试的计划（**纯函数**，可单测；`scan.rs` 的读取策略就是它的产物）。
-    ///
-    /// 语义：从 `want` 起，每次失败就把请求长度**减半**再试，直到小于 `floor` 为止；
-    /// 返回的是"依次尝试的请求长度"。`want` 先被 [`READ_CALL_MAX`] 夹取（单次硬上限）。
-    ///
-    /// - 空计划 = 不尝试（`floor == 0` 或 `want == 0`）；
-    /// - 计划里**不会出现 0 长度**的请求（0 长度读毫无意义，且会掩盖"读不到"）。
-    pub fn plan_shrink_sequence(want: usize, floor: usize) -> Vec<usize> {
-        let mut plan = Vec::new();
-        if floor == 0 {
-            return plan;
-        }
-        let mut len = want.min(READ_CALL_MAX);
-        while len >= floor {
-            plan.push(len);
-            len /= 2;
-        }
-        plan
     }
 
     fn read_array<const N: usize>(handle: Handle, addr: u32) -> Result<[u8; N], Reason> {
