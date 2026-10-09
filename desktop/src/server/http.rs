@@ -405,6 +405,14 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 .join("offsets")
                 .join("lazer");
             cmd.arg("--out").arg(out_dir);
+        } else if let Ok(home) = std::env::var("HOME") {
+            let out_dir = std::path::PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join("lazer");
+            cmd.arg("--out").arg(out_dir);
         }
 
         match cmd.output() {
@@ -498,24 +506,34 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 }
 
 fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {
-    // 1. 同级 offsets/gen.exe 或同级 gen.exe
+    let names: &[&str] = if cfg!(windows) {
+        &["gen.exe", "gen"]
+    } else {
+        &["gen", "gen.exe"]
+    };
+
+    // 1. 同级 offsets/gen 或同级 gen
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            let in_offsets = parent.join("offsets").join("gen.exe");
-            if in_offsets.exists() {
-                return Some(in_offsets);
-            }
-            let candidate = parent.join("gen.exe");
-            if candidate.exists() {
-                return Some(candidate);
+            for &name in names {
+                let in_offsets = parent.join("offsets").join(name);
+                if in_offsets.exists() {
+                    return Some(in_offsets);
+                }
+                let candidate = parent.join(name);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
             }
         }
     }
-    // 2. 插件上级工作区 temp/gen.exe
-    let temp_gen = shared.plugin_dir.parent().map(|p| p.join("temp").join("gen.exe"));
-    if let Some(p) = temp_gen {
-        if p.exists() {
-            return Some(p);
+    // 2. 插件上级工作区 temp/gen
+    for &name in names {
+        let temp_gen = shared.plugin_dir.parent().map(|p| p.join("temp").join(name));
+        if let Some(p) = temp_gen {
+            if p.exists() {
+                return Some(p);
+            }
         }
     }
     // 3. 环境变量或 PATH
@@ -528,8 +546,23 @@ fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {
     None
 }
 
-fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+/// 创建跨平台的 curl 命令，在 Windows 上静默运行（CREATE_NO_WINDOW），消除黑框弹出。
+fn create_curl_command() -> std::process::Command {
+    #[cfg(windows)]
     let mut cmd = std::process::Command::new("curl.exe");
+    #[cfg(not(windows))]
+    let mut cmd = std::process::Command::new("curl");
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+    let mut cmd = create_curl_command();
     cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
     let output = match cmd.output() {
         Ok(out) if out.status.success() => out,
@@ -560,7 +593,7 @@ fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     let mut updated_count = 0;
     for table in manifest.tables {
         let table_url = format!("{base_url}/{}/{}", table.client, table.filename);
-        let mut t_cmd = std::process::Command::new("curl.exe");
+        let mut t_cmd = create_curl_command();
         t_cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(&table_url);
         let Ok(t_out) = t_cmd.output() else { continue };
         if !t_out.status.success() { continue };

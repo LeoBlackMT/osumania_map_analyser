@@ -106,8 +106,16 @@ pub fn save_remote_table(
     filename: &str,
     content: &[u8],
 ) -> Result<PathBuf, std::io::Error> {
-    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let target_dir = PathBuf::from(appdata)
+    let base_dir = if let Ok(appdata) = std::env::var("APPDATA") {
+        PathBuf::from(appdata)
+    } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        PathBuf::from(xdg)
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".local").join("share")
+    } else {
+        PathBuf::from(".")
+    };
+    let target_dir = base_dir
         .join("ManiaMapAnalyser")
         .join("offsets")
         .join(client);

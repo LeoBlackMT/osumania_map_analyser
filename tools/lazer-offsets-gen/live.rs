@@ -10,9 +10,11 @@
 //    只有 100% 通过活体校验才允许落盘。
 
 use crate::ilmeta::{self, IlInventory};
+#[cfg(windows)]
 use crate::spec::{ANCHOR_PATTERN, GAME_BASE_HOPS, SITE_DELTAS};
 use crate::Options;
 use std::collections::BTreeMap;
+#[cfg(windows)]
 use std::fs;
 use std::path::{Path, PathBuf};
 

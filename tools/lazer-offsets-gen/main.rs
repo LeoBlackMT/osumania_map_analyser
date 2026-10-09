@@ -381,8 +381,10 @@ fn run_selftest_interactive(lang: Lang) {
     println!();
     if lang == Lang::Zh {
         println!("正在运行生成器自测管线 (self-test)...");
+        println!("（该自测使用内置测试用例验证 IL 解析、内存结构还原与双见证出表算法）");
     } else {
         println!("Running generator self-test pipeline...");
+        println!("(This self-test verifies IL analysis, memory struct reconstruction, and dual-witness emission using built-in fixtures)");
     }
 
     let code = selftest::run(&Options::default());

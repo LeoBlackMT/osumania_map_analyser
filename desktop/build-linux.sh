@@ -42,6 +42,9 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 cp -r "$plugin_dir" "$stage/"
 cp -r "$root/bridges" "$stage/bridges"
+if [ -d "$root/desktop/offsets" ]; then
+    cp -r "$root/desktop/offsets" "$stage/offsets"
+fi
 install -m 0755 "$exe" "$stage/mma-shell"
 
 # ⚠️ 开发产物一律不入包：NuGet 包缓存（`bepinex/.tools/nuget-packages`，约 97 MB）、

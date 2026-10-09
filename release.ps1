@@ -82,7 +82,7 @@ if (Test-Path $genSrc) {
         New-Item -ItemType Directory -Path $offsetsStage -Force | Out-Null
     }
     $genDst = Join-Path $offsetsStage "gen.exe"
-    & rustc --edition 2021 -O -A dead_code -o $genDst $genSrc
+    & rustc --edition 2021 -O -A dead_code "-Clink-arg=/MANIFEST:EMBED" "-Clink-arg=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'" -o $genDst $genSrc
     if ($LASTEXITCODE -ne 0) { throw "rustc build of gen.exe failed" }
 }
 
