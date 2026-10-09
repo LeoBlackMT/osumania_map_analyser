@@ -343,7 +343,13 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 
         let mut cmd = std::process::Command::new(&gen_exe_path);
         cmd.arg("live").arg("--json");
-        if let Ok(appdata) = std::env::var("APPDATA") {
+        let local_lazer = gen_exe_path
+            .parent()
+            .map(|p| p.join("lazer"))
+            .filter(|p| p.is_dir());
+        if let Some(out_dir) = local_lazer {
+            cmd.arg("--out").arg(out_dir);
+        } else if let Ok(appdata) = std::env::var("APPDATA") {
             let out_dir = std::path::PathBuf::from(appdata)
                 .join("ManiaMapAnalyser")
                 .join("offsets")
@@ -442,9 +448,13 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 }
 
 fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {
-    // 1. 同级目录 gen.exe
+    // 1. 同级 offsets/gen.exe 或同级 gen.exe
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
+            let in_offsets = parent.join("offsets").join("gen.exe");
+            if in_offsets.exists() {
+                return Some(in_offsets);
+            }
             let candidate = parent.join("gen.exe");
             if candidate.exists() {
                 return Some(candidate);

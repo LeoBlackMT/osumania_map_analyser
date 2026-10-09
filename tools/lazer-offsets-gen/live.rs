@@ -61,21 +61,21 @@ pub fn run_live(options: &Options) -> i32 {
     }
 }
 
-struct GenerationOutcome {
-    lazer_version: String,
-    runtime_version: String,
-    arch: String,
-    output_path: PathBuf,
+pub struct GenerationOutcome {
+    pub lazer_version: String,
+    pub runtime_version: String,
+    pub arch: String,
+    pub output_path: PathBuf,
 }
 
-struct LiveError {
-    kind: &'static str,
-    message: String,
-    code: i32,
+pub struct LiveError {
+    pub kind: &'static str,
+    pub message: String,
+    pub code: i32,
 }
 
 impl LiveError {
-    fn new(kind: &'static str, message: impl Into<String>, code: i32) -> Self {
+    pub fn new(kind: &'static str, message: impl Into<String>, code: i32) -> Self {
         Self {
             kind,
             message: message.into(),
@@ -85,12 +85,12 @@ impl LiveError {
 }
 
 #[cfg(not(windows))]
-fn execute_live(_options: &Options) -> Result<GenerationOutcome, LiveError> {
+pub fn execute_live(_options: &Options) -> Result<GenerationOutcome, LiveError> {
     Err(LiveError::new("unsupported_os", "live memory generation is only supported on Windows", 3))
 }
 
 #[cfg(windows)]
-fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
+pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     // 1. 查找 osu!.exe 进程
     let explicit_pid: Option<u32> = options.value("--pid").and_then(|s| s.parse().ok());
     let (pid, exe_path) = match explicit_pid {
@@ -230,11 +230,26 @@ fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     let target_dir = match options.value("--out") {
         Some(dir) => PathBuf::from(dir),
         None => {
-            let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(appdata)
-                .join("ManiaMapAnalyser")
-                .join("offsets")
-                .join("lazer")
+            let local_candidate = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("lazer")))
+                .filter(|p| p.is_dir());
+
+            let pwd_candidate = if Path::new("lazer").is_dir() {
+                Some(PathBuf::from("lazer"))
+            } else if Path::new("offsets").join("lazer").is_dir() {
+                Some(PathBuf::from("offsets").join("lazer"))
+            } else {
+                None
+            };
+
+            local_candidate.or(pwd_candidate).unwrap_or_else(|| {
+                let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+                PathBuf::from(appdata)
+                    .join("ManiaMapAnalyser")
+                    .join("offsets")
+                    .join("lazer")
+            })
         }
     };
 
@@ -243,9 +258,21 @@ fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     })?;
 
     let out_file = target_dir.join(&file_name);
-    fs::write(&out_file, table_json).map_err(|e| {
+    fs::write(&out_file, &table_json).map_err(|e| {
         LiveError::new("io_error", format!("failed to write table {}: {e}", out_file.display()), 4)
     })?;
+
+    // 如果目标目录并非 APPDATA 且系统支持 APPDATA，同时同步写入一份至全局缓存
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let appdata_dir = PathBuf::from(appdata)
+            .join("ManiaMapAnalyser")
+            .join("offsets")
+            .join("lazer");
+        if appdata_dir != target_dir {
+            let _ = fs::create_dir_all(&appdata_dir);
+            let _ = fs::write(appdata_dir.join(&file_name), &table_json);
+        }
+    }
 
     Ok(GenerationOutcome {
         lazer_version,
@@ -255,8 +282,13 @@ fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     })
 }
 
+#[cfg(not(windows))]
+pub fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
+    Err(LiveError::new("unsupported_os", "process scanning is only supported on Windows", 3))
+}
+
 #[cfg(windows)]
-fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
+pub fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == 0 || snapshot == INVALID_HANDLE_VALUE {
