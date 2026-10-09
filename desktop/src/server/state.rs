@@ -1,9 +1,8 @@
 // server::state - 领域子状态与解耦后的服务状态中心
 
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::Instant;
 use crate::config::TosuInfo;
@@ -34,11 +33,7 @@ impl BroadcastHub {
     }
 
     pub fn broadcast(&self, frame_type: &str, payload: Option<serde_json::Value>) {
-        let env = Envelope {
-            seq: self.next_seq(),
-            frame_type: frame_type.to_string(),
-            payload,
-        };
+        let env = Envelope::new(frame_type, self.next_seq(), payload);
         let text = serde_json::to_string(&env).unwrap_or_default();
         let mut sinks = self.sinks.lock().unwrap();
         sinks.retain(|(_, tx)| tx.send(text.clone()).is_ok());

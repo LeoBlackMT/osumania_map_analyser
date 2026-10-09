@@ -1,7 +1,7 @@
 // sys::windows::process - 进程枚举、Toolhelp 快照与模块基址探测
 
 use std::path::PathBuf;
-use super::ffi::{self, Handle, ModuleEntry32W, ProcessEntry32W, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS};
+use super::ffi::{self, ModuleEntry32W, ProcessEntry32W, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS};
 use super::handle::ProcessHandle;
 
 pub struct ProcessItem {
