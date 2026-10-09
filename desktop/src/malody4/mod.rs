@@ -22,6 +22,7 @@
 // 指纹扫描都在后台构建线程（`library::rebuild` / `library::rescan_change`），本文件只调用它们。
 
 pub mod anchor;
+pub mod spec;
 pub mod config;
 pub mod gamelog;
 pub mod library;
