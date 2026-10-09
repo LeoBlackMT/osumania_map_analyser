@@ -40,27 +40,20 @@ pub use self::settings::{
 
 use crate::etterna::EtternaStatus;
 use crate::frames::{
-    EtternaSource, Malody4Source, MalodySource, SourcesFrame, StateFrame, MAX_PAYLOAD_BYTES,
+    EtternaSource, Malody4Source, MalodySource, SourcesFrame, StateFrame,
 };
-use crate::server::log::log_at;
-use crate::server::{broadcast, Shared};
-use self::anchor::{AnchorError, IdentityKey, MemoryProbe};
+use self::anchor::{AnchorError, IdentityKey};
 // `RawSettings` / `MemorySource` moved into `settings.rs`'s import list but stay part of
 // this module's public surface: the local test module glob-imports them from here.
 pub use self::anchor::{MemorySource, RawSettings};
-use self::config::GameConfig;
-use self::gamelog::SceneTracker;
 use self::library::{ChartLibrary, ChartMeta, LibraryEntry, LibraryFingerprint, LibraryStats};
-use self::model::{Screen, Selection, UnavailableReason};
-use self::selection::{Action, Availability, SelectionState};
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use self::model::{Selection, UnavailableReason};
+use self::selection::Action;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// 主循环采样间隔（每 tick 一帧：锚点 + 日志 + config）。
 pub const POLL_INTERVAL: Duration = Duration::from_millis(200);

@@ -1,8 +1,8 @@
 use crate::osu::model::Snapshot;
-use crate::osu::offsets::{FieldLookup, LookupError, OffsetTable};
+use crate::osu::offsets::{LookupError, OffsetTable};
 use super::fields::*;
-use super::source::{read_ptr_field, StringLayout};
-use super::table::{LoadedTable, TableOrigin, TargetInfo};
+use super::source::StringLayout;
+use super::table::{TableOrigin, TargetInfo};
 use std::path::PathBuf;
 
 /// lazer 解引用链的地址（诊断/证据用；不进载荷）。

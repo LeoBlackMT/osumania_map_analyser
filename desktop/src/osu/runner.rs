@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 use crate::osu::invariants::{FrameAction, Gate};
 use crate::osu::model::{Client, Reason, Snapshot};
 use super::*;

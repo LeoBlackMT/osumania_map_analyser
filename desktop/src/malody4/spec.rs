@@ -102,8 +102,7 @@ pub fn read_u32_at(block: &[u8], off: u32) -> Option<u32> {
 }
 
 pub fn valid_judge(raw: u32) -> Option<u8> {
-    let level = u8::try_from(raw).ok()?;
-    (level <= MAX_JUDGE_LEVEL).then_some(level)
+    (raw <= u32::from(MAX_JUDGE_LEVEL)).then_some(raw as u8)
 }
 
 pub fn decode_user_settings(block: &[u8]) -> Option<RawSettings> {

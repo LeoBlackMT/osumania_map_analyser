@@ -81,6 +81,7 @@ pub struct MemoryBasicInformation {
 }
 
 #[cfg(windows)]
+#[allow(clashing_extern_declarations)]
 extern "system" {
     pub fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
     pub fn CloseHandle(hObject: Handle) -> i32;

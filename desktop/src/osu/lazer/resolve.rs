@@ -1,5 +1,5 @@
 use crate::osu::offsets::OffsetTable;
-use super::fields::{ANCHOR_KEY, GAME_BASE_HOPS, MAX_RESOLUTION_LINES, SITE_DELTAS};
+use super::fields::{GAME_BASE_HOPS, MAX_RESOLUTION_LINES};
 use super::source::{read_ptr_field, read_u64, Source};
 use super::types::Resolved;
 

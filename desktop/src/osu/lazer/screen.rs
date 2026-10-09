@@ -1,7 +1,8 @@
 use crate::osu::model::OBSERVED_STATE_NAMES;
 use crate::osu::offsets::{LookupError, OffsetTable};
-use super::fields::{screen_state_for, GAME_TYPE_ANY, SCREEN_STACK_MAX, UNMAPPED_SCREEN_SUFFIX};
-use super::source::{field_addr, plausible_ptr, read_i32, read_ptr_field, read_u32, read_u64, Source};
+use super::fields::{screen_state_for, GAME_TYPE_ANY, SCREEN_STACK_MAX};
+use super::resolve::plausible_ptr;
+use super::source::{field_addr, read_i32, read_ptr_field, read_u32, read_u64, Source};
 use super::types::{ChainAddrs, Resolved};
 
 /// 一次 EEType→类型名 解析的全部中间读数。

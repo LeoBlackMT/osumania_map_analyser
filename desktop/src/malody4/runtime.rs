@@ -7,17 +7,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Instant, SystemTime};
 
 use crate::frames::MAX_PAYLOAD_BYTES;
 use crate::malody4::anchor::{self, AnchorError, IdentityKey, MemoryProbe};
 use crate::malody4::config::{self, GameConfig};
-use crate::malody4::gamelog::{self, SceneTracker, Screen};
-use crate::malody4::library::{self, ChartMeta, LibraryEntry, LibraryFingerprint};
-use crate::malody4::model::{
+use crate::malody4::gamelog::{self, SceneTracker};
+use crate::malody4::library::{self, ChartMeta, LibraryEntry};
+use crate::malody4::model::{Screen, Selection, UnavailableReason};
+use crate::malody4::selection::{Action, Availability, SelectionState};
+use crate::malody4::settings::{
     chain_disagreement_warning, effective_settings, file_cross_check_warning, settings_log,
-    Action, Availability, EffectiveSettings, Selection, SelectionState, SettingsLogKey,
-    SettingsOrigin, UnavailableReason,
+    EffectiveSettings, SettingsLogKey, SettingsOrigin,
 };
 use crate::server::log::log_at;
 use crate::server::{broadcast, Shared};

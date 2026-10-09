@@ -1,6 +1,6 @@
 // server::bridge::state - Malody V 桥运行期状态、去重基线与事件分类
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use crate::frames::{MalodyBridgeSource, BRIDGE_STALE_AFTER};
 
 /// 内容六元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text)`。
