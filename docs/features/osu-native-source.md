@@ -69,7 +69,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 2. **纯数据红线与 Schema 严格校验**：
    - 内存特征表为纯静态 JSON，**严禁包含任何可执行代码、宏或脚本语义**（解析器防御性拦截包含 `<script>`、`eval`、`javascript:` 等字符串）。
    - 严格类型与范围校验（`validate_stable_schema`, `validate_lazer_schema`）：校验 pattern 字符合法性、签名长度（`4..=64` 字节）、位移合理范围（`±1048576` 字节）、字符串字段长度限制（≤256 字符），任何非法结构立即拒绝加载。
-3. **随包分发的 1-Click 生成器（`gen.exe`）**：
+3. **随包分发的活体生成器（Live Generator，`gen.exe`）**：
    - 基于 `tools/lazer-offsets-gen/main.rs` 与 `live.rs` 编译为轻量独立工具随 `release.ps1` 一同打包。
    - **零 .NET SDK、零游戏挂起**：通过 `OpenProcess` 只读句柄在 1 秒内完成内存扫描定位，解析 MethodTable 与字段布局。
    - **活体自校验门禁**：生成后立即在运行中游戏的真实内存上执行解引用多跳验证：`site → GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash`，唯有验证出 32 字符合法十六进制哈希并成功解析屏幕栈顶部状态名，才允许落盘。
@@ -307,7 +307,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 - **运行位置**：在受限的工作区上下文里 Toolhelp32 只能看到自己那一族进程（表现为"游戏没在跑"）——**从工作区外（如 `%TEMP%`）或普通 shell 启动**即可正常发现游戏（与壳自身的 B2 结论同族）。
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。
 - **版本键**：表按 **`(lazer 版本, runtime 版本, 架构)`** 建键，文件名 `<lazer>__<runtime>__<arch>.json`（本机 = `2026.921.0.0__10.0.12__x64.json`）。runtime 版本变了 ⇒ **新表另存一份**，旧表保留（回落梯子靠它）；`arch` 不同 ⇒ **永不回落**（`offsets.rs` 的架构不匹配不回落）。
-- **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`desktop/release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与签名 `manifest.json`，用户亦可通过设置页一键活体生成或检查远端更新。
+- **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与签名 `manifest.json`，用户亦可通过设置页活体生成或检查远端更新。
 - **自测**：`temp/lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work temp/lazer-offsets-gen-selftest`（不需要 lazer / dump / 分析器；当前 **35/35**），跑的是真实代码路径（合成 minidump → 锚点扫描 → 链走法 → dump 字节自证 → SOS 中间件装配 → emit 双见证）。
 - **刷新前先看差分**：`il --diff <上一版清单>` 的 `ADDED/REMOVED/CHANGED` 段就是"这次更新到底变了什么"，再对照 `emit-report` 的 `omitted` 清单。要发布新字段时改 `spec.rs::WANTED` 后**只重跑 `emit`**（中间件里存了每个被 dump 对象的全部字段行，不必重采 dump）。
 

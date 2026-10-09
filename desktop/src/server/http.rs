@@ -206,17 +206,54 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(&mut stream, 400, r#"{"error":"shell config must be an object"}"#);
             return;
         }
-        // `None` = base 不可读或写盘失败 → 400，且**什么都不写**（不生成骨架）。
-        let Some(merged) = config::patch_shell_config(&value) else {
-            respond_json(&mut stream, 400, r#"{"error":"shell config write failed"}"#);
-            return;
-        };
-        // 壳配置既在 `*_root` 解析链里（第 3 级）又是来源缓存的内容：更新缓存 →
-        // 失效探测缓存（否则 ≤30s 内仍用旧根目录）→ **释放锁后**广播全量。
-        *shared.offline_settings.lock().unwrap() = merged.clone();
-        config::clear_detect_caches();
-        broadcast(&shared, "settings", Some(merged.clone()));
-        respond_json(&mut stream, 200, &merged.to_string());
+
+        // 处理窗口置顶与穿透控制（如果有）
+        if let Some(win_val) = value.get("window").and_then(|w| w.as_object()) {
+            let topmost = win_val.get("topmost").and_then(|v| v.as_bool());
+            let click_through = win_val.get("clickThrough").and_then(|v| v.as_bool());
+            if topmost.is_some() || click_through.is_some() {
+                if let Some(app) = shared.app.lock().unwrap().as_ref() {
+                    crate::app::window_state::apply_flag_change(app, topmost, click_through);
+                } else {
+                    let mut st = crate::app::window_state::WINDOW_STATE.lock().unwrap();
+                    let disk = config::read_window_state();
+                    st.topmost = topmost.unwrap_or(disk.topmost);
+                    st.click_through = click_through.unwrap_or(disk.click_through);
+                    crate::app::window_state::persist_window_state();
+                }
+            }
+        }
+
+        // 过滤掉 window 键再传给 patch_shell_config
+        let mut cfg_patch = value.clone();
+        if let Some(obj) = cfg_patch.as_object_mut() {
+            obj.remove("window");
+        }
+        if !cfg_patch.as_object().map(|m| m.is_empty()).unwrap_or(false) {
+            let Some(merged) = config::patch_shell_config(&cfg_patch) else {
+                respond_json(&mut stream, 400, r#"{"error":"shell config write failed"}"#);
+                return;
+            };
+            *shared.offline_settings.lock().unwrap() = merged.clone();
+            config::clear_detect_caches();
+            broadcast(&shared, "settings", Some(merged.clone()));
+        }
+
+        let cfg = config::read_shell_config();
+        let win = config::read_window_state();
+        let body = serde_json::json!({
+            "config": cfg,
+            "resolved": {
+                "etternaRoot": crate::etterna::etterna_root(&shared),
+                "malodyRoot": malody_root(&shared),
+                "malody4Root": malody4_effective_root(&shared),
+            },
+            "window": {
+                "topmost": win.topmost,
+                "clickThrough": win.click_through
+            }
+        });
+        respond_json(&mut stream, 200, &body.to_string());
         return;
     }
 
@@ -273,6 +310,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(&mut stream, 400, r#"{"error":"shell config unreadable"}"#);
             return;
         }
+        let win = config::read_window_state();
         let body = serde_json::json!({
             "config": cfg,
             "resolved": {
@@ -280,6 +318,10 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "malodyRoot": malody_root(&shared),
                 "malody4Root": malody4_effective_root(&shared),
             },
+            "window": {
+                "topmost": win.topmost,
+                "clickThrough": win.click_through
+            }
         });
         respond_json(&mut stream, 200, &body.to_string());
         return;
@@ -291,9 +333,12 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         let lazer_default = crate::osu::offsets::default_lazer_table();
         let gen_ready = find_gen_executable(&shared).is_some();
         let shadow_diag = crate::osu::compare::current_diagnostics();
+        let shadow_enabled = std::env::var("MMA_SHADOW_DIAG").map(|v| v != "0").unwrap_or(false)
+            || std::env::args().any(|arg| arg == "--shadow-diag" || arg == "--debug");
         let body = serde_json::json!({
             "status": "ok",
             "generator_ready": gen_ready,
+            "shadow_enabled": shadow_enabled,
             "stable": {
                 "client": "stable",
                 "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
@@ -343,6 +388,11 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 
         let mut cmd = std::process::Command::new(&gen_exe_path);
         cmd.arg("live").arg("--json");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
         let local_lazer = gen_exe_path
             .parent()
             .map(|p| p.join("lazer"))

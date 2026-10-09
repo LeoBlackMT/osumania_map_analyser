@@ -96,6 +96,8 @@ pub fn run(reader: Reader) {
                     stable_table = None;
                     lazer_attach = None;
                     regions = scan::RegionCache::new();
+                    scan_fail_attempt = 0;
+                    last_scan_fail = None;
                     previous_live = None;
                     if let Some(lost_at) = lost_at.take() {
                         eprintln!(

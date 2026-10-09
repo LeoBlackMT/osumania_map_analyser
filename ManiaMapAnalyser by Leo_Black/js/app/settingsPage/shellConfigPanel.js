@@ -62,6 +62,7 @@ const UNREADABLE_NOTICE = "Shell config unreadable (mma-shell-config.json) — e
 export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(url, init) }) {
     let config = null;
     let resolved = {};
+    let windowState = { topmost: true, clickThrough: false };
     let statusText = "";
     let statusKind = "info";
     let saveHint = "";
@@ -74,14 +75,16 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         try {
             const response = await fetchImpl(url, init);
             const status = response && typeof response.status === "number" ? response.status : 0;
-            if (!response || !response.ok) {
-                return { ok: false, status };
-            }
             let body = null;
-            try {
-                body = await response.json();
-            } catch {
-                body = null;
+            if (response) {
+                try {
+                    body = await response.json();
+                } catch {
+                    body = null;
+                }
+            }
+            if (!response || !response.ok) {
+                return { ok: false, status, body };
             }
             return { ok: true, status, body };
         } catch (error) {
@@ -163,6 +166,9 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         }
         config = result.body.config;
         resolved = result.body.resolved && typeof result.body.resolved === "object" ? result.body.resolved : {};
+        if (result.body.window && typeof result.body.window === "object") {
+            windowState = result.body.window;
+        }
         setStatus("", "info");
         render();
         return true;
@@ -189,7 +195,14 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             return false;
         }
         if (result.body && typeof result.body === "object") {
-            config = result.body;
+            if (result.body.config && typeof result.body.config === "object") {
+                config = result.body.config;
+            } else if (!result.body.window) {
+                config = result.body;
+            }
+            if (result.body.window && typeof result.body.window === "object") {
+                windowState = result.body.window;
+            }
         }
         setStatus("Saved.", "ok");
         saveHint = refreshResolvedAfter ? "Refreshing the adopted paths…" : "";
@@ -237,16 +250,34 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             for (const field of ROOT_FIELDS) {
                 section.appendChild(buildRootRow(field));
             }
+            section.appendChild(buildWindowTopmostRow());
+            section.appendChild(buildWindowClickThroughRow());
             section.appendChild(buildHotkeysRow());
             section.appendChild(buildLogLevelRow());
             if (offsetsInfo) {
                 section.appendChild(buildOffsetsSection());
-                if (offsetsInfo.shadow) {
+                if (offsetsInfo.shadow && isShadowDiagnosticsEnabled()) {
                     section.appendChild(buildShadowSection());
                 }
             }
         }
         root.appendChild(section);
+    }
+
+    function isShadowDiagnosticsEnabled() {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has("debug") || params.has("shadow") || params.has("diag")) {
+                return true;
+            }
+        } catch (_) {}
+        if (offsetsInfo && (offsetsInfo.shadow_enabled === true || offsetsInfo.shadowDiagnostics === true)) {
+            return true;
+        }
+        if (config && config.shadowDiagnostics === true) {
+            return true;
+        }
+        return false;
     }
 
     function buildRow(key, title, description, control) {
@@ -321,6 +352,38 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         wrap.appendChild(readout);
 
         return buildRow(field.key, field.title, field.description, wrap);
+    }
+
+    function buildWindowTopmostRow() {
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.shellKey = "topmost";
+        input.checked = Boolean(windowState && windowState.topmost);
+        input.addEventListener("change", () => {
+            write({ window: { topmost: input.checked } });
+        });
+        return buildRow(
+            "topmost",
+            "Always on Top",
+            "Keep the overlay window above all other windows.",
+            input,
+        );
+    }
+
+    function buildWindowClickThroughRow() {
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.shellKey = "clickThrough";
+        input.checked = Boolean(windowState && windowState.clickThrough);
+        input.addEventListener("change", () => {
+            write({ window: { clickThrough: input.checked } });
+        });
+        return buildRow(
+            "clickThrough",
+            "Click-Through",
+            "Pass mouse clicks through the overlay window to the game or desktop.",
+            input,
+        );
     }
 
     function buildHotkeysRow() {
@@ -411,7 +474,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const genBtn = document.createElement("button");
         genBtn.type = "button";
         genBtn.className = "settings-action-btn";
-        genBtn.textContent = "1-Click Live Generator";
+        genBtn.textContent = "Live Generator";
         genBtn.title = offsetsInfo.generator_ready
             ? "Extract offsets from running osu! with zero .NET SDK"
             : "gen.exe not detected";

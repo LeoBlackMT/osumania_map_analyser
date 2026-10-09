@@ -1,23 +1,29 @@
 # ManiaMapAnalyser desktop shell — release 打包（Windows）。
-# 用法：desktop\release.ps1
-# 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/ 下
-#       插件 zip（插件目录 + exe + bridges 安装素材；开发产物与插件源码不入包）。
+# 用法：.\release.ps1
+# 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/{timestamp}-{version}/ 下
+#       包含：
+#       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
+#       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
 
 param(
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path $PSScriptRoot -Parent
+$root = $PSScriptRoot
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
-$outDir = Join-Path $root "release"
+
 # 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
 $metadataPath = Join-Path $pluginDir "metadata.txt"
 $version = ((Get-Content -LiteralPath $metadataPath) |
     Where-Object { $_ -like 'Version:*' } |
     Select-Object -First 1) -replace '^Version:\s*', ''
 if (-not $version) { throw "version not found in $metadataPath" }
+
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$outDir = Join-Path $root "release\${timestamp}-${version}"
+New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
@@ -129,4 +135,17 @@ Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Remove-Item -Recurse -Force $stage
 
 $mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
-Write-Host "released: $zip ($mb MB)"
+Write-Host "released (with shell):  $zip ($mb MB)"
+
+# 纯插件本体包（供独立 tosu 用户使用）
+$pluginOnlyZip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version.zip"
+if (Test-Path $pluginOnlyZip) { Remove-Item $pluginOnlyZip }
+$pluginStage = Join-Path $env:TEMP "mma-plugin-stage-$PID"
+if (Test-Path $pluginStage) { Remove-Item -Recurse -Force $pluginStage }
+Copy-Item -Recurse $pluginDir $pluginStage
+Get-ChildItem -Path $pluginStage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
+Compress-Archive -Path "$pluginStage\*" -DestinationPath $pluginOnlyZip -Force
+Remove-Item -Recurse -Force $pluginStage
+
+$pluginMb = [math]::Round((Get-Item $pluginOnlyZip).Length / 1MB, 1)
+Write-Host "released (plugin only): $pluginOnlyZip ($pluginMb MB)"

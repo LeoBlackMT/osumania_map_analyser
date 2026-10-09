@@ -260,29 +260,36 @@ pub fn load_table(
     candidate_dirs.push(table_dir.join("offset").join("lazer"));
     candidate_dirs.push(table_dir.join(TABLE_DIR));
 
-    let expected_name = table_file_name(
-        &info.lazer_version,
-        &info.runtime_version,
-        &info.arch,
-    );
+    let clean_ver = crate::osu::offsets::lazer_table::normalize_version(&info.lazer_version);
+    let expected_names = [
+        table_file_name(
+            &info.lazer_version,
+            &info.runtime_version,
+            &info.arch,
+        ),
+        format!("{clean_ver}__{}__{}.json", info.runtime_version, info.arch),
+        format!("{clean_ver}.0__{}__{}.json", info.runtime_version, info.arch),
+    ];
 
     // ② 文件命名约定的精确命中
     for dir in &candidate_dirs {
-        let expected = dir.join(&expected_name);
-        if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
-            if usable(&table).is_ok() {
-                return Ok(LoadedTable {
-                    mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
-                    table,
-                    origin: TableOrigin::Exact,
-                    path: expected,
-                });
+        for name in &expected_names {
+            let expected = dir.join(name);
+            if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
+                if usable(&table).is_ok() {
+                    return Ok(LoadedTable {
+                        mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
+                        table,
+                        origin: TableOrigin::Exact,
+                        path: expected,
+                    });
+                }
+                eprintln!(
+                    "[osu] lazer offsets: {} rejected: {}",
+                    expected.display(),
+                    usable(&table).err().unwrap_or_default()
+                );
             }
-            eprintln!(
-                "[osu] lazer offsets: {} rejected: {}",
-                expected.display(),
-                usable(&table).err().unwrap_or_default()
-            );
         }
     }
 

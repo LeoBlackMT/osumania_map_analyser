@@ -1,6 +1,6 @@
 # ManiaMapAnalyser desktop shell
 
-Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一律**壳自身 24061 静态服务——只有壳配置显式 `osuTransport: "tosu"` 才恢复旧策略"在线 = tosu 插件页 / 离线 = 24061"），并作为本地聚合桥。Linux 下支持 Etterna 数据源（0.75+ 官方 Linux 版）；Malody V 无 Linux 版（该源仅 Windows）；**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` + PE 校验属 Win32 语义，其他平台以 `platform-unsupported` 优雅不可用）；**osu 原生读取同样仅 Windows**（`ReadProcessMemory` / `VirtualQueryEx`，其他平台报 `platform-unsupported` 并回落 tosu）。人类使用教程见 [docs/shell-guide.md](../docs/shell-guide.md)；技术说明见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md)、osu 原生传输见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) 与 `docs/CONTRACT.md`（本目录，契约版本 **6**）。
+Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一律**壳自身 24061 静态服务——只有壳配置显式 `osuTransport: "tosu"` 才恢复旧策略"在线 = tosu 插件页 / 离线 = 24061"），并作为本地聚合桥。Linux 下支持 Etterna 数据源（0.75+ 官方 Linux 版）；Malody V 无 Linux 版（该源仅 Windows）；**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` + PE 校验属 Win32 语义，其他平台以 `platform-unsupported` 优雅不可用）；**osu 原生读取同样仅 Windows**（`ReadProcessMemory` / `VirtualQueryEx`，其他平台报 `platform-unsupported` 并回落 tosu）。人类使用教程见 [docs/shell-guide.md](../docs/shell-guide.md)；技术说明见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md)、osu 原生传输见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) 与 `docs/CONTRACT.md`（本目录，契约版本 **6**）；源码架构与模块设计规约详见 [docs/architecture.md](docs/architecture.md)。
 
 | 能力 | 端口/路径 | 说明 |
 |---|---|---|
@@ -26,7 +26,7 @@ Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一
 
 壳配置（exe 旁，首启自动生成）：`mma-shell-config.json`（`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`；`malody4Root` 由桥安装器的 **Malody 4** 选项写入——该选项零文件复制）与 `mma-settings.json`（全量插件设置；离线权威，在线时由 tosu 设置文件取代且不生成/不使用本地文件）。
 
-构建与运行（开发态）：`cargo run --release`；打包：`desktop/release.ps1`（Windows，zip）/ `desktop/build-linux.sh`（Linux，tar.gz，需 Tauri Linux 系统依赖，与 CI 一致）。
+构建与运行（开发态）：`cargo run --release`；打包：`release.ps1`（Windows，zip）/ `desktop/build-linux.sh`（Linux，tar.gz，需 Tauri Linux 系统依赖，与 CI 一致）。
 
 开发环境变量：
 
@@ -40,7 +40,7 @@ Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一
 
 **osu 原生传输的能力与限制**（完整清单见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)）：
 
-- **偏移表随壳分发与动态更新**：发布包（`release.ps1`）自动打包 `offsets/` 目录（含 `stable/` 与 `lazer/` 纯数据偏移表及签名 `manifest.json`）并随包编译分发 `gen.exe`。支持通过设置页一键活体生成，或通过内置 Ed25519 签名通道在线静默更新。本地缓存落地在 `%APPDATA%\ManiaMapAnalyser\offsets\`，若不可用则优雅回退至内嵌默认表。
+- **偏移表随壳分发与动态更新**：发布包（`release.ps1`）自动打包 `offsets/` 目录（含 `stable/` 与 `lazer/` 纯数据偏移表及签名 `manifest.json`）并随包编译分发 `gen.exe`。产物输出至 `release/{timestamp}-{version}/` 下（包含带壳完整包 `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` 及纯插件本体包 `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`）。支持通过设置页 Live Generator 按钮一键活体生成，或通过内置 Ed25519 签名通道在线静默更新。本地缓存落地在 `%APPDATA%\ManiaMapAnalyser\offsets\`，若不可用则优雅回退至内嵌默认表。
 - **lazer 的字段缺口**（7 条，逐条进 `sources.osu.degradedFields`）：mods 三槽、`play.hits`/`resultsScreen.hits`、`files.background`/`files.audio`；因此 lazer 上 `modSignature` 只在 NM 时与 tosu 逐字节相等，hits/livePP 面不可用。
 - **受限会话下的运行方式（真机实测）**：在工作区上下文里 `Toolhelp32` 只能看到自己那一族进程（表现为"游戏没在跑"、读不到游戏）——**把 `mma-shell.exe` 复制到工作区外（如 `%TEMP%\mma-shell\`）再启动**即可正常附着（本机实测：从 `desktop\target\debug` 启动不可用，复制到 `%TEMP%` 后可用）。同一结论也适用于 `tools/lazer-offsets-gen`。
 - **Linux**：无内存读取（`platform-unsupported`），osu 走 tosu；其余源行为不变。
@@ -77,7 +77,7 @@ Window: transparent / always-on-top / click-through (`set_ignore_cursor_events`,
 
 Shell config (next to the exe, auto-created on first run): `mma-shell-config.json` (`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`; `malody4Root` is written by the installer's **Malody 4** option, which copies zero files) and `mma-settings.json` (full plugin settings; the offline authority — while tosu is online the tosu settings file replaces it and no local file is created or used).
 
-Build & run (dev): `cargo run --release`; packaging: `desktop/release.ps1` (Windows, zip) / `desktop/build-linux.sh` (Linux, tar.gz; needs the Tauri Linux system deps, same as CI).
+Build & run (dev): `cargo run --release`; packaging: `release.ps1` (Windows, zip) / `desktop/build-linux.sh` (Linux, tar.gz; needs the Tauri Linux system deps, same as CI).
 
 Dev env vars:
 
@@ -91,7 +91,7 @@ Dev env vars:
 
 **osu native transport: capability & limitations** (full list: [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)):
 
-- **Offset Tables Distribution & Dynamic Updates**: The release package (`release.ps1`) bundles the `offsets/` folder (pure data tables for stable and lazer + signed `manifest.json`) and compiles `gen.exe` beside `mma-shell.exe`. Supports 1-click live generation from the settings window, as well as Ed25519-signed online updates. Local cache is stored in `%APPDATA%\ManiaMapAnalyser\offsets\`, silently falling back to bundled/embedded tables when offline.
+- **Offset Tables Distribution & Dynamic Updates**: The release package (`release.ps1`) bundles the `offsets/` folder (pure data tables for stable and lazer + signed `manifest.json`) and compiles `gen.exe` beside `mma-shell.exe`. Output is created under `release/{timestamp}-{version}/` (containing both the with-shell zip `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` and plugin-only zip `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`). Supports live generation from the settings window via the Live Generator button, as well as Ed25519-signed online updates. Local cache is stored in `%APPDATA%\ManiaMapAnalyser\offsets\`, silently falling back to bundled/embedded tables when offline.
 - **lazer field gaps** (7, each reported in `sources.osu.degradedFields`): the three mod slots, `play.hits`/`resultsScreen.hits`, and `files.background`/`files.audio`; hence on lazer `modSignature` is byte-identical to tosu only for NM, and the hits/livePP surface is unavailable.
 - **Running inside a restricted session (measured)**: in the workspace context `Toolhelp32` only sees its own process family (the game looks "not running" and cannot be read) — **copy `mma-shell.exe` outside the workspace (e.g. `%TEMP%\mma-shell\`) and start it there** to attach normally (measured: starting from `desktop\target\debug` does not work, copying to `%TEMP%` does). The same applies to `tools/lazer-offsets-gen`.
 - **Linux**: no memory reading (`platform-unsupported`), osu goes through tosu; the other sources are unchanged.

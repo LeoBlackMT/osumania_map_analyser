@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ManiaMapAnalyser desktop shell — Linux 打包（Windows 侧用 desktop/release.ps1）。
+# ManiaMapAnalyser desktop shell — Linux 打包（Windows 侧用 release.ps1）。
 # 用法：desktop/build-linux.sh
 # 依赖：Tauri Linux 系统库（与 CI shell-build.yml 的 build-linux 一致）：
 #   sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \

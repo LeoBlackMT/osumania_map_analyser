@@ -321,25 +321,55 @@ fn run_live_interactive(lang: Lang) {
                 }
             }
         }
-        Err(_err) => {
+        Err(err) => {
             println!();
             if lang == Lang::Zh {
-                println!("[提示] 未检测到正在运行的 osu! 进程。");
+                println!("==================================================================");
+                println!(" [未能检测到运行中的 osu!lazer 进程]");
+                println!(" 错误类型: [{}]", err.kind);
+                println!(" 详细信息: {}", err.message);
                 println!();
-                println!("使用引导:");
-                println!("  1. 本工具通过安全只读方式读取运行中 osu!(lazer) 进程的内存布局。");
-                println!("  2. 请先启动 osu!(lazer) 游戏，并进入主菜单或选歌界面。");
-                println!("  3. 保持游戏在后台运行，然后回到本窗口重新选择 [1] 执行扫描。");
-                println!();
+                println!(" 使用引导与排查建议:");
+                match err.kind {
+                    "process_access_denied" => {
+                        println!("   - 检测到 osu! 正在运行，但读取权限被系统拒绝。");
+                        println!("   - 请关闭本程序后，右键「以管理员身份运行」本工具重试！");
+                    }
+                    "arch_mismatch" => {
+                        println!("   - 检测到运行中的 32 位 osu! (stable)。");
+                        println!("   - 本生成器专门针对 64 位 osu!lazer 内存结构，请启动 osu!lazer 后重试。");
+                    }
+                    _ => {
+                        println!("   1. 请先启动 osu!(lazer) 游戏，并停留在主界面或选歌界面。");
+                        println!("   2. 如果使用自定义安装目录，请确保游戏使用的是 64 位版本。");
+                        println!("   3. 若游戏以管理员权限运行，请同样以管理员权限运行本工具。");
+                    }
+                }
+                println!("==================================================================");
                 println!("按回车键返回主菜单...");
             } else {
-                println!("[Notice] No running osu! process detected.");
+                println!("==================================================================");
+                println!(" [Could not detect running osu!lazer process]");
+                println!(" Error Type:    [{}]", err.kind);
+                println!(" Error Message: {}", err.message);
                 println!();
-                println!("Guidance:");
-                println!("  1. This tool safely reads memory layout from running osu!(lazer) process.");
-                println!("  2. Please start osu!(lazer) game first, and enter main menu or song select.");
-                println!("  3. Keep the game running in background, then select [1] here to scan.");
-                println!();
+                println!(" Troubleshooting tips:");
+                match err.kind {
+                    "process_access_denied" => {
+                        println!("   - Detected osu! process, but access was denied by Windows.");
+                        println!("   - Please restart this tool with 'Run as Administrator'!");
+                    }
+                    "arch_mismatch" => {
+                        println!("   - Detected 32-bit osu! (stable).");
+                        println!("   - This generator is specifically for 64-bit osu!lazer.");
+                    }
+                    _ => {
+                        println!("   1. Please launch osu!(lazer) and stay on main menu or song select.");
+                        println!("   2. Ensure you are running 64-bit osu!lazer.");
+                        println!("   3. If osu! is running as Administrator, run this tool as Administrator as well.");
+                    }
+                }
+                println!("==================================================================");
                 println!("Press Enter to return to main menu...");
             }
             pause();

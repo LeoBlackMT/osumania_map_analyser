@@ -21,8 +21,8 @@ use crate::{
     CloseHandle, CreateToolhelp32Snapshot, Handle, IsWow64Process, OpenProcess, Process32FirstW,
     Process32NextW, QueryFullProcessImageNameW, ReadProcessMemory, VirtualQueryEx,
     INVALID_HANDLE_VALUE, MEMORY_BASIC_INFORMATION, MEM_COMMIT, PAGE_EXECUTE_READWRITE, PAGE_GUARD,
-    PAGE_NOACCESS, PAGE_READWRITE, PROCESSENTRY32W, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
-    TH32CS_SNAPPROCESS,
+    PAGE_NOACCESS, PAGE_READWRITE, PROCESSENTRY32W, PROCESS_QUERY_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ, TH32CS_SNAPPROCESS,
 };
 
 pub fn run_live(options: &Options) -> i32 {
@@ -262,6 +262,16 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         LiveError::new("io_error", format!("failed to write table {}: {e}", out_file.display()), 4)
     })?;
 
+    let alt_name = if lazer_version.ends_with(".0") {
+        let trimmed = &lazer_version[..lazer_version.len() - 2];
+        Some(format!("{trimmed}__{runtime_version}__{arch}.json"))
+    } else {
+        Some(format!("{lazer_version}.0__{runtime_version}__{arch}.json"))
+    };
+    if let Some(alt) = &alt_name {
+        let _ = fs::write(target_dir.join(alt), &table_json);
+    }
+
     // 如果目标目录并非 APPDATA 且系统支持 APPDATA，同时同步写入一份至全局缓存
     if let Ok(appdata) = std::env::var("APPDATA") {
         let appdata_dir = PathBuf::from(appdata)
@@ -271,6 +281,9 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         if appdata_dir != target_dir {
             let _ = fs::create_dir_all(&appdata_dir);
             let _ = fs::write(appdata_dir.join(&file_name), &table_json);
+            if let Some(alt) = &alt_name {
+                let _ = fs::write(appdata_dir.join(alt), &table_json);
+            }
         }
     }
 
@@ -291,44 +304,93 @@ pub fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
 pub fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == 0 || snapshot == INVALID_HANDLE_VALUE {
-            return Err(LiveError::new("toolhelp_error", "failed to create toolhelp snapshot", 3));
+        let mut candidates = Vec::new();
+        let mut saw_denied = false;
+        let mut saw_32bit = false;
+
+        if snapshot != 0 && snapshot != INVALID_HANDLE_VALUE {
+            let mut entry = PROCESSENTRY32W {
+                dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                cntUsage: 0,
+                th32ProcessID: 0,
+                th32DefaultHeapID: 0,
+                th32ModuleID: 0,
+                cntThreads: 0,
+                th32ParentProcessID: 0,
+                pcPriClassBase: 0,
+                dwFlags: 0,
+                szExeFile: [0; 260],
+            };
+
+            if Process32FirstW(snapshot, &mut entry) != 0 {
+                loop {
+                    let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                    let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                    if name.eq_ignore_ascii_case("osu!.exe") || name.eq_ignore_ascii_case("osu.exe") {
+                        candidates.push(entry.th32ProcessID);
+                    }
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+                    if Process32NextW(snapshot, &mut entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snapshot);
         }
 
-        let mut entry = PROCESSENTRY32W {
-            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-            cntUsage: 0,
-            th32ProcessID: 0,
-            th32DefaultHeapID: 0,
-            th32ModuleID: 0,
-            cntThreads: 0,
-            th32ParentProcessID: 0,
-            pcPriClassBase: 0,
-            dwFlags: 0,
-            szExeFile: [0; 260],
-        };
-
-        if Process32FirstW(snapshot, &mut entry) != 0 {
-            loop {
-                let name = String::from_utf16_lossy(&entry.szExeFile)
-                    .trim_matches('\0')
-                    .to_string();
-                if name.eq_ignore_ascii_case("osu!.exe") {
-                    let pid = entry.th32ProcessID;
-                    let path = query_process_path(pid).unwrap_or_default();
-                    CloseHandle(snapshot);
-                    return Ok((pid, path));
-                }
-                if Process32NextW(snapshot, &mut entry) == 0 {
-                    break;
+        // 兜底扫描：若 Toolhelp32 没抓到候选，做一次 PID 范围扫描 (4..=65535, step 4)
+        if candidates.is_empty() {
+            for pid in (4..=65535).step_by(4) {
+                if let Some(path) = query_process_path(pid) {
+                    if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
+                        if fname.eq_ignore_ascii_case("osu!.exe") || fname.eq_ignore_ascii_case("osu.exe") {
+                            candidates.push(pid);
+                        }
+                    }
                 }
             }
         }
-        CloseHandle(snapshot);
+
+        for pid in candidates {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle == 0 || handle == INVALID_HANDLE_VALUE {
+                saw_denied = true;
+                continue;
+            }
+            let mut is_wow64: i32 = 0;
+            let ok = IsWow64Process(handle, &mut is_wow64);
+            let path = query_process_path(pid).unwrap_or_default();
+            CloseHandle(handle);
+
+            if ok != 0 && is_wow64 != 0 {
+                // 32 位进程 (osu! stable)
+                saw_32bit = true;
+                continue;
+            }
+
+            // 64 位候选 (osu! lazer)
+            return Ok((pid, path));
+        }
+
+        if saw_denied {
+            return Err(LiveError::new(
+                "process_access_denied",
+                "detected osu! process, but access was denied (please Run as Administrator / 以管理员身份运行)",
+                3,
+            ));
+        }
+        if saw_32bit {
+            return Err(LiveError::new(
+                "arch_mismatch",
+                "detected 32-bit osu! process (stable); lazer must be 64-bit",
+                3,
+            ));
+        }
     }
+
     Err(LiveError::new(
         "process_not_found",
-        "osu!.exe is not currently running",
+        "osu! (lazer) process is not currently running",
         3,
     ))
 }
@@ -336,7 +398,7 @@ pub fn find_lazer_process() -> Result<(u32, PathBuf), LiveError> {
 #[cfg(windows)]
 fn query_process_path(pid: u32) -> Option<PathBuf> {
     unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if handle == 0 || handle == INVALID_HANDLE_VALUE {
             return None;
         }
@@ -344,7 +406,7 @@ fn query_process_path(pid: u32) -> Option<PathBuf> {
         let mut size = buf.len() as u32;
         let success = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
         CloseHandle(handle);
-        if success != 0 {
+        if success != 0 && size > 0 {
             let path_str = String::from_utf16_lossy(&buf[..size as usize]);
             Some(PathBuf::from(path_str))
         } else {
@@ -492,8 +554,9 @@ fn extract_lazer_version(inventory: &IlInventory, _lazer_dir: &Path) -> String {
             let parts: Vec<&str> = val.split('\t').collect();
             if let Some(first) = parts.first() {
                 let ver = first.trim();
-                if ver.chars().any(|c| c.is_ascii_digit()) && ver.contains('.') {
-                    return ver.to_string();
+                let clean = ver.split('-').next().unwrap_or(ver).trim();
+                if clean.chars().any(|c| c.is_ascii_digit()) && clean.contains('.') {
+                    return clean.to_string();
                 }
             }
         }
@@ -511,33 +574,56 @@ fn validate_and_emit(
     runtime_version: &str,
     arch: &str,
 ) -> Option<String> {
-    // 活体验证 1: BeatmapInfo MD5 必须为 32 位 hex
-    // 链路: GameBase -> Beatmap(1104) -> WorkingBeatmap(32) -> BeatmapInfo(8) -> MD5Hash(88)
-    let beatmap_bindable = read_ptr(handle, game_base + 1104)?;
-    let working_beatmap = read_ptr(handle, beatmap_bindable + 32)?;
-    let beatmap_info = read_ptr(handle, working_beatmap + 8)?;
-    let md5_ptr = read_ptr(handle, beatmap_info + 88)?;
-
-    let md5 = read_clr_string(handle, md5_ptr)?;
-    if md5.len() != 32 || !md5.chars().all(|c| c.is_ascii_hexdigit()) {
+    if !is_valid_ptr(vtable) || !is_valid_ptr(game_base) {
         return None;
     }
 
-    // 活体验证 2: ScreenStack 链路与 TypeDef RID
-    // 链路: GameBase -> ScreenStack(1568) -> stack(800) -> array(8) -> length(8) -> elements(16)
-    let screen_stack = read_ptr(handle, game_base + 1568)?;
-    let stack = read_ptr(handle, screen_stack + 800)?;
-    let array = read_ptr(handle, stack + 8)?;
-    let length = read_i32(handle, array + 8)?;
-    if length <= 0 || length > 32 {
-        return None;
-    }
+    // 活体验证 1: Storage / BasePath（最稳固的 GameBase 结构见证）
+    let storage = read_ptr(handle, game_base + 1088);
+    let base_path = storage.and_then(|s| read_ptr(handle, s + 8));
+    let base_path_str = base_path.and_then(|bp| read_clr_string(handle, bp));
 
-    let top_screen = read_ptr(handle, array + 16 + ((length - 1) as u64) * 8)?;
-    let screen_mt = read_ptr(handle, top_screen)?;
-    let rid_raw = read_i32(handle, screen_mt + 8)?;
-    let rid = (rid_raw as u32) >> 8;
+    // 活体验证 2: BeatmapInfo
+    let beatmap_bindable = read_ptr(handle, game_base + 1104);
+    let working_beatmap = beatmap_bindable.and_then(|bb| read_ptr(handle, bb + 32));
+    let beatmap_info = working_beatmap.and_then(|wb| read_ptr(handle, wb + 8));
+    let md5_ptr = beatmap_info.and_then(|bi| read_ptr(handle, bi + 88));
+    let md5 = md5_ptr
+        .and_then(|m| read_clr_string(handle, m))
+        .filter(|s| s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()))
+        .unwrap_or_else(|| "00000000000000000000000000000000".to_string());
+
+    // 活体验证 3: ScreenStack 链路与 TypeDef RID
+    let screen_stack = read_ptr(handle, game_base + 1568);
+    let stack = screen_stack.and_then(|ss| read_ptr(handle, ss + 800));
+    let array = stack.and_then(|st| read_ptr(handle, st + 8));
+    let length = array.and_then(|arr| read_i32(handle, arr + 8)).unwrap_or(0);
+
+    let mut rid = 0u32;
+    if let Some(arr) = array {
+        if length > 0 && length <= 64 {
+            if let Some(top_screen) = read_ptr(handle, arr + 16 + ((length - 1) as u64) * 8) {
+                if let Some(screen_mt) = read_ptr(handle, top_screen) {
+                    if let Some(rid_raw) = read_i32(handle, screen_mt + 8) {
+                        rid = (rid_raw as u32) >> 8;
+                    }
+                }
+            }
+        }
+    }
     if rid == 0 {
+        rid = 0x32F;
+    }
+
+    // 门禁判定：必须满足至少一项核心特征证明
+    let has_storage = base_path_str
+        .as_ref()
+        .map(|s| s.contains("osu") || s.contains('/') || s.contains('\\'))
+        .unwrap_or(false);
+    let has_beatmap = working_beatmap.map(is_valid_ptr).unwrap_or(false);
+    let has_screen = screen_stack.map(is_valid_ptr).unwrap_or(false);
+
+    if !has_storage && !has_beatmap && !has_screen {
         return None;
     }
 

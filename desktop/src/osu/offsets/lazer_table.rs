@@ -264,10 +264,10 @@ impl OffsetTable {
     }
 
     pub fn mismatch(&self, lazer_version: &str, runtime_version: &str, arch: &str) -> Option<String> {
-        if self.lazer_version != lazer_version {
+        if !versions_match(&self.lazer_version, lazer_version) {
             return Some(format!("version:{}", self.lazer_version));
         }
-        if self.runtime_version != runtime_version {
+        if !versions_match(&self.runtime_version, runtime_version) {
             return Some(format!("runtime:{}", self.runtime_version));
         }
         if !self.arch.eq_ignore_ascii_case(arch) {
@@ -383,6 +383,33 @@ impl<'a> ValidationPolicy<'a> {
     pub fn validate(&self, table: &OffsetTable) -> bool {
         (self.validate)(table)
     }
+}
+
+pub fn normalize_version(v: &str) -> String {
+    let clean = v.split('-').next().unwrap_or(v).trim();
+    let parts: Vec<u32> = clean
+        .split('.')
+        .map(|p| p.parse::<u32>().unwrap_or(0))
+        .collect();
+    if parts.is_empty() {
+        return clean.to_string();
+    }
+    let mut end = parts.len();
+    while end > 3 && parts[end - 1] == 0 {
+        end -= 1;
+    }
+    parts[..end]
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+pub fn versions_match(a: &str, b: &str) -> bool {
+    if a.eq_ignore_ascii_case(b) {
+        return true;
+    }
+    normalize_version(a) == normalize_version(b)
 }
 
 fn version_distance(table: &OffsetTable, target: &Target) -> Option<u32> {
