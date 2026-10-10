@@ -81,6 +81,7 @@ import { scheduleRecompute } from "./scheduler.js";
 import { detectVibro, detectVibroFromMetadata } from "../patterns/chartVibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
 import { trackTelemetryAnalyze } from "./telemetry.js";
+import { toTelemetryAlgorithm, toTelemetryActualAlgorithm } from "./telemetrySpec.js";
 import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
 // Step 9g：壳原生端点上的瞬态抓取失败（结算/换图那一两帧读取线程正处在身份保持窗口 ⇒
 // 24062 的 `/files/beatmap/file` 404）静默重试一次，不让状态行出现 `Request failed with 404`。
@@ -371,21 +372,7 @@ export function invokeCardClear() {
     cardClearHandler();
 }
 
-// 遥测值域（后端 backend/internal/store/aggregate.go 按 actualAlgorithm 的字符串直接分桶，
-// 任何非算法名都会上报成一条假算法行）：合法值只有真实子算法名，且永不含 "Mixed"。
-const TELEMETRY_ACTUAL_ALGORITHMS = Object.freeze(["Sunny", "Daniel", "Azusa", "Roxy", "Companella"]);
-// 显示胶囊 → 遥测算法名：低难段 0.5/0.5 融合的胶囊 "Azusa+Companella" 只是卡片文案
-// （docs/features/mixed-routing.md C8），它的 RC 数值以 Azusa 的估算结果为基准
-// （mixedEstimator 的 plan.rcNumeric/rcEstDiff 取自 Azusa），故遥测归入 Azusa。
-const TELEMETRY_CAPSULE_ALIASES = Object.freeze({ "Azusa+Companella": "Azusa" });
-
-// 载荷边界的值域守卫：已知胶囊映射回真实算法名，其余只放行真实算法名；
-// 未知标签返回 null（调用方据此不发送该字段——宁缺勿假，后端按空值跳过）。
-export function toTelemetryActualAlgorithm(value) {
-    const text = String(value ?? "").trim();
-    const name = TELEMETRY_CAPSULE_ALIASES[text] ?? text;
-    return TELEMETRY_ACTUAL_ALGORITHMS.includes(name) ? name : null;
-}
+export { toTelemetryActualAlgorithm } from "./telemetrySpec.js";
 
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
@@ -1336,10 +1323,10 @@ export async function fetchBeatmapFile(reason) {
                 ? resolvedNumericDifficulty
                 : rcLabelToNumeric(resolvedEstDiff);
             // 值域守卫：state.actualEstimatorAlgorithm 是**显示**口径（可含融合胶囊），
-            // 载荷只能带真实算法名（见 toTelemetryActualAlgorithm）。
+            const telemetryAlgorithm = toTelemetryAlgorithm(state.estimatorAlgorithm);
             const telemetryActualAlgorithm = toTelemetryActualAlgorithm(state.actualEstimatorAlgorithm);
             const payload = {
-                algorithm: state.estimatorAlgorithm,
+                ...(telemetryAlgorithm ? { algorithm: telemetryAlgorithm } : {}),
                 ...(telemetryActualAlgorithm ? { actualAlgorithm: telemetryActualAlgorithm } : {}),
                 client: telemetryClient,
                 keycount: Number(rework.columnCount),

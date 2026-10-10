@@ -29,6 +29,7 @@ No user accounts, no login, no personally identifiable information. The plugin s
 - Raw `events` are a debug log kept `MMA_TELEMETRY_RAW_RETENTION_DAYS` (default 14); every metric comes from permanent aggregates, so retention never changes a number.
 - Optionally snapshots the database to Huawei Cloud OBS (daily ×30 + monthly ×12).
 - One-shot rebuild command: `telemetry-server -migrate` (run with the service stopped; rebuilds every aggregate from raw events, idempotent).
+- One-shot cleanup command: `telemetry-server -clean` (run with the service stopped; purges historical contaminated algorithms, debug duration spikes, and unofficial versions).
 
 ## Privacy
 

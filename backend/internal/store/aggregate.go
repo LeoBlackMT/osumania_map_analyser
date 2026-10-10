@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
+
+	"osumania-telemetry/internal/spec"
 )
 
 // AggInc is one daily_agg counter increment.
@@ -95,11 +98,13 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 		return v, ok
 	}
 
-	if alg, _ := data["algorithm"].(string); alg != "" {
-		inc("alg", alg, 0)
+	if alg, _ := data["algorithm"].(string); alg != "" && spec.IsAllowedAlgorithm(alg) {
+		inc("alg", strings.TrimSpace(alg), 0)
 	}
-	if actual, _ := data["actualAlgorithm"].(string); actual != "" && actual != "Mixed" {
-		inc("actual", actual, 0)
+	if actual, _ := data["actualAlgorithm"].(string); actual != "" {
+		if norm, ok := spec.NormalizeActualAlgorithm(actual); ok {
+			inc("actual", norm, 0)
+		}
 	}
 	if kc, ok := num("keycount"); ok && kc > 0 {
 		inc("key", fmt.Sprintf("%dK", int(kc)), 0)
@@ -136,8 +141,9 @@ func AnalyzeAggIncs(data map[string]interface{}, ts int64) []AggInc {
 		inc("numeric", fmt.Sprintf("%.2f", bin), num)
 	}
 	// Duration: 20ms bins (0/<10ms = cache hits); count + real sum per bin
-	// (exact avg/max/min, CDF percentiles).
-	if dur, ok := num("durationMs"); ok && dur >= 0 {
+	// (exact avg/max/min, CDF percentiles). Durations exceeding MaxComputeDurationMs
+	// (e.g. 30s) or negative are discarded directly rather than truncated to avoid skew.
+	if dur, ok := num("durationMs"); ok && dur >= 0 && dur <= spec.MaxComputeDurationMs {
 		inc("dur", durationBin(int64(dur)), dur)
 	}
 	// Extremes dim ("ext"): window min/max WITHOUT the histogram bounds, so

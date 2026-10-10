@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"osumania-telemetry/internal/ratelimit"
+	"osumania-telemetry/internal/spec"
 	"osumania-telemetry/internal/store"
 )
 
@@ -85,6 +86,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.Kind != "boot" && payload.Kind != "heartbeat" && payload.Kind != "analyze" {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Filter out unofficial/dev/test/unknown versions silently to prevent pollution.
+	if !spec.IsOfficialVersion(payload.Version) {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

@@ -32,9 +32,15 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "-migrate" {
-		runMigrate()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-migrate":
+			runMigrate()
+			return
+		case "-clean":
+			runClean()
+			return
+		}
 	}
 
 	cfg, err := config.Load()
@@ -106,6 +112,30 @@ func runMigrate() {
 	log.Printf("migrate: deleted %d raw events older than %d days", rep.DeletedEvents, cfg.RawRetentionDays)
 	log.Printf("migrate: db size %d -> %d bytes", rep.SizeBefore, rep.SizeAfter)
 	log.Printf("migrate: done (aggregates are complete; starting the server is safe)")
+}
+
+// runClean purges legacy contaminated data and debug extreme anomalies.
+func runClean() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer st.Close()
+
+	log.Printf("clean: purging contaminated dimensions from %s ...", cfg.DBPath)
+	rep, err := st.CleanLegacyData()
+	if err != nil {
+		log.Fatalf("clean: %v", err)
+	}
+	log.Printf("clean: deleted %d invalid alg rows, %d invalid actual rows", rep.DeletedAlgRows, rep.DeletedActualRows)
+	log.Printf("clean: merged %d capsule rows (Azusa+Companella -> Azusa)", rep.MergedCapsuleRows)
+	log.Printf("clean: deleted %d debug duration rows (>30s)", rep.DeletedDurRows)
+	log.Printf("clean: deleted %d unofficial/unknown install records", rep.DeletedInstalls)
+	log.Printf("clean: done (database sanitized and VACUUM completed)")
 }
 
 // rawRetentionLoop prunes raw events (the debug log) after RawRetentionDays.

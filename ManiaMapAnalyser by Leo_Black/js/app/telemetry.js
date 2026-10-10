@@ -6,6 +6,7 @@
 // beatmap identity, no IP (the server never stores IP either). The endpoint is
 // hardcoded in index.js (window.__MMA_TELEMETRY_ENDPOINT).
 import { state } from "./appContext.js";
+import { isOfficialVersion, MAX_COMPUTE_DURATION_MS } from "./telemetrySpec.js";
 
 const INSTALL_ID_KEY = "mma.telemetry.installId.v1";
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
@@ -97,11 +98,11 @@ function isActive() {
 }
 
 function readConfig() {
-    enabled = Boolean(state.enableTelemetry);
+    version = typeof window.__MMA_VERSION === "string" ? window.__MMA_VERSION : "";
+    enabled = Boolean(state.enableTelemetry) && isOfficialVersion(version);
     endpoint = normalizeEndpoint(
         typeof window.__MMA_TELEMETRY_ENDPOINT === "string" ? window.__MMA_TELEMETRY_ENDPOINT : "",
     );
-    version = typeof window.__MMA_VERSION === "string" ? window.__MMA_VERSION : "";
 }
 
 function send(kind, data) {
@@ -199,5 +200,11 @@ export function startTelemetryHeartbeat() {
 }
 
 export function trackTelemetryAnalyze(data) {
-    send("analyze", data || {});
+    const payload = data ? { ...data } : {};
+    if (typeof payload.durationMs === "number") {
+        if (payload.durationMs < 0 || payload.durationMs > MAX_COMPUTE_DURATION_MS) {
+            delete payload.durationMs;
+        }
+    }
+    send("analyze", payload);
 }
