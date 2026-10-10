@@ -182,6 +182,79 @@ pub struct TosuFeed {
     frames: Mutex<u64>,
 }
 
+/// 影子比对诊断报告（P2 Topic 12：供前端页面与诊断端点读取）
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct ShadowDiagnostics {
+    pub enabled: bool,
+    pub tosu_connected: bool,
+    pub total_compared: u64,
+    pub matched_frames: u64,
+    pub mismatched_frames: u64,
+    pub match_rate: f64,
+    pub per_field_diffs: std::collections::HashMap<String, u64>,
+    pub last_mismatches: Vec<String>,
+    pub last_cmp: Option<Value>,
+    pub last_diff: Option<Value>,
+}
+
+static LIVE_SHADOW_DIAG: Mutex<Option<ShadowDiagnostics>> = Mutex::new(None);
+
+pub fn current_diagnostics() -> ShadowDiagnostics {
+    let mut diag = LIVE_SHADOW_DIAG.lock().unwrap().clone().unwrap_or_default();
+    diag.enabled = enabled();
+    if diag.total_compared > 0 {
+        diag.match_rate = (diag.matched_frames as f64 / diag.total_compared as f64) * 100.0;
+    }
+    diag
+}
+
+pub fn reset_diagnostics() {
+    let mut guard = LIVE_SHADOW_DIAG.lock().unwrap();
+    if let Some(ref mut d) = *guard {
+        d.total_compared = 0;
+        d.matched_frames = 0;
+        d.mismatched_frames = 0;
+        d.match_rate = 0.0;
+        d.per_field_diffs.clear();
+        d.last_mismatches.clear();
+        d.last_cmp = None;
+        d.last_diff = None;
+    }
+}
+
+pub fn set_tosu_connected(connected: bool) {
+    let mut guard = LIVE_SHADOW_DIAG.lock().unwrap();
+    let diag = guard.get_or_insert_with(ShadowDiagnostics::default);
+    diag.tosu_connected = connected;
+}
+
+fn update_diagnostics(diff: &shadow::ShadowDiff) {
+    let mut guard = LIVE_SHADOW_DIAG.lock().unwrap();
+    let diag = guard.get_or_insert_with(ShadowDiagnostics::default);
+    diag.enabled = enabled();
+    diag.tosu_connected = true;
+    diag.total_compared += 1;
+
+    let differs: Vec<String> = diff
+        .fields
+        .iter()
+        .filter(|f| f.verdict.is_differ())
+        .map(|f| f.field.to_string())
+        .collect();
+
+    if differs.is_empty() {
+        diag.matched_frames += 1;
+    } else {
+        diag.mismatched_frames += 1;
+        for field in &differs {
+            *diag.per_field_diffs.entry(field.clone()).or_insert(0) += 1;
+        }
+        diag.last_mismatches = differs;
+        diag.last_cmp = Some(diff.to_json());
+        diag.last_diff = Some(diff.detail_json());
+    }
+}
+
 impl TosuFeed {
     pub fn latest(&self) -> Option<Value> {
         self.latest.lock().unwrap().clone()
@@ -212,6 +285,7 @@ pub fn spawn_tosu_client(feed: Arc<TosuFeed>) {
         match tungstenite::connect(url.as_str()) {
             Ok((mut socket, _response)) => {
                 *feed.connected.lock().unwrap() = true;
+                set_tosu_connected(true);
                 *feed.last_error.lock().unwrap() = None;
                 eprintln!("[osu] compare: connected to {url}");
                 if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
@@ -240,9 +314,11 @@ pub fn spawn_tosu_client(feed: Arc<TosuFeed>) {
                     }
                 }
                 *feed.connected.lock().unwrap() = false;
+                set_tosu_connected(false);
             }
             Err(e) => {
                 *feed.connected.lock().unwrap() = false;
+                set_tosu_connected(false);
                 *feed.last_error.lock().unwrap() = Some(format!("connect: {e}"));
             }
         }
@@ -306,6 +382,7 @@ pub fn record(
         Some(payload) => {
             let theirs = TosuShadow::from_payload(payload);
             let diff = shadow::diff(&ours, &theirs);
+            update_diagnostics(&diff);
             // `mods` 段：判据 = `cmp.mod_signature`（页面可见码集合）；`equal` 是它的
             // 布尔投影（`null` = 跳过 ⇒ **没有**可比的 mods 对象，别读成"不相等"）。
             // `by_key`/`signature` 是**诊断**（Step 8d：位置不同 vs 码不同必须分得开）。

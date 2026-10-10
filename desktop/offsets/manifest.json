@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-10-08T12:00:00Z",
+  "tables": [
+    {
+      "filename": "stable__x86.json",
+      "client": "stable",
+      "game_version": "2026-latest",
+      "runtime_version": "CLRv4",
+      "arch": "x86",
+      "sha256": "cdb148bd494e2bfc22236b37ab3b4792b63d1187287703dfe112bf636a9df043",
+      "signature": "34cea90be6054fbcb1f90746d4b924292b7419aa98a416de07e3c9866f8cfa2d0055693e9c93c28e45ff72f6a40a40ece5563036f272ce428fcf07aa5da63900"
+    },
+    {
+      "filename": "2026.1005.0.0__10.0.12__x64.json",
+      "client": "lazer",
+      "game_version": "2026.1005.0.0",
+      "runtime_version": "10.0.12",
+      "arch": "x64",
+      "sha256": "479e988996cdd519aa60c9bb38c203c5e7fa100598cdf8d2333414a9f0e9b89d",
+      "signature": "af6f1a57ca9377254dc1315aa8dc8e1b36db78f88fdd8150311a450d59f781ba389c0a0b84e04b5571a8f6484c0dd240df5e009e03e558e5919a0ef5863e2805"
+    },
+    {
+      "filename": "2026.921.0.0__10.0.12__x64.json",
+      "client": "lazer",
+      "game_version": "2026.921.0.0",
+      "runtime_version": "10.0.12",
+      "arch": "x64",
+      "sha256": "bdaf9fd1d1d8319ebf266b3e73e4fa7680addd42708c8e5cb90eb48d282e352f",
+      "signature": "53c48e31ba6f2c4e00ef1a7f8b028902ceb10b1efbd70c1005cf554aa4b384fcd5c5ef2212d674dec9dfae5dd41d7104849114d3cb17a5f8ec18b17decd3cd0e"
+    }
+  ]
+}

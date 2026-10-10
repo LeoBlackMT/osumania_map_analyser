@@ -3,6 +3,28 @@
   "runtime_version": "10.0.12",
   "arch": "x64",
   "game_base_vtable": 140729689934192,
+  "anchors": {
+    "marker_pattern": "01 01 00 00 00 00 80 44 00 00 40 44",
+    "site_deltas": [36, 40, 44, 32, 48, 28, 52],
+    "game_base_hops": [
+      ["external_link_opener", 0],
+      ["api_access", 536],
+      ["game", 784]
+    ]
+  },
+  "screen_states": {
+    "osu.Game.Screens.Menu.MainMenu": "menu",
+    "osu.Game.Screens.Select.SoloSongSelect": "selectPlay",
+    "osu.Game.Screens.Select.SongSelect": "selectPlay",
+    "osu.Game.Screens.Play.Player": "play",
+    "osu.Game.Screens.Play.SoloPlayer": "play",
+    "osu.Game.Screens.Play.ReplayPlayer": "play",
+    "osu.Game.Screens.Play.PlayerLoader": "play",
+    "osu.Game.Screens.Ranking.ResultsScreen": "resultScreen",
+    "osu.Game.Screens.Ranking.SoloResultsScreen": "resultScreen",
+    "osu.Game.Screens.Edit.Editor": "edit",
+    "osu.Game.Screens.Edit.EditorLoader": "selectEdit"
+  },
   "types": {
     "System.Collections.Generic.Stack`1<osu.Framework.Screens.IScreen>": {
       "_array": 8,

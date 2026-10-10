@@ -206,17 +206,54 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(&mut stream, 400, r#"{"error":"shell config must be an object"}"#);
             return;
         }
-        // `None` = base 不可读或写盘失败 → 400，且**什么都不写**（不生成骨架）。
-        let Some(merged) = config::patch_shell_config(&value) else {
-            respond_json(&mut stream, 400, r#"{"error":"shell config write failed"}"#);
-            return;
-        };
-        // 壳配置既在 `*_root` 解析链里（第 3 级）又是来源缓存的内容：更新缓存 →
-        // 失效探测缓存（否则 ≤30s 内仍用旧根目录）→ **释放锁后**广播全量。
-        *shared.offline_settings.lock().unwrap() = merged.clone();
-        config::clear_detect_caches();
-        broadcast(&shared, "settings", Some(merged.clone()));
-        respond_json(&mut stream, 200, &merged.to_string());
+
+        // 处理窗口置顶与穿透控制（如果有）
+        if let Some(win_val) = value.get("window").and_then(|w| w.as_object()) {
+            let topmost = win_val.get("topmost").and_then(|v| v.as_bool());
+            let click_through = win_val.get("clickThrough").and_then(|v| v.as_bool());
+            if topmost.is_some() || click_through.is_some() {
+                if let Some(app) = shared.app.lock().unwrap().as_ref() {
+                    crate::app::window_state::apply_flag_change(app, topmost, click_through);
+                } else {
+                    let mut st = crate::app::window_state::WINDOW_STATE.lock().unwrap();
+                    let disk = config::read_window_state();
+                    st.topmost = topmost.unwrap_or(disk.topmost);
+                    st.click_through = click_through.unwrap_or(disk.click_through);
+                    crate::app::window_state::persist_window_state();
+                }
+            }
+        }
+
+        // 过滤掉 window 键再传给 patch_shell_config
+        let mut cfg_patch = value.clone();
+        if let Some(obj) = cfg_patch.as_object_mut() {
+            obj.remove("window");
+        }
+        if !cfg_patch.as_object().map(|m| m.is_empty()).unwrap_or(false) {
+            let Some(merged) = config::patch_shell_config(&cfg_patch) else {
+                respond_json(&mut stream, 400, r#"{"error":"shell config write failed"}"#);
+                return;
+            };
+            *shared.offline_settings.lock().unwrap() = merged.clone();
+            config::clear_detect_caches();
+            broadcast(&shared, "settings", Some(merged.clone()));
+        }
+
+        let cfg = config::read_shell_config();
+        let win = config::read_window_state();
+        let body = serde_json::json!({
+            "config": cfg,
+            "resolved": {
+                "etternaRoot": crate::etterna::etterna_root(&shared),
+                "malodyRoot": malody_root(&shared),
+                "malody4Root": malody4_effective_root(&shared),
+            },
+            "window": {
+                "topmost": win.topmost,
+                "clickThrough": win.click_through
+            }
+        });
+        respond_json(&mut stream, 200, &body.to_string());
         return;
     }
 
@@ -273,6 +310,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(&mut stream, 400, r#"{"error":"shell config unreadable"}"#);
             return;
         }
+        let win = config::read_window_state();
         let body = serde_json::json!({
             "config": cfg,
             "resolved": {
@@ -280,8 +318,136 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "malodyRoot": malody_root(&shared),
                 "malody4Root": malody4_effective_root(&shared),
             },
+            "window": {
+                "topmost": win.topmost,
+                "clickThrough": win.click_through
+            }
         });
         respond_json(&mut stream, 200, &body.to_string());
+        return;
+    }
+
+    // GET /offsets/status：当前内存偏移表状态与生成器就绪态（P2 Topic 9 / 10 / 12）
+    if path == "/offsets/status" {
+        let stable_table = crate::osu::offsets::find_stable_table(None);
+        let lazer_default = crate::osu::offsets::default_lazer_table();
+        let gen_ready = find_gen_executable(&shared).is_some();
+        let shadow_diag = crate::osu::compare::current_diagnostics();
+        let shadow_enabled = std::env::var("MMA_SHADOW_DIAG").map(|v| v != "0").unwrap_or(false)
+            || std::env::args().any(|arg| arg == "--shadow-diag" || arg == "--debug");
+        let body = serde_json::json!({
+            "status": "ok",
+            "generator_ready": gen_ready,
+            "shadow_enabled": shadow_enabled,
+            "stable": {
+                "client": "stable",
+                "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
+                "arch": "x86",
+                "anchors_count": stable_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
+                "loaded": stable_table.is_ok()
+            },
+            "lazer": {
+                "client": "lazer",
+                "version": lazer_default.lazer_version,
+                "runtime_version": lazer_default.runtime_version,
+                "arch": lazer_default.arch,
+                "types_count": lazer_default.types.len(),
+                "loaded": true
+            },
+            "shadow": shadow_diag
+        });
+        respond_json(&mut stream, 200, &body.to_string());
+        return;
+    }
+
+    // GET /shadow/status：获取当前 L3 影子比对状态与诊断（P2 Topic 12）
+    if method == "GET" && path == "/shadow/status" {
+        let diag = crate::osu::compare::current_diagnostics();
+        respond_json(&mut stream, 200, &serde_json::to_string(&diag).unwrap_or_default());
+        return;
+    }
+
+    // POST /shadow/reset：重置影子比对计数
+    if method == "POST" && path == "/shadow/reset" {
+        crate::osu::compare::reset_diagnostics();
+        respond_json(&mut stream, 200, r#"{"status":"ok"}"#);
+        return;
+    }
+
+    // POST /offsets/generate：一键免 SDK 活体自校验生成偏移表（P2 Topic 9）
+    if method == "POST" && path == "/offsets/generate" {
+        let gen_exe = find_gen_executable(&shared);
+        let Some(gen_exe_path) = gen_exe else {
+            respond_json(
+                &mut stream,
+                404,
+                r#"{"status":"error","message":"gen.exe not found (neither next to mma-shell.exe nor in dev tree)"}"#,
+            );
+            return;
+        };
+
+        let mut cmd = std::process::Command::new(&gen_exe_path);
+        cmd.arg("live").arg("--json");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let local_lazer = gen_exe_path
+            .parent()
+            .map(|p| p.join("lazer"))
+            .filter(|p| p.is_dir());
+        if let Some(out_dir) = local_lazer {
+            cmd.arg("--out").arg(out_dir);
+        } else if let Ok(appdata) = std::env::var("APPDATA") {
+            let out_dir = std::path::PathBuf::from(appdata)
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join("lazer");
+            cmd.arg("--out").arg(out_dir);
+        } else if let Ok(home) = std::env::var("HOME") {
+            let out_dir = std::path::PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join("lazer");
+            cmd.arg("--out").arg(out_dir);
+        }
+
+        match cmd.output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                if output.status.success() {
+                    respond_json(&mut stream, 200, if stdout.is_empty() { r#"{"status":"ok"}"# } else { &stdout });
+                } else {
+                    let err_msg = if !stdout.is_empty() {
+                        stdout
+                    } else if !stderr.is_empty() {
+                        format!(r#"{{"status":"error","message":{}}}"#, serde_json::to_string(&stderr).unwrap_or_default())
+                    } else {
+                        r#"{"status":"error","message":"generator failed or game process not running"}"#.to_string()
+                    };
+                    respond_json(&mut stream, 400, &err_msg);
+                }
+            }
+            Err(e) => {
+                respond_json(
+                    &mut stream,
+                    500,
+                    &format!(r#"{{"status":"error","message":"failed to run gen.exe: {e}"}}"#),
+                );
+            }
+        }
+        return;
+    }
+
+    // POST /offsets/update：检查并更新远端签名内存表（P2 Topic 10，静默离线回落）
+    if method == "POST" && path == "/offsets/update" {
+        let manifest_url = "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
+        let update_outcome = check_and_apply_remote_offsets(manifest_url);
+        respond_json(&mut stream, 200, &update_outcome.to_string());
         return;
     }
 
@@ -337,4 +503,130 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         }
         Err(_) => respond_json(&mut stream, 404, r#"{"error":"not found"}"#),
     }
+}
+
+fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {
+    let names: &[&str] = if cfg!(windows) {
+        &["gen.exe", "gen"]
+    } else {
+        &["gen", "gen.exe"]
+    };
+
+    // 1. 同级 offsets/gen 或同级 gen
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            for &name in names {
+                let in_offsets = parent.join("offsets").join(name);
+                if in_offsets.exists() {
+                    return Some(in_offsets);
+                }
+                let candidate = parent.join(name);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    // 2. 插件上级工作区 temp/gen
+    for &name in names {
+        let temp_gen = shared.plugin_dir.parent().map(|p| p.join("temp").join(name));
+        if let Some(p) = temp_gen {
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    // 3. 环境变量或 PATH
+    if let Ok(path) = std::env::var("MMA_GEN_EXE") {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// 创建跨平台的 curl 命令，在 Windows 上静默运行（CREATE_NO_WINDOW），消除黑框弹出。
+fn create_curl_command() -> std::process::Command {
+    #[cfg(windows)]
+    let mut cmd = std::process::Command::new("curl.exe");
+    #[cfg(not(windows))]
+    let mut cmd = std::process::Command::new("curl");
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+    let mut cmd = create_curl_command();
+    cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
+    let output = match cmd.output() {
+        Ok(out) if out.status.success() => out,
+        _ => {
+            return serde_json::json!({
+                "status": "offline_fallback",
+                "message": "Network unavailable or remote host unreachable; keeping existing local offsets",
+                "updated": 0
+            });
+        }
+    };
+
+    let manifest_bytes = output.stdout;
+    let Ok(manifest) = serde_json::from_slice::<crate::osu::offsets::RemoteManifest>(&manifest_bytes) else {
+        return serde_json::json!({
+            "status": "error",
+            "message": "Remote manifest unreadable or malformed",
+            "updated": 0
+        });
+    };
+
+    let base_url = if let Some((base, _)) = manifest_url.rsplit_once('/') {
+        base
+    } else {
+        manifest_url
+    };
+
+    let mut updated_count = 0;
+    for table in manifest.tables {
+        let table_url = format!("{base_url}/{}/{}", table.client, table.filename);
+        let mut t_cmd = create_curl_command();
+        t_cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(&table_url);
+        let Ok(t_out) = t_cmd.output() else { continue };
+        if !t_out.status.success() { continue };
+
+        let content = t_out.stdout;
+        // 验签
+        if crate::osu::offsets::verify_table_signature(
+            &content,
+            &table.sha256,
+            &table.signature,
+            &crate::osu::offsets::ED25519_MASTER_PUBLIC_KEY,
+        ).is_err() {
+            continue;
+        }
+
+        // Schema 校验门
+        if table.client == "stable" {
+            let Ok(stable_t) = crate::osu::offsets::StableTable::load(&content) else { continue };
+            if crate::osu::offsets::validate_stable_schema(&stable_t).is_err() { continue };
+        } else if table.client == "lazer" {
+            let Ok(lazer_t) = crate::osu::offsets::OffsetTable::load(&content) else { continue };
+            if crate::osu::offsets::validate_lazer_schema(&lazer_t).is_err() { continue };
+        }
+
+        // 原子落盘
+        if crate::osu::offsets::save_remote_table(&table.client, &table.filename, &content).is_ok() {
+            updated_count += 1;
+        }
+    }
+
+    serde_json::json!({
+        "status": "ok",
+        "message": format!("Offsets check complete: {updated_count} table(s) updated"),
+        "updated": updated_count
+    })
 }

@@ -418,6 +418,87 @@ body {
     color: var(--settings-warning);
 }
 
+.shell-config-subsection {
+    margin-top: 20px;
+    border-top: 1px solid var(--settings-border);
+    padding-top: 12px;
+}
+
+.shell-config-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.shell-config-badge.badge-ok {
+    background: rgba(79, 196, 127, 0.15);
+    color: var(--settings-success);
+    border: 1px solid rgba(79, 196, 127, 0.3);
+}
+
+.shell-config-badge.badge-warn {
+    background: rgba(224, 168, 60, 0.15);
+    color: var(--settings-warning);
+    border: 1px solid rgba(224, 168, 60, 0.3);
+}
+
+.shell-config-badge.badge-error {
+    background: rgba(229, 83, 75, 0.15);
+    color: var(--settings-danger);
+    border: 1px solid rgba(229, 83, 75, 0.3);
+}
+
+.shell-config-badge.badge-idle {
+    background: rgba(154, 160, 174, 0.15);
+    color: var(--settings-muted);
+    border: 1px solid rgba(154, 160, 174, 0.3);
+}
+
+.shell-config-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.settings-action-btn {
+    padding: 5px 12px;
+    color: var(--settings-text);
+    background: var(--settings-panel-2);
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.settings-action-btn:hover:not(:disabled) {
+    border-color: var(--settings-accent);
+    color: var(--settings-accent);
+}
+
+.settings-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.shell-config-action-status {
+    width: 100%;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.shell-config-diff-tag {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: var(--settings-danger);
+    word-break: break-all;
+}
+
 /* ---------------------------------------------------------------------------
    Presets section (offline editor / online read-only notice)
 --------------------------------------------------------------------------- */

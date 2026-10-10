@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ManiaMapAnalyser desktop shell — Linux 打包（Windows 侧用 desktop/release.ps1）。
+# ManiaMapAnalyser desktop shell — Linux 打包（Windows 侧用 release.ps1）。
 # 用法：desktop/build-linux.sh
 # 依赖：Tauri Linux 系统库（与 CI shell-build.yml 的 build-linux 一致）：
 #   sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
@@ -42,6 +42,9 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 cp -r "$plugin_dir" "$stage/"
 cp -r "$root/bridges" "$stage/bridges"
+if [ -d "$root/desktop/offsets" ]; then
+    cp -r "$root/desktop/offsets" "$stage/offsets"
+fi
 install -m 0755 "$exe" "$stage/mma-shell"
 
 # ⚠️ 开发产物一律不入包：NuGet 包缓存（`bepinex/.tools/nuget-packages`，约 97 MB）、

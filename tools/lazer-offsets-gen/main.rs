@@ -22,6 +22,7 @@
 mod chain;
 mod emit;
 mod ilmeta;
+mod live;
 mod minidump;
 mod names;
 mod runtime;
@@ -36,6 +37,7 @@ use sos::{AnalyzerRun, SosIntermediate, SosObject};
 use spec::{RUNTIME_MIN_PROBES, RUNTIME_PROBES};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -65,6 +67,7 @@ USAGE:
                               [--assembly <dll>]... [--diff <old-il.tsv>]
   lazer-offsets-gen emit      --sos <tsv> --il <tsv> [--out <json>] [--deploy <shell-exe-dir>]
                               [--report-dir <dir>] [--allow-fixtures] [--allow-version-mismatch]
+  lazer-offsets-gen live      [--out <dir>] [--lazer-dir <dir>] [--pid <n>] [--json]
   lazer-offsets-gen self-test --fixtures <dir> [--work <dir>]
   lazer-offsets-gen -h | --help
 
@@ -75,6 +78,8 @@ END-TO-END (lazer running):
   4. il      --sos <run1>\\sos-intermediate-<ts>.tsv --out <run1>
   5. emit    --sos <run1>\\sos-intermediate-<ts>.tsv --il <run1>\\il-inventory-<ts>.tsv \\
              --deploy <dir with mma-shell.exe>
+  OR 1-CLICK LIVE:
+  lazer-offsets-gen live --json
 
 ACCEPTANCE (see README.md):
   every emitted offset must have (a) an SOS `dumpobj` line and (b) an IL structural line;
@@ -109,10 +114,12 @@ fn run(raw: &[String]) -> i32 {
             println!("{USAGE}");
             0
         }
+        Ok(Cmd::Interactive) => interactive_menu(),
         Ok(Cmd::Collect(options)) => collect(&options),
         Ok(Cmd::Extract(options)) => extract(&options),
         Ok(Cmd::Il(options)) => il(&options),
         Ok(Cmd::Emit(options)) => emit_table(&options),
+        Ok(Cmd::Live(options)) => live::run_live(&options),
         Ok(Cmd::SelfTest(options)) => selftest::run(&options),
         Err(message) => {
             eprintln!("usage error: {message}");
@@ -121,6 +128,287 @@ fn run(raw: &[String]) -> i32 {
             2
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lang {
+    Zh,
+    En,
+}
+
+fn pause() {
+    let mut line = String::new();
+    let _ = io::stdin().read_line(&mut line);
+}
+
+fn interactive_menu() -> i32 {
+    let mut lang = Lang::Zh;
+    if let Ok(l) = std::env::var("LANG") {
+        if l.to_ascii_lowercase().starts_with("en") {
+            lang = Lang::En;
+        }
+    }
+
+    loop {
+        println!();
+        println!("==================================================================");
+        if lang == Lang::Zh {
+            println!("   ManiaMapAnalyser - osu!lazer 内存偏移表生成器");
+            println!("   当前语言 / Language: 中文 (简体)");
+            println!("==================================================================");
+            println!("请选择操作 (输入选项序号并按回车):");
+            println!("  [1] 扫描正在运行的 osu!(lazer) 并自动生成/更新偏移表");
+            println!("  [2] 运行生成器自测管线 (self-test)");
+            println!("  [3] 切换语言 / Switch Language (当前: 中文)");
+            println!("  [4] 退出程序");
+            println!("------------------------------------------------------------------");
+            print!("请输入选项编号 [1-4]: ");
+        } else {
+            println!("   ManiaMapAnalyser - osu!lazer Memory Offset Generator");
+            println!("   Current Language / 语言: English");
+            println!("==================================================================");
+            println!("Please select an option (enter number and press Enter):");
+            println!("  [1] Scan running osu!(lazer) and generate/update offset table");
+            println!("  [2] Run generator self-test pipeline");
+            println!("  [3] Switch Language / 切换语言 (English <-> 中文)");
+            println!("  [4] Exit");
+            println!("------------------------------------------------------------------");
+            print!("Please enter option [1-4]: ");
+        }
+        let _ = io::stdout().flush();
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input).is_err() {
+            break;
+        }
+        let choice = input.trim();
+
+        match choice {
+            "1" => {
+                run_live_interactive(lang);
+            }
+            "2" => {
+                run_selftest_interactive(lang);
+            }
+            "3" => {
+                lang = match lang {
+                    Lang::Zh => Lang::En,
+                    Lang::En => Lang::Zh,
+                };
+            }
+            "4" | "q" | "exit" => {
+                if lang == Lang::Zh {
+                    println!("\n按回车键退出程序...");
+                } else {
+                    println!("\nPress Enter to exit...");
+                }
+                pause();
+                break;
+            }
+            _ => {
+                if lang == Lang::Zh {
+                    println!("无效选项，请输入 1 到 4 之间的数字。");
+                } else {
+                    println!("Invalid option. Please enter a number between 1 and 4.");
+                }
+            }
+        }
+    }
+    0
+}
+
+fn run_live_interactive(lang: Lang) {
+    println!();
+    if lang == Lang::Zh {
+        println!("------------------------------------------------------------------");
+        println!("[步骤 1/4] 检查 osu! 进程状态...");
+    } else {
+        println!("------------------------------------------------------------------");
+        println!("[Step 1/4] Checking osu! process status...");
+    }
+
+    match live::find_lazer_process() {
+        Ok((pid, exe_path)) => {
+            if lang == Lang::Zh {
+                println!("[步骤 2/4] 已检测到运行中的 osu! 进程:");
+                println!("  PID:  {pid}");
+                if !exe_path.as_os_str().is_empty() {
+                    println!("  路径: {}", exe_path.display());
+                }
+                println!();
+                println!("[步骤 3/4] 正在分析程序集 IL 元数据并扫描进程内存...");
+                println!("[步骤 4/4] 正在执行活体自校验（MD5Hash / ScreenStack / VTable）...");
+            } else {
+                println!("[Step 2/4] Detected running osu! process:");
+                println!("  PID:  {pid}");
+                if !exe_path.as_os_str().is_empty() {
+                    println!("  Path: {}", exe_path.display());
+                }
+                println!();
+                println!("[Step 3/4] Analyzing assembly IL metadata and scanning memory...");
+                println!("[Step 4/4] Running live validation (MD5Hash / ScreenStack / VTable)...");
+            }
+
+            let options = Options::default();
+            match live::execute_live(&options) {
+                Ok(info) => {
+                    println!();
+                    println!("==================================================================");
+                    if lang == Lang::Zh {
+                        println!(" [成功] 偏移表已成功生成并校验通过！");
+                        println!();
+                        println!(" 版本信息:");
+                        println!("   osu!lazer 版本: {}", info.lazer_version);
+                        println!("   .NET 运行时:    {}", info.runtime_version);
+                        println!("   目标架构:       {}", info.arch);
+                        println!();
+                        println!(" 表保存位置:");
+                        println!("   {}", info.output_path.display());
+                        println!();
+                        println!(" 说明:");
+                        println!("   - 该表为只读纯数据结构映射，不含任何可执行代码。");
+                        println!("   - ManiaMapAnalyser 桌面壳 (mma-shell.exe) 将自动加载新表。");
+                        println!("   - 游戏内刷新或切换曲目即可立即生效。");
+                        println!("==================================================================");
+                        println!("按回车键返回主菜单...");
+                    } else {
+                        println!(" [Success] Offset table generated and verified successfully!");
+                        println!();
+                        println!(" Version Information:");
+                        println!("   osu!lazer Version: {}", info.lazer_version);
+                        println!("   .NET Runtime:      {}", info.runtime_version);
+                        println!("   Target Arch:       {}", info.arch);
+                        println!();
+                        println!(" Table Saved To:");
+                        println!("   {}", info.output_path.display());
+                        println!();
+                        println!(" Notes:");
+                        println!("   - The table is a pure data structure mapping without executable code.");
+                        println!("   - ManiaMapAnalyser desktop shell (mma-shell.exe) loads it automatically.");
+                        println!("   - Changes take effect immediately upon refreshing or switching beatmaps.");
+                        println!("==================================================================");
+                        println!("Press Enter to return to main menu...");
+                    }
+                    pause();
+                }
+                Err(err) => {
+                    println!();
+                    println!("==================================================================");
+                    if lang == Lang::Zh {
+                        println!(" [失败] 活体偏移表生成未完成！");
+                        println!(" 错误类型: [{}]", err.kind);
+                        println!(" 详细信息: {}", err.message);
+                        println!();
+                        println!(" 排查建议:");
+                        println!("   1. 请确认 osu!(lazer) 停留在主界面或选歌界面（不要在加载过渡中）。");
+                        println!("   2. 如果提示权限问题 (process_access_denied)，请右键「以管理员身份运行」。");
+                        println!("   3. 若游戏版本有重大结构更新，可向项目反馈该错误信息。");
+                        println!("==================================================================");
+                        println!("按回车键返回主菜单...");
+                    } else {
+                        println!(" [Failed] Live offset table generation could not complete!");
+                        println!(" Error Type:    [{}]", err.kind);
+                        println!(" Error Message: {}", err.message);
+                        println!();
+                        println!(" Troubleshooting tips:");
+                        println!("   1. Ensure osu!(lazer) is idling on main menu or song select (not loading).");
+                        println!("   2. If permission error occurs, try 'Run as Administrator'.");
+                        println!("   3. If game had major structural changes, please report this error.");
+                        println!("==================================================================");
+                        println!("Press Enter to return to main menu...");
+                    }
+                    pause();
+                }
+            }
+        }
+        Err(err) => {
+            println!();
+            if lang == Lang::Zh {
+                println!("==================================================================");
+                println!(" [未能检测到运行中的 osu!lazer 进程]");
+                println!(" 错误类型: [{}]", err.kind);
+                println!(" 详细信息: {}", err.message);
+                println!();
+                println!(" 使用引导与排查建议:");
+                match err.kind {
+                    "process_access_denied" => {
+                        println!("   - 检测到 osu! 正在运行，但读取权限被系统拒绝。");
+                        println!("   - 请关闭本程序后，右键「以管理员身份运行」本工具重试！");
+                    }
+                    "arch_mismatch" => {
+                        println!("   - 检测到运行中的 32 位 osu! (stable)。");
+                        println!("   - 本生成器专门针对 64 位 osu!lazer 内存结构，请启动 osu!lazer 后重试。");
+                    }
+                    _ => {
+                        println!("   1. 请先启动 osu!(lazer) 游戏，并停留在主界面或选歌界面。");
+                        println!("   2. 如果使用自定义安装目录，请确保游戏使用的是 64 位版本。");
+                        println!("   3. 若游戏以管理员权限运行，请同样以管理员权限运行本工具。");
+                    }
+                }
+                println!("==================================================================");
+                println!("按回车键返回主菜单...");
+            } else {
+                println!("==================================================================");
+                println!(" [Could not detect running osu!lazer process]");
+                println!(" Error Type:    [{}]", err.kind);
+                println!(" Error Message: {}", err.message);
+                println!();
+                println!(" Troubleshooting tips:");
+                match err.kind {
+                    "process_access_denied" => {
+                        println!("   - Detected osu! process, but access was denied by Windows.");
+                        println!("   - Please restart this tool with 'Run as Administrator'!");
+                    }
+                    "arch_mismatch" => {
+                        println!("   - Detected 32-bit osu! (stable).");
+                        println!("   - This generator is specifically for 64-bit osu!lazer.");
+                    }
+                    _ => {
+                        println!("   1. Please launch osu!(lazer) and stay on main menu or song select.");
+                        println!("   2. Ensure you are running 64-bit osu!lazer.");
+                        println!("   3. If osu! is running as Administrator, run this tool as Administrator as well.");
+                    }
+                }
+                println!("==================================================================");
+                println!("Press Enter to return to main menu...");
+            }
+            pause();
+        }
+    }
+}
+
+fn run_selftest_interactive(lang: Lang) {
+    println!();
+    if lang == Lang::Zh {
+        println!("正在运行生成器自测管线 (self-test)...");
+        println!("（该自测使用内置测试用例验证 IL 解析、内存结构还原与双见证出表算法）");
+    } else {
+        println!("Running generator self-test pipeline...");
+        println!("(This self-test verifies IL analysis, memory struct reconstruction, and dual-witness emission using built-in fixtures)");
+    }
+
+    let code = selftest::run(&Options::default());
+    println!();
+    if code == 0 {
+        if lang == Lang::Zh {
+            println!("[成功] 全部测试用例校验通过！");
+        } else {
+            println!("[Success] All test fixtures passed!");
+        }
+    } else {
+        if lang == Lang::Zh {
+            println!("[失败] 自测未全部通过 (退出代码: {code})。");
+        } else {
+            println!("[Failed] Self-test did not pass completely (exit code: {code}).");
+        }
+    }
+
+    if lang == Lang::Zh {
+        println!("按回车键返回主菜单...");
+    } else {
+        println!("Press Enter to return to main menu...");
+    }
+    pause();
 }
 
 // ------------------------------------------------------------------ 参数 ----
@@ -161,11 +449,13 @@ enum Cmd {
     Extract(Options),
     Il(Options),
     Emit(Options),
+    Live(Options),
     SelfTest(Options),
     Help,
+    Interactive,
 }
 
-const COMMANDS: &[&str] = &["collect", "extract", "il", "emit", "self-test"];
+const COMMANDS: &[&str] = &["collect", "extract", "il", "emit", "self-test", "live"];
 
 /// 每个命令认得的开关（未知开关一律报错：拼错一个字母不该静默变成"没给"）。
 fn known_options(command: &str) -> &'static [&'static str] {
@@ -185,6 +475,7 @@ fn known_options(command: &str) -> &'static [&'static str] {
         ],
         "il" => &["--out", "--lazer-dir", "--sos", "--assembly", "--diff"],
         "emit" => &["--sos", "--il", "--out", "--deploy", "--report-dir"],
+        "live" => &["--out", "--lazer-dir", "--pid"],
         "self-test" => &["--fixtures", "--work"],
         _ => &[],
     }
@@ -194,18 +485,22 @@ fn known_flags(command: &str) -> &'static [&'static str] {
     match command {
         "collect" => &["--dry-run", "--force"],
         "emit" => &["--allow-fixtures", "--allow-version-mismatch"],
+        "live" => &["--json", "--dry-run"],
         _ => &[],
     }
 }
 
 fn parse(raw: &[String]) -> Result<Cmd, String> {
     if raw.is_empty() {
-        return Err("no command given".to_string());
+        return Ok(Cmd::Interactive);
     }
     if raw[0] == "-h" || raw[0] == "--help" {
         return Ok(Cmd::Help);
     }
     let command = raw[0].as_str();
+    if command == "interactive" || command == "menu" {
+        return Ok(Cmd::Interactive);
+    }
     if !COMMANDS.contains(&command) {
         return Err(format!("unknown command {command:?}"));
     }
@@ -254,6 +549,7 @@ fn parse(raw: &[String]) -> Result<Cmd, String> {
         "extract" => Cmd::Extract(options),
         "il" => Cmd::Il(options),
         "emit" => Cmd::Emit(options),
+        "live" => Cmd::Live(options),
         "self-test" => Cmd::SelfTest(options),
         _ => unreachable!(),
     })
@@ -2226,12 +2522,12 @@ fn emit_table(options: &Options) -> i32 {
         }
     };
 
-    // 表落点：`--out` > `$MMA_LAZER_OFFSETS` > ./lazer-offsets/<ver>__<rt>__<arch>.json
+    // 表落点：`--out` > `$MMA_LAZER_OFFSETS` > ./offsets/lazer/<ver>__<rt>__<arch>.json
     let table_path = match options.value("--out") {
         Some(path) => PathBuf::from(path),
         None => match std::env::var("MMA_LAZER_OFFSETS") {
             Ok(path) if !path.is_empty() => PathBuf::from(path),
-            _ => PathBuf::from("lazer-offsets").join(outcome.file_name()),
+            _ => PathBuf::from("offsets").join("lazer").join(outcome.file_name()),
         },
     };
     if let Some(parent) = table_path.parent() {
@@ -2268,7 +2564,7 @@ fn emit_table(options: &Options) -> i32 {
     println!("report          : {}", report_path.display());
 
     if let Some(deploy_dir) = options.value("--deploy") {
-        let target_dir = PathBuf::from(deploy_dir).join("lazer-offsets");
+        let target_dir = PathBuf::from(deploy_dir).join("offsets").join("lazer");
         if let Err(message) = ensure_dir(&target_dir) {
             eprintln!("[error] {message}");
             return 3;
@@ -2281,7 +2577,7 @@ fn emit_table(options: &Options) -> i32 {
         println!("deployed        : {}", target.display());
     }
     println!(
-        "reader ladder   : $MMA_LAZER_OFFSETS (explicit file) -> <shell exe dir>\\lazer-offsets\\{} \
+        "reader ladder   : $MMA_LAZER_OFFSETS (explicit file) -> <shell exe dir>\\offsets\\lazer\\{} \
          -> nearest table in that folder (only with an L1 structural proof) -> reason \
          `lazer-offsets-missing:<ver>`",
         outcome.file_name()
@@ -2292,30 +2588,59 @@ fn emit_table(options: &Options) -> i32 {
 // ------------------------------------------------------------- Win32 ----
 
 #[cfg(windows)]
-type Handle = isize;
+pub(crate) type Handle = isize;
 #[cfg(windows)]
-const INVALID_HANDLE_VALUE: Handle = -1isize;
+pub(crate) const INVALID_HANDLE_VALUE: Handle = -1isize;
 #[cfg(windows)]
-const TH32CS_SNAPPROCESS: u32 = 0x2;
+pub(crate) const TH32CS_SNAPPROCESS: u32 = 0x2;
 #[cfg(windows)]
-const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+pub(crate) const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+#[cfg(windows)]
+pub(crate) const PROCESS_VM_READ: u32 = 0x0010;
+#[cfg(windows)]
+pub(crate) const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+
+#[cfg(windows)]
+pub(crate) const MEM_COMMIT: u32 = 0x1000;
+#[cfg(windows)]
+pub(crate) const PAGE_READWRITE: u32 = 0x04;
+#[cfg(windows)]
+pub(crate) const PAGE_EXECUTE_READWRITE: u32 = 0x40;
+#[cfg(windows)]
+pub(crate) const PAGE_GUARD: u32 = 0x100;
+#[cfg(windows)]
+pub(crate) const PAGE_NOACCESS: u32 = 0x01;
 
 /// `PROCESSENTRY32W`（MSVC x64 布局，align 8，`size_of == 568`；与
 /// `desktop/src/malody4/anchor.rs` 同一份声明口径）。
 #[cfg(windows)]
 #[repr(C)]
 #[allow(non_snake_case)]
-struct PROCESSENTRY32W {
-    dwSize: u32,
-    cntUsage: u32,
-    th32ProcessID: u32,
-    th32DefaultHeapID: usize,
-    th32ModuleID: u32,
-    cntThreads: u32,
-    th32ParentProcessID: u32,
-    pcPriClassBase: i32,
-    dwFlags: u32,
-    szExeFile: [u16; 260],
+pub(crate) struct PROCESSENTRY32W {
+    pub(crate) dwSize: u32,
+    pub(crate) cntUsage: u32,
+    pub(crate) th32ProcessID: u32,
+    pub(crate) th32DefaultHeapID: usize,
+    pub(crate) th32ModuleID: u32,
+    pub(crate) cntThreads: u32,
+    pub(crate) th32ParentProcessID: u32,
+    pub(crate) pcPriClassBase: i32,
+    pub(crate) dwFlags: u32,
+    pub(crate) szExeFile: [u16; 260],
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub(crate) struct MEMORY_BASIC_INFORMATION {
+    pub(crate) BaseAddress: *mut std::ffi::c_void,
+    pub(crate) AllocationBase: *mut std::ffi::c_void,
+    pub(crate) AllocationProtect: u32,
+    pub(crate) PartitionId: u16,
+    pub(crate) RegionSize: usize,
+    pub(crate) State: u32,
+    pub(crate) Protect: u32,
+    pub(crate) Type: u32,
 }
 
 /// 布局断言写成编译期常量：布局一旦不对就直接编译失败（`dwSize` 传错会让快照枚举直接失败）。
@@ -2343,17 +2668,31 @@ struct SYSTEMTIME {
 #[cfg(windows)]
 #[link(name = "kernel32")]
 extern "system" {
-    fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> Handle;
-    fn Process32FirstW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
-    fn Process32NextW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
-    fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
-    fn CloseHandle(hObject: Handle) -> i32;
-    fn QueryFullProcessImageNameW(
+    pub(crate) fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> Handle;
+    pub(crate) fn Process32FirstW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
+    pub(crate) fn Process32NextW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
+    pub(crate) fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
+    pub(crate) fn CloseHandle(hObject: Handle) -> i32;
+    pub(crate) fn QueryFullProcessImageNameW(
         hProcess: Handle,
         dwFlags: u32,
         lpExeName: *mut u16,
         lpdwSize: *mut u32,
     ) -> i32;
+    pub(crate) fn VirtualQueryEx(
+        hProcess: Handle,
+        lpAddress: *const std::ffi::c_void,
+        lpBuffer: *mut MEMORY_BASIC_INFORMATION,
+        dwLength: usize,
+    ) -> usize;
+    pub(crate) fn ReadProcessMemory(
+        hProcess: Handle,
+        lpBaseAddress: *const std::ffi::c_void,
+        lpBuffer: *mut std::ffi::c_void,
+        nSize: usize,
+        lpNumberOfBytesRead: *mut usize,
+    ) -> i32;
+    pub(crate) fn IsWow64Process(hProcess: Handle, Wow64Process: *mut i32) -> i32;
     fn GetDiskFreeSpaceExW(
         lpDirectoryName: *const u16,
         lpFreeBytesAvailableToCaller: *mut u64,

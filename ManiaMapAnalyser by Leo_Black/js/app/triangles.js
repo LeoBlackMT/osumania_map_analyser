@@ -74,7 +74,24 @@ export function initTriangleField(container) {
     trackFieldRise(field);
 }
 
-const TRI_RISE_BUFFER_PX = 180; // 起点 -130px + 顶部留白，确保两端都在裁剪区外
+const TRI_RISE_BUFFER_PX = 260; // 起点 -130px + 最大三角 92px + 旋转与留白缓冲，确保两端都在裁剪区外
+
+function getElementLayoutHeight(el) {
+    if (!el) {
+        return 0;
+    }
+    // 优先取未受 zoom 缩放影响的 CSS 布局像素（offsetHeight）
+    if (typeof el.offsetHeight === "number" && el.offsetHeight > 0) {
+        return el.offsetHeight;
+    }
+    // 退路：从 getBoundingClientRect 折算，除以页面根 zoom
+    const rect = el.getBoundingClientRect();
+    if (rect && rect.height > 0) {
+        const zoom = (typeof document !== "undefined" && Number.parseFloat(document.documentElement?.style?.zoom)) || 1;
+        return rect.height / (zoom > 0 ? zoom : 1);
+    }
+    return 0;
+}
 
 function trackFieldRise(field) {
     const card = field.closest(".main-card") || field.parentElement;
@@ -83,7 +100,7 @@ function trackFieldRise(field) {
     }
 
     const updateRise = () => {
-        const height = Number(card.getBoundingClientRect().height) || 0;
+        const height = Math.max(getElementLayoutHeight(card), getElementLayoutHeight(field));
         if (height <= 0) {
             return;
         }

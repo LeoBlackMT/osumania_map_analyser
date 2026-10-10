@@ -1,8 +1,30 @@
 {
-  "lazer_version": "2026.1005.0.0",
+  "lazer_version": "2026.921.0.0",
   "runtime_version": "10.0.12",
   "arch": "x64",
-  "game_base_vtable": 140725274773872,
+  "game_base_vtable": 140729689934192,
+  "anchors": {
+    "marker_pattern": "01 01 00 00 00 00 80 44 00 00 40 44",
+    "site_deltas": [36, 40, 44, 32, 48, 28, 52],
+    "game_base_hops": [
+      ["external_link_opener", 0],
+      ["api_access", 536],
+      ["game", 784]
+    ]
+  },
+  "screen_states": {
+    "osu.Game.Screens.Menu.MainMenu": "menu",
+    "osu.Game.Screens.Select.SoloSongSelect": "selectPlay",
+    "osu.Game.Screens.Select.SongSelect": "selectPlay",
+    "osu.Game.Screens.Play.Player": "play",
+    "osu.Game.Screens.Play.SoloPlayer": "play",
+    "osu.Game.Screens.Play.ReplayPlayer": "play",
+    "osu.Game.Screens.Play.PlayerLoader": "play",
+    "osu.Game.Screens.Ranking.ResultsScreen": "resultScreen",
+    "osu.Game.Screens.Ranking.SoloResultsScreen": "resultScreen",
+    "osu.Game.Screens.Edit.Editor": "edit",
+    "osu.Game.Screens.Edit.EditorLoader": "selectEdit"
+  },
   "types": {
     "System.Collections.Generic.Stack`1<osu.Framework.Screens.IScreen>": {
       "_array": 8,
@@ -87,15 +109,15 @@
   },
   "runtime": {
     "eetype": {
-      "token": {"offset": 8, "shift": 8, "witness": "dumpmt 0x7FFD2A32E058 (screen[0] `osu.Game.Screens.Loader`) + 5 probe(s) agree: u32@+0x8 (e.g. 0x00032F04@0x7FFD2A32E058) >> 8 == expected; dumpmt => 0x32F, dumpmt => 0x983, dumpmt => 0x9A2, dumpmt => 0x453"},
-      "loader_module": {"offset": 24, "witness": "dumpmt 0x7FFD2A32E058 (screen[0] `osu.Game.Screens.Loader`) + 5 probe(s) agree: qword@+0x18 (e.g. 0x00007FFD27DB8918@0x7FFD2A32E058 == expected); 0x7FFD27DB8918, 0x7FFD27DB8918, 0x7FFD27DB8918, 0x7FFD27DB8918"}
+      "token": {"offset": 8, "shift": 8, "witness": "dumpmt 0x7FFE31538AE0 (screen[0] `osu.Game.Screens.Loader`) + 4 probe(s) agree: u32@+0x8 (e.g. 0x00032F04@0x7FFE31538AE0) >> 8 == expected; dumpmt => 0x32F, dumpmt => 0x998, dumpmt => 0x9A2, dumpmt => 0xF"},
+      "loader_module": {"offset": 24, "witness": "dumpmt 0x7FFE31538AE0 (screen[0] `osu.Game.Screens.Loader`) + 4 probe(s) agree: qword@+0x18 (e.g. 0x00007FFE2F058918@0x7FFE31538AE0 == expected); 0x7FFE2F058918, 0x7FFE2F058918, 0x7FFE2F058918, 0x7FFE2EFA8B20"}
     },
     "module": {
-      "image_base": {"offset": 200, "witness": "dumpmodule 0x7FFD27D08B20 (osu!.dll) + 2 probe(s) agree: qword@+0xc8 (e.g. 0x000002AB235D0000@0x7FFD27D08B20 == expected); 0x2AB235D0000, 0x2AB23E40000"}
+      "image_base": {"offset": 200, "witness": "dumpmodule 0x7FFE2EFA8B20 (osu!.dll) + 2 probe(s) agree: qword@+0xc8 (e.g. 0x000001D707720000@0x7FFE2EFA8B20 == expected); 0x1D707720000, 0x1D707F60000"}
     },
     "screen_array": {
-      "length": {"offset": 8, "witness": "dumparray `Number of elements 4` == i32@array+0x8 (array 0xBFE2E938, 4 element(s))"},
-      "elements": {"offset": 16, "stride": 8, "witness": "dumparray printed 4 non-null element(s); qword@array+0x10+i*8 reproduces them (e.g. [0] = 0x00000000BFE2DFF8 at 0xBFE2E948)"}
+      "length": {"offset": 8, "witness": "dumparray `Number of elements 8` == i32@array+0x8 (array 0xA9A6B030, 8 element(s))"},
+      "elements": {"offset": 16, "stride": 8, "witness": "dumparray printed 3 non-null element(s); qword@array+0x10+i*8 reproduces them (e.g. [0] = 0x00000000BBD499D0 at 0xA9A6B040)"}
     },
     "typedefs": {
       "osu!.dll": {
@@ -2395,13 +2417,12 @@
       },
       "osu.Game.dll": {
         "32F": "osu.Game.Screens.Loader",
-        "453": "osu.Game.Screens.Select.SoloSongSelect",
-        "983": "osu.Game.Screens.Menu.IntroCircles",
+        "998": "osu.Game.Screens.Menu.IntroWelcome",
         "9A2": "osu.Game.Screens.Menu.MainMenu"
       }
     },
-    "witness": "runtime offsets witnessed on the same dump (2 probe(s) per offset; SOS prints vs dump bytes): eetype.token=+0x8(shift 8), eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10(stride 8); typedefs: 2284 name(s) over 3 module(s), 5 of them observed by dumpmt (IL metadata rows corroborate every observed RID)"
+    "witness": "runtime offsets witnessed on the same dump (2 probe(s) per offset; SOS prints vs dump bytes): eetype.token=+0x8(shift 8), eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10(stride 8); typedefs: 2284 name(s) over 3 module(s), 4 of them observed by dumpmt (IL metadata rows corroborate every observed RID)"
   },
-  "verified_build": "osu!lazer 2026.1005.0.0 / .NET 10.0.12 / x64 / C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current\\osu!.exe hash unavailable / game_base vtable 00007ffd28038970",
-  "evidence": "SOS offsets from dump `C:\\Users\\LEO_BL~1\\AppData\\Local\\Temp\\lazer-offsets-gen\\run-20261007\\lazer-20261007-205356.dmp` (pid 49444, x64, anchor 1 hit(s) at 0xBF35A01C, game_base 0xBF359920), transcript `sos-L0-game-candidates-n1.txt; sos-L0-game-candidates-n6.txt; sos-L0-game-candidates-n5.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n1.txt`, analyzer `C:\\Users\\Leo_BlackLT\\.dotnet\\tools\\dotnet-dump.exe (dotnet-dump 10.0.745401+cef304c50763bf24f99566cb31d55540842e7ae9)`; SOS offsets proven against the dump bytes (560 checked / 560 ok / 0 mismatch — the same dump proves the object-address base convention); IL structure from assemblies under `C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current` (259 managed); IL corroborates field existence, instance-ness and type; metadata-derived offsets are never published; generator tools/lazer-offsets-gen (DEC-23). Emitted 46 field(s) of 48 wanted; omitted 2 (see the emit report). Warnings: version mismatch for osu!.dll: dump=0.0.0.0 il=2026.1005.0.0 (allowed by --allow-version-mismatch). Runtime structure section (state.name): 5 offset(s) derived from the same dump (`dumpmt`/`dumpmodule`/`dumparray` prints vs dump bytes, >= 2 agreeing probe(s) each: eetype.token=+0x8, eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10), 2284 TypeDef RID→name row(s) over 3 module(s) from the IL metadata (5 corroborated by dumpmt; IL-derived values are not offsets)."
+  "verified_build": "osu!lazer 2026.921.0.0 / .NET 10.0.12 / x64 / C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current\\osu!.exe hash unavailable / game_base vtable 00007ffe2f2d8970",
+  "evidence": "SOS offsets from dump `C:\\Users\\LEO_BL~1\\AppData\\Local\\Temp\\lazer-offsets-gen\\run1\\lazer-20260929-213211.dmp` (pid 22028, x64, anchor 1 hit(s) at 0xBF35CBB4, game_base 0xBF35C4B8), transcript `sos-L0-game-candidates-n2.txt; sos-L0-game-candidates-n6.txt; sos-L0-game-candidates-n5.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n1.txt`, analyzer `C:\\Users\\Leo_BlackLT\\.dotnet\\tools\\dotnet-dump.exe (dotnet-dump 10.0.745401+cef304c50763bf24f99566cb31d55540842e7ae9)`; SOS offsets proven against the dump bytes (560 checked / 558 ok / 2 mismatch — the same dump proves the object-address base convention); IL structure from assemblies under `C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current` (259 managed); IL corroborates field existence, instance-ness and type; metadata-derived offsets are never published; generator tools/lazer-offsets-gen (DEC-23). Emitted 46 field(s) of 48 wanted; omitted 2 (see the emit report). Warnings: version mismatch for osu!.dll: dump=0.0.0.0 il=2026.921.0.0 (allowed by --allow-version-mismatch). Runtime structure section (state.name): 5 offset(s) derived from the same dump (`dumpmt`/`dumpmodule`/`dumparray` prints vs dump bytes, >= 2 agreeing probe(s) each: eetype.token=+0x8, eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10), 2284 TypeDef RID→name row(s) over 3 module(s) from the IL metadata (4 corroborated by dumpmt; IL-derived values are not offsets)."
 }

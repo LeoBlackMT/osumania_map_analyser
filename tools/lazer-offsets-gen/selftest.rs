@@ -25,15 +25,38 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const EMBEDDED_FIXTURE_IL: &str = include_str!("fixtures/EXAMPLE-fixture-il.tsv");
+const EMBEDDED_FIXTURE_MALFORMED: &str = include_str!("fixtures/EXAMPLE-fixture-malformed.tsv");
+const EMBEDDED_FIXTURE_RUNTIME: &str = include_str!("fixtures/EXAMPLE-fixture-runtime.txt");
+const EMBEDDED_FIXTURE_SOS_CHAIN: &str = include_str!("fixtures/EXAMPLE-fixture-sos-chain.txt");
+
 pub fn run(options: &Options) -> i32 {
-    let fixtures = options
-        .value("--fixtures")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("tools/lazer-offsets-gen/fixtures"));
-    let work = options
-        .value("--work")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| fixtures.join("out"));
+    let (fixtures, work) = if let Some(f) = options.value("--fixtures") {
+        let p = PathBuf::from(f);
+        let w = options.value("--work").map(PathBuf::from).unwrap_or_else(|| p.join("out"));
+        (p, w)
+    } else {
+        let local = PathBuf::from("tools/lazer-offsets-gen/fixtures");
+        if local.join("EXAMPLE-fixture-il.tsv").is_file() {
+            let w = options.value("--work").map(PathBuf::from).unwrap_or_else(|| local.join("out"));
+            (local, w)
+        } else {
+            let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+            let mut temp_fix = std::env::temp_dir().join("mma-gen-fixtures");
+            if fs::create_dir_all(temp_fix.join("out")).is_err() {
+                if let Some(ref ed) = exe_dir {
+                    temp_fix = ed.join(".fixtures");
+                    let _ = fs::create_dir_all(temp_fix.join("out"));
+                }
+            }
+            let _ = fs::write(temp_fix.join("EXAMPLE-fixture-il.tsv"), EMBEDDED_FIXTURE_IL);
+            let _ = fs::write(temp_fix.join("EXAMPLE-fixture-malformed.tsv"), EMBEDDED_FIXTURE_MALFORMED);
+            let _ = fs::write(temp_fix.join("EXAMPLE-fixture-runtime.txt"), EMBEDDED_FIXTURE_RUNTIME);
+            let _ = fs::write(temp_fix.join("EXAMPLE-fixture-sos-chain.txt"), EMBEDDED_FIXTURE_SOS_CHAIN);
+            let w = options.value("--work").map(PathBuf::from).unwrap_or_else(|| temp_fix.join("out"));
+            (temp_fix, w)
+        }
+    };
     if let Err(message) = crate::ensure_dir(&work) {
         eprintln!("[error] {message}");
         return 1;

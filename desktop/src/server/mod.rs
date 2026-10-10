@@ -8,6 +8,7 @@ pub mod log;
 pub mod osu_compat;
 pub mod osu_source;
 pub mod post;
+pub mod state;
 pub mod ws;
 
 use crate::config::{self, TosuInfo};

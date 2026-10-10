@@ -1,23 +1,29 @@
 # ManiaMapAnalyser desktop shell — release 打包（Windows）。
-# 用法：desktop\release.ps1
-# 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/ 下
-#       插件 zip（插件目录 + exe + bridges 安装素材；开发产物与插件源码不入包）。
+# 用法：.\release.ps1
+# 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/{timestamp}-{version}/ 下
+#       包含：
+#       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
+#       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
 
 param(
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path $PSScriptRoot -Parent
+$root = $PSScriptRoot
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
-$outDir = Join-Path $root "release"
+
 # 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
 $metadataPath = Join-Path $pluginDir "metadata.txt"
 $version = ((Get-Content -LiteralPath $metadataPath) |
     Where-Object { $_ -like 'Version:*' } |
     Select-Object -First 1) -replace '^Version:\s*', ''
 if (-not $version) { throw "version not found in $metadataPath" }
+
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$outDir = Join-Path $root "release\${timestamp}-${version}"
+New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
@@ -61,15 +67,23 @@ Copy-Item -Recurse $pluginDir $stage
 Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
 
-# 拷贝 lazer 偏移表（lazer 原生内存读取必需）
-$lazerOffsetsCandidates = @(
-    (Join-Path $desktop "lazer-offsets"),
-    (Join-Path $desktop "target\release\lazer-offsets"),
-    (Join-Path $desktop "target\debug\lazer-offsets")
-)
-$lazerOffsetsSrc = $lazerOffsetsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($lazerOffsetsSrc) {
-    Copy-Item -Recurse $lazerOffsetsSrc (Join-Path $stage "lazer-offsets")
+# 拷贝统一偏移表（desktop/offsets，包含 stable 与 lazer 原生内存读取必需的纯数据表与 README）
+$offsetsSrc = Join-Path $desktop "offsets"
+if (Test-Path $offsetsSrc) {
+    Copy-Item -Recurse $offsetsSrc (Join-Path $stage "offsets")
+}
+
+# 编译随包分发的点击即用偏移生成器 gen.exe（放入 offsets/ 目录）
+$genSrc = Join-Path $root "tools\lazer-offsets-gen\main.rs"
+if (Test-Path $genSrc) {
+    Write-Host "Building gen.exe (offsets generator)..."
+    $offsetsStage = Join-Path $stage "offsets"
+    if (-not (Test-Path $offsetsStage)) {
+        New-Item -ItemType Directory -Path $offsetsStage -Force | Out-Null
+    }
+    $genDst = Join-Path $offsetsStage "gen.exe"
+    & rustc --edition 2021 -O -A dead_code "-Clink-arg=/MANIFEST:EMBED" "-Clink-arg=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'" -o $genDst $genSrc
+    if ($LASTEXITCODE -ne 0) { throw "rustc build of gen.exe failed" }
 }
 
 $bridgesSrc = Join-Path $root "bridges"
@@ -121,4 +135,17 @@ Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Remove-Item -Recurse -Force $stage
 
 $mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
-Write-Host "released: $zip ($mb MB)"
+Write-Host "released (with shell):  $zip ($mb MB)"
+
+# 纯插件本体包（供独立 tosu 用户使用）
+$pluginOnlyZip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version.zip"
+if (Test-Path $pluginOnlyZip) { Remove-Item $pluginOnlyZip }
+$pluginStage = Join-Path $env:TEMP "mma-plugin-stage-$PID"
+if (Test-Path $pluginStage) { Remove-Item -Recurse -Force $pluginStage }
+Copy-Item -Recurse $pluginDir $pluginStage
+Get-ChildItem -Path $pluginStage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
+Compress-Archive -Path "$pluginStage\*" -DestinationPath $pluginOnlyZip -Force
+Remove-Item -Recurse -Force $pluginStage
+
+$pluginMb = [math]::Round((Get-Item $pluginOnlyZip).Length / 1MB, 1)
+Write-Host "released (plugin only): $pluginOnlyZip ($pluginMb MB)"

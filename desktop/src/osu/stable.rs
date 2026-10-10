@@ -184,6 +184,38 @@ pub fn hits_from_candidates(candidates: &[u16]) -> Option<Hits> {
     Some(hits)
 }
 
+/// 候选槽 → 6 键（由拓扑定义驱动）。
+pub fn hits_from_candidates_topo(
+    candidates: &[u16],
+    topo: Option<&crate::osu::offsets::StableTopology>,
+) -> Option<Hits> {
+    let default_topo = crate::osu::offsets::StableTopology::default();
+    let topo = topo.unwrap_or(&default_topo);
+    let longest = topo
+        .hits_slot_mapping
+        .iter()
+        .map(|(index, _)| *index)
+        .max()
+        .unwrap_or(0);
+    if candidates.len() <= longest {
+        return None;
+    }
+    let mut hits = Hits::default();
+    for (index, key) in &topo.hits_slot_mapping {
+        let value = candidates[*index] as u32;
+        match key.as_str() {
+            "300" => hits.n300 = value,
+            "100" => hits.n100 = value,
+            "50" => hits.n50 = value,
+            "geki" => hits.geki = value,
+            "katu" => hits.katu = value,
+            "miss" | "0" => hits.miss = value,
+            _ => {}
+        }
+    }
+    Some(hits)
+}
+
 /// 候选槽的下标 → 槽偏移（诊断行里把下标写清楚，避免"第几个"读错）。
 pub fn candidate_offset(index: usize) -> Option<u32> {
     HITS_CANDIDATE_OFFSETS.get(index).copied()
@@ -303,7 +335,17 @@ mod win_io {
     /// 槽地址为 0（`exit` 态：下一个函数的全局还没装载）⇒ `Ok(None)` = "本帧没有时间"，
     /// 与"读失败"（`Err`）分开——前者是**合法状态**，后者是结构问题。
     pub fn read_play_time(target: &win::Target, anchor: u32) -> Result<Option<i32>, Reason> {
-        let slot = win::read_u32(target, anchor.wrapping_add(PLAY_TIME_FROM_ANCHOR))?;
+        read_play_time_with_topo(target, anchor, None)
+    }
+
+    pub fn read_play_time_with_topo(
+        target: &win::Target,
+        anchor: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> Result<Option<i32>, Reason> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let slot = win::read_u32(target, anchor.wrapping_add(topo.play_time_from_anchor))?;
         if slot == 0 {
             return Ok(None);
         }
@@ -311,44 +353,67 @@ mod win_io {
     }
 
     /// `retries`（`[baseAddr-0x33] + 0x8`，**一级间接**）。
-    ///
-    /// ⚠️ 这条链的间接层数与其他链不同：`[baseAddr-0x33]` 本身就是那个信息对象（`+0x8`/`+0xC`
-    /// 是它的两个字段），所以只有**一次**读——写两次会一路读到对象的第一个字段里去
-    /// （C2 首轮真机实测：两次读的结果恒为 `None`）。
     pub fn read_retries(target: &win::Target, base_addr: u32) -> Option<i32> {
-        let slot = win::read_u32(target, base_addr.wrapping_sub(INFO_FROM_BASE)).ok()?;
+        read_retries_with_topo(target, base_addr, None)
+    }
+
+    pub fn read_retries_with_topo(
+        target: &win::Target,
+        base_addr: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> Option<i32> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let slot = win::read_u32(target, base_addr.wrapping_sub(topo.info_from_base)).ok()?;
         if slot == 0 {
             return None;
         }
-        win::read_i32(target, slot.wrapping_add(RETRIES_OFFSET)).ok()
+        win::read_i32(target, slot.wrapping_add(topo.retries_offset)).ok()
     }
 
     /// `plays`（`[baseAddr-0x33] + 0xC`；间接层数同 `read_retries`）。
     pub fn read_plays(target: &win::Target, base_addr: u32) -> Option<i32> {
-        let slot = win::read_u32(target, base_addr.wrapping_sub(INFO_FROM_BASE)).ok()?;
+        read_plays_with_topo(target, base_addr, None)
+    }
+
+    pub fn read_plays_with_topo(
+        target: &win::Target,
+        base_addr: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> Option<i32> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let slot = win::read_u32(target, base_addr.wrapping_sub(topo.info_from_base)).ok()?;
         if slot == 0 {
             return None;
         }
-        win::read_i32(target, slot.wrapping_add(PLAYS_OFFSET)).ok()
+        win::read_i32(target, slot.wrapping_add(topo.plays_offset)).ok()
     }
 
     /// 规则集链：`read_u32(read_u32(rulesetsAddr - 0xB) + 0x4)`，外加"多一跳"的解释
     /// （只作证据；见 `ChainProbe`）。
-    ///
-    /// 三个原始值全部落进 `probe`：真机证据里要能看到"哪一跳对数、多一跳读到什么"，
-    /// 否则下次偏移漂移时无法判断是签名错位还是链跳数错。
     pub fn resolve_ruleset(
         target: &win::Target,
         anchor: u32,
     ) -> Result<(u32, ChainProbe), Reason> {
+        resolve_ruleset_with_topo(target, anchor, None)
+    }
+
+    pub fn resolve_ruleset_with_topo(
+        target: &win::Target,
+        anchor: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> Result<(u32, ChainProbe), Reason> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
         let mut probe = ChainProbe::default();
-        let slot_addr = anchor.wrapping_sub(RULESET_FROM_ANCHOR);
+        let slot_addr = anchor.wrapping_sub(topo.ruleset_from_anchor);
         let slot_value = win::read_u32(target, slot_addr)?;
         probe.ruleset_slot = slot_value;
         if !crate::osu::patterns::is_aligned(slot_value) || slot_value < 0x1_0000 {
             return Err(Reason::InvariantFailed("ruleset.slot"));
         }
-        let ruleset = win::read_u32(target, slot_value.wrapping_add(RULESET_LIST_OFFSET))?;
+        let ruleset = win::read_u32(target, slot_value.wrapping_add(topo.ruleset_list_offset))?;
         if ruleset == 0 {
             return Err(Reason::InvariantFailed("ruleset.base"));
         }
@@ -356,7 +421,7 @@ mod win_io {
         // 证据：多一跳的解释（`[[[A-0xB]]+0x4]`）读出来是什么。
         if let Ok(second) = win::read_u32(target, slot_value) {
             probe.ruleset_slot_alt = second;
-            if let Ok(alt) = win::read_u32(target, second.wrapping_add(RULESET_LIST_OFFSET)) {
+            if let Ok(alt) = win::read_u32(target, second.wrapping_add(topo.ruleset_list_offset)) {
                 probe.ruleset_alt = alt;
             }
         }
@@ -364,21 +429,29 @@ mod win_io {
     }
 
     /// 局内链：玩法基址 → 分数对象 → mod 掩码 + 8 个候选 hits 槽（+ `retries`/`plays`）。
-    ///
-    /// 语义：`gameplay = [ruleset + 0x64]`（一次读）；`score = [gameplay + 0x38]`（一次读）。
-    /// 任一为 0 ⇒ 该状态没有局内对象（菜单态属正常）⇒ 对应字段 `None`，**不判失败**。
     pub fn read_in_game(
         target: &win::Target,
         ruleset: u32,
         base_addr: u32,
     ) -> InGameRead {
+        read_in_game_with_topo(target, ruleset, base_addr, None)
+    }
+
+    pub fn read_in_game_with_topo(
+        target: &win::Target,
+        ruleset: u32,
+        base_addr: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> InGameRead {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
         let mut out = InGameRead {
             ruleset: Some(ruleset),
-            retries: read_retries(target, base_addr),
-            plays: read_plays(target, base_addr),
+            retries: read_retries_with_topo(target, base_addr, Some(topo)),
+            plays: read_plays_with_topo(target, base_addr, Some(topo)),
             ..Default::default()
         };
-        let Ok(gameplay) = win::read_u32(target, ruleset.wrapping_add(GAMEPLAY_FROM_RULESET)) else {
+        let Ok(gameplay) = win::read_u32(target, ruleset.wrapping_add(topo.gameplay_from_ruleset)) else {
             return out;
         };
         out.probe.gameplay_raw = gameplay;
@@ -386,7 +459,7 @@ mod win_io {
             return out;
         }
         out.gameplay_base = Some(gameplay);
-        let Ok(score) = win::read_u32(target, gameplay.wrapping_add(SCORE_FROM_GAMEPLAY)) else {
+        let Ok(score) = win::read_u32(target, gameplay.wrapping_add(topo.score_from_gameplay)) else {
             return out;
         };
         if score == 0 {
@@ -395,11 +468,11 @@ mod win_io {
         out.score_base = Some(score);
 
         // mod 掩码：容器 `[score+0x1C]` → XOR 两项 → ScoreV2 补位。
-        if let Ok(container) = win::read_u32(target, score.wrapping_add(MODS_CONTAINER)) {
+        if let Ok(container) = win::read_u32(target, score.wrapping_add(topo.mods_container)) {
             out.probe.mods_container = container;
-            let high = win::read_u32(target, container.wrapping_add(MODS_XOR_HIGH)).ok();
-            let low = win::read_u32(target, container.wrapping_add(MODS_XOR_LOW)).ok();
-            let processor = win::read_u32(target, score.wrapping_add(SCORE_PROCESSOR_FROM_SCORE));
+            let high = win::read_u32(target, container.wrapping_add(topo.mods_xor_high)).ok();
+            let low = win::read_u32(target, container.wrapping_add(topo.mods_xor_low)).ok();
+            let processor = win::read_u32(target, score.wrapping_add(topo.score_processor_from_score));
             if let (Some(high), Some(low)) = (high, low) {
                 out.probe.mods_xor_high = high;
                 out.probe.mods_xor_low = low;
@@ -409,9 +482,7 @@ mod win_io {
             }
         }
 
-        // 8 个候选槽**先读齐**（诊断）；是否发布由调用方的门决定
-        // （状态门 + 链有效性门 + 时间门，见 `invariants::play_hits_publishable`）。
-        let (candidates, complete) = read_candidate_slots(target, score);
+        let (candidates, complete) = read_candidate_slots_with_topo(target, score, &topo.hits_candidate_offsets);
         out.hits_candidates = candidates;
         out.hits_candidates_complete = complete;
         out
@@ -419,6 +490,16 @@ mod win_io {
 
     /// 结算链：`result = [ruleset + 0x38]` → mod 掩码 + hits + 自证字段。
     pub fn read_result(target: &win::Target, ruleset: u32) -> ResultRead {
+        read_result_with_topo(target, ruleset, None)
+    }
+
+    pub fn read_result_with_topo(
+        target: &win::Target,
+        ruleset: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> ResultRead {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
         let mut out = ResultRead {
             probe: ChainProbe {
                 ruleset,
@@ -426,7 +507,7 @@ mod win_io {
             },
             ..Default::default()
         };
-        let Ok(result) = win::read_u32(target, ruleset.wrapping_add(RESULT_FROM_RULESET)) else {
+        let Ok(result) = win::read_u32(target, ruleset.wrapping_add(topo.result_from_ruleset)) else {
             return out;
         };
         if result == 0 {
@@ -435,28 +516,26 @@ mod win_io {
         out.result_base = Some(result);
         out.probe.result_base = result;
 
-        if let Ok(container) = win::read_u32(target, result.wrapping_add(MODS_CONTAINER)) {
+        if let Ok(container) = win::read_u32(target, result.wrapping_add(topo.mods_container)) {
             out.probe.mods_container = container;
-            let high = win::read_u32(target, container.wrapping_add(MODS_XOR_HIGH)).ok();
-            let low = win::read_u32(target, container.wrapping_add(MODS_XOR_LOW)).ok();
+            let high = win::read_u32(target, container.wrapping_add(topo.mods_xor_high)).ok();
+            let low = win::read_u32(target, container.wrapping_add(topo.mods_xor_low)).ok();
             if let (Some(high), Some(low)) = (high, low) {
                 out.probe.mods_xor_high = high;
                 out.probe.mods_xor_low = low;
-                // 结算链**不**补 ScoreV2 位（该链的两个 XOR 项里已含 mod 位；
-                // 结算屏没有 "score processor" 语义）。
                 out.result_mods_mask = Some(mods_mask_from_raw(high, low, 0));
             }
         }
 
-        let (candidates, complete) = read_candidate_slots(target, result);
+        let (candidates, complete) = read_candidate_slots_with_topo(target, result, &topo.hits_candidate_offsets);
         out.hits_candidates = candidates;
         out.hits_candidates_complete = complete;
-        out.score = win::read_i32(target, result.wrapping_add(RESULT_SCORE_OFFSET)).ok();
-        out.max_combo = win::read_u16(target, result.wrapping_add(RESULT_MAX_COMBO_OFFSET)).ok();
-        out.player_name = win::read_u32(target, result.wrapping_add(RESULT_PLAYER_NAME_OFFSET))
+        out.score = win::read_i32(target, result.wrapping_add(topo.result_score_offset)).ok();
+        out.max_combo = win::read_u16(target, result.wrapping_add(topo.result_max_combo_offset)).ok();
+        out.player_name = win::read_u32(target, result.wrapping_add(topo.result_player_name_offset))
             .ok()
             .and_then(|ptr| win::read_csharp_string(target, ptr).ok());
-        out.online_id = read_i64(target, result.wrapping_add(RESULT_ONLINE_ID_OFFSET));
+        out.online_id = read_i64(target, result.wrapping_add(topo.result_online_id_offset));
         out
     }
 
@@ -466,14 +545,15 @@ mod win_io {
         Some(((high << 32) | low) as i64)
     }
 
-    /// 8 个候选 u16 槽 + **整块读满**标志。
-    ///
-    /// 读不出来的位置仍然记 `0`（诊断要看"读到什么"），但返回的第二个值为 `false`——
-    /// 调用方的发布门据此**拒绝发布半截值**（"0 个 100"与"没读到 100"在页面上无法区分）。
+    #[allow(dead_code)]
     fn read_candidate_slots(target: &win::Target, base: u32) -> (Vec<u16>, bool) {
-        let mut values = Vec::with_capacity(HITS_CANDIDATE_OFFSETS.len());
+        read_candidate_slots_with_topo(target, base, HITS_CANDIDATE_OFFSETS)
+    }
+
+    fn read_candidate_slots_with_topo(target: &win::Target, base: u32, offsets: &[u32]) -> (Vec<u16>, bool) {
+        let mut values = Vec::with_capacity(offsets.len());
         let mut complete = true;
-        for offset in HITS_CANDIDATE_OFFSETS {
+        for offset in offsets {
             match win::read_u16(target, base.wrapping_add(*offset)) {
                 Ok(value) => values.push(value),
                 Err(_) => {
@@ -487,11 +567,21 @@ mod win_io {
 
     /// `beatmap.time.mp3Length`：`round(f64(read_u32(read_u32(anchor)) + 0x4))`。
     pub fn read_mp3_length(target: &win::Target, anchor: u32) -> Result<i64, Reason> {
-        let slot = win::read_pointer(target, anchor.wrapping_add(MP3_LENGTH_FROM_ANCHOR))?;
+        read_mp3_length_with_topo(target, anchor, None)
+    }
+
+    pub fn read_mp3_length_with_topo(
+        target: &win::Target,
+        anchor: u32,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+    ) -> Result<i64, Reason> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let slot = win::read_pointer(target, anchor.wrapping_add(topo.mp3_length_from_anchor))?;
         if slot == 0 {
             return Err(Reason::InvariantFailed("mp3Length.object"));
         }
-        let seconds = win::read_f64(target, slot.wrapping_add(MP3_LENGTH_FIELD))?;
+        let seconds = win::read_f64(target, slot.wrapping_add(topo.mp3_length_field))?;
         if !mp3_length_is_sane(seconds) {
             return Err(Reason::InvariantFailed("mp3Length.range"));
         }
@@ -518,7 +608,17 @@ pub fn read_play_time(_target: &win::Target, _anchor: u32) -> Result<Option<i32>
 }
 
 #[cfg(not(windows))]
+pub fn read_play_time_with_topo(_target: &win::Target, _anchor: u32, _topo: Option<&crate::osu::offsets::StableTopology>) -> Result<Option<i32>, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
 pub fn read_retries(_target: &win::Target, _base_addr: u32) -> Option<i32> {
+    None
+}
+
+#[cfg(not(windows))]
+pub fn read_retries_with_topo(_target: &win::Target, _base_addr: u32, _topo: Option<&crate::osu::offsets::StableTopology>) -> Option<i32> {
     None
 }
 
@@ -528,9 +628,23 @@ pub fn read_plays(_target: &win::Target, _base_addr: u32) -> Option<i32> {
 }
 
 #[cfg(not(windows))]
+pub fn read_plays_with_topo(_target: &win::Target, _base_addr: u32, _topo: Option<&crate::osu::offsets::StableTopology>) -> Option<i32> {
+    None
+}
+
+#[cfg(not(windows))]
 pub fn resolve_ruleset(
     _target: &win::Target,
     _anchor: u32,
+) -> Result<(u32, ChainProbe), Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn resolve_ruleset_with_topo(
+    _target: &win::Target,
+    _anchor: u32,
+    _topo: Option<&crate::osu::offsets::StableTopology>,
 ) -> Result<(u32, ChainProbe), Reason> {
     Err(Reason::PlatformUnsupported)
 }
@@ -545,12 +659,32 @@ pub fn read_in_game(
 }
 
 #[cfg(not(windows))]
+pub fn read_in_game_with_topo(
+    _target: &win::Target,
+    _ruleset: u32,
+    _base_addr: u32,
+    _topo: Option<&crate::osu::offsets::StableTopology>,
+) -> InGameRead {
+    InGameRead::default()
+}
+
+#[cfg(not(windows))]
 pub fn read_result(_target: &win::Target, _ruleset: u32) -> ResultRead {
     ResultRead::default()
 }
 
 #[cfg(not(windows))]
+pub fn read_result_with_topo(_target: &win::Target, _ruleset: u32, _topo: Option<&crate::osu::offsets::StableTopology>) -> ResultRead {
+    ResultRead::default()
+}
+
+#[cfg(not(windows))]
 pub fn read_mp3_length(_target: &win::Target, _anchor: u32) -> Result<i64, Reason> {
+    Err(Reason::PlatformUnsupported)
+}
+
+#[cfg(not(windows))]
+pub fn read_mp3_length_with_topo(_target: &win::Target, _anchor: u32, _topo: Option<&crate::osu::offsets::StableTopology>) -> Result<i64, Reason> {
     Err(Reason::PlatformUnsupported)
 }
 

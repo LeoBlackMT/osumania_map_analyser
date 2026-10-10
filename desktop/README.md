@@ -1,6 +1,6 @@
 # ManiaMapAnalyser desktop shell
 
-Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一律**壳自身 24061 静态服务——只有壳配置显式 `osuTransport: "tosu"` 才恢复旧策略"在线 = tosu 插件页 / 离线 = 24061"），并作为本地聚合桥。Linux 下支持 Etterna 数据源（0.75+ 官方 Linux 版）；Malody V 无 Linux 版（该源仅 Windows）；**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` + PE 校验属 Win32 语义，其他平台以 `platform-unsupported` 优雅不可用）；**osu 原生读取同样仅 Windows**（`ReadProcessMemory` / `VirtualQueryEx`，其他平台报 `platform-unsupported` 并回落 tosu）。人类使用教程见 [docs/shell-guide.md](../docs/shell-guide.md)；技术说明见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md)、osu 原生传输见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) 与 `docs/CONTRACT.md`（本目录，契约版本 **6**）。
+Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一律**壳自身 24061 静态服务——只有壳配置显式 `osuTransport: "tosu"` 才恢复旧策略"在线 = tosu 插件页 / 离线 = 24061"），并作为本地聚合桥。Linux 下支持 Etterna 数据源（0.75+ 官方 Linux 版）；Malody V 无 Linux 版（该源仅 Windows）；**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` + PE 校验属 Win32 语义，其他平台以 `platform-unsupported` 优雅不可用）；**osu 原生读取同样仅 Windows**（`ReadProcessMemory` / `VirtualQueryEx`，其他平台报 `platform-unsupported` 并回落 tosu）。人类使用教程见 [docs/shell-guide.md](../docs/shell-guide.md)；技术说明见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md)、osu 原生传输见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) 与 `docs/CONTRACT.md`（本目录，契约版本 **6**）；源码架构与模块设计规约详见 [docs/architecture.md](docs/architecture.md)。
 
 | 能力 | 端口/路径 | 说明 |
 |---|---|---|
@@ -12,6 +12,8 @@ Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一
 | 设置 | 24061 `/settings` | **权威链只看 tosu 是否在线**：在线 = tosu 设置文件（`settings/<插件目录名>.values.json`，只读）> 离线 = `mma-settings.json`（缺则按 settings.json 生成骨架，**不读** tosu 文件）。GET 全量；POST 请求键优先读-改-写并广播（在线 403 / 非法 body 400 / 写失败 500） |
 | 壳配置 | 24061 `/shell-config` | GET 返回 `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`（resolved = 实际采纳路径）；POST 请求键优先读-改-写（400 = body 非法 / base 不可读 / 写失败，此时不写盘），成功后失效根目录探测缓存并广播 settings 帧。启动时对**已有**文件只补不改：`hotkeys` 缺失/空串的键按内置默认补齐（含设置窗口的 `Ctrl+Shift+S`），用户值原样保留 |
 | 设置窗口 | 24061 `/open-settings` + `/settings.html` | POST 打开/聚焦设置窗口（异步发起建窗；无 app 句柄 → 503）；`settings.html` 是窗口承载的设置页（导航 **Shell → Card Settings → Presets**：壳配置 + 卡片设置 + 完整预设，由静态分支服务）。表单**由 `settings.json` schema 在运行时生成**（新增设置只改 settings.json + config.js defaults + 解析/应用函数，设置页零改动）；`settings.json` 的 button 条目中壳内可达的 4 个渲染成**页面顶部**的 **Links** 行（状态栏下方、导航栏上方，打开窗口第一眼可见；另两个 `PresetButton`/`DebugButton` 指向 tosu 自己的页面，由 `settingsLinks.js EXCLUDED_LINK_IDS` 排除，settings.json 不动），壳窗口内链接走 `window.open` → 剪贴板兜底提示 |
+| 内存特征表管理 | 24061 `/offsets/status` + `/offsets/generate` + `/offsets/update` | GET 查询当前 stable/lazer 特征表版本与生成器就绪态；POST `/offsets/generate` 免 SDK 活体自校验生成当前游戏的偏移表；POST `/offsets/update` 校验 Ed25519 签名清单并同步远端表 |
+| 影子对拍诊断 | 24061 `/shadow/status` + `/shadow/reset` | GET 查询当前 L3 影子比对状态、匹配率与逐字段差异；POST `/shadow/reset` 重置对拍计数 |
 | 封面 | 24061 `/cover/...` | 白名单具体文件（图片扩展名，同帧下发 URL） |
 | Etterna 轮询 | — | 2Hz 轮询 `Save/MmaBridge.txt`/`Save/MmaGameplay.txt`（首读基线不推送） |
 | Malody 轮询 | — | 1.5s 轮询 chart/（两级目录 mtime 快筛，仅 stat 目录层） |
@@ -24,7 +26,7 @@ Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一
 
 壳配置（exe 旁，首启自动生成）：`mma-shell-config.json`（`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`；`malody4Root` 由桥安装器的 **Malody 4** 选项写入——该选项零文件复制）与 `mma-settings.json`（全量插件设置；离线权威，在线时由 tosu 设置文件取代且不生成/不使用本地文件）。
 
-构建与运行（开发态）：`cargo run --release`；打包：`desktop/release.ps1`（Windows，zip）/ `desktop/build-linux.sh`（Linux，tar.gz，需 Tauri Linux 系统依赖，与 CI 一致）。
+构建与运行（开发态）：`cargo run --release`；打包：`release.ps1`（Windows，zip）/ `desktop/build-linux.sh`（Linux，tar.gz，需 Tauri Linux 系统依赖，与 CI 一致）。
 
 开发环境变量：
 
@@ -33,12 +35,12 @@ Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一
 - `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT`：覆盖游戏根目录（优先于配置/自动探测）
 - `MMA_MALODY4_ROOT`：覆盖 Malody 4.3.7 根目录（同上；任何非空值即被采纳，故指向不存在的路径可用于**关断**该源）
 - `MMA_OSU_COMPAT_REPLAY=1`：把 24062 从**实时载荷**切回 B1 的固定谱面回放（测试用；缺省实时）
-- `MMA_LAZER_OFFSETS=<表路径>`：显式指定 lazer 偏移表（优先于 `<exe 目录>\lazer-offsets\<lazer>__<runtime>__<arch>.json`）
+- `MMA_LAZER_OFFSETS=<表路径>`：显式指定 lazer 偏移表（优先于 `<exe 目录>\offsets\lazer\*.json`）
 - `MMA_OSU_COMPARE=0` / `MMA_OSU_COMPARE_INTERVAL_MS` / `MMA_OSU_COMPARE_OUT` / `MMA_OSU_TOSU` / `MMA_OSU_COMPARE_FULL=1`：影子对拍装置的开关/节奏/落点/tosu 端点/整包落盘（dev-only，默认开启、100 ms 一拍）
 
 **osu 原生传输的能力与限制**（完整清单见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)）：
 
-- **lazer 偏移表随壳分发**：表必须落在 **`<壳 exe 目录>\lazer-offsets\<lazer 版本>__<runtime 版本>__<arch>.json>`**（`MMA_LAZER_OFFSETS` 可覆盖）。生成/更新它用入库的 dev-time 工具 `tools/lazer-offsets-gen/`（`collect → extract → il --diff → emit --deploy <壳 exe 目录>`；**采集会短暂挂起游戏约 70 s**），完整手册见其 `README.md`，端到端命令与两见证规则见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) §10。**`release.ps1` 当前只复制 `mma-shell.exe`（`release.ps1:42`），不会自动带上 `lazer-offsets/`** —— 打包时需要手工复制该目录；分发包里缺表时 lazer 如实报 `lazer-offsets-missing:<ver>` 并回落 tosu（stable 不受影响）。
+- **偏移表随壳分发与动态更新**：发布包（`release.ps1`）自动打包 `offsets/` 目录（含 `stable/` 与 `lazer/` 纯数据偏移表及签名 `manifest.json`）并随包编译分发 `gen.exe`。产物输出至 `release/{timestamp}-{version}/` 下（包含带壳完整包 `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` 及纯插件本体包 `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`）。支持通过设置页 Live Generator 按钮一键活体生成，或通过内置 Ed25519 签名通道在线静默更新。本地缓存落地在 `%APPDATA%\ManiaMapAnalyser\offsets\`，若不可用则优雅回退至内嵌默认表。
 - **lazer 的字段缺口**（7 条，逐条进 `sources.osu.degradedFields`）：mods 三槽、`play.hits`/`resultsScreen.hits`、`files.background`/`files.audio`；因此 lazer 上 `modSignature` 只在 NM 时与 tosu 逐字节相等，hits/livePP 面不可用。
 - **受限会话下的运行方式（真机实测）**：在工作区上下文里 `Toolhelp32` 只能看到自己那一族进程（表现为"游戏没在跑"、读不到游戏）——**把 `mma-shell.exe` 复制到工作区外（如 `%TEMP%\mma-shell\`）再启动**即可正常附着（本机实测：从 `desktop\target\debug` 启动不可用，复制到 `%TEMP%` 后可用）。同一结论也适用于 `tools/lazer-offsets-gen`。
 - **Linux**：无内存读取（`platform-unsupported`），osu 走 tosu；其余源行为不变。
@@ -61,6 +63,8 @@ Tauri v2 desktop shell (Windows / Linux): loads the same plugin page (by default
 | Settings | 24061 `/settings` | **The authority chain only checks whether tosu is online**: online = tosu settings file (`settings/<plugin folder>.values.json`, read-only) > offline = `mma-settings.json` (skeleton generated from settings.json when missing; the tosu file is **not** read). GET returns everything; POST is a request-key-first read-modify-write that broadcasts (403 online / 400 unparsable body / 500 write failure) |
 | Shell config | 24061 `/shell-config` | GET returns `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}` (`resolved` = the paths actually adopted); POST is a request-key-first read-modify-write (400 = bad body / unreadable base / write failure, and nothing is written then); on success the root-detection caches are cleared and a settings frame is broadcast. At startup an **existing** file is only backfilled, never rewritten: missing/empty `hotkeys` keys get their built-in default (including `Ctrl+Shift+S` for the settings window) while user values stay untouched |
 | Settings window | 24061 `/open-settings` + `/settings.html` | POST opens/focuses the settings window (window creation is dispatched asynchronously; 503 without an app handle); `settings.html` is the page it hosts (nav **Shell → Card Settings → Presets**: shell config + card settings + the full preset manager, served by the static branch). Its form is **generated at runtime from the `settings.json` schema** (a new setting only touches settings.json + config.js defaults + the parse/apply pair — zero settings-page changes), and the four button entries reachable from the shell become the **Links** row at the top of the page (below the status bar, above the nav, visible the moment the window opens; the other two — `PresetButton` / `DebugButton` — point at tosu's own pages and are dropped by `settingsLinks.js EXCLUDED_LINK_IDS` without touching settings.json). Inside the shell window links go through `window.open` with a clipboard fallback notice |
+| Memory Offsets | 24061 `/offsets/status` + `/offsets/generate` + `/offsets/update` | GET queries stable/lazer table versions and generator readiness; POST `/offsets/generate` extracts and verifies offsets live from running game; POST `/offsets/update` verifies Ed25519 signature manifest and updates remote tables |
+| Shadow Diagnostics | 24061 `/shadow/status` + `/shadow/reset` | GET queries live L3 shadow comparison match rates and per-field diff details; POST `/shadow/reset` resets stats |
 | Cover | 24061 `/cover/...` | Whitelisted concrete files (image extensions, URL sent in same frame) |
 | Etterna polling | — | 2Hz on `Save/MmaBridge.txt`/`Save/MmaGameplay.txt` (first read = baseline, no push) |
 | Malody polling | — | 1.5s over chart/ (two-level dir mtime fast filter; only stats dir layers) |
@@ -73,7 +77,7 @@ Window: transparent / always-on-top / click-through (`set_ignore_cursor_events`,
 
 Shell config (next to the exe, auto-created on first run): `mma-shell-config.json` (`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`; `malody4Root` is written by the installer's **Malody 4** option, which copies zero files) and `mma-settings.json` (full plugin settings; the offline authority — while tosu is online the tosu settings file replaces it and no local file is created or used).
 
-Build & run (dev): `cargo run --release`; packaging: `desktop/release.ps1` (Windows, zip) / `desktop/build-linux.sh` (Linux, tar.gz; needs the Tauri Linux system deps, same as CI).
+Build & run (dev): `cargo run --release`; packaging: `release.ps1` (Windows, zip) / `desktop/build-linux.sh` (Linux, tar.gz; needs the Tauri Linux system deps, same as CI).
 
 Dev env vars:
 
@@ -87,7 +91,7 @@ Dev env vars:
 
 **osu native transport: capability & limitations** (full list: [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)):
 
-- **The lazer offset table ships beside the shell**: it must live at **`<shell exe dir>\lazer-offsets\<lazer version>__<runtime version>__<arch>.json>`** (`MMA_LAZER_OFFSETS` overrides). Generate/refresh it with the in-repo dev-time tool `tools/lazer-offsets-gen/` (`collect → extract → il --diff → emit --deploy <shell exe dir>`; **collection suspends the game for ~70 s**); the full manual is that tool's `README.md`, and the end-to-end sequence plus the two-witness rule is §10 of [docs/features/osu-native-source.md](../docs/features/osu-native-source.md). **`release.ps1` currently copies only `mma-shell.exe` (`release.ps1:42`) and does not carry `lazer-offsets/`** — copy that folder by hand when packaging; a package without the table makes lazer report `lazer-offsets-missing:<ver>` and fall back to tosu (stable is unaffected).
+- **Offset Tables Distribution & Dynamic Updates**: The release package (`release.ps1`) bundles the `offsets/` folder (pure data tables for stable and lazer + signed `manifest.json`) and compiles `gen.exe` beside `mma-shell.exe`. Output is created under `release/{timestamp}-{version}/` (containing both the with-shell zip `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` and plugin-only zip `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`). Supports live generation from the settings window via the Live Generator button, as well as Ed25519-signed online updates. Local cache is stored in `%APPDATA%\ManiaMapAnalyser\offsets\`, silently falling back to bundled/embedded tables when offline.
 - **lazer field gaps** (7, each reported in `sources.osu.degradedFields`): the three mod slots, `play.hits`/`resultsScreen.hits`, and `files.background`/`files.audio`; hence on lazer `modSignature` is byte-identical to tosu only for NM, and the hits/livePP surface is unavailable.
 - **Running inside a restricted session (measured)**: in the workspace context `Toolhelp32` only sees its own process family (the game looks "not running" and cannot be read) — **copy `mma-shell.exe` outside the workspace (e.g. `%TEMP%\mma-shell\`) and start it there** to attach normally (measured: starting from `desktop\target\debug` does not work, copying to `%TEMP%` does). The same applies to `tools/lazer-offsets-gen`.
 - **Linux**: no memory reading (`platform-unsupported`), osu goes through tosu; the other sources are unchanged.
