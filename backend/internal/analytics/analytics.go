@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"osumania-telemetry/internal/spec"
 	"osumania-telemetry/internal/store"
 )
 
@@ -243,13 +244,18 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 		return out, nil
 	}
 
-	var err error
-	if s.Algorithms, err = kv(rowCounts("alg")); err != nil {
+	algCounts, err := rowCounts("alg")
+	if err != nil {
 		return err
 	}
-	if s.ActualAlgorithms, err = kv(rowCounts("actual")); err != nil {
+	s.Algorithms = sortedKV(filterAllowedAlgorithms(algCounts))
+
+	actualCounts, err := rowCounts("actual")
+	if err != nil {
 		return err
 	}
+	s.ActualAlgorithms = sortedKV(filterActualAlgorithms(actualCounts))
+
 	if s.Keycounts, err = kv(rowCounts("key")); err != nil {
 		return err
 	}
@@ -279,7 +285,7 @@ func buildDistributions(st *store.Store, startDayMs, endDayMs int64, s *Stats) e
 	if err != nil {
 		return err
 	}
-	s.Versions = sortedKV(versionCounts)
+	s.Versions = sortedKV(filterOfficialVersions(versionCounts))
 
 	starCounts, err := rowCounts("star")
 	if err != nil {
@@ -425,6 +431,10 @@ func durationStats(rows []store.AggRow) DurationStats {
 		if r.Count == 0 {
 			continue
 		}
+		// Historical anomaly guard: discard rows whose max value exceeds the valid computation bound.
+		if r.MaxVal > float64(spec.MaxComputeDurationMs) {
+			continue
+		}
 		total += r.Count
 		sum += r.SumVal
 		if first {
@@ -446,6 +456,36 @@ func durationStats(rows []store.AggRow) DurationStats {
 	stats.P50Ms = durationPercentile(rows, 50, total)
 	stats.P90Ms = durationPercentile(rows, 90, total)
 	return stats
+}
+
+func filterAllowedAlgorithms(m map[string]int64) map[string]int64 {
+	out := make(map[string]int64)
+	for k, v := range m {
+		if spec.IsAllowedAlgorithm(k) {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func filterActualAlgorithms(m map[string]int64) map[string]int64 {
+	out := make(map[string]int64)
+	for k, v := range m {
+		if norm, ok := spec.NormalizeActualAlgorithm(k); ok {
+			out[norm] += v
+		}
+	}
+	return out
+}
+
+func filterOfficialVersions(m map[string]int64) map[string]int64 {
+	out := make(map[string]int64)
+	for k, v := range m {
+		if spec.IsOfficialVersion(k) {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // durationPercentile walks the sorted 30s-bin CDF and interpolates inside the
