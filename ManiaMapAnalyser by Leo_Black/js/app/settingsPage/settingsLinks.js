@@ -13,6 +13,7 @@
  */
 
 import { openExternalLink } from "../externalLink.js";
+import { t, translateEntry } from "../i18n/index.js";
 
 /**
  * Link ids this page does not offer (the sibling exclusion of `EXCLUDED_KEYS`
@@ -51,7 +52,7 @@ export function createSettingsLinks({ root, entries, urlFor, onCopied }) {
 
         const title = document.createElement("h3");
         title.className = "settings-group-title";
-        title.textContent = "Links";
+        title.textContent = t("headers.hLinks", "Links");
         group.appendChild(title);
 
         const row = document.createElement("div");
@@ -63,15 +64,16 @@ export function createSettingsLinks({ root, entries, urlFor, onCopied }) {
         root.appendChild(group);
     }
 
-    function buildLink(entry) {
-        const url = urlFor(entry);
+    function buildLink(rawEntry) {
+        const trans = translateEntry(rawEntry);
+        const url = urlFor(rawEntry);
         const link = document.createElement("a");
         link.className = "settings-link";
-        link.dataset.settingsLink = entry.uniqueID;
-        link.textContent = entry.title || entry.text || entry.uniqueID;
+        link.dataset.settingsLink = rawEntry.uniqueID;
+        link.textContent = trans.title || rawEntry.title || rawEntry.text || rawEntry.uniqueID;
         if (url) {
             link.href = url;
-            link.title = url;
+            link.title = trans.description || url;
         }
         link.addEventListener("click", (event) => {
             if (event && typeof event.preventDefault === "function") {

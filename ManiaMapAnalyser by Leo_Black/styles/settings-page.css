@@ -115,6 +115,38 @@ body {
     background: rgba(93, 198, 255, 0.15);
 }
 
+.settings-lang-switcher {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    background: var(--settings-panel-2);
+    border: 1px solid var(--settings-border);
+    border-radius: 999px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.settings-lang-btn {
+    padding: 2px 10px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--settings-subtext);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.settings-lang-btn:hover {
+    color: var(--settings-text);
+}
+
+.settings-lang-btn.active {
+    background: var(--settings-accent);
+    color: #12151c;
+}
+
 #presets-app,
 .settings-panel {
     margin-bottom: 18px;

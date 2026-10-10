@@ -33,6 +33,7 @@ import { createShellPresetTransport } from "./shellTransport.js";
 import { createSettingsForm } from "./settingsForm.js";
 import { createSettingsLinks } from "./settingsLinks.js";
 import { createShellConfigPanel } from "./shellConfigPanel.js";
+import { initLocale, getLocale, setLocale, onLocaleChange, t } from "../i18n/index.js";
 
 /** Port the desktop shell serves the plugin directory on. */
 const SHELL_PORT = "24061";
@@ -43,11 +44,19 @@ const FALLBACK_ENDPOINT = "localhost:24050";
 /** settings.json entry whose value points at the tosu presets page. */
 const PRESETS_BUTTON_KEY = "PresetButton";
 
-const SHELL_UNAVAILABLE_NOTICE = "Cannot reach the shell (24061)";
-const SHELL_ONLINE_NOTICE = "tosu is connected — settings are read-only here.";
-const SHELL_ONLINE_PRESETS_NOTICE = "tosu is connected — settings are read-only here. "
-    + "Manage presets from the Presets page of your tosu instance.";
-const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:24061/settings.html";
+function getShellUnavailableNotice() {
+    return t("status.shellUnavailable", "Cannot reach the shell (24061)");
+}
+function getShellOnlineNotice() {
+    return t("status.shellOnline", "tosu is connected — settings are read-only here.");
+}
+function getShellOnlinePresetsNotice() {
+    return t("status.shellOnlinePresets", "tosu is connected — settings are read-only here. "
+        + "Manage presets from the Presets page of your tosu instance.");
+}
+function getOriginNotice() {
+    return t("status.originNotice", "Open this page from the desktop shell: http://127.0.0.1:24061/settings.html");
+}
 
 const statusBarEl = document.getElementById("settings-status");
 const linksRootEl = document.getElementById("settings-links-root");
@@ -188,12 +197,12 @@ function isShellOrigin() {
 function renderOriginNotice() {
     const notice = document.createElement("p");
     notice.className = "settings-origin-notice";
-    notice.textContent = ORIGIN_NOTICE;
+    notice.textContent = getOriginNotice();
     if (settingsRootEl) {
         settingsRootEl.appendChild(notice);
     }
-    setStatus(ORIGIN_NOTICE, "error");
-    document.title = "Mania Map Analyser — Settings (desktop shell only)";
+    setStatus(getOriginNotice(), "error");
+    document.title = t("originPageTitle", "Mania Map Analyser — Settings (desktop shell only)");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,13 +222,15 @@ function buildLayout() {
     section.className = "settings-panel";
 
     const title = document.createElement("h2");
-    title.textContent = "Card Settings";
+    title.id = "settings-form-title";
+    title.textContent = t("nav.cardSettings", "Card Settings");
     section.appendChild(title);
 
     const sub = document.createElement("p");
+    sub.id = "settings-form-sub";
     sub.className = "settings-panel-sub";
-    sub.textContent = "The desktop shell keeps these values in mma-settings.json while tosu is offline; "
-        + "the overlay picks up every change immediately.";
+    sub.textContent = t("status.cardSettingsSub", "The desktop shell keeps these values in mma-settings.json while tosu is offline; "
+        + "the overlay picks up every change immediately.");
     section.appendChild(sub);
 
     settingsFormEl = document.createElement("div");
@@ -229,19 +240,99 @@ function buildLayout() {
     settingsRootEl.appendChild(section);
 }
 
-function populateNav(nav) {
-    nav.textContent = "";
-    for (const [href, label] of [
-        ["#shell-config-section", "Shell Configuration"],
-        ["#settings-form-section", "Card Settings"],
-        ["#presets-app", "Presets Manager"],
-    ]) {
-        const link = document.createElement("a");
-        link.className = "settings-nav-link";
-        link.href = href;
-        link.textContent = label;
-        nav.appendChild(link);
+function updateNavLabels() {
+    const shellLink = document.getElementById("nav-shell-config");
+    const cardLink = document.getElementById("nav-card-settings");
+    const presetsLink = document.getElementById("nav-presets-app");
+    if (shellLink) shellLink.textContent = t("nav.shellConfig", "Shell Configuration");
+    if (cardLink) cardLink.textContent = t("nav.cardSettings", "Card Settings");
+    if (presetsLink) presetsLink.textContent = t("nav.presetsManager", "Presets Manager");
+}
+
+function updateLangButtons(activeLocale) {
+    const buttons = document.querySelectorAll(".settings-lang-btn");
+    buttons.forEach((btn) => {
+        const isActive = btn.dataset.lang === activeLocale;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-checked", isActive ? "true" : "false");
+    });
+}
+
+let langSwitcherBound = false;
+function setupLangSwitcher() {
+    if (!langSwitcherBound) {
+        langSwitcherBound = true;
+        const buttons = document.querySelectorAll(".settings-lang-btn");
+        buttons.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const lang = btn.dataset.lang;
+                if (lang && lang !== getLocale()) {
+                    setLocale(lang);
+                }
+            });
+        });
     }
+    updateLangButtons(getLocale());
+}
+
+function updatePageTitle() {
+    document.title = t("pageTitle", "Mania Map Analyser — Settings");
+    document.documentElement.lang = getLocale();
+}
+
+function updateLayoutText() {
+    const titleEl = document.getElementById("settings-form-title");
+    if (titleEl) titleEl.textContent = t("nav.cardSettings", "Card Settings");
+    const subEl = document.getElementById("settings-form-sub");
+    if (subEl) subEl.textContent = t("status.cardSettingsSub", "The desktop shell keeps these values in mma-settings.json while tosu is offline; "
+        + "the overlay picks up every change immediately.");
+
+    if (readOnlyEl) {
+        const msgEl = readOnlyEl.querySelector(".settings-readonly-message");
+        if (msgEl) msgEl.textContent = getShellOnlineNotice();
+        const lblEl = readOnlyEl.querySelector(".settings-readonly-label");
+        if (lblEl) lblEl.textContent = t("status.tosuDashboard", "tosu dashboard:");
+    }
+
+    if (presetsNoticeEl) {
+        const textEl = presetsNoticeEl.querySelector(".settings-presets-notice-text");
+        if (textEl) textEl.textContent = getShellOnlinePresetsNotice();
+    }
+}
+
+function populateNav(nav) {
+    const shellLink = document.getElementById("nav-shell-config");
+    if (!shellLink) {
+        nav.textContent = "";
+        for (const [href, labelKey, fallback, id] of [
+            ["#shell-config-section", "nav.shellConfig", "Shell Configuration", "nav-shell-config"],
+            ["#settings-form-section", "nav.cardSettings", "Card Settings", "nav-card-settings"],
+            ["#presets-app", "nav.presetsManager", "Presets Manager", "nav-presets-app"],
+        ]) {
+            const link = document.createElement("a");
+            link.className = "settings-nav-link";
+            link.href = href;
+            link.id = id;
+            link.textContent = t(labelKey, fallback);
+            nav.appendChild(link);
+        }
+        const switcher = document.createElement("div");
+        switcher.id = "settings-lang-switcher";
+        switcher.className = "settings-lang-switcher";
+        switcher.setAttribute("role", "radiogroup");
+        switcher.setAttribute("aria-label", "Language");
+        for (const [lang, text] of [["zh-CN", "中"], ["en", "EN"]]) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "settings-lang-btn";
+            btn.dataset.lang = lang;
+            btn.textContent = text;
+            switcher.appendChild(btn);
+        }
+        nav.appendChild(switcher);
+    }
+    updateNavLabels();
+    setupLangSwitcher();
     setupNavScrollspy(nav);
 }
 
@@ -291,14 +382,14 @@ function buildReadOnlyView() {
 
     const message = document.createElement("p");
     message.className = "settings-readonly-message";
-    message.textContent = SHELL_ONLINE_NOTICE;
+    message.textContent = getShellOnlineNotice();
     banner.appendChild(message);
 
     const row = document.createElement("div");
     row.className = "settings-readonly-url";
     const label = document.createElement("span");
     label.className = "settings-readonly-label";
-    label.textContent = "tosu dashboard:";
+    label.textContent = t("status.tosuDashboard", "tosu dashboard:");
     dashboardUrlEl = document.createElement("code");
     dashboardUrlEl.className = "settings-url";
     dashboardUrlEl.textContent = dashboardUrl();
@@ -370,7 +461,7 @@ function showPresetsNotice() {
 
     const text = document.createElement("p");
     text.className = "settings-presets-notice-text";
-    text.textContent = SHELL_ONLINE_PRESETS_NOTICE;
+    text.textContent = getShellOnlinePresetsNotice();
     notice.appendChild(text);
 
     const url = presetsPageUrl();
@@ -436,7 +527,7 @@ async function commitSetting(key, value, previous) {
         return;
     }
     pendingWrites.set(key, { value, previous });
-    setStatus("Saving…", "saving");
+    setStatus(t("status.saving", "Saving…"), "saving");
     try {
         // quiet: this page has no overlay DOM, so missing-element failures are
         // expected here and must not surface as console errors.
@@ -464,7 +555,7 @@ function confirmPendingWrites(values) {
         }
     }
     if (pendingWrites.size === 0) {
-        setStatus("Saved", "ok");
+        setStatus(t("status.saved", "Saved."), "ok");
     }
 }
 
@@ -477,11 +568,11 @@ function handleWriteError(error) {
         // expected answer there (no user action failed).
         const wasWritable = state.shellTosuOnline !== true;
         pendingWrites.clear();
-        setStatus(wasWritable ? `Save failed: ${message}` : SHELL_ONLINE_NOTICE, "error");
+        setStatus(wasWritable ? `${t("status.saveFailed", "Save failed: ")}${message}` : getShellOnlineNotice(), "error");
         setReadOnly(true);
         return;
     }
-    setStatus(`Save failed: ${message}`, "error");
+    setStatus(`${t("status.saveFailed", "Save failed: ")}${message}`, "error");
     for (const [key, entry] of [...pendingWrites]) {
         pendingWrites.delete(key);
         if (entry.previous === undefined) {
@@ -534,12 +625,12 @@ async function runShellPage() {
         onMalody4Selection: () => {},
     });
 
-    setStatus("Loading settings…", "loading");
+    setStatus(t("status.loading", "Loading settings…"), "loading");
 
     // 4) current settings → state → UI.
     const values = await pageTransport.readValues();
     if (!values) {
-        setStatus(SHELL_UNAVAILABLE_NOTICE, "error");
+        setStatus(getShellUnavailableNotice(), "error");
         return;
     }
     await applySnapshot(values, { quiet: true });
@@ -581,7 +672,7 @@ async function runShellPage() {
         // notice carries the PresetsButton URL, so re-render it now.
         showPresetsNotice();
     }
-    setStatus("Ready", "ok");
+    setStatus(t("status.ready", "Ready"), "ok");
 
     // 5) presets.
     initPresets();
@@ -593,6 +684,30 @@ async function runShellPage() {
 }
 
 async function bootstrap() {
+    initLocale();
+    updatePageTitle();
+    setupLangSwitcher();
+
+    onLocaleChange((locale) => {
+        updatePageTitle();
+        updateNavLabels();
+        updateLangButtons(locale);
+        updateLayoutText();
+        if (form) {
+            form.render();
+            form.setReadOnly(state.shellTosuOnline === true);
+        }
+        if (links) {
+            links.render();
+        }
+        if (shellConfigPanel && typeof shellConfigPanel.render === "function") {
+            shellConfigPanel.render();
+        }
+        if (state.shellTosuOnline === true) {
+            showPresetsNotice();
+        }
+    });
+
     if (!isShellOrigin()) {
         renderOriginNotice();
         return;

@@ -12,6 +12,8 @@
  * shell with a mix of old and new bindings).
  */
 
+import { t } from "../i18n/index.js";
+
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
 export const OFFSETS_STATUS_URL = "/offsets/status";
@@ -105,7 +107,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     }
 
     async function generateOffsets() {
-        offsetsActionMsg = "Scanning running osu! and generating offsets…";
+        offsetsActionMsg = t("shell.offsets.generatingMsg", "Scanning running osu! and generating offsets…");
         offsetsActionKind = "saving";
         render();
         const result = await requestJson(OFFSETS_GENERATE_URL, { method: "POST" });
@@ -114,7 +116,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             offsetsActionMsg = `Generation failed: ${detail}`;
             offsetsActionKind = "error";
         } else {
-            const msg = result.body && result.body.message ? result.body.message : "Offsets generated and verified successfully.";
+            const msg = result.body && result.body.message ? result.body.message : t("shell.offsets.genSuccess", "Offsets generated and verified successfully.");
             offsetsActionMsg = msg;
             offsetsActionKind = "ok";
         }
@@ -123,7 +125,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     }
 
     async function updateOffsets() {
-        offsetsActionMsg = "Checking remote manifest and verifying signatures…";
+        offsetsActionMsg = t("shell.offsets.updatingMsg", "Checking remote manifest and verifying signatures…");
         offsetsActionKind = "saving";
         render();
         const result = await requestJson(OFFSETS_UPDATE_URL, { method: "POST" });
@@ -133,7 +135,10 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             offsetsActionKind = "error";
         } else {
             const updated = result.body && typeof result.body.updated === "number" ? result.body.updated : 0;
-            const msg = result.body && result.body.message ? result.body.message : (updated > 0 ? `Updated ${updated} table(s) successfully.` : "Offsets are up to date.");
+            const defaultSuccessMsg = updated > 0
+                ? t("shell.offsets.updateSuccessMulti", "Updated {count} table(s) successfully.").replace("{count}", updated)
+                : t("shell.offsets.updateSuccessZero", "Offsets are up to date.");
+            const msg = result.body && result.body.message ? result.body.message : defaultSuccessMsg;
             offsetsActionMsg = msg;
             offsetsActionKind = "ok";
         }
@@ -232,12 +237,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         section.className = "settings-panel";
 
         const title = document.createElement("h2");
-        title.textContent = "Shell Configuration";
+        title.textContent = t("shell.title", "Shell Configuration");
         section.appendChild(title);
 
         const sub = document.createElement("p");
         sub.className = "settings-panel-sub";
-        sub.textContent = "Only the desktop shell reads these values (mma-shell-config.json, next to mma-shell.exe).";
+        sub.textContent = t("shell.subtitle", "Only the desktop shell reads these values (mma-shell-config.json, next to mma-shell.exe).");
         section.appendChild(sub);
 
         const status = document.createElement("p");
@@ -325,8 +330,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "gameClient",
-            "Game client",
-            "Auto picks the active source; a fixed value forces that source.",
+            t("shell.gameClient.title", "Game client"),
+            t("shell.gameClient.description", "Client mma-shell attaches to. Auto chooses between running osu! (native memory reader), Etterna, Malody V and Malody 4.3.7; choosing a specific client disables auto-detection."),
             select,
         );
     }
@@ -351,7 +356,9 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         readout.textContent = `adopted: ${adopted || "not detected"}`;
         wrap.appendChild(readout);
 
-        return buildRow(field.key, field.title, field.description, wrap);
+        const title = t(`shell.roots.${field.key}.title`, field.title);
+        const desc = t(`shell.roots.${field.key}.description`, field.description);
+        return buildRow(field.key, title, desc, wrap);
     }
 
     function buildWindowTopmostRow() {
@@ -364,8 +371,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "topmost",
-            "Always on Top",
-            "Keep the overlay window above all other windows.",
+            t("shell.hotkeys.topmost", "Always on Top"),
+            t("shell.hotkeys.topmostDesc", "Keep the overlay window above all other windows."),
             input,
         );
     }
@@ -380,8 +387,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "clickThrough",
-            "Click-Through",
-            "Pass mouse clicks through the overlay window to the game or desktop.",
+            t("shell.hotkeys.clickThrough", "Click-Through"),
+            t("shell.hotkeys.clickThroughDesc", "Pass mouse clicks through the overlay window to the game or desktop."),
             input,
         );
     }
@@ -397,7 +404,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             fieldWrap.className = "shell-config-hotkey";
             const label = document.createElement("span");
             label.className = "shell-config-hotkey-label";
-            label.textContent = field.title;
+            label.textContent = t(`shell.hotkeys.${field.key}`, field.title);
             const input = document.createElement("input");
             input.type = "text";
             input.dataset.shellKey = field.key;
@@ -420,7 +427,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         hint.textContent = HOTKEY_HINT;
         wrap.appendChild(hint);
 
-        return buildRow("hotkeys", "Hotkeys", "Shell-wide shortcuts.", wrap);
+        return buildRow(
+            "hotkeys",
+            t("shell.hotkeys.title", "Global hotkeys"),
+            t("shell.hotkeys.description", "Format: modifier+modifier+key (e.g. Ctrl+Shift+T). Blank disables the shortcut."),
+            wrap,
+        );
     }
 
     function buildLogLevelRow() {
@@ -438,7 +450,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         select.addEventListener("change", () => {
             write({ logLevel: select.value });
         });
-        return buildRow("logLevel", "Log level", "Takes effect immediately.", select);
+        return buildRow(
+            "logLevel",
+            t("shell.logLevel.title", "Log level"),
+            t("shell.logLevel.description", "Log verbosity of mma-shell.log (written to logs/ alongside the executable)."),
+            select,
+        );
     }
 
     function buildOffsetsSection() {
@@ -447,7 +464,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const header = document.createElement("h3");
         header.className = "settings-group-title";
-        header.textContent = "Memory Offsets Management";
+        header.textContent = t("shell.offsets.title", "Memory Offsets Management");
         wrap.appendChild(header);
 
         const stableInfo = offsetsInfo.stable || {};
@@ -457,7 +474,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const stableBadge = document.createElement("span");
         stableBadge.className = `shell-config-badge ${stableInfo.loaded ? "badge-ok" : "badge-warn"}`;
         stableBadge.textContent = stableInfo.loaded ? "Active" : "Fallback";
-        wrap.appendChild(buildRow("offsetsStable", "osu!stable Offsets", stableDesc, stableBadge));
+        wrap.appendChild(buildRow("offsetsStable", t("shell.offsets.stableLayout", "Stable Layout: "), stableDesc, stableBadge));
 
         const lazerInfo = offsetsInfo.lazer || {};
         const lazerDesc = lazerInfo.loaded
@@ -466,7 +483,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
         lazerBadge.textContent = lazerInfo.loaded ? "Active" : "Fallback";
-        wrap.appendChild(buildRow("offsetsLazer", "osu!lazer Offsets", lazerDesc, lazerBadge));
+        wrap.appendChild(buildRow("offsetsLazer", t("shell.offsets.lazerLayout", "Lazer Layout: "), lazerDesc, lazerBadge));
 
         const actionsWrap = document.createElement("div");
         actionsWrap.className = "shell-config-actions";
@@ -474,10 +491,10 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const genBtn = document.createElement("button");
         genBtn.type = "button";
         genBtn.className = "settings-action-btn";
-        genBtn.textContent = "Live Generator";
+        genBtn.textContent = t("shell.offsets.liveGenerator", "Live Generator");
         genBtn.title = offsetsInfo.generator_ready
-            ? "Extract offsets from running osu! with zero .NET SDK"
-            : "gen.exe not detected";
+            ? t("shell.offsets.genReadyTitle", "Extract offsets from running osu! with zero .NET SDK")
+            : t("shell.offsets.genDisabledTitle", "gen.exe not detected");
         genBtn.disabled = !offsetsInfo.generator_ready;
         genBtn.addEventListener("click", () => generateOffsets());
         actionsWrap.appendChild(genBtn);
@@ -485,8 +502,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const updateBtn = document.createElement("button");
         updateBtn.type = "button";
         updateBtn.className = "settings-action-btn";
-        updateBtn.textContent = "Check Remote Updates";
-        updateBtn.title = "Verify Ed25519 signed manifest and sync updated tables";
+        updateBtn.textContent = t("shell.offsets.checkRemote", "Check Remote Updates");
+        updateBtn.title = t("shell.offsets.updateTitle", "Verify Ed25519 signed manifest and sync updated tables");
         updateBtn.addEventListener("click", () => updateOffsets());
         actionsWrap.appendChild(updateBtn);
 
@@ -497,7 +514,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             actionsWrap.appendChild(statusEl);
         }
 
-        wrap.appendChild(buildRow("offsetsActions", "Offsets Actions", "Update or generate memory layout tables for osu! clients.", actionsWrap));
+        wrap.appendChild(buildRow(
+            "offsetsActions",
+            t("shell.offsets.actionsTitle", "Offsets Actions"),
+            t("shell.offsets.actionsDesc", "Update or generate memory layout tables for osu! clients."),
+            actionsWrap,
+        ));
 
         return wrap;
     }
@@ -508,7 +530,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const header = document.createElement("h3");
         header.className = "settings-group-title";
-        header.textContent = "Shadow Diagnostics (Native vs Tosu)";
+        header.textContent = t("shell.shadow.title", "Shadow Diagnostics (Native vs Tosu)");
         wrap.appendChild(header);
 
         const shadow = offsetsInfo.shadow || {};
@@ -520,8 +542,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const desc = total === 0
             ? (shadow.tosu_connected
                 ? "tosu connected — awaiting compared frames"
-                : "Waiting for concurrent tosu and native data streams…")
-            : `${total} frames compared: ${matches} matched (${rate}%), ${mismatches} mismatched`;
+                : t("shell.shadow.descEmpty", "Waiting for concurrent tosu and native data streams…"))
+            : t("shell.shadow.descPopulated", "{rate}% match rate ({matches} matched, {mismatches} mismatched of {total} frames)")
+                .replace("{rate}", rate)
+                .replace("{matches}", matches)
+                .replace("{mismatches}", mismatches)
+                .replace("{total}", total);
 
         const badge = document.createElement("span");
         if (total === 0) {
@@ -561,7 +587,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "settings-action-btn";
-        resetBtn.textContent = "Reset Counts";
+        resetBtn.textContent = t("shell.shadow.resetBtn", "Reset Shadow Metrics");
         resetBtn.addEventListener("click", () => resetShadow());
         actionsWrap.appendChild(resetBtn);
 
@@ -576,5 +602,6 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         refreshResolved,
         getConfig: () => config,
         getResolved: () => resolved,
+        render,
     };
 }

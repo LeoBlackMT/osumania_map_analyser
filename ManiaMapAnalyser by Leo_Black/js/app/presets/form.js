@@ -5,6 +5,8 @@
  * manager.js stays the single owner of page state.
  */
 
+import { translateEntry, translateHeader } from "../i18n/index.js";
+
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 
 /**
@@ -47,9 +49,10 @@ export function createForm(api) {
                 currentGroup = document.createElement("div");
                 currentGroup.className = "presets-group";
                 if (pendingHeader) {
+                    const translatedHeader = translateHeader(pendingHeader);
                     const title = document.createElement("h2");
                     title.className = "presets-group-title";
-                    title.textContent = pendingHeader.title;
+                    title.textContent = translatedHeader.title;
                     currentGroup.appendChild(title);
                     pendingHeader = null;
                 }
@@ -60,6 +63,7 @@ export function createForm(api) {
     }
 
     function buildSettingRow(entry) {
+        const translated = translateEntry(entry);
         const key = entry.uniqueID;
         formValues[key] = entry.value;
         // Default: nothing included — the user checks what they want to manage.
@@ -79,8 +83,8 @@ export function createForm(api) {
 
         const info = document.createElement("span");
         info.className = "presets-setting-info";
-        info.innerHTML = `<span class="presets-setting-title">${escapeHtml(entry.title)}</span>`
-            + (entry.description ? `<span class="presets-setting-desc">${escapeHtml(entry.description)}</span>` : "");
+        info.innerHTML = `<span class="presets-setting-title">${escapeHtml(translated.title)}</span>`
+            + (translated.description ? `<span class="presets-setting-desc">${escapeHtml(translated.description)}</span>` : "");
 
         const control = buildControl(entry, key);
 

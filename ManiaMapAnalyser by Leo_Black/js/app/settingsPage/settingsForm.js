@@ -12,6 +12,8 @@
  *   - every `change` commits immediately through the caller's onCommit.
  */
 
+import { translateEntry, translateHeader } from "../i18n/index.js";
+
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 
 /**
@@ -52,9 +54,10 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
                 currentGroup = document.createElement("div");
                 currentGroup.className = "settings-group";
                 if (pendingHeader) {
+                    const transHeader = translateHeader(pendingHeader);
                     const title = document.createElement("h3");
                     title.className = "settings-group-title";
-                    title.textContent = pendingHeader.title;
+                    title.textContent = transHeader.title || pendingHeader.title;
                     currentGroup.appendChild(title);
                     pendingHeader = null;
                 }
@@ -65,9 +68,12 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
         applyReadOnlyState();
     }
 
-    function buildRow(entry) {
-        const key = entry.uniqueID;
-        values[key] = initial[key] ?? defaults[key];
+    function buildRow(rawEntry) {
+        const entry = translateEntry(rawEntry);
+        const key = rawEntry.uniqueID;
+        if (values[key] === undefined) {
+            values[key] = initial[key] ?? defaults[key];
+        }
 
         const row = document.createElement("div");
         row.className = "settings-row";
@@ -110,7 +116,7 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
                 for (const option of entry.options || []) {
                     const optionEl = document.createElement("option");
                     optionEl.value = option;
-                    optionEl.textContent = option;
+                    optionEl.textContent = entry.optionLabels?.[option] || option;
                     if (option === current) {
                         optionEl.selected = true;
                     }

@@ -171,6 +171,7 @@ Malody V 有两个互不影响的通道，按需要选：
 - `settings.json` 里类型为 `button` 的条目中**壳内可用的 4 个**（设置说明、预设说明、报告问题、基准测试结果）不在表单里，而是渲染在**页面最顶部**的 **Links** 行（状态栏下方、导航栏上方）——打开窗口第一眼就能看到，不必往下翻。另两个条目（预设管理页、调试页）指向的是 tosu 自己提供、在壳里并不存在的地址，因此设置窗口不显示它们（`settings.json` 与 tosu 设置界面照旧保留全部 6 个）；tosu 在线时下方的只读提示仍会给出 tosu 预设页地址，预设管理入口没有丢失。
 - **链接行为**：点链接不会把设置窗口导航走。壳窗口里若打不开系统浏览器（`window.open` 被拦），页面会**把地址复制到剪贴板**并提示 `Link copied — open it in your browser.`，自己在浏览器里粘贴打开即可。预设区的 **Guide** 按钮也走同一条路（以前在壳窗口里点了没反应）。
 - **快捷键字段总有值**：壳启动时会检查 `mma-shell-config.json` 的 `hotkeys`，缺失或为空的键按内置默认补齐（`topmost` / `clickThrough` / `close` / `settings`，其中打开设置窗口默认 **`Ctrl+Shift+S`**），你自己填过的值不会被覆盖；所以 Shell 面板里的「Open settings window」不会再是空输入框。快捷键只在启动时注册，在该面板改完需**重启壳**生效。
+- **多语言与国际化 (i18n)**：导航栏右侧配有语言切换按钮 `[中] [EN]`，支持在简体中文和英文之间实时无缝切换。所选语言自动保存在本地存储（`localStorage`）中，下次打开设置窗口自动保持所选语言。翻译仅影响界面文字展示，底层的设置键值、通信协议及专有名词（Sunny, Daniel, Azusa, Roxy, Companella, Mixed, RC, LN, HB, SV, MSD, MinaCalc, Etterna, Malody, tosu 等）保持严格不变。
 
 **在线与离线行为不同**：
 
@@ -413,6 +414,7 @@ to build — the main window's state file is not touched by this).
   opening the settings window defaults to **`Ctrl+Shift+S`**) without ever overwriting a value you wrote — so the
   "Open settings window" field in the Shell panel never shows up empty. Hotkeys register at startup only: restart the
   shell after changing them there.
+- **Internationalization (i18n)**: A `[中] [EN]` toggle button in the navigation bar switches between English and Simplified Chinese instantly without reloading. Your selection is automatically persisted in `localStorage`. Translations strictly apply to labels and descriptions; underlying config keys, raw values, and proper nouns (Sunny, Daniel, Azusa, Roxy, Companella, Mixed, RC, LN, HB, SV, MSD, MinaCalc, Etterna, Malody, tosu, etc.) remain untouched for full compatibility.
 
 **Online and offline behave differently**:
 

@@ -13,9 +13,13 @@
          above the anchor nav, so they are visible the moment the window opens. -->
     <div id="settings-links-root"></div>
     <nav id="settings-nav-root" class="settings-nav">
-        <a class="settings-nav-link active" href="#shell-config-section">Shell Configuration</a>
-        <a class="settings-nav-link" href="#settings-form-section">Card Settings</a>
-        <a class="settings-nav-link" href="#presets-app">Presets Manager</a>
+        <a id="nav-shell-config" class="settings-nav-link active" href="#shell-config-section">Shell Configuration</a>
+        <a id="nav-card-settings" class="settings-nav-link" href="#settings-form-section">Card Settings</a>
+        <a id="nav-presets-app" class="settings-nav-link" href="#presets-app">Presets Manager</a>
+        <div id="settings-lang-switcher" class="settings-lang-switcher" role="radiogroup" aria-label="Language">
+            <button type="button" class="settings-lang-btn" data-lang="zh-CN">中</button>
+            <button type="button" class="settings-lang-btn" data-lang="en">EN</button>
+        </div>
     </nav>
     <div id="shell-config-root"></div>
     <div id="settings-root"></div>
