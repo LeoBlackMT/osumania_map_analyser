@@ -5,6 +5,7 @@ use super::lazer_table::LoadError;
 use super::validation::validate_stable_schema;
 
 pub const DEFAULT_STABLE_TABLE_JSON: &str = include_str!("../../../offsets/stable/stable__x86.json");
+pub const DEFAULT_PPYSB_TABLE_JSON: &str = include_str!("../../../offsets/stable/ppysb__x86.json");
 
 /// stable 锚点定义
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -248,10 +249,26 @@ pub fn default_stable_table() -> StableTable {
         .expect("compiled-in stable table must be valid")
 }
 
-/// stable 表发现梯子
-pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason> {
-    // 1. 显式环境变量 $MMA_STABLE_OFFSETS
-    if let Ok(env_file) = std::env::var("MMA_STABLE_OFFSETS") {
+pub fn default_ppysb_table() -> StableTable {
+    StableTable::load(DEFAULT_PPYSB_TABLE_JSON.as_bytes())
+        .expect("compiled-in ppysb table must be valid")
+}
+
+/// stable / ppysb 表发现梯子
+pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Result<StableTable, Reason> {
+    let filename = if variant.eq_ignore_ascii_case("ppysb") {
+        "ppysb__x86.json"
+    } else {
+        "stable__x86.json"
+    };
+
+    // 1. 显式环境变量 $MMA_PPYSB_OFFSETS / $MMA_STABLE_OFFSETS
+    let env_var = if variant.eq_ignore_ascii_case("ppysb") {
+        std::env::var("MMA_PPYSB_OFFSETS").or_else(|_| std::env::var("MMA_STABLE_OFFSETS"))
+    } else {
+        std::env::var("MMA_STABLE_OFFSETS")
+    };
+    if let Ok(env_file) = env_var {
         let p = PathBuf::from(env_file);
         if p.exists() {
             if let Ok(bytes) = std::fs::read(&p) {
@@ -264,11 +281,13 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
 
     // 2. 统一偏移目录环境变量 $MMA_OFFSETS_DIR
     if let Ok(offsets_dir) = std::env::var("MMA_OFFSETS_DIR") {
-        let p = PathBuf::from(offsets_dir).join("stable").join("stable__x86.json");
-        if p.exists() {
-            if let Ok(bytes) = std::fs::read(&p) {
-                if let Ok(table) = StableTable::load(&bytes) {
-                    return Ok(table);
+        for sub in &["stable", "ppysb"] {
+            let p = PathBuf::from(&offsets_dir).join(sub).join(filename);
+            if p.exists() {
+                if let Ok(bytes) = std::fs::read(&p) {
+                    if let Ok(table) = StableTable::load(&bytes) {
+                        return Ok(table);
+                    }
                 }
             }
         }
@@ -276,15 +295,17 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
 
     // 3. APPDATA 缓存目录
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let p = PathBuf::from(appdata)
-            .join("ManiaMapAnalyser")
-            .join("offsets")
-            .join("stable")
-            .join("stable__x86.json");
-        if p.exists() {
-            if let Ok(bytes) = std::fs::read(&p) {
-                if let Ok(table) = StableTable::load(&bytes) {
-                    return Ok(table);
+        for sub in &["stable", "ppysb"] {
+            let p = PathBuf::from(&appdata)
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join(sub)
+                .join(filename);
+            if p.exists() {
+                if let Ok(bytes) = std::fs::read(&p) {
+                    if let Ok(table) = StableTable::load(&bytes) {
+                        return Ok(table);
+                    }
                 }
             }
         }
@@ -293,8 +314,10 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
     // 4. dir_hint 目录（如 exe 同级目录）
     if let Some(hint) = dir_hint {
         let candidates = [
-            hint.join("offsets").join("stable").join("stable__x86.json"),
-            hint.join("offset").join("stable").join("stable__x86.json"),
+            hint.join("offsets").join("stable").join(filename),
+            hint.join("offsets").join("ppysb").join(filename),
+            hint.join("offset").join("stable").join(filename),
+            hint.join("offset").join("ppysb").join(filename),
         ];
         for p in &candidates {
             if p.exists() {
@@ -310,11 +333,13 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
     // 5. 当前可执行文件同级目录
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            let p = exe_dir.join("offsets").join("stable").join("stable__x86.json");
-            if p.exists() {
-                if let Ok(bytes) = std::fs::read(&p) {
-                    if let Ok(table) = StableTable::load(&bytes) {
-                        return Ok(table);
+            for sub in &["stable", "ppysb"] {
+                let p = exe_dir.join("offsets").join(sub).join(filename);
+                if p.exists() {
+                    if let Ok(bytes) = std::fs::read(&p) {
+                        if let Ok(table) = StableTable::load(&bytes) {
+                            return Ok(table);
+                        }
                     }
                 }
             }
@@ -322,5 +347,14 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
     }
 
     // 6. 内置编译期兜底（Zero IO 永不失败）
-    Ok(default_stable_table())
+    if variant.eq_ignore_ascii_case("ppysb") {
+        Ok(default_ppysb_table())
+    } else {
+        Ok(default_stable_table())
+    }
 }
+
+pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason> {
+    find_stable_table_variant(dir_hint, "stable")
+}
+
