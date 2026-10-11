@@ -128,12 +128,11 @@ export function setStatus(message, kind) {
     state.statusText = text;
     state.statusKind = kind;
 
-    if (!statusEl) {
-        return;
+    if (statusEl) {
+        statusEl.className = `status ${kind}`;
+        applyStatusMarquee(text);
     }
-
-    statusEl.className = `status ${kind}`;
-    applyStatusMarquee(text);
+    updateCardPlayVisibility();
 }
 
 export function refreshStatusRendering() {
@@ -279,8 +278,25 @@ export function updatePauseCountVisibility() {
     pauseCountEl.hidden = false;
 }
 
+function resolveEffectiveSource() {
+    if (state.activeSource) {
+        return state.activeSource;
+    }
+    if (state.malody4Alive) {
+        return "malody4";
+    }
+    if (state.malodyAlive) {
+        return "malody";
+    }
+    if (state.etternaAlive) {
+        return "etterna";
+    }
+    return null;
+}
+
 export function isCurrentSourcePlaying() {
-    switch (state.activeSource) {
+    const source = resolveEffectiveSource();
+    switch (source) {
         case "osu":
             return Boolean(state.isInPlayState);
         case "malody":
@@ -295,7 +311,8 @@ export function isCurrentSourcePlaying() {
 }
 
 export function isCurrentSourceMenu() {
-    switch (state.activeSource) {
+    const source = resolveEffectiveSource();
+    switch (source) {
         case "osu":
             return state.clientStateName === "menu";
         case "malody":
@@ -307,13 +324,45 @@ export function isCurrentSourceMenu() {
     }
 }
 
+export function hasActiveErrorOrNotice() {
+    if (state.statusKind === "error") {
+        return true;
+    }
+    if (overlayEl && !overlayEl.hidden && overlayEl.classList.contains("error")) {
+        return true;
+    }
+    if (state.malody4Reason === "chart-unknown-identity" || state.malody4Reason === "chart-unresolved") {
+        return true;
+    }
+    if (typeof state.statusText === "string" && state.statusText.length > 0 && (
+        state.statusText.startsWith("Malody 4:") ||
+        state.statusText.startsWith("[Error]") ||
+        state.statusText.startsWith("Failed to")
+    )) {
+        return true;
+    }
+    if (typeof state.shellOsuNotice === "string" && state.shellOsuNotice.length > 0) {
+        return true;
+    }
+    return false;
+}
+
 export function updateCardPlayVisibility() {
     if (!mainCardEl) {
         return;
     }
 
+    // 存在明确的错误、异常或未解析提示时，绝不隐藏卡片，确保用户能够及时看到状态与错误说明
+    if (hasActiveErrorOrNotice()) {
+        mainCardEl.classList.toggle("card-hidden-by-play", false);
+        mainCardEl.setAttribute("aria-hidden", "false");
+        return;
+    }
+
+    const currentSource = resolveEffectiveSource();
+
     // 无活跃数据源时（如未开游戏、已退出游戏）：始终显示卡片以展示等待提示，防止卡片位置丢失
-    if (!state.activeSource) {
+    if (!currentSource) {
         mainCardEl.classList.toggle("card-hidden-by-play", false);
         mainCardEl.setAttribute("aria-hidden", "false");
         return;
@@ -348,6 +397,7 @@ export function showOverlay({
     overlayTitleEl.textContent = title;
     overlayMessageEl.textContent = message;
     overlaySpinnerEl.hidden = !showSpinner;
+    updateCardPlayVisibility();
 }
 
 export function hideOverlay() {
@@ -356,4 +406,5 @@ export function hideOverlay() {
     overlayTitleEl.textContent = "";
     overlayMessageEl.textContent = "";
     overlaySpinnerEl.hidden = true;
+    updateCardPlayVisibility();
 }

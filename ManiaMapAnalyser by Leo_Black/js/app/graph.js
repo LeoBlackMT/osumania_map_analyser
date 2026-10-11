@@ -374,12 +374,8 @@ export function clearDiffGraph() {
             view.lineEl.setAttribute("d", "");
         }
 
-        if (view.cursorEl) {
-            view.cursorEl.hidden = true;
-        }
-        if (view.cursorDotEl) {
-            view.cursorDotEl.hidden = true;
-        }
+        setCursorElementVisibility(view.cursorEl, false);
+        setCursorElementVisibility(view.cursorDotEl, false);
 
         if (view.errorEl) {
             view.errorEl.textContent = "Graph unavailable";
@@ -394,15 +390,26 @@ export function clearDiffGraph() {
     syncGraphAnimationLoop();
 }
 
+function setCursorElementVisibility(el, visible) {
+    if (!el) {
+        return;
+    }
+    el.hidden = !visible;
+    if (visible) {
+        el.removeAttribute("hidden");
+        el.style.display = "";
+    } else {
+        el.setAttribute("hidden", "");
+        el.style.display = "none";
+    }
+}
+
 export function setGraphCursorVisible(visible) {
     forEachGraphView((view) => {
         const enabled = view.isEnabled();
-        if (view.cursorEl) {
-            view.cursorEl.hidden = !visible || !enabled;
-        }
-        if (view.cursorDotEl) {
-            view.cursorDotEl.hidden = !visible || !enabled;
-        }
+        const show = Boolean(visible && enabled);
+        setCursorElementVisibility(view.cursorEl, show);
+        setCursorElementVisibility(view.cursorDotEl, show);
     });
 }
 
@@ -432,12 +439,8 @@ export function setGraphLoading(isLoading) {
             resetPlayedFill(view);
             setGraphLoadingTextVisible(view, true);
             clearPauseMarkersDom(view);
-            if (view.cursorEl) {
-                view.cursorEl.hidden = true;
-            }
-            if (view.cursorDotEl) {
-                view.cursorDotEl.hidden = true;
-            }
+            setCursorElementVisibility(view.cursorEl, false);
+            setCursorElementVisibility(view.cursorDotEl, false);
             if (view.errorEl) {
                 view.errorEl.hidden = true;
                 view.errorEl.textContent = "Graph unavailable";
@@ -460,12 +463,8 @@ export function showDiffGraphError(message) {
     dropGraphSeriesSource();
     forEachEnabledGraphView((view) => {
         clearGraphScanEnter(view);
-        if (view.cursorEl) {
-            view.cursorEl.hidden = true;
-        }
-        if (view.cursorDotEl) {
-            view.cursorDotEl.hidden = true;
-        }
+        setCursorElementVisibility(view.cursorEl, false);
+        setCursorElementVisibility(view.cursorDotEl, false);
 
         if (view.fillEl) {
             view.fillEl.setAttribute("d", "");
@@ -485,9 +484,32 @@ export function showDiffGraphError(message) {
     });
 }
 
+function isGraphProgressSupported() {
+    const src = state.activeSource || state.cardOwner;
+    if (src === "malody" || src === "malody4" || src === "etterna" || src === "malody-bridge") {
+        return false;
+    }
+    const client = String(state.gameClient || "").toLowerCase();
+    if (client.startsWith("mal") || client.startsWith("ett")) {
+        return false;
+    }
+    return true;
+}
+
 export function updateGraphCursor(explicitTimeMs = null) {
     if (!hasAnyGraphModeEnabled()) {
         forEachGraphView((view) => resetPlayedFill(view));
+        setGraphCursorVisible(false);
+        return;
+    }
+
+    if (!isGraphProgressSupported()) {
+        forEachEnabledGraphView((view) => {
+            resetPlayedFill(view);
+            if (view.fillEl) {
+                view.fillEl.classList.remove("graph-unplayed");
+            }
+        });
         setGraphCursorVisible(false);
         return;
     }
@@ -681,9 +703,15 @@ export function renderDiffGraph(graphData, options = {}) {
         forEachEnabledGraphView((view) => {
             if (view.lineEl) view.lineEl.setAttribute("d", linePath);
             if (view.fillEl) view.fillEl.setAttribute("d", fillPath);
-            if (view.fillPlayEl) view.fillPlayEl.setAttribute("d", fillPath);
-            if (view.playClipRectEl) view.playClipRectEl.setAttribute("width", "0");
-            if (view.fillEl) view.fillEl.classList.add("graph-unplayed");
+            if (isGraphProgressSupported()) {
+                if (view.fillPlayEl) view.fillPlayEl.setAttribute("d", fillPath);
+                if (view.playClipRectEl) view.playClipRectEl.setAttribute("width", "0");
+                if (view.fillEl) view.fillEl.classList.add("graph-unplayed");
+            } else {
+                if (view.fillPlayEl) view.fillPlayEl.setAttribute("d", "");
+                if (view.playClipRectEl) view.playClipRectEl.setAttribute("width", "0");
+                if (view.fillEl) view.fillEl.classList.remove("graph-unplayed");
+            }
             if (view.errorEl) {
                 view.errorEl.hidden = true;
                 view.errorEl.textContent = "Graph unavailable";

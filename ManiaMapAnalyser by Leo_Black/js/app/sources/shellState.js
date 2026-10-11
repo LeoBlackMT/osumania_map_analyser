@@ -199,9 +199,17 @@ export function applyMalody4Selection(payload) {
     state.malody4LastSeq = payload.sequence != null ? payload.sequence : null;
     state.malody4LastSeenAt = Date.now();
     state.malody4Alive = Date.now() - state.malody4LastSeenAt <= MALODY4_ALIVE_WINDOW_MS;
+    // 仅在真实选曲帧（包含有效路径）时才采纳 selection 帧的 screen/playing。
+    // hidden 帧（path 为空）携带 dummy 的 screen="other"，绝不能覆盖 state.malody4Screen/malody4Playing，
+    // 否则会导致谱面未在本地库中时将选曲界面误判为主菜单导致卡片自动隐藏。
+    if (payload.path && payload.screen) {
+        state.malody4Screen = payload.screen;
+        state.malody4Playing = payload.screen === "playing";
+    }
     // L2 续约：只有"真的选中了谱面"的帧才算新鲜事件。hidden 帧（path 为空）与心跳必须
     // 排除，否则壳只要在跑（hidden 心跳永不停止）就会把路由永久钉在 malody4，饿死 osu/Etterna。
     if (payload.path && payload.event !== "heartbeat") {
         notifySourceEvent("malody4");
     }
+    updateCardPlayVisibility();
 }
