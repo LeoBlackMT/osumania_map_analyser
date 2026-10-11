@@ -783,7 +783,7 @@ function computeCurveGapResidualCorrection(baseNumeric, blendDetails, curveStats
     return clamp(residual, -1.2, 1.2);
 }
 
-function computeReferenceCorrection(azusaEst, danielNumeric, sunnyNumeric) {
+function computeReferenceCorrection(azusaEst, danielNumeric, sunnyNumeric, curveHints = null) {
     const x = Number(azusaEst);
     if (!Number.isFinite(x)) return 0;
 
@@ -801,8 +801,17 @@ function computeReferenceCorrection(azusaEst, danielNumeric, sunnyNumeric) {
         coeffS = 0.06;
     } else if (x < 12.5) {
         gate = 1.0;
-        coeffD = 0.20;
-        coeffS = 0.13;
+        const refD = daniel != null ? daniel : x;
+        const chordRate = Number.isFinite(curveHints?.chordRate) ? curveHints.chordRate : null;
+        const streamWeight = chordRate != null ? clamp((0.45 - chordRate) / 0.15, 0, 1) : 1;
+        if (refD > 12.0 && streamWeight > 0) {
+            const t = clamp((refD - 12.0) / 0.8, 0, 1) * streamWeight;
+            coeffD = 0.20 + (0.20 * t);
+            coeffS = 0.13 + (0.12 * t);
+        } else {
+            coeffD = 0.20;
+            coeffS = 0.13;
+        }
     } else if (x < 16.0) {
         gate = 1.0;
         coeffD = 0.40;
@@ -956,7 +965,9 @@ export function runAzusaEstimatorFromText(osuText, options = {}, parsed = null) 
     );
     const preOutputNumeric = clamp(Number(calibratedNumeric) + curveGapResidual, -2, 20);
     const outputNumeric = calibrateAzusaOutputNumeric(preOutputNumeric);
-    const refCorrection = computeReferenceCorrection(outputNumeric, danielNumericForBlend, sunnyNumeric);
+    const refCorrection = computeReferenceCorrection(outputNumeric, danielNumericForBlend, sunnyNumeric, {
+        chordRate,
+    });
     let finalNumeric = clamp(Number(outputNumeric) + refCorrection, -2, 20);
 
     // 马拉松时长修正（估算器内部应用）：options.marathonCorrection 注入

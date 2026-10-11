@@ -169,9 +169,29 @@ Benchmark（官方 runner，4K RC，当时数据集 526 行）：
 **本轮教训（新增 220 行数据的真实价值）**：
 1. **746 上重训全被数据拒绝**：新增 220 行（变速变体 + LN Dan Courses 的 RC 掺杂）对 ridge/isotonic 是弱信号；526 时代的纯 RC 拟合分布在 746 上依然最优。排除变体行/LN 行只会更差（同族变体行删除后有效样本骤减，CV 崩到 0.38~0.40）。
 2. **PAVA 平台化伤害低难个体**：重拟合表在低难段形成平台（多个 preOutput 映射同一输出，如 9.7565），使个别行误差从 0.06 放大到 0.98——老表在低难段有更细的梯度（526 拟合时低难行占比更高）。
-3. **docs/azusa_algorithm.md 的 "79-point" 描述过时**：`AZUSA_ISOTONIC_POINTS` 实际 84 点（后续扩充未同步文档）。
+3. **docs/azusa_algorithm.md 的 "79-point" 描述过时**：`AZUSA_ISOTONIC_POINTS` 实际 84 点（后续扩充未同步文档，已修复）。
 4. 11~17 段仍有 ~2pp exact 的"表级"空间（CV 稳定复现），但任何重拟合都以低难/高难段退化换取——全局单调表无法分带优化，拆分拼接（cut 方案）也因插值过渡区与单调约束失效。
 5. C3 三连证伪闭环：一致性硬门控（一轮）→ 参数面平坦（一轮）→ 条件权重/软融合（本轮），低难融合机制族内无剩余结构。
+
+### 2026-10 轮（分支 `feat/speed-estimation-refinement`，Follow Speed 扩充 30 样本与 Gamma 速度流平滑过渡）
+
+- **背景**：基准数据集扩充 30 个 Follow Speed 练习曲样本（Gamma/Delta 段位，746 → 776 行），Speed 样本总数由 147 增至 177 行。
+- **发现**：
+  1. Azusa Stage 6 `computeReferenceCorrection` 在 `x = 12.5` 存在硬截断阶跃：`[11.5, 12.5)` 区间 Daniel 权重为 0.20，而 `[12.5, 16.0)` 跃升至 0.40。
+  2. 纯单键速度流（如 *Sakura no Uta*, *golden hour*, *Brionac*, *Yuudachi no Ribbon* 等 Gamma 速度曲）受制于 PAVA 单调表在 `[12.2947, 12.4150]` 区间的平台，`outputNumeric` 被锁定在 ~12.44，恰好被卡在 12.5 阶跃左侧；即使 Daniel 已明确指向 Gamma 段（12.9~13.2），Daniel 纠偏强度仍被腰斩（0.20 而非 0.40）。
+- **实验与教训**：
+  1. **全局修改单调表**：尝试压平 12.29~12.87 平台，导致非速度曲（*Blue Planet*, *Asymmetrical Grooves* 等）严重回归，不可行。
+  2. **Stage 6 全局参考拉力抑制**：在 Daniel > Sunny 时抑制 Sunny 负拉力，导致高体力通货膨胀图（*Xecus*, *Youthful eyes*, *LUCIA*）大幅高估，不可行。
+  3. **速度流条件化的 Gamma 平滑参考过渡（成功方案）**：
+     仅当 `refD > 12.0`（Daniel 指向 Gamma+）且 `chordRate < 0.45`（纯单键速度流，`streamWeight = clamp((0.45 - chordRate) / 0.15, 0, 1)`）时，对 `[11.5, 12.5)` 的纠偏系数按 `refD` 线性插值过渡到 0.40 / 0.25。
+- **结果（776 行全量 Harness 验证）**：
+  - **Azusa**：
+    - 新增 30 张 Speed：MAE `0.2257 → 0.2193`（-0.0063），Exact `56.7% → 60.0%`（+3.3pp）。
+    - 全部 177 张 Speed：MAE `0.3398 → 0.3388`（-0.0010），Exact `36.2% → 36.7%`（+0.5pp）。
+    - **全部 497 张 Non-Speed（Jack/Stamina/Tech/Course）：MAE 0.3293，Exact 44.5%（逐行 0 回归，diff 0.0000）**。
+    - 全部 674 张有效谱面：MAE `0.3320 → 0.3318`，Exact `42.3% → 42.4%`。
+  - **Roxy**：通过 Azusa 融合自动受益，全量 390 张 Non-Speed 逐位一致，Gamma 速度图估值更趋近标注。
+  - **Mixed**：新增 30 张 Speed MAE `0.2170 → 0.2160`，599 张 Non-Speed 0 回归（MAE 0.4510 保持一致）。
 
 ---
 
