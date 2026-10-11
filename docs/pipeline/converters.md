@@ -13,7 +13,7 @@
 ## 转换语义（时间轴）
 
 - **单位**：simfile-parser 的 offset 均为 measure；`1 measure = 4 beats`。
-- **BPM 段 gap 处理（2.1.1 修复）**：vendor `mergeSimilarBpmRanges` 会把 BPM 差值 <1 的相邻段合并，导致合并段只保留首段 start 与末段 end，**中间实际存在的 BPM 变化点丢失**——若直接按合并段换算，中间所有 measure 会塌缩到同一时间（Vospi 谱面 545 对象 → 12，LN 比例/星数严重错误）。转换器在 `buildBpmTable` 里把相邻分段补齐为连续区间（gap 用前一段 BPM 填充），保证时间单调。
+- **BPM 段 gap 处理**：vendor `mergeSimilarBpmRanges` 会把 BPM 差值 <1 的相邻段合并，导致合并段只保留首段 start 与末段 end，**中间实际存在的 BPM 变化点丢失**——若直接按合并段换算，中间所有 measure 会塌缩到同一时间（Vospi 谱面 545 对象 → 12，LN 比例/星数严重错误）。转换器在 `buildBpmTable` 里把相邻分段补齐为连续区间（gap 用前一段 BPM 填充），保证时间单调。
 - **STOPS/DELAYS 烘焙**：事件先按 BPM 分段换算毫秒，再把位于该拍（含同拍）之前所有 stop 的时长累加后移（stop 时长按该拍 BPM 换算）。osu 无 stop 概念，此为 Etterna TimingData 语义的社区惯例。
 - **WARPS**：罕见，按折叠处理（忽略其时间影响，近似标注）。
 - **键数**：从 note 行宽推导（vendor 已打列宽补丁，支持 6K/7K 变宽行）；`CircleSize = 键数`。
@@ -21,14 +21,14 @@
 - **LN 尾冲突修复**：同列下一条起始前 1ms 截尾；尾 ≤ 头时压为头 + 1ms。
 - **mine/lift/keysound**（`M`/`L`/`K`）：丢弃（osu 无对应概念）。
 - **难度块选择**：传 `difficulty` 时按归一化名匹配 `.sm` 的 `#NOTES` / `.ssc` 的 `#DIFFICULTY` 块；不传则取首块。归一化同时接受**无前缀难度名**（`Hard`）与 **Etterna `Steps:GetDifficulty()` 枚举前缀**（`Difficulty_Hard` → `difficulty_hard` → 别名 hard→expert）——桥文件上报的就是后者，缺此前缀匹配会失败并恒回退首块（同谱面切难度只分析首个难度的根因，2.1.0 修复）。
-- **.mc**：`time[]` → BPM 红线；`effect[]`（scroll）→ 负斜率线（`100/|scroll|`，scroll=0 → `1E+308`）；`endbeat` → type 128；LN 尾同毫秒自动微调；仅 Key 模式。
+- **.mc**：`time[]` → BPM 红线；`effect[]`（scroll）→ 负斜率线（`100/|scroll|`，scroll=0 → `1E+308`）；`endbeat` → type 128；LN 尾同毫秒自动微调；仅 Key 模式（`meta.mode` 为 0 或 6，其余拒绝）。
 
 ## 测试
 
 运行（Node 22+ 无类型翻转问题；插件目录无 `package.json type:module`，Node 需按 ESM 解析 `.js`）：
 
 ```
-node --experimental-detect-module tests/run-converter-tests.mjs
+node --experimental-default-type=module tests/run-converter-tests.mjs
 ```
 
 - 测试脚本与合成生成器**均不进仓库**（`tests/` 整体 gitignored，纯本地验证）；合成样本由 `tests/generate-fixtures.mjs` 生成（可随时重建）。

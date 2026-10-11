@@ -31,13 +31,13 @@
 
 ## ① worker 消息协议（pipeline 单次往返）
 
-**修改内容（What changed）**：`manager.js:64 runInWorker` 改发 `{ id, type: "pipeline", input }`（`input = { rawText, estimatorAlgorithm, options }`）；`compute.worker.js:23-37` 新增 `"pipeline"` 消息分支，异步（then/catch）调 `runAnalysisPipeline` 后回 `{ id, result }` 或 `{ id, error }`。估算 + 全部附属段（pattern/ett/interlude/Companella 二次 Ett）一次往返完成。旧 4 估算器消息 `{ id, osuText, options }`（compute.worker.js:39-81）**保留不动**（白名单 Daniel/Azusa/Roxy/Sunny + Azusa/Roxy 无效回退 Sunny），现无调用方。
+**修改内容（What changed）**：`manager.js:89 runInWorker` 改发 `{ id, type: "pipeline", input }`（`input = { rawText, estimatorAlgorithm, options }`）；`compute.worker.js:23-37` 新增 `"pipeline"` 消息分支，异步（then/catch）调 `runAnalysisPipeline` 后回 `{ id, result }` 或 `{ id, error }`。估算 + 全部附属段（pattern/ett/interlude/Companella 二次 Ett）一次往返完成。旧 4 估算器消息 `{ id, osuText, options }`（compute.worker.js:39-81）**保留不动**（白名单 Daniel/Azusa/Roxy/Sunny + Azusa/Roxy 无效回退 Sunny），现无调用方。
 
 **修改原因（Why）**：估算器间多次往返（每条消息 structuredClone + 调度开销）改为一次往返；主线程阻塞迁移到 worker（任务 11/12 核心收益，见 ⑫）。
 
 **影响范围（Scope）**：`js/app/worker/manager.js`、`js/app/worker/compute.worker.js`、`js/app/analysis.js`（dispatch 改为单次 pipeline 调用）。消息协议对外（其他插件/调试器）不承诺稳定。
 
-**兼容策略（Compat）**：legacy 消息分支保留（防御）；manager 的 `latestId` 过期丢弃（manager.js:53）与 30s 超时（manager.js:67-72）语义不变；worker 构造失败仍返回 null → 主线程同步回退（analysis.js:375）。
+**兼容策略（Compat）**：legacy 消息分支保留（防御）；manager 的旧请求回收（`rejectAllPending` manager.js:56-62、`runInWorker` 内的 superseded 回收 manager.js:95）与 30s 超时（manager.js:101-106）语义不变；worker 构造失败仍返回 null → 主线程同步回退（analysis.js:602）。
 
 **验证方式（Verification）**：全量回归验证通过（748 样本全量比对，精确浮点比对）；浏览器冒烟 worker 路径 0 console errors（实测记录）。
 
@@ -45,13 +45,13 @@
 
 ## ② runAnalysisPipeline 纯函数（三端共用）
 
-**修改内容（What changed）**：新增 `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`，异步返回 16 业务字段 + `errors[]`（契约见 worker.md §4.3）。**三端共用同一函数**：worker（compute.worker.js:29）、主线程同步回退（analysis.js:375）、Node 回归脚本（computeOutput）。逐段顺序与旧 analysis.js 一致（解析 → 估算分派 → vibro 输入 → 归一化 → SunnyWindow → sixKConst → Interlude → Pattern → Ett → Companella 二次 Ett）。
+**修改内容（What changed）**：新增 `js/pipeline/runAnalysisPipeline.js:96` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`，异步返回 16 业务字段 + `errors[]`（契约见 worker.md §4.3）。**三端共用同一函数**：worker（compute.worker.js:29）、主线程同步回退（analysis.js:602）、Node 回归脚本（computeOutput）。逐段顺序与旧 analysis.js 一致（解析 → 估算分派 → vibro 输入 → 归一化 → SunnyWindow → sixKConst → Interlude → Pattern → Ett → Companella 二次 Ett）。
 
-**修改原因（Why）**：单一实现消除 worker/同步回退/harness 三份分派代码的漂移风险；parse-once（解析一次共享给估算器/归一化/SunnyWindow/Interlude，主线程不再二次解析，analysis.js:376）。
+**修改原因（Why）**：单一实现消除 worker/同步回退/harness 三份分派代码的漂移风险；parse-once（解析一次共享给估算器/归一化/SunnyWindow/Interlude，主线程不再二次解析，analysis.js:613）。
 
 **影响范围（Scope）**：所有估算路径（浏览器 worker + 同步回退 + Node 回归）行为必须逐位一致；输出契约（含 `parsedSummary`、软失败字段）成为新的事实标准。
 
-**兼容策略（Compat）**：`errors[]` 恒为空（硬错误预留）；估算器/SunnyWindow 抛错向上传播，由 analysis.js 外层 catch 按旧格式报 "Rework failed: ..."（analysis.js:378-400）；附属段软失败字段由 analysis.js 按旧展示条件并入 errors[]（worker.md §4.4）。
+**兼容策略（Compat）**：`errors[]` 恒为空（硬错误预留）；估算器/SunnyWindow 抛错向上传播，由 analysis.js 内层 catch 按旧格式报 "Rework failed: ..."（analysis.js:615-643，报错点 :621）；附属段软失败字段由 analysis.js 按旧展示条件并入 errors[]（worker.md §4.4）。
 
 **验证方式（Verification）**：全量回归验证通过（748 样本全量比对，回归脚本已切到 pipeline 同步路径，实测记录）。
 
@@ -59,7 +59,7 @@
 
 ## ③ 估算器入口 optional parsed 参数（向后兼容）
 
-**修改内容（What changed）**：6 个估算器入口增加可选第三参 `parsed = null`：`runSunnyEstimatorFromText`（sunnyEstimator.js:4）、`runDanielEstimatorFromText`（danielEstimator.js:9）、`runSunnyWindowEstimatorFromText`（sunnyWindowEstimator.js:13）、`runAzusaEstimatorFromText`（azusaEstimator.js:822）、`runRoxyEstimatorFromText`（roxyEstimator.js:1400）、`runMixedEstimatorFromText`（mixedEstimator.js:180）。传入已 `process()` 的 `OsuFileParser` **实例**时跳过内部解析（parse-once）；cvtFlag ∈ {IN,HO} 时在 `cloneOsuParser` 拷贝上转换（sunnyAlgorithm.js:55-71 等），共享实例保持 pristine；Roxy 仅在 `speedRate === 1 && cvtFlag 不含 IN/HO` 时共享（canonicalize 边界，worker.md §5.3）。
+**修改内容（What changed）**：6 个估算器入口增加可选第三参 `parsed = null`：`runSunnyEstimatorFromText`（sunnyEstimator.js:4）、`runDanielEstimatorFromText`（danielEstimator.js:9）、`runSunnyWindowEstimatorFromText`（sunnyWindowEstimator.js:13）、`runAzusaEstimatorFromText`（azusaEstimator.js:832）、`runRoxyEstimatorFromText`（roxyEstimator.js:1468）、`runMixedEstimatorFromText`（mixedEstimator.js:236）。传入已 `process()` 的 `OsuFileParser` **实例**时跳过内部解析（parse-once）；cvtFlag ∈ {IN,HO} 时在 `cloneOsuParser` 拷贝上转换（sunnyAlgorithm.js:69-85 等），共享实例保持 pristine；Roxy 仅在 `speedRate === 1 && cvtFlag 不含 IN/HO` 时共享（canonicalize 边界，worker.md §5.3）。
 
 **修改原因（Why）**：解析是估算段中最重的公共成本之一（perf-baseline 单次解析 ~2ms，任务 11 前每估算器各自解析），共享实例减少解析次数（13 → 1-2 次，见 ⑫）。
 
@@ -73,7 +73,7 @@
 
 ## ④ runSunnyWindowEstimatorFromText 选项签名
 
-**修改内容（What changed）**：`runSunnyWindowEstimatorFromText(osuText, options, parsed)` 从 options 读取 `enableAnalyzeLN`（sunnyWindowEstimator.js:22，传入 calculateLN）与 `enableAlwaysShowLNDifficulty`（:25，shouldShowLN 门槛），**不再读 state**；pipeline 内调用显式注入（runAnalysisPipeline.js:190-194）。
+**修改内容（What changed）**：`runSunnyWindowEstimatorFromText(osuText, options, parsed)` 从 options 读取 `enableAnalyzeLN`（sunnyWindowEstimator.js:22，传入 calculateLN）与 `enableAlwaysShowLNDifficulty`（:25，shouldShowLN 门槛），**不再读 state**；pipeline 内调用显式注入（runAnalysisPipeline.js:264-279，调用点 :271）。
 
 **修改原因（Why）**：worker 内无 state（共享模块纯度，见 ⑥）；显式注入使 Node 侧（harness/matrix）可复现同一输出。
 
@@ -87,7 +87,7 @@
 
 ## ⑤ reworkEstimatorUtils estDiff 第 5 参
 
-**修改内容（What changed）**：`estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false)`（reworkEstimatorUtils.js:98），第 5 参替换原 `state.enableAlwaysShowLNDifficulty` 读取。调用方显式传：sunnyEstimator.js:15、danielEstimator.js:38（均 `options.enableAlwaysShowLNDifficulty === true`）。
+**修改内容（What changed）**：`estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false)`（reworkEstimatorUtils.js:98），第 5 参替换原 `state.enableAlwaysShowLNDifficulty` 读取。调用方显式传：sunnyEstimator.js:16、danielEstimator.js:38（均 `options.enableAlwaysShowLNDifficulty === true`）。
 
 **修改原因（Why）**：reworkEstimatorUtils 是共享模块（sunny/daniel/azusa/roxy/mixed 全链 import），读 state 即 import appContext → worker 加载即崩（⑥ 根因链的一部分）；该字段是唯一的 state 读取点（根因分析确认）。
 
@@ -103,7 +103,7 @@
 
 **修改内容（What changed）**：共享估算/解析模块中 3 个 `state`/appContext 污染点清零：`reworkEstimatorUtils.js`（estDiff 第 5 参，⑤）、`sunnyWindowEstimator.js`（④）、`sunnyWindowAlgorithm.js`（enableAnalyzeLN 经 options 透传，task-2 修复）。共享模块目录（estimator/ett/interlude/parser/patterns/rework/pipeline）**禁止** import `js/app/`、读 `state`、引用 `window/document`（module-conventions.md §2）。
 
-**修改原因（Why）**：**根因修复：worker 从未真正工作**。污染链：`compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` 顶层 `document.getElementById`。Web Worker 无 document → worker 脚本加载即抛 ReferenceError → manager 回退/超时 → **所有估算实际在主线程执行**（卡顿根源，根因分析确认）。清零后 worker 首次真正可用。
+**修改原因（Why）**：**根因修复：worker 从未真正工作**。污染链：`compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:103+` 顶层 `document.getElementById`。Web Worker 无 document → worker 脚本加载即抛 ReferenceError → manager 回退/超时 → **所有估算实际在主线程执行**（卡顿根源，根因分析确认）。清零后 worker 首次真正可用。
 
 **影响范围（Scope）**：所有共享模块（worker 路径 + Node benchmark runner：`esm-loader.mjs` 只强制 ESM format、**不 shim document**，清零前 Node 侧直接 import 也会崩）；浏览器行为不变（显式传值 = 旧 state 值）。
 
@@ -115,7 +115,7 @@
 
 ## ⑦ 设置失效清单收窄
 
-**修改内容（What changed）**：`settings.js:844-857` 的 `clearResultCache()` 条件**移除** `display6kLevelChanged` 与 `debugChanged`（debugUseAmount）；`enableAlwaysShowLNDifficultyChanged` **保留**。三者仍留在 `recomputeNeeded`（settings.js:817-836），切换仍调度重算（命中路径重渲染，不 fetch 不重跑 pipeline）。
+**修改内容（What changed）**：`SETTING_CACHE_KEYS`（settings.js:787-793）的缓存失效条件**移除** `display6kLevelChanged` 与 `debugChanged`（debugUseAmount）；`enableAlwaysShowLNDifficultyChanged` **保留**。三者仍留在 `SETTING_RECOMPUTE_KEYS`（settings.js:776-784），切换仍调度重算（命中路径重渲染，不 fetch 不重跑 pipeline）。
 
 **修改原因（Why）**：toggle-diff 实证（30 样本，实测记录）：`display6kLevel` **0/30 diff**（corpus 100% 4K，sixKConst gate `display6kLevel && columnCount===6` 永不触发）；`debugUseAmount` **0/30 diff**（浏览器后处理，pipeline 不消费）；`enableAlwaysShowLNDifficulty` **25/30 diff**（lnRatio<0.15 谱面的 estDiff 加 " || LN ..." 段，真实输出差异）→ **不可移出**。
 
@@ -157,11 +157,11 @@
 
 ## ⑩ vibro latent bug 修复披露
 
-**修改内容（What changed）**：**行为修复，非性能改动**。旧 `analysis.js:672`（重构前）ETT 段引用 try 块作用域外的 `selectedRework?.star` → ReferenceError 被 ETT catch 吞掉 → `vibroEligible` 恒 false → `isVibroMap` **恒 false**（vibro 检测自引入以来从未生效）。修复后：pipeline 计算 `vibro = { star, eligible }`（**归一化前** star，`eligible = finite && star > 5.0`，runAnalysisPipeline.js:169-175）；analysis.js 提升 `vibroEligible`（:447）并在 ETT 段正确消费（:664-667 `state.vibroDetection && vibroEligible && detectVibro(ettResult.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)`）。
+**修改内容（What changed）**：**行为修复，非性能改动**。旧 `analysis.js:672`（重构前）ETT 段引用 try 块作用域外的 `selectedRework?.star` → ReferenceError 被 ETT catch 吞掉 → `vibroEligible` 恒 false → `isVibroMap` **恒 false**（vibro 检测自引入以来从未生效）。修复后：pipeline 计算 `vibro = { star, eligible }`（**归一化前** star，`eligible = finite && star > 5.0`，runAnalysisPipeline.js:211-217）；analysis.js 提升 `vibroEligible`（:701）并在 ETT 段正确消费（:928、:945 `state.vibroDetection && vibroEligible && detectVibro(ettResult.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)`）。
 
 **修改原因（Why）**：vibro 判定本应按设计工作（旧注释意图 = 算法自身 star > 5.0 门槛），作用域 bug 使其从未生效；pipeline 重构顺带修复。
 
-**影响范围（Scope）**：浏览器行为变化：vibro 谱面现在会显示 "VIBRO" 难度文本（analysis.js:930-932）与隐藏图内数值（setForceHideNumericDifficulty :856）。Node golden 不含 vibro 字段，回归不受影响。
+**影响范围（Scope）**：浏览器行为变化：vibro 谱面现在会显示 "VIBRO" 难度文本（analysis.js:1290）与隐藏图内数值（setForceHideNumericDifficulty 调用点 analysis.js:1170）。Node golden 不含 vibro 字段，回归不受影响。
 
 **兼容策略（Compat）**：门槛（>5.0）与旧代码意图一致；无设置可关掉"已修复"（这是修复，不是新开关）。
 
@@ -251,31 +251,31 @@
 
 ## ① Worker message protocol (single-round-trip pipeline)
 
-`manager.js:64 runInWorker` now posts `{ id, type: "pipeline", input }` (`input = { rawText, estimatorAlgorithm, options }`); `compute.worker.js:23-37` adds a `"pipeline"` message branch that runs `runAnalysisPipeline` asynchronously (then/catch) and replies `{ id, result }` or `{ id, error }`. Estimation plus all auxiliary stages (pattern/ett/interlude/Companella second-ett) complete in a single round trip. The legacy 4-estimator messages `{ id, osuText, options }` (compute.worker.js:39-81) are **kept unchanged** (Daniel/Azusa/Roxy/Sunny whitelist + Azusa/Roxy invalid-result fallback to Sunny); they currently have no callers.
+`manager.js:89 runInWorker` now posts `{ id, type: "pipeline", input }` (`input = { rawText, estimatorAlgorithm, options }`); `compute.worker.js:23-37` adds a `"pipeline"` message branch that runs `runAnalysisPipeline` asynchronously (then/catch) and replies `{ id, result }` or `{ id, error }`. Estimation plus all auxiliary stages (pattern/ett/interlude/Companella second-ett) complete in a single round trip. The legacy 4-estimator messages `{ id, osuText, options }` (compute.worker.js:39-81) are **kept unchanged** (Daniel/Azusa/Roxy/Sunny whitelist + Azusa/Roxy invalid-result fallback to Sunny); they currently have no callers.
 
 Replace many small round trips (per-message structuredClone + scheduling overhead) with one; move main-thread blocking into the worker (core win of tasks 11/12, see ⑫).
 
 `js/app/worker/manager.js`, `js/app/worker/compute.worker.js`, `js/app/analysis.js` (dispatch is now a single pipeline call). The message protocol is not a stable public API for external consumers.
 
-Legacy message branch kept (defensive); `latestId` stale-discard (manager.js:53) and 30s timeout (manager.js:67-72) semantics unchanged; Worker-ctor failure still returns null → main-thread sync fallback (analysis.js:375).
+Legacy message branch kept (defensive); stale-request reclamation (`rejectAllPending` manager.js:56-62, the superseded reclamation inside `runInWorker`, manager.js:95) and the 30s timeout (manager.js:101-106) semantics unchanged; Worker-ctor failure still returns null → main-thread sync fallback (analysis.js:602).
 
 ---
 
 ## ② Pure-function pipeline (shared by three consumers)
 
-New `js/pipeline/runAnalysisPipeline.js:94` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`, async, returns 16 business fields plus `errors[]` (contract in worker.md §4.3). **One function shared by three consumers**: worker (compute.worker.js:29), main-thread sync fallback (analysis.js:375), Node regression script (computeOutput). Stage order matches the old analysis.js exactly.
+New `js/pipeline/runAnalysisPipeline.js:96` `runAnalysisPipeline({ rawText, estimatorAlgorithm, options, parsed? })`, async, returns 16 business fields plus `errors[]` (contract in worker.md §4.3). **One function shared by three consumers**: worker (compute.worker.js:29), main-thread sync fallback (analysis.js:602), Node regression script (computeOutput). Stage order matches the old analysis.js exactly.
 
-One implementation removes drift risk across three dispatch copies; parse-once (parse once, share the instance with estimators/normalization/SunnyWindow/Interlude, no second parse on the main thread, analysis.js:376).
+One implementation removes drift risk across three dispatch copies; parse-once (parse once, share the instance with estimators/normalization/SunnyWindow/Interlude, no second parse on the main thread, analysis.js:613).
 
 All estimation paths (browser worker + sync fallback + Node regression) must stay bit-identical; the output contract (incl. `parsedSummary`, soft-failure fields) is the new de-facto standard.
 
-`errors[]` always empty (reserved); estimator/SunnyWindow throws propagate up and analysis.js outer catch reports "Rework failed: ..." in the old format (analysis.js:378-400); soft-failure fields are merged into errors[] by analysis.js per the old display gates (worker.md §4.4).
+`errors[]` always empty (reserved); estimator/SunnyWindow throws propagate up and analysis.js inner catch reports "Rework failed: ..." in the old format (analysis.js:615-643, throw site :621); soft-failure fields are merged into errors[] by analysis.js per the old display gates (worker.md §4.4).
 
 ---
 
 ## ③ Optional parsed param on estimator entries (backward compatible)
 
-Six estimator entries gained an optional third param `parsed = null`: `runSunnyEstimatorFromText` (sunnyEstimator.js:4), `runDanielEstimatorFromText` (danielEstimator.js:9), `runSunnyWindowEstimatorFromText` (sunnyWindowEstimator.js:13), `runAzusaEstimatorFromText` (azusaEstimator.js:822), `runRoxyEstimatorFromText` (roxyEstimator.js:1400), `runMixedEstimatorFromText` (mixedEstimator.js:180). Passing a processed `OsuFileParser` **instance** skips the internal parse (parse-once); for cvtFlag ∈ {IN,HO} conversion runs on a `cloneOsuParser` copy (sunnyAlgorithm.js:55-71 etc.), keeping the shared instance pristine; Roxy shares only when `speedRate === 1 && cvtFlag excludes IN/HO` (canonicalize boundary, worker.md §5.3).
+Six estimator entries gained an optional third param `parsed = null`: `runSunnyEstimatorFromText` (sunnyEstimator.js:4), `runDanielEstimatorFromText` (danielEstimator.js:9), `runSunnyWindowEstimatorFromText` (sunnyWindowEstimator.js:13), `runAzusaEstimatorFromText` (azusaEstimator.js:832), `runRoxyEstimatorFromText` (roxyEstimator.js:1468), `runMixedEstimatorFromText` (mixedEstimator.js:236). Passing a processed `OsuFileParser` **instance** skips the internal parse (parse-once); for cvtFlag ∈ {IN,HO} conversion runs on a `cloneOsuParser` copy (sunnyAlgorithm.js:69-85 etc.), keeping the shared instance pristine; Roxy shares only when `speedRate === 1 && cvtFlag excludes IN/HO` (canonicalize boundary, worker.md §5.3).
 
 Parsing is one of the heaviest shared costs of the estimation stages (single parse ~2ms per perf-baseline; every estimator parsed separately before task 11); sharing the instance cuts parse count (13 → 1-2, see ⑫).
 
@@ -287,7 +287,7 @@ Signature is backward compatible (3rd param defaults to null); all old call site
 
 ## ④ SunnyWindow options signature
 
-`runSunnyWindowEstimatorFromText(osuText, options, parsed)` reads `enableAnalyzeLN` (sunnyWindowEstimator.js:22, passed to calculateLN) and `enableAlwaysShowLNDifficulty` (:25, shouldShowLN gate) from options instead of state; the pipeline call injects them explicitly (runAnalysisPipeline.js:190-194).
+`runSunnyWindowEstimatorFromText(osuText, options, parsed)` reads `enableAnalyzeLN` (sunnyWindowEstimator.js:22, passed to calculateLN) and `enableAlwaysShowLNDifficulty` (:25, shouldShowLN gate) from options instead of state; the pipeline call injects them explicitly (runAnalysisPipeline.js:264-279, call site :271).
 
 No state exists inside the worker (shared-module purity, see ⑥); explicit injection lets Node (harness/matrix) reproduce identical output.
 
@@ -299,7 +299,7 @@ Signature unchanged (only the read source changed from state to options); direct
 
 ## ⑤ estDiff 5th parameter
 
-`estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false)` (reworkEstimatorUtils.js:98): the 5th param replaces the old `state.enableAlwaysShowLNDifficulty` read. Callers pass it explicitly: sunnyEstimator.js:15, danielEstimator.js:38 (both `options.enableAlwaysShowLNDifficulty === true`).
+`estDiff(sr, lnRatio, columnCount, useExtended = false, enableAlwaysShowLNDifficulty = false)` (reworkEstimatorUtils.js:98): the 5th param replaces the old `state.enableAlwaysShowLNDifficulty` read. Callers pass it explicitly: sunnyEstimator.js:16, danielEstimator.js:38 (both `options.enableAlwaysShowLNDifficulty === true`).
 
 reworkEstimatorUtils is a shared module (imported by the whole sunny/daniel/azusa/roxy/mixed chain); reading state means importing appContext → the worker crashes on load (part of the ⑥ root-cause chain); this field was the only state read (confirmed by root-cause analysis).
 
@@ -313,7 +313,7 @@ Default false = config.js `defaults.enableAlwaysShowLNDifficulty`; old call site
 
 Three `state`/appContext pollution points in shared estimation/parsing modules were cleared: `reworkEstimatorUtils.js` (estDiff 5th param, ⑤), `sunnyWindowEstimator.js` (④), `sunnyWindowAlgorithm.js` (enableAnalyzeLN threaded via options, task-2 fix). Shared module dirs (estimator/ett/interlude/parser/patterns/rework/pipeline) must **not** import `js/app/`, read `state`, or touch `window/document` (module-conventions.md §2).
 
-**Root-cause fix: the worker never actually worked.** Pollution chain: `compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:23+` top-level `document.getElementById`. Web Workers have no document → the worker script throws ReferenceError on load → manager falls back/times out → **all estimation actually ran on the main thread** (root of the jank, confirmed by root-cause analysis). After the cleanup the worker works for the first time.
+**Root-cause fix: the worker never actually worked.** Pollution chain: `compute.worker.js:10` → `sunnyEstimator.js:2` → `reworkEstimatorUtils.js:2` → `appContext.js:103+` top-level `document.getElementById`. Web Workers have no document → the worker script throws ReferenceError on load → manager falls back/times out → **all estimation actually ran on the main thread** (root of the jank, confirmed by root-cause analysis). After the cleanup the worker works for the first time.
 
 All shared modules (worker path + Node benchmark runner: `esm-loader.mjs` only forces ESM format and does **not** shim `document`, so direct Node imports crashed before the cleanup); browser behavior unchanged (explicit values equal the old state values).
 
@@ -323,7 +323,7 @@ Value semantics unchanged (defaults aligned with config.js); public API signatur
 
 ## ⑦ Invalidation list narrowing
 
-The `clearResultCache()` conditions (settings.js:844-857) **dropped** `display6kLevelChanged` and `debugChanged` (debugUseAmount); `enableAlwaysShowLNDifficultyChanged` **stays**. All three remain in `recomputeNeeded` (settings.js:817-836), so toggling still schedules a recompute (hit-path re-render, no fetch, no pipeline).
+The result-cache invalidation set `SETTING_CACHE_KEYS` (settings.js:787-793) **dropped** `display6kLevelChanged` and `debugChanged` (debugUseAmount); `enableAlwaysShowLNDifficultyChanged` **stays**. All three remain in `SETTING_RECOMPUTE_KEYS` (settings.js:776-784), so toggling still schedules a recompute (hit-path re-render, no fetch, no pipeline).
 
 Toggle-diff evidence (30 samples, measured): `display6kLevel` **0/30 diff** (corpus is 100% 4K; the sixKConst gate `display6kLevel && columnCount===6` never fires); `debugUseAmount` **0/30 diff** (browser-only post-processing; the pipeline never consumes it); `enableAlwaysShowLNDifficulty` **25/30 diff** (estDiff gains " || LN ..." on lnRatio<0.15 maps, a real output change) → **must stay**.
 
@@ -359,11 +359,11 @@ Original exports kept; the 8 differing functions (computeJbar/computePbar etc.) 
 
 ## ⑩ Vibro latent bug fix disclosure
 
-**Behavior fix, not a perf change**. The old `analysis.js:672` (pre-refactor) ETT section referenced `selectedRework?.star` outside its try scope → ReferenceError swallowed by the ETT catch → `vibroEligible` always false → `isVibroMap` **always false** (vibro detection never worked since its introduction). After the fix: the pipeline computes `vibro = { star, eligible }` (from the **pre-normalization** star, `eligible = finite && star > 5.0`, runAnalysisPipeline.js:169-175); analysis.js hoists `vibroEligible` (:447) and consumes it correctly in the ETT section (:664-667 `state.vibroDetection && vibroEligible && detectVibro(ettResult.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)`).
+**Behavior fix, not a perf change**. The old `analysis.js:672` (pre-refactor) ETT section referenced `selectedRework?.star` outside its try scope → ReferenceError swallowed by the ETT catch → `vibroEligible` always false → `isVibroMap` **always false** (vibro detection never worked since its introduction). After the fix: the pipeline computes `vibro = { star, eligible }` (from the **pre-normalization** star, `eligible = finite && star > 5.0`, runAnalysisPipeline.js:211-217); analysis.js hoists `vibroEligible` (:701) and consumes it correctly in the ETT section (:928, :945 `state.vibroDetection && vibroEligible && detectVibro(ettResult.values, VIBRO_JACKSPEED_RATIO_THRESHOLD)`).
 
 Vibro gating was designed to work (old comment intent = algorithm-own star > 5.0 gate); a scoping bug silently disabled it; the pipeline refactor fixed it in passing.
 
-Browser behavior change: vibro maps now show the "VIBRO" difficulty text (analysis.js:930-932) and hide the in-graph number (setForceHideNumericDifficulty :856). The Node golden contract has no vibro field, so regression is unaffected.
+Browser behavior change: vibro maps now show the "VIBRO" difficulty text (analysis.js:1290) and hide the in-graph number (setForceHideNumericDifficulty call site analysis.js:1170). The Node golden contract has no vibro field, so regression is unaffected.
 
 The gate (>5.0) matches the old intended behavior; there is no setting to disable "the fix" (it is a fix, not a new toggle).
 

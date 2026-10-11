@@ -81,6 +81,24 @@ EXAMPLE-FIXTURE-*.json / emit-report-*.txt   自测产物（见"自测"）
 lazer-offsets/<ver>__<rt>__<arch>.json 出表（默认落点；--out / --deploy 可改）
 ```
 
+## 快捷路径：`live`（点击即用，零 SDK / 零挂起）
+
+上面的 `collect → extract → il → emit` 链路依赖 `dotnet-dump`，且采集时会**短暂挂起游戏**（实测 ~70 s）。当你只想要一张**当前这一版**的偏移表、又不想装 .NET SDK、也不想挂起游戏时，用 `live` 子命令：
+
+```powershell
+# live 只需要 osu!lazer 在跑；输出 JSON 或人读文本均可
+temp/lazer-offsets-gen.exe live --out %TEMP%\lazer-offsets-gen\live1
+temp/lazer-offsets-gen.exe live --out %TEMP%\lazer-offsets-gen\live1 --json
+```
+
+`live` 的核心保证（与 `collect` 链路互补，不是替代）：
+
+- **零 .NET SDK / dotnet-dump**：只读 ECMA-335 元数据（`ilmeta.rs`）与目标进程内存，不调用任何外部分析器；
+- **零挂起**：只用 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION` 打开进程，不挂起任何线程；
+- **活体自校验门（Live Validation Gate）**：只有三条链全部**当场解出真值**才允许落盘 —— ①锚点 + `GAME_BASE_HOPS` 解出 GameBase 且 vtable 有效；②`GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash` 成功解出 32 位 hex MD5；③`ScreenStack → top screen` 反查到有效 TypeDef RID 与类型名。任一条不成立即拒绝出表。
+
+`live` 支持 `--out`（落点）、`--lazer-dir`（指定安装目录）、`--pid`（指定进程）三个选项，另有 `--json`（机器可读输出）与 `--dry-run`（只解析不落盘）。需要**跨版本 IL 差分**或**双见证 provenance 记录**时，仍应走完整的 `collect → extract → il → emit` 链路。
+
 ## 输出格式（Output format）
 
 ### 1. SOS 中间件 `sos-intermediate-*.tsv`
@@ -305,10 +323,13 @@ temp/lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures
 | 文件 | 内容 |
 |---|---|
 | `spec.rs` | **lazer 更新时唯一要人工改的文件**：锚点模式、站点位移（`SITE_DELTAS`/`ANCHOR_SITE_DELTA`）、GameBase 跳序（`GAME_BASE_HOPS`）、解引用链（`CHAIN`）、出表字段（`WANTED`） |
-| `main.rs` | 五个子命令、进程发现（位数分派）、版本钉法（runtime log/runtimeconfig）、命令驱动与落盘 |
+| `main.rs` | 六子命令、进程发现（位数分派）、版本钉法（runtime log/runtimeconfig）、命令驱动与落盘 |
 | `minidump.rs` | 最小 minidump 读取器（Memory64List/MemoryList 两种形态、模块表、SystemInfo、MiscInfo、内存扫描、`System.String` 读法） |
 | `sos.rs` | `dotnet-dump analyze` 驱动、`dumpobj` 文本解析、dump 字节解引用自证、SOS 中间件读写 |
 | `ilmeta.rs` | PE/CLI 元数据解析（ECMA-335 表 + #Strings/#Blob 堆 + 字段签名解码 + `#extends` 继承链）、IL 清单读写、跨版本 diff |
+| `names.rs` | CLR 类型名规范化（生成器内部唯一一份规则：assembly-qualified 显示名、中段截断、嵌套类型 `+`） |
+| `runtime.rs` | 运行期结构位移导出（`spec.rs::RUNTIME_PROBES` 的执行者：在真 dump 上搜索唯一成立的位移） |
+| `live.rs` | 点击即用 IL-Only + 活体自校验生成器（零 SDK、零挂起、活体校验门） |
 | `emit.rs` | 双见证校验、拒绝门（fixture/溯源/版本）、JSON 出表与报告 |
 | `chain.rs` | 解引用链走法（真实路径与自测共用）、**GameBase 多跳解析 + 候选验证**（`resolve_game_base`/`candidate_verdict`）、中间件装配、`Offset` 基准自证 |
 | `selftest.rs` | 自测用例 + 合成 minidump 写入器 + 迷你 JSON 解析器 |

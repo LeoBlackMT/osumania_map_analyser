@@ -55,6 +55,7 @@ backend/
   internal/config/              .env 加载与校验
   internal/ratelimit/           内存固定窗口限流器
   internal/store/               SQLite schema 与查询
+  internal/spec/                遥测合法值域白名单、校验规则与边界（权威契约）
   internal/telemetry/           POST /api/v1/event 处理器
   internal/analytics/           聚合与分布统计
   internal/web/                 / 看板 + /api/v1/stats（含内嵌 HTML）

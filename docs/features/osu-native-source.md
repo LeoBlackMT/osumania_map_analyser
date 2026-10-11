@@ -12,7 +12,7 @@
 - **Windows only**：Linux 上整条通道以 `platform-unsupported` 优雅不可用（`desktop/src/osu/model.rs:32-33`），浏览器模式与其余三源不受影响。
 - **只读**：只声明 `ReadProcessMemory` / `VirtualQueryEx` / Toolhelp32；句柄权限恒为 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`（`desktop/src/osu/win.rs:28`：`0x0010 | 0x0400`），无任何写/挂起/注入 API。dump 采集只存在于 dev-time 工具（§10），产品内不存在。
 
-tosu 保留为兜底传输：读取器不健康、24062 未绑定、或操作者显式逃生时，壳下发 `mode:"tosu"`，页面回到自己设置里的 `wsEndpoint`，行为与无壳时逐字节相同（`desktop/src/server/osu_source.rs:83-111`）。
+tosu 保留为兜底传输：读取器不健康、24062 未绑定、或操作者显式逃生时，壳下发 `mode:"tosu"`，页面回到自己设置里的 `wsEndpoint`，行为与无壳时逐字节相同（`desktop/src/server/osu_source.rs:95-112`）。
 
 ## 2. 架构
 
@@ -39,24 +39,24 @@ osu!stable (32 位)          osu!lazer (64 位)
 
 ### 3.1 stable：签名扫描 + 锚点台账
 
-- **锚点台账**（唯一权威）在 `desktop/src/osu/patterns.rs`：`ANCHORS` 共 **7 枚**（`patterns.rs:176-184`）——`statusPtr`（`state.name`）、`baseAddr`（Beatmap 对象/身份字段）、`playTimeAddr`（`beatmap.time.live`）、`rulesetsAddr`（局内/结算 mods、hits）、`menuModsPtr`（`menu.mods`）、`getAudioLengthPtr`（`mp3Length`，best-effort）、`settingsClassAddr`（`folders.songs` 回退链，best-effort）。每枚记录 `pattern`（含 `??` 通配）/ 有符号 `offset` / `derivation`（可独立复核的推导）/ `verified_build`（`osu!.exe` MD5 `f845ef10bf97c3260b818fc02e73c196`）/ `evidence`（验证方法，不是文件路径）。
-- **best-effort 与必需组分开**：`BEST_EFFORT_KEYS`（`patterns.rs:256`）缺席只降级对应字段；必需组缺席 ⇒ `AnchorTable::missing()`（`patterns.rs:266-283`）给出键名 ⇒ reason `signature-miss:<key>`。
-- **扫描**：两种过滤器档位各扫一遍（`desktop/src/osu/mod.rs:223`：0 = 参考过滤器 RW/RWX、1 = 宽过滤器"任一可读已提交区"），每枚锚点只取首个命中，命中后施加位移并做候选自证（对齐、落区、解引用合理性；`mod.rs::anchor_proves_out`）。
-- **读原语是 fail-closed**：单次 `ReadProcessMemory` 硬上限 1 MiB（`desktop/src/osu/win.rs:966-967`），必须整段读满，短读（含 `ERROR_PARTIAL_COPY = 299`）一律当失败并按"对半缩小"重试（`win.rs` 的 `plan_shrink_sequence`），**绝不静默零填充**（零填充会把"读不到"伪装成"值是 0"）。
+- **锚点台账**（唯一权威）在 `desktop/src/osu/patterns.rs`：`ANCHORS` 共 **7 枚**（`patterns.rs:177-185`）——`statusPtr`（`state.name`）、`baseAddr`（Beatmap 对象/身份字段）、`playTimeAddr`（`beatmap.time.live`）、`rulesetsAddr`（局内/结算 mods、hits）、`menuModsPtr`（`menu.mods`）、`getAudioLengthPtr`（`mp3Length`，best-effort）、`settingsClassAddr`（`folders.songs` 回退链，best-effort）。每枚记录 `pattern`（含 `??` 通配）/ 有符号 `offset` / `derivation`（可独立复核的推导）/ `verified_build`（`osu!.exe` MD5 `f845ef10bf97c3260b818fc02e73c196`）/ `evidence`（验证方法，不是文件路径）。
+- **best-effort 与必需组分开**：`BEST_EFFORT_KEYS`（`patterns.rs:257`）缺席只降级对应字段；必需组缺席 ⇒ `AnchorTable::missing()`（`patterns.rs:267-283`）给出键名 ⇒ reason `signature-miss:<key>`。
+- **扫描**：两种过滤器档位各扫一遍（`desktop/src/osu/mod.rs:49` 的 `FILTER_READY`：0 = 参考过滤器 RW/RWX、1 = 宽过滤器"任一可读已提交区"），每枚锚点只取首个命中，命中后施加位移并做候选自证（对齐、落区、解引用合理性；`mod.rs:267` 的 `anchor_proves_out`）。
+- **读原语是 fail-closed**：单次 `ReadProcessMemory` 硬上限 1 MiB（`desktop/src/osu/win.rs:57` 的 `READ_CALL_MAX`），必须整段读满，短读（含 `ERROR_PARTIAL_COPY = 299`）一律当失败并按"对半缩小"重试（`win.rs:70` 的 `plan_shrink_sequence`），**绝不静默零填充**（零填充会把"读不到"伪装成"值是 0"）。
 - **锚点缓存**（`desktop/src/osu/anchor_cache.rs`）：同一进程实例内的重复定址可复用地址，但必须**重新通过同一份验证**（签名复核 + 结构自证）；键 `(exe md5, 位数, module_base)` 一变即丢，绝不跨加载复用绝对地址（`patterns.rs:46-50`）。
 
 ### 3.2 lazer：偏移表驱动（不写死任何偏移）
 
-lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标构建自己身上提取**，因此读取路径全部由表驱动（`desktop/src/osu/lazer.rs:1-60`）：
+lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标构建自己身上提取**，因此读取路径全部由表驱动（`desktop/src/osu/lazer/`，30 行门面 `lazer.rs` 仅做模块声明）：
 
-- **结构常数**（来自我们自己的 P4 探针，`osu/lazer.rs:12`）：12 字节标记模式、站点位移候选表 `SITE_DELTAS`（首项 `0x24`）、GameBase 多跳 `site → +0x0 → +0x218 → +0x310`。
+- **结构常数**（来自我们自己的 P4 探针，`osu/lazer/fields.rs:5,7,8-12`）：12 字节标记模式 `MARKER_PATTERN`、站点位移候选表 `SITE_DELTAS`（首项 `0x24`）、GameBase 多跳 `GAME_BASE_HOPS`（`site → +0x0 → +0x218 → +0x310`）。
 - **偏移表**（来自 `tools/lazer-offsets-gen/`，SOS + IL 双见证）：每个 `Type.Field → offset`、`game_base_vtable`、版本键 `(lazer 版本, runtime 版本, 架构)`。
-- **表梯子**（`desktop/src/osu/offsets.rs::resolve_lazer_table`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`default_table()`，**绝不回落到不存在的状态**）。
-- **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`lazer.rs:28-30`）。
-- **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`lazer.rs:60-` 的整段注释；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
-- **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里 2284 条 typedef 名字解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
+- **表梯子**（`desktop/src/osu/offsets/lazer_table.rs`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`DEFAULT_LAZER_TABLE_JSON`，`offsets/lazer_table.rs:5` 以 `include_str!` 内嵌，**绝不回落到不存在的状态**）。
+- **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`desktop/src/osu/lazer/resolve.rs:220` 的 `vtable_witness_note`）。
+- **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`desktop/src/osu/lazer/resolve.rs` 的 L1 结构证明；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
+- **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
 - **`Bindable<T>.value` 的偏移依赖 `T`**：查表键必须包含实例化实参，多个实例化命中 ⇒ 拒读并降级（OPEN-03 的修正：`NonNullableBindable<WorkingBeatmap>` 上是 `+0x20`，`+0x40` 是 `<Description>`）。
-- **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`lazer.rs:345-348`）。
+- **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`desktop/src/osu/lazer/fields.rs:138-139` 的 `F_STRING_LENGTH` / `F_STRING_CHARS`）。
 
 ### 3.4 纯数据表化、Schema 校验与全自动分发体系（P2）
 
@@ -90,10 +90,10 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 | 项 | 值/行为 | 出处 |
 |---|---|---|
 | 句柄权限 | `PROCESS_VM_READ \| PROCESS_QUERY_INFORMATION`（`0x0410`） | `osu/win.rs:28` |
-| 单次读上限 | 1 MiB，超限=错误（不截断） | `osu/win.rs:966-967`、`osu/scan.rs:15` |
+| 单次读上限 | 1 MiB，超限=错误（不截断） | `osu/win.rs:57`、`osu/scan.rs:14`（`CHUNK_MAX` 引用 `READ_CALL_MAX`） |
 | 短读 | =失败（fail-closed） | `osu/win.rs:14-16` |
 | C# 字符串上限 | 4096 码元（L2 另给 512 的"合理长度"降级） | `osu/win.rs:61`、`osu/invariants.rs:53` |
-| 读取线程节奏 | 250 ms 一拍（`mod::TICK`）；对拍记录默认 100 ms | `osu/compare.rs:114-126` |
+| 读取线程节奏 | 250 ms 一拍（`mod::TICK` :45）；对拍记录默认 100 ms | `osu/compare.rs:114-126` |
 | 零写入审计 | `desktop/src/osu` 内 `WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx` = 0 命中 | 计划 §7「零写入审计」；B1 现场 0 命中 |
 
 ## 4. 兼容 origin：`127.0.0.1:24062`
@@ -102,24 +102,24 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 
 | 端点 | 行为 |
 |---|---|
-| `WS /websocket/v2` | 每 150 ms 推一帧（`osu_compat.rs:488`）；**实时模式**推壳内读取线程的最新载荷，`packet()` 为 `None`（未附着/`unhealthy`）时**这一帧不发**；入站消息一律忽略，Close 干净收场 |
+| `WS /websocket/v2` | 每 150 ms 推一帧（`osu_compat.rs:488` 的每 150 ms 出帧，常量 `REPLAY_INTERVAL` :44）；**实时模式**推壳内读取线程的最新载荷，`packet()` 为 `None`（未附着/`unhealthy`）时**这一帧不发**；入站消息一律忽略，Close 干净收场 |
 | `WS /websocket/commands` | 接受握手（101）后**一帧都不发**（黑洞）——页面每 1 Hz 会连它并请求 `getSettings`，不回包即可（B1 实测 0 帧） |
 | `GET /files/beatmap/file` | 200 = 当前谱面 `.osu`（`text/plain; charset=utf-8`）；实时模式下没有当前谱面 ⇒ **404**（绝不回落到别的图）；读盘失败 ⇒ 500 |
 | `GET /files/beatmap/background` | 同上，`Content-Type` 由扩展名推定；没有背景字段时 404 |
 | 其它路径 | 404 |
 
-- **Host 门禁**：`http::is_local_host(head, 24062)`——只放行 `127.0.0.1:24062` / `localhost:24062` / `[::1]:24062` / 无 Host 头，其余 **403**（`osu_compat.rs:169-173`、`osu_compat.rs:554-558`；raw-socket 实测 `Host: evil.example` ⇒ 403，见 `temp/osu-native-memory/evidence/B1-replay/host-gate-probe.txt`）。
+- **Host 门禁**：`http::is_local_host(head, 24062)`——只放行 `127.0.0.1:24062` / `localhost:24062` / `[::1]:24062` / 无 Host 头，其余 **403**（`osu_compat.rs:169-172`、`osu_compat.rs:554-556`；raw-socket 实测 `Host: evil.example` ⇒ 403，见 `temp/osu-native-memory/evidence/B1-replay/host-gate-probe.txt`）。
 - **ACAO 是硬要求**：**所有**响应（含 403/404/405/500）统一出口带 `Access-Control-Allow-Origin: *`（`osu_compat.rs:188-202`）——页面在 24061 上跨源取封面并 `getImageData`，缺它封面取色静默失效（A10）。
 - **WS 的 Origin 校验**：loopback Origin 或**无 Origin**放行，其它 **403**（`osu_compat.rs:464-486`，与 24061 的 `ws.rs` 同一份判定；非 loopback Origin 实测 403）。
-- **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:17-24,78-82`）；**缺省是实时载荷**。
-- **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:654-679`）。
+- **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:80-82`，`replay_enabled()`）；**缺省是实时载荷**。
+- **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:672-692`，`spawn_osu_compat` 的绑定失败分支）。
 - 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。
 
 ## 5. 契约 v6：端点下发与页面切流
 
 ### 5.1 壳侧下发
 
-`state` 帧新增 `sources.osu`（`desktop/src/frames.rs:185-220`、`desktop/src/frames.rs:153-168`）：
+`state` 帧新增 `sources.osu`（`desktop/src/frames.rs:191-224` 的 `OsuSource`、`desktop/src/frames.rs:159-168` 的 `OsuTransport`）：
 
 ```
 osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
@@ -128,7 +128,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 - `alive ≡ (mode == "native")`；`mode:"tosu"` 时端点字段仍在下发（只作诊断），但**页面不应用**。
 - 值变化**立即推** state 帧（2 s 一拍的检测），不等 30 s 周期帧。
-- `mode` 决策是纯函数（`desktop/src/server/osu_source.rs:95-111`）：
+- `mode` 决策是纯函数（`desktop/src/server/osu_source.rs:95-112` 的 `mode_for`）：
 
 | 入参 | 结果 |
 |---|---|
@@ -138,19 +138,19 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 | 刚掉线、且此前健康过（< `READER_GRACE_MS` = **25 s**） | `native`（抗抖动：页面留在我们的端点、保留最后一张好卡片） |
 | 掉线 ≥ 25 s 或从未健康过 | `tosu`（回落） |
 
-25 s 这个值是为了覆盖一次冷路径全量扫描（实测 12.6–18.6 s，`osu_source.rs:41-49`）。
+25 s 这个值是为了覆盖一次冷路径全量扫描（实测 12.6–18.6 s；`READER_GRACE_MS = 25_000` 在 `osu_source.rs:49`，冷路径说明 :41-45）。
 
 ### 5.2 页面侧：socket 层运行时切换
 
 - `shellState.applyShellState` 读 `payload.sources.osu`（`js/app/sources/shellState.js:70-79`）。
 - `appContext.applyOsuTransport`（`js/app/appContext.js:89-98`）做**唯一**的切换动作：`state.runtimeOsuHost = "host:port"`（或清空）+ `socket.setHost(getSocketHost(), true)`。
-- `getSocketHost()`（`js/app/appContext.js:25-31`）是**唯一** host 派生点：WS URL（`socket.js:41`）、`.osu` 端点（`appContext.js:49-51`）、背景图（`coverTheme.js`）全部由它派生，因此一次覆盖即三处跟随（DEC-20）。
+- `getSocketHost()`（`js/app/appContext.js:25-31`）是**唯一** host 派生点：WS URL（`socket.js:37` 的 `createConnection`，实际调用点 `socket.js:77` 传入 `/websocket/v2`）、`.osu` 端点（`appContext.js:49-51`）、背景图（`coverTheme.js`）全部由它派生，因此一次覆盖即三处跟随（DEC-20）。
 - **绝不写 `state.wsEndpoint`**：它在 `SETTING_CACHE_KEYS` 里，走设置路径会每次切换 `clearResultCache()`（DEC-12）。运行时覆盖另存 `state.runtimeOsuHost`，`state.wsEndpoint` 始终是用户设置的权威值 ⇒ **切传输不清结果缓存**（真机实测 `resultCacheGeneration()` 1→1，见计划 Step 9 进度记录）。
 - **只接受合格端点（fail-closed）**：必须 `mode:"native"`、必须当前页是**壳页**（`location.port === "24061"`，`appContext.js:43-47`）、host 非空、端口 1..=65535、且 `wsPath`/`filesPath` **逐字等于**页面自己的 `/websocket/v2` 与 `/files/beatmap`；任一不符即拒绝覆盖（仍走 tosu）。浏览器 tosu 页（24050）永不接受覆盖。
 - `socket.setHost` 关闭**曾创建过的全部** socket（`this.allSockets` 集合，`js/app/socket.js:13-35`）——`sockets` 以 URL 为键、`/websocket/commands` 可能被打开两次，只遍历 map 会漏掉被覆盖的那条（A11 的修法）。
-- **native 位进路由**：`state.shellOsuNativeAlive` 同时用于 L3' 存活回窗（`js/app/sources/sourceManager.js:127`）与 osu 败方门控（`sourceManager.js:186`）——缺它原生帧会被当成"败方帧"静默缓冲，用户可见现象是**换图不更新**（DEC-21 缺陷①）。
-- **壳主窗策略**（DEC-21 缺陷②）：壳配置 `osuTransport != "tosu"`（缺省 `auto`）时，主窗**一律**落 `http://127.0.0.1:24061/`；只有显式 `"osuTransport": "tosu"` 才维持旧策略（在线 ⇒ tosu 插件页）——主窗落 tosu 页时端点下发与桥都不可达（`desktop/src/main.rs:42-65`、`desktop/src/config.rs:217-219`）。
-- **扫描提示**（Step 9e/9f）：壳把 L0 附着/扫描相位写成 `phase`（闭集 `waiting-for-game` / `attaching` / `scanning` / `healthy` / `unavailable`，`osu/mod.rs:132-161`）+ 英文 `notice` + 实测 `progress`；页面只在自己的元素 `#osu-scan-hint`（`index.html:26`）渲染那句话（`js/app/sources/osuScanHint.js`、纯规则在 `osuScanHintRules.js`）。三条纪律：**只写自己的元素**（借写共享 `#status` 会被别的写手打掉，真机实测只闪 ~300 ms）、**同一相位值内"载荷到过"粘住不复活**、**只在壳页**（浏览器 tosu 页不提示）。真机实测提示连续可见 25 s。
+- **native 位进路由**：`state.shellOsuNativeAlive` 同时用于 L3' 存活回窗（`js/app/sources/sourceManager.js:130`）与 osu 败方门控（`sourceManager.js:196-197`）——缺它原生帧会被当成"败方帧"静默缓冲，用户可见现象是**换图不更新**（DEC-21 缺陷①）。
+- **壳主窗策略**（DEC-21 缺陷②）：壳配置 `osuTransport != "tosu"`（缺省 `auto`）时，主窗**一律**落 `http://127.0.0.1:24061/`；只有显式 `"osuTransport": "tosu"` 才维持旧策略（在线 ⇒ tosu 插件页）——主窗落 tosu 页时端点下发与桥都不可达（`desktop/src/app/url.rs:7` 的 `startup_url`）。
+- **扫描提示**（Step 9e/9f）：壳把 L0 附着/扫描相位写成 `phase`（闭集 `waiting-for-game` / `attaching` / `scanning` / `healthy` / `unavailable`，`osu/mod.rs:84` 的 `Phase` 枚举 / `:114` 的 `phase_for`）+ 英文 `notice` + 实测 `progress`；页面只在自己的元素 `#osu-scan-hint`（`index.html:25`）渲染那句话（`js/app/sources/osuScanHint.js`、纯规则在 `osuScanHintRules.js`）。三条纪律：**只写自己的元素**（借写共享 `#status` 会被别的写手打掉，真机实测只闪 ~300 ms）、**同一相位值内"载荷到过"粘住不复活**、**只在壳页**（浏览器 tosu 页不提示）。真机实测提示连续可见 25 s。
 
 ## 6. 能力边界
 
@@ -158,7 +158,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13）。
 
-- **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:150-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（`temp/osu-native-memory/evidence/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
+- **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（`temp/osu-native-memory/evidence/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
 - **`firstObject`/`lastObject` 由我们解析 `.osu`**，口径见 DEC-22：首个对象的 `startTime` / **文件顺序最后一个对象的 `endTime`**（不是 `max(endTime)`），都不做 rate 缩放；回退与不变量在 `osu/beatmap_file.rs` + `osu/invariants.rs`。
 
 ### 6.2 lazer（64 位）
@@ -191,7 +191,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ## 7. 失败语义
 
-### 7.1 reason 闭集（11 个字面量，唯一权威 `desktop/src/osu/model.rs:20-73`）
+### 7.1 reason 闭集（11 个字面量，唯一权威 `desktop/src/osu/model.rs:21-59` 的 `Reason` 枚举 + `:59` 的 `all_literals`）
 
 | 字面量 | 语义 | 触发面 |
 |---|---|---|
@@ -212,7 +212,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 7.2 `degradedFields`
 
-形状 = `<载荷字段>:<原因>` 的字符串清单（`desktop/docs/CONTRACT.md` §8；内容说明见 §8 的 `degradedFields` 段）。来源两条：① 读取器每帧的字段级降级（lazer 侧 = `lazer.rs::read_frame` 的 `gaps`：表缺口 `offsets-<LookupError>`、链读失败 `read-<跳>`、字符串布局 `string-layout`、形状不符 `shape`，以及 `<类型名>-not-in-observed-set` 这类映射缺口）；② 整表缺失时的"因此没有来源"清单（`lazer::missing_table_degraded_fields()`，随 `lazer-offsets-missing:<ver>` 一起下发）。两者都经 `invariants.rs::evaluate` **原样并入**门的上报（顺序保持、逐条去重）。页面只按"键在不在/前缀"消费，不解析原因里的数字。
+形状 = `<载荷字段>:<原因>` 的字符串清单（`desktop/docs/CONTRACT.md` §8；内容说明见 §8 的 `degradedFields` 段）。来源两条：① 读取器每帧的字段级降级（lazer 侧 = `desktop/src/osu/lazer/frame.rs:81` 的 `read_frame`（`gaps` :94）：表缺口 `offsets-<LookupError>`、链读失败 `read-<跳>`、字符串布局 `string-layout`、形状不符 `shape`，以及 `<类型名>-not-in-observed-set` 这类映射缺口）；② 整表缺失时的"因此没有来源"清单（`lazer::missing_table_degraded_fields()`，随 `lazer-offsets-missing:<ver>` 一起下发）。两者都经 `invariants.rs::evaluate` **原样并入**门的上报（顺序保持、逐条去重）。页面只按"键在不在/前缀"消费，不解析原因里的数字。
 
 ### 7.3 逐状态的帧与文件路由行为
 
@@ -226,7 +226,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 | 保持期内出现**已对拍**的换图（内存 md5 == 磁盘 `.osu` 的 md5） | 立刻 `publish` 新图（保持旧图 = 已知的错误答案） | 200 = 新图 |
 | `unhealthy`（硬失败到 `INVARIANT_STRIKES`，或 L0 失败） | **一帧都不发** | 404 |
 
-为什么要字段级冻结而不是整包停发：页面 L1 的 `isInPlayState` 靠 `state.name` 维生，60 s 的 L2 窗口一过期就把路由甩离 osu（DEC-18）。为什么要身份保持：页面把一切都键在 identity 上，扣留它会触发重抓 ⇒ 把 24062 的 404 原样渲染成用户可见的错误（结算界面那条 `Request failed with status 404`，Step 9g 的真机现象）；保持的是**同一张图上一次验证过的值**，既不可见、也不可能编造出另一张图。文件路由另有 `held_fresh` 判据（距读者最后一次处理帧仍在 2.5 s 内），窗口过后逐字回到 404 —— 那段时间里"最后一张好图"已是无界陈旧值（`osu/packet.rs:128-174` 的 7 行规则表）。
+为什么要字段级冻结而不是整包停发：页面 L1 的 `isInPlayState` 靠 `state.name` 维生，60 s 的 L2 窗口一过期就把路由甩离 osu（DEC-18）。为什么要身份保持：页面把一切都键在 identity 上，扣留它会触发重抓 ⇒ 把 24062 的 404 原样渲染成用户可见的错误（结算界面那条 `Request failed with status 404`，Step 9g 的真机现象）；保持的是**同一张图上一次验证过的值**，既不可见、也不可能编造出另一张图。文件路由另有 `held_fresh` 判据（距读者最后一次处理帧仍在 2.5 s 内），窗口过后逐字回到 404 —— 那段时间里"最后一张好图"已是无界陈旧值（`osu/packet.rs:128-151` 的 7 行规则表，`route_payload` 定义于 :151）。
 
 ### 7.4 页面侧对瞬态失败的处置
 
@@ -237,9 +237,9 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 四层门（DEC-17）：**L0 锚点解析**（附着时/进程变化时/失败刷新时）→ **L1 结构校验**（每次读：整块读满 + 候选自证 + 指针合理性）→ **L2 不变量**（`osu/invariants.rs` 的 I-01…I-10；无状态者每帧判、时序性者只在状态迁移那一帧判）→ **L3 影子比对**（tosu 在线时，`osu/shadow.rs` 纯函数 + `osu/compare.rs` IO 驱动）。
 
-四态（`invariants.rs:847-865`）：`idle`（没目标）/ `healthy` / `degraded`（出帧 + 上报缺字段）/ `unhealthy`（不出帧）。
+四态（`invariants.rs:849-862` 的 `HealthState`）：`idle`（没目标）/ `healthy` / `degraded`（出帧 + 上报缺字段）/ `unhealthy`（不出帧）。
 
-门常数（`invariants.rs:38-98`，实现期不得再选）：
+门常数（`invariants.rs:41-96`，实现期不得再选）：
 
 | 常数 | 值 | 语义 |
 |---|---|---|
@@ -253,9 +253,9 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 退出冻结的三条路（`invariants.rs:25-31`，都得记 reason）：① 锚点重解析成功 + 随后 20 帧全清；② 有界窗口到期强制重解析；③ 原因**本身已失效**（新附着清掉进程选择类原因）。
 
-附着/重连的时间常数（`osu/mod.rs:60-120`）：附着失败重试 2 s；兜底 PID 扫描失败 30 s；**曾附着过的目标刚丢**的 30 s 窗口内 1 s 一拍（快重连）；其后 2/4/8/16/30 s 退避。
+附着/重连的时间常数（`osu/mod.rs:35-47`，`sweep_delay` :58）：附着失败重试 2 s；兜底 PID 扫描失败 30 s；**曾附着过的目标刚丢**的 30 s 窗口内 1 s 一拍（快重连）；其后 2/4/8/16/30 s 退避。
 
-相位机（`osu/mod.rs:132-201`）：`waiting-for-game`（从没附着过且原因就是"进程不在"）/ `attaching`（目标丢了正在重附着）/ `scanning`（已附着、锚点未定址）/ `healthy`（L1+ 正在出帧）/ `unavailable`（锚点已定址但门停帧）；`notice` 只在会带提示的三相非空，`progress` 只在 `scanning` 出现。**提示与进度只在"原生传输结构性可达"时下发**（24062 已绑定且操作者没强制 tosu）：判据**不是** `mode`（冷启动时 `mode` 恰是 `"tosu"`，而那一刻页面正需要这句提示）。
+相位机（`osu/mod.rs:82-109` 的 `Phase` 枚举 / `:114-135` 的 `phase_for`）：`waiting-for-game`（从没附着过且原因就是"进程不在"）/ `attaching`（目标丢了正在重附着）/ `scanning`（已附着、锚点未定址）/ `healthy`（L1+ 正在出帧）/ `unavailable`（锚点已定址但门停帧）；`notice` 只在会带提示的三相非空，`progress` 只在 `scanning` 出现。**提示与进度只在"原生传输结构性可达"时下发**（24062 已绑定且操作者没强制 tosu）：判据**不是** `mode`（冷启动时 `mode` 恰是 `"tosu"`，而那一刻页面正需要这句提示）。
 
 ## 9. 操作手册 A：如何定位一次锚点失效
 
@@ -327,7 +327,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 | 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\offsets\lazer\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
 | 11 | 零写入审计 | `grep -rn "WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx" desktop/src/osu` | 0 命中 |
 | 12 | 页面语法 | `Get-Content -Raw -Encoding utf8 <file> \| node --input-type=module --check` | exit=0（⚠ 必须用 `--input-type=module --check` 走 stdin：Node 24 的 `node --check <file>.js` 在模块语法推断路径上会**假绿**，见 `.omo/evidence/osu-native-memory-transport/task-9-build.txt` §4） |
-| 13 | 版本同步 | `grep`：`ManiaMapAnalyser by Leo_Black/index.js` 的 `_VERSION` 与 `metadata.txt` 的 `Version` | 两者**逐字相同**（当前 `2.2.0`）；`cargo test` 与页面语法检查同时通过 |
+| 13 | 版本同步 | `grep`：`ManiaMapAnalyser by Leo_Black/index.js` 的 `_VERSION` 与 `metadata.txt` 的 `Version` | 两者**逐字相同**（当前 `2.1.0`）；`cargo test` 与页面语法检查同时通过 |
 
 ## 12. 已知限制与未完成（如实标注）
 

@@ -25,7 +25,7 @@
     - js/estimator/: 难度估计模块的核心目录，包含难度估计算法的实现。
         - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。
         - js/estimator/intervals/: Sunny 难度估计算法的星数映射表。
-    - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的五个版本WASM运行时。
+    - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的六个版本WASM运行时。
     - js/interlude/: 插件集成的 Interlude 星数计算模块。
     - js/parser/: 插件的解析模块，包含谱面解析器、键型解析器和设置解析器。
     - js/patterns/: 插件的键型分析模块，包含RC/LN键型分析器。其中RC键型分析器使用了Interlude的算法，并在其基础上新增了LN检测算法。

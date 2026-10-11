@@ -115,7 +115,7 @@
 
 ## 验证结论（Verification Summary）
 
-- 回归：sim 模拟套件 **22 场景全部 PASS**（含预设 CRUD、S20 双页面收敛、S21 幂等、S22 系统键剥离）；所有 presets 模块 `node --check` 语法通过；index.js 与 metadata.txt 版本一致（1.7.4）。
+- 回归：sim 模拟套件 **22 场景全部 PASS**（含预设 CRUD、S20 双页面收敛、S21 幂等、S22 系统键剥离）；所有 presets 模块 `node --check` 语法通过；index.js 与 metadata.txt 版本一致（当时为 1.7.4）。
 - 实测：真实 252MB 污染 values.json 干跑清洗成功（126MB → 10KB）；用户环境部署后确认"已完全正常"（谱面分析恢复 ~100ms 级，日志风暴消失）。
 - 浏览器冒烟：presets.html 加载零 console errors，36 个设置行渲染，Guide 按钮/自定义滚动条/checkbox 尺寸一致生效。
 
@@ -234,6 +234,6 @@
 
 ## Verification Summary
 
-- Regression: sim test suite **22 scenarios all PASS** (preset CRUD, S20 two-page convergence, S21 idempotency, S22 system-key stripping); all presets modules pass `node --check`; index.js and metadata.txt versions match (1.7.4).
+- Regression: sim test suite **22 scenarios all PASS** (preset CRUD, S20 two-page convergence, S21 idempotency, S22 system-key stripping); all presets modules pass `node --check`; index.js and metadata.txt versions match (1.7.4 at the time).
 - Measured: real 252MB polluted values.json dry-run cleanup succeeded (126MB → 10KB); after production deployment the user confirmed "completely normal" (beatmap analysis back to ~100ms, log storm gone).
 - Browser smoke: presets.html loads with zero console errors, 36 setting rows rendered, Guide button / custom scrollbars / checkbox sizing verified.

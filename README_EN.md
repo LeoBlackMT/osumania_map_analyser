@@ -43,11 +43,12 @@ This repository is an entirely AI-crafted in-game overlay (ppcounter) for [tosu]
 
 ## Notes
 1. The plugin needs to run in the `static` directory of tosu. Ensure it is placed directly in that directory, not nested inside another folder.
-2. This plugin relies on the correct parsing of beatmap data. Certain special or non-standard beatmaps may lead to inaccurate analysis results.
-3. Pause detection is based on the pause state reported natively by tosu (`game.paused`) and is not affected by beatmap time stalls caused by game lag.
-4. Although the difficulty estimation algorithms have been tuned, inaccuracies may still exist; please use them only as a reference. For 4K, high difficulties are generally more accurate with an overall error of no more than half a Dan, while low difficulties may be less accurate; in specific patterns like Minijack, Stamina, and Anchor, the estimation results may have larger deviations. For 6K and 7K, the overall performance is relatively average. It is recommended that players combine the estimation results with their actual gameplay experience for judgment and not rely too heavily on the estimates.
-5. The plugin's performance may be affected by the complexity of the beatmap and the features selected; in some cases, lag or delays may occur. Please adjust the settings according to your actual situation for a better experience.
-6. If you encounter any issues, feel free to submit an issue.
+2. Since tosu does not support Chinese settings options, all remaining content uses English for consistency.
+3. This plugin relies on the correct parsing of beatmap data. Certain special or non-standard beatmaps may lead to inaccurate analysis results.
+4. Pause detection is based on the pause state reported natively by tosu (`game.paused`) and is not affected by beatmap time stalls caused by game lag.
+5. Although the difficulty estimation algorithms have been tuned, inaccuracies may still exist; please use them only as a reference. For 4K, high difficulties are generally more accurate with an overall error of no more than half a Dan, while low difficulties may be less accurate; in specific patterns like Minijack, Stamina, and Anchor, the estimation results may have larger deviations. For 6K and 7K, the overall performance is relatively average. It is recommended that players combine the estimation results with their actual gameplay experience for judgment and not rely too heavily on the estimates.
+6. The plugin's performance may be affected by the complexity of the beatmap and the features selected; in some cases, lag or delays may occur. Please adjust the settings according to your actual situation for a better experience.
+7. If you encounter any issues, feel free to submit an issue.
 
 ## Privacy / Anonymous Usage Statistics
 This plugin sends anonymous usage statistics by default (active users, online distribution, usage behavior). The data contains **no** username, player id, scores, beatmap identity (title/md5), or IP address — it is used only for aggregate statistics. The public dashboard is at https://mma-stats.leoblack.top/
@@ -58,17 +59,19 @@ To opt out, turn off "Anonymous Usage Statistics" under Settings → Network.
 Note: It is recommended to start with the default settings or a suitable preset, and then adjust according to personal preference.
 See [docs/settings.md](docs/settings.md#english) for detailed settings instructions.
 For the preset system tutorial, see [docs/presets-guide.md](docs/presets-guide.md#english).
+For the desktop shell tutorial, see [docs/shell-guide.md](docs/shell-guide.md).
 
 ## Algorithm Explanation
 - Roxy is a 4K RC meta-structural estimator focused on the high-difficulty band (numeric 11~17, Alpha to Emik Zeta high). Its core has two layers: the first performs structural analysis across 7 aspects to produce a structured numeric difficulty; the second blends Azusa/Daniel reference predictions via a Ridge linear meta-model, then averages the final output with the Azusa prediction at a 0.4/0.6 weight (variance reduction). The meta-model is calibrated onto the 0.5 ordinal tier scale (a pure internal transform, no chart-external information), keeping results closer to tier judgments.
 - Azusa builds on the beatmap itself, combining the results of Daniel and Sunny Rework, with specific adjustments targeted at 4K RC beatmaps. For more details, please refer to [this document](docs/azusa_algorithm.md).
 
 ## Malody V Editor / Malody 4.3.7 / Etterna Support
-- Malody V editor, Malody 4.3.7 native client and Etterna support require the desktop shell (mma-shell). The shell is a standalone mini window that receives data from the Malody V editor, Malody 4.3.7 or Etterna even when tosu is not running, and shows the analysis result in a standalone always-on-top window. See [docs/shell-guide.md](docs/shell-guide.md) for details.
+- Malody V editor, Malody 4.3.7 native client and Etterna support require the desktop shell (mma-shell). The shell is a standalone mini window that receives data from the Malody V editor, Malody 4.3.7 or Etterna even when tosu is not running, and shows the analysis result in a standalone always-on-top window. See [docs/shell-guide.md](docs/shell-guide.md) for details. **Malody V can additionally install the "in-game song selection bridge": once installed, selecting, playing and settling a chart in-game are all followed automatically — no need to open the editor or any panel.**
 - Malody V and Etterna need their bridge files installed on the game side; **Malody 4.3.7 needs nothing installed in the game** — the shell attaches through read-only observation from outside the process (no game-folder writes, no injection) and follows the chart you select or play. It supports the 4.3.7 version only and is Windows-only.
+- The difficulty of both the Malody V and Malody 4.3.7 sources varies with the **in-game judge level** and the **current rate** (Malody V additionally depends on whether Pro / strict mode is enabled), so it is no longer a fixed value.
 - This feature is still experimental — unknown issues may exist. Please report anything you find.
 
-# Contribution Guide
+## Contribution Guide
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## References

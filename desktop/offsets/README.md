@@ -14,7 +14,9 @@ offsets/
 ├── gen.exe                 # (可选/分发) osu!lazer 活体偏移生成器 / Live offset generator
 ├── lazer/                  # osu!lazer 偏移表目录 / osu!lazer offset tables
 │   ├── 2026.921.0.0__10.0.12__x64.json
-│   └── 2026.1005.0.0__10.0.12__x64.json
+│   ├── 2026.921.0__10.0.12__x64.json
+│   ├── 2026.1005.0.0__10.0.12__x64.json
+│   └── 2026.1005.0__10.0.12__x64.json
 └── stable/                 # osu!stable 偏移表目录 / osu!stable offset tables
     ├── stable__x86.json    # 官方标准客户端 / Official client
     └── ppysb__x86.json     # ppy.sb 私服注入客户端 / ppy.sb client (SBInjector)

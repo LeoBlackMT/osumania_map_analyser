@@ -17,7 +17,7 @@
 | 端点切换时的连接 | `setHost` 遍历以 URL 为键的 map | 关闭**曾创建过的全部** socket（`socket.allSockets` 集合）——`/websocket/commands` 会被打开两次，只遍历 map 会漏掉被覆盖的那条（A11） |
 | 冷启动体验 | 扫描期卡片十几秒毫无说明 | 新增页面元素 `#osu-scan-hint`：壳下发 `phase`/`notice`/`progress`（相位闭集 + 英文提示 + 实测扫描读数），提示**只写自己的元素**（借写共享状态行会被别的写手打掉，实测只闪 ~300 ms）、同一相位值内"载荷到过"不复活、只在壳页显示 |
 | 抓谱面文件失败 | 结算界面出现 `Request failed with status 404`，约 2 s 后自愈 | 壳侧：身份指针瞬态失败时进入 **2.5 s 身份保持**（发最后一张好图的 `beatmap` 块 + 本帧 `state`，文件路由供奉同一张图 200）；页面侧：壳原生端点上的瞬态失败（404/5xx）**静默重试一次**（tosu 通道行为逐字不变） |
-| 插件版本号 | 2.1.0 | **2.2.0**（`index.js` `_VERSION` 与 `metadata.txt` `Version` 同步；提交内容为功能新增，按仓库惯例取 minor bump） |
+| 插件版本号 | 2.1.0 | **2.1.0**（未 bump；`index.js` `_VERSION` 与 `metadata.txt` `Version` 保持同步，均为 2.1.0） |
 | 零写入约束 | — | 读取层只声明 `ReadProcessMemory` / `VirtualQueryEx` / Toolhelp32，句柄权限恒 `PROCESS_VM_READ \| PROCESS_QUERY_INFORMATION`；dump 采集只存在于 dev-time 工具 `tools/lazer-offsets-gen/`（入库），产品内不存在 |
 
 ## 2. 为什么
@@ -35,12 +35,12 @@
 - **页面侧改动 9 个文件**（`appContext.js`、`socket.js`、`settings.js`、`sources/shellState.js`、`sources/sourceManager.js`、`sources/bridgeClient.js`、`analysis.js` + 两个新模块 `sources/beatmapFetchRetry.js`、`sources/osuScanHint{,Rules}.js`，另 `index.html`/CSS 加提示元素）；算法/解析/缓存算法零改动。
 - **用户可见变化**：① 主窗缺省落 24061（不再自动去 tosu 插件页）；② 冷启动/游戏重启后有 13–23 s 的扫描提示；③ 结算界面的 404 闪烁消失（身份保持 + 一次静默重试）；④ tosu 模式下那张被 tosu 垃圾 `resultsScreen.mods` 算成 DT 的 NM 图，在 native 模式下得到正确结果（我们**不对齐** tosu 的垃圾值，属有意偏离）。
 - **能力边界（如实）**：stable 供完整字段表；**lazer 有 7 条字段缺口**——mods 三槽、`play.hits`/`resultsScreen.hits`、`files.background`/`files.audio`，逐条进 `sources.osu.degradedFields` 且**绝不发占位值**。因此 lazer 上 `modSignature` 只在 NM 时与 tosu 逐字节相等，hits/livePP 面不可用；`state.name`/`number` 已接通并与 tosu 逐值相等。
-- **分发形态**：lazer 偏移表随壳分发，落点 `<壳 exe 目录>\lazer-offsets\<lazer>__<runtime>__<arch>.json`（`MMA_LAZER_OFFSETS` 可覆盖）。**`desktop/release.ps1` 当前只复制 `mma-shell.exe`，不会自动带上 `lazer-offsets/`**，打包时需手工复制；缺表时 lazer 报 `lazer-offsets-missing:<ver>` 并回落 tosu（stable 不受影响）。
+- **分发形态**：lazer 偏移表随壳分发，落点 `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json`（运行时首候选；次候选 `<exe>\lazer-offsets\`；`MMA_LAZER_OFFSETS` 可覆盖）。**根 `release.ps1` 已自动打包 `mma-shell.exe`、`offsets/`、`bridges/` 与 `offsets/gen.exe`**（脚本第 65-92 行），无需手工复制；缺表时 lazer 报 `lazer-offsets-missing:<ver>` 并回落 tosu（stable 不受影响）。
 - **运行位置**：受限会话里 Toolhelp32 只能看到自己那一族进程（游戏"找不到"）——壳与生成器都要**从工作区外（如 `%TEMP%`）启动**，这是真机实测的运行约束，不是代码路径变更。
 
 ## 4. 兼容性
 
-- **帧契约 v6 是"只升一侧就出事"的那一类**：页面 `bridgeClient.js` 用 `[MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION] = [3,6]` 判定 hello。**旧页面（常量 5）+ 新壳（发 6）⇒ 越界终态**（页面提示更新插件并停止重连，不只是数据不通，窗口拖动/置顶/穿透/关闭快捷键一起失效）。因此本次插件版本号同步 bump 到 **2.2.0**，陈旧页用户能在 tosu 插件管理界面看到版本变化。
+- **帧契约 v6 是"只升一侧就出事"的那一类**：页面 `bridgeClient.js` 用 `[MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION] = [3,6]` 判定 hello。**旧页面（常量 5）+ 新壳（发 6）⇒ 越界终态**（页面提示更新插件并停止重连，不只是数据不通，窗口拖动/置顶/穿透/关闭快捷键一起失效）。插件版本号保持 **2.1.0** 不变（陈旧页的越界终态由页面自身的契约区间判定处理，不依赖版本号展示）。
 - **新页面 + 旧壳（v3–v5）**：区间下界仍是 3，握手成功；旧壳没有 `sources.osu` ⇒ 页面保持"无运行时覆盖"，`getSocketHost()` 回到 `wsEndpoint`，行为与改动前一致（逐字段存在性降级）。
 - **配置数据**：无破坏性迁移。壳配置新增可选键 `osuTransport`（`auto`/`native`/`tosu`，缺省 `auto`）；旧配置文件没有该键 = `auto`。插件 `settings.json` **未新增任何设置项**（传输开关属壳配置，DEC-11）。
 - **回滚**：① `mma-shell-config.json` 写 `"osuTransport": "tosu"` ⇒ 壳不打开任何内存句柄、页面回到 `wsEndpoint`，行为等同改动前（当前进程内已建立的连接会被 `socket.setHost` 关掉）；② `git revert` 本特性的提交（页面守卫与端点下发都是新增分支，回退即恢复旧行为）；③ 契约 v6 回退须**两侧同一提交**回退（`desktop/src/frames.rs` + `js/app/sources/bridgeClient.js`），且插件版本号随之回退；④ 删除 `docs/features/osu-native-source.md` 及其索引行，删除 `docs/breakings/2026-09-30-osu-native-memory.md` 及其索引行。
@@ -57,7 +57,7 @@
 - **失败语义（破坏性签名测试）**：变体 A（改锚点模式一个字节）⇒ 门报 `signature-miss:statusPtr`、**0 帧伪造值**；变体 B（状态索引 +100，模拟读到垃圾）⇒ 先字段级冻结（帧仍带 `state.name`、无 `beatmap`），再到 `unhealthy` 停帧；从锚点解出到 unhealthy 约 1.4 s。
 - **端点自证**：Host 头非本机 ⇒ 403（带 ACAO）；未知路径 404；两条文件路由 200 且 body 的 MD5 与磁盘一致；`/websocket/v2` 握手 101、回放模式 32 帧/5 s、帧间隔 153–158 ms；`/websocket/commands` 101 且 0 帧（黑洞）。
 - **零写入审计**：`desktop/src/osu` 内 `WriteProcessMemory|VirtualProtect|CreateRemoteThread|VirtualAllocEx|SetWindowsHookEx` 0 命中；句柄权限常量恒为 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`。
-- **不变量**：`CONTRACT_VERSION` 三处一致（`frames.rs` / `bridgeClient.js` / `CONTRACT.md` 均为 6）；`index.js` `_VERSION` 与 `metadata.txt` `Version` 均为 **2.2.0**；页面 9 个改动文件用 ES module 语法检查逐文件通过（`node --input-type=module --check`，并带破损样本对照）；浏览器模式（无壳）回归轴逐字节不变。
+- **不变量**：`CONTRACT_VERSION` 三处一致（`frames.rs` / `bridgeClient.js` / `CONTRACT.md` 均为 6）；`index.js` `_VERSION` 与 `metadata.txt` `Version` 均为 **2.1.0**；页面 9 个改动文件用 ES module 语法检查逐文件通过（`node --input-type=module --check`，并带破损样本对照）；浏览器模式（无壳）回归轴逐字节不变。
 
 ---
 
@@ -80,7 +80,7 @@
 | Connections on endpoint switch | `setHost` walked the URL-keyed map | closes **every socket ever created** (`socket.allSockets`); `/websocket/commands` is opened twice, so walking the map alone leaves the overwritten one behind (A11) |
 | Cold-start UX | the card sat silent for tens of seconds during the scan | new page element `#osu-scan-hint`: the shell publishes `phase`/`notice`/`progress` (closed phase set + English sentence + measured scan readings); the hint writes **only its own element** (borrowing the shared status line made it flash for ~300 ms), never comes back within the same phase value once payload arrived, and only shows on the shell page |
 | Beatmap-file fetch failures | the results screen showed `Request failed with status 404` and self-healed after ~2 s | shell side: a transient identity-pointer failure now enters a **2.5 s identity hold** (serves the last good `beatmap` block plus this frame's `state`, and the file routes serve that same chart with 200); page side: a transient failure (404/5xx) on the shell's native endpoint is **silently retried once** (the tosu path is byte-identical to before) |
-| Plugin version | 2.1.0 | **2.2.0** (`index.js` `_VERSION` and `metadata.txt` `Version` together; a feature addition, hence the repo's minor bump) |
+| Plugin version | 2.1.0 | **2.1.0** (unchanged; `index.js` `_VERSION` and `metadata.txt` `Version` stay in sync) |
 | Zero-write constraint | — | the reader only declares `ReadProcessMemory` / `VirtualQueryEx` / Toolhelp32 with handle access fixed at `PROCESS_VM_READ \| PROCESS_QUERY_INFORMATION`; dump collection exists only in the dev-time `tools/lazer-offsets-gen/` (in-repo) and nowhere in the product |
 
 ## 2. Why
@@ -103,7 +103,7 @@
 
 ## 4. Compatibility
 
-- **Contract v6 is the "one side only" kind**: the page validates hello against `[MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION] = [3,6]`. **Old page (constant 5) + new shell (sends 6) ⇒ out of range ⇒ terminal state** (the page asks the user to update the plugin and stops reconnecting; not just data loss — the drag handle and the always-on-top/click-through/close shortcuts fail too). That is why the plugin version is bumped to **2.2.0** so stale-page users can see the change in tosu's plugin manager.
+- **Contract v6 is the "one side only" kind**: the page validates hello against `[MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION] = [3,6]`. **Old page (constant 5) + new shell (sends 6) ⇒ out of range ⇒ terminal state** (the page asks the user to update the plugin and stops reconnecting; not just data loss — the drag handle and the always-on-top/click-through/close shortcuts fail too). The plugin version stays **2.1.0** (unchanged); the stale-page out-of-range terminal state is handled by the page's own contract-range check, not by a version display.
 - **New page + old shell (v3–v5)**: the lower bound is still 3, so the handshake succeeds; an old shell has no `sources.osu`, the page keeps "no runtime override" and `getSocketHost()` returns `wsEndpoint` — behaviour identical to before (per-field existence degradation).
 - **Configuration data**: no breaking migration. The shell config gains an optional `osuTransport` key (`auto`/`native`/`tosu`, default `auto`); an existing file without it means `auto`. The plugin `settings.json` gains **no new entries** (the transport switch is shell configuration, DEC-11).
 - **Rollback**: ① set `"osuTransport": "tosu"` in `mma-shell-config.json` — the shell opens no memory handle, the page returns to `wsEndpoint` and behaviour matches the pre-change state (connections already established are closed by `socket.setHost`); ② `git revert` the feature's commits (the page guards and endpoint delivery are added branches, so reverting restores the old behaviour); ③ a contract v6 revert must revert **both sides in the same commit** (`desktop/src/frames.rs` + `js/app/sources/bridgeClient.js`) together with the version number; ④ delete `docs/features/osu-native-source.md` plus its index rows and `docs/breakings/2026-09-30-osu-native-memory.md` plus its index rows.
@@ -120,4 +120,4 @@
 - **Failure semantics (corruption tests)**: variant A (one byte of the anchor pattern changed) ⇒ the gate reports `signature-miss:statusPtr` with **0 fabricated frames**; variant B (state index +100, simulating a garbage read) ⇒ field-level freeze first (the frame still carries `state.name` and no `beatmap`), then `unhealthy` and no frames; anchors-resolved to unhealthy takes about 1.4 s.
 - **Endpoint self-check**: a non-local Host header ⇒ 403 (with ACAO); unknown paths 404; both file routes 200 with body MD5 matching the file on disk; `/websocket/v2` handshakes 101 and delivers 32 frames per 5 s with 153–158 ms gaps in replay mode; `/websocket/commands` handshakes 101 and delivers 0 frames (black hole).
 - **Zero-write audit**: `WriteProcessMemory|VirtualProtect|CreateRemoteThread|VirtualAllocEx|SetWindowsHookEx` ⇒ 0 hits under `desktop/src/osu`; the handle access constant is always `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`.
-- **Invariants**: `CONTRACT_VERSION` is 6 in all three places (`frames.rs` / `bridgeClient.js` / `CONTRACT.md`); `index.js` `_VERSION` and `metadata.txt` `Version` are both **2.2.0**; the nine changed page files each pass an ES-module syntax check (with a broken sample as the negative control); the browser-mode (no shell) regression axis is byte-identical.
+- **Invariants**: `CONTRACT_VERSION` is 6 in all three places (`frames.rs` / `bridgeClient.js` / `CONTRACT.md`); `index.js` `_VERSION` and `metadata.txt` `Version` are both **2.1.0**; the nine changed page files each pass an ES-module syntax check (with a broken sample as the negative control); the browser-mode (no shell) regression axis is byte-identical.

@@ -17,7 +17,7 @@
 | 实例探测 | 无（第二实例先建主窗口再退出） | `main()` 开头探测 24061：命中本壳 → 带 `--settings` 则转交 `POST /open-settings`，然后**一律 `exit(0)`（不建任何窗口）**；端口被外部进程占用 → `exit(2)` |
 | 设置窗口几何 | — | 合并写入 `mma-shell-state.json` 的 `settings` 字段（向前兼容读取遗留的 `mma-shell-settings-window.json`） |
 
-**不变的部分（同等重要）**：`CONTRACT_VERSION`（`desktop/src/frames.rs`）**仍为 5**，页面 `bridgeClient.js` 的常量同步保持 5，接受区间仍为 `[3,5]`；帧类型集合与各帧 schema 未增删（八型 + diag）；`server/ws.rs` 未改；`tauri.conf.json` 未改；**插件版本号未 bump**（`index.js` `_VERSION` 与 `metadata.txt` `Version` 仍为 `2.1.0`）；未加任何 Cargo 依赖。
+**不变的部分（本轮时点，同等重要）**：`CONTRACT_VERSION`（`desktop/src/frames.rs`）**当时仍为 5**，页面 `bridgeClient.js` 的常量同步保持 5，接受区间当时为 `[3,5]`（当前已升至 v6 / `[3,6]`，见 2026-09-30 记录）；帧类型集合与各帧 schema 未增删（八型 + diag）；`server/ws.rs` 未改；`tauri.conf.json` 未改；**插件版本号未 bump**（`index.js` `_VERSION` 与 `metadata.txt` `Version` 仍为 `2.1.0`）；未加任何 Cargo 依赖。
 
 ## 2. 为什么
 
@@ -48,7 +48,7 @@
 - **构建**：`cargo build` 与 `cargo build --release` 均成功（Windows release 为 GUI 子系统，无控制台窗口）。
 - **本机端点（真壳 + 合成 tosu 替身）**："装了 tosu 但未运行" → `GET /settings` 返回本地内容、`POST` 200 且重启后仍在；"tosu 在线" → `POST /settings` **403** 且 `GET` 返回 tosu 内容，含"tosu 刚启动 ≤30s"的冷窗口用例（仍在毫秒级切源并全量推送）；运行中关掉 tosu → 探针在 30s 内回到本地内容；`POST /settings` 往返保留合成未知键并返回合并后全量对象。
 - **进程行为（真机）**：既有实例在跑时，第二进程带与不带 `--settings` 都在 <200ms 内 `exit(0)` 且不建任何窗口；24061 被外部进程占用时 `exit(2)` 并记 error。
-- **不变量**：`CONTRACT_VERSION`（壳）与 `bridgeClient.js` 常量都为 5；开/关设置窗口前后 `mma-shell-state.json` 字节摘要一致；`POST /settings` 后 `mma-settings.json` 键集合不变；插件版本号（`index.js` 与 `metadata.txt`）未变。
+- **不变量**：`CONTRACT_VERSION`（壳）与 `bridgeClient.js` 常量当时都为 5（当前为 6）；开/关设置窗口前后 `mma-shell-state.json` 字节摘要一致；`POST /settings` 后 `mma-settings.json` 键集合不变；插件版本号（`index.js` 与 `metadata.txt`）未变。
 - **端到端与目视项**：本机冒烟脚本（15 项独立检查，含广播断言与字节快照回滚，另带 `--self-test`）与手工清单（全局快捷键打开/聚焦、设置窗口几何独立记忆、无挂起开关序列、关 overlay 连带关闭、离线预设 CRUD 与重启保持、在线只读 + 自定义端口 dashboard URL、`presets.html` 与浏览器模式回归）在验收步骤中执行；GUI 项为目视判据，自动化证据仅本机可复现（`desktop/scripts/`、`desktop/tests-local/`、`temp/` 均为本机 gitignored 脚手架，不入库）。验收所在会话环境不产生可枚举的 OS 窗口，故 GUI 目视项需在交互式会话复核；窗口的**代码路径**已由证据确认：日志出现 `settings window opened`（只在 `build()` 返回 Ok 时记录），且连续三次 `POST /open-settings` 只新增一行该日志（后两次走 show/focus 分支）。
 
 ## 6. 后续修复（本轮之后）
@@ -58,7 +58,7 @@
 - **hotkeys 补缺**：`config.rs::ensure_shell_config()` 对**已有** `mma-shell-config.json` 只补不改——缺失/空串的 `hotkeys` 键按内置默认补齐（打开设置窗口默认 `Ctrl+Shift+S`），用户写过的值原样保留。Shell 面板的「Open settings window」不再出现空输入框（该键缺失时快捷键本来也靠内置默认可用）。
 - **页面侧 tosu 数据面**：离线页（24061）的门控加入 `state.tosuDataSeen`（页面自己的 tosu socket 收到载荷即置位）——壳探测不到 tosu（缺 `tosu.env`）时卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；1.2s 的延迟初始重算也随之立即执行（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上）。
 
-以上均不改契约版本、帧型与插件版本号（仍为 v5 / 2.1.0）。
+以上均不改本轮的契约版本、帧型与插件版本号（当时为 v5 / 2.1.0；契约随后升至 v6，见 2026-09-30 记录）。
 
 # 2026-09-26 — Local settings window and the offline authority chain (desktop shell)
 
@@ -79,7 +79,7 @@
 | Instance probe | none (a second instance built the main window, then exited) | a probe at the top of `main()`: our own shell → forward `POST /open-settings` when `--settings` was given, then **always `exit(0)` without creating any window**; a foreign process on the port → `exit(2)` |
 | Settings-window geometry | — | merged into `mma-shell-state.json`'s `settings` field (backward compatible with legacy `mma-shell-settings-window.json`) |
 
-**What does not change (equally important)**: `CONTRACT_VERSION` (`desktop/src/frames.rs`) is **still 5**, the page's `bridgeClient.js` constant stays 5 and the accepted range stays `[3,5]`; the frame-type set and every frame schema are untouched (eight types + diag); `server/ws.rs` is untouched; `tauri.conf.json` is untouched; **the plugin version is not bumped** (`index.js` `_VERSION` and `metadata.txt` `Version` stay `2.1.0`); no Cargo dependency was added.
+**What does not change at that time (equally important)**: `CONTRACT_VERSION` (`desktop/src/frames.rs`) is **still 5 then**, the page's `bridgeClient.js` constant stays 5 and the accepted range stays `[3,5]` at that point (later raised to v6 / `[3,6]` — see the 2026-09-30 note); the frame-type set and every frame schema are untouched (eight types + diag); `server/ws.rs` is untouched; `tauri.conf.json` is untouched; **the plugin version is not bumped** (`index.js` `_VERSION` and `metadata.txt` `Version` stay `2.1.0`); no Cargo dependency was added.
 
 ## 2. Why
 
@@ -104,4 +104,4 @@ Rust unit tests all pass (177, including the new `merge_json` branches, the `Set
 - **Hotkey backfill**: `config.rs::ensure_shell_config()` only fills in, never rewrites, an **existing** `mma-shell-config.json` — missing/empty `hotkeys` keys get their built-in default (opening the settings window defaults to `Ctrl+Shift+S`) while values the user wrote are kept verbatim. The Shell panel's "Open settings window" field no longer shows up empty (with that key absent the shortcut itself already worked through the built-in default).
 - **Page-side tosu data plane**: the offline page's (24061) gate now also accepts `state.tosuDataSeen` (set once the page's own tosu socket has received a payload) — with tosu running but the shell unable to probe it (no `tosu.env`) the card no longer stays at `Waiting for a data source (Etterna/Malody or tosu)...`; the 1.2s delayed initial recompute is skipped as well (`main.js` registers the fallback timer on `state.recalcTimerId`).
 
-None of the above changes the contract version, the frame types or the plugin version number (still v5 / 2.1.0).
+None of the above changes the contract version, the frame types or the plugin version number at that time (then v5 / 2.1.0; the contract was later raised to v6 — see the 2026-09-30 note).

@@ -119,6 +119,6 @@ tech    = Technical
 ## 9. 已知限制
 
 - 仅 4K RC（Roxy/Azusa 的既有 scope）；Sunny/Daniel/Companella 不适用（用户指定 Roxy+Azusa）。
-- 分析管线中 `withEtterna` 关闭（contentBar 不含 Etterna）时修正不生效——依赖 MSD 均衡条件的固有代价。
+- 修正**不依赖** `withEtterna`（展示开关）：管线按需前置 Ett（`runAnalysisPipeline.js:122-146` 只检查 duration/键数/算法，不检查 `withEtterna`），因为修正是恒定的语义环节，与是否展示 Etterna 技能条无关。缺的是 Etterna **MSD 数据本身**（WASM 不可用/计算失败）时才不动作。
 - 校准基于 34 张 course 样本（有效合并 48 行），scale=0.40 已留余量；若后续更大的语料显示需要调整，须重新走留出法校验（用户决策）。
 - 对数饱和修正的次线性特性：超长图（>15 分钟）的修正量增速趋缓（`ln` 饱和），长端虚高可能修正不足——当前语料（最长 901s）无此样本，为已知边界。
