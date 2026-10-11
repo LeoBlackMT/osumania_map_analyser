@@ -328,24 +328,34 @@ A fitted linear model using 19 interaction terms between `x` (the calibrated val
 
 **Function**: `calibrateAzusaOutputNumeric(value)`
 
-Uses `piecewiseLinear` over **`AZUSA_ISOTONIC_POINTS`**: a 79-point isotonic regression table mapping pre-output values to final RC values. This is the primary calibration table, fitted from the full 526-sample benchmark dataset using the Pool Adjacent Violators Algorithm (PAVA).
+Uses `piecewiseLinear` over **`AZUSA_ISOTONIC_POINTS`**: a 84-point isotonic regression table mapping pre-output values to final RC values. This is the primary calibration table, fitted from the full 526-sample benchmark dataset using the Pool Adjacent Violators Algorithm (PAVA).
 
 ---
 
 ## 10. Stage 6: Reference Correction (`computeReferenceCorrection`)
 
-**Function**: `computeReferenceCorrection(azusaEst, daniel, sunny)`
+**Function**: `computeReferenceCorrection(azusaEst, daniel, sunny, curveHints = null)`
 
 A gated correction applied to the calibrated output in the mid-to-high range [10.0, 17.5]:
 
 | Sub-range | Gate | daniel coeff | sunny coeff |
 |-----------|------|-------------|-------------|
 | [10.0, 11.5) | Linear ramp | 0.10 | 0.06 |
-| [11.5, 12.5) | Full (1.0) | 0.20 | 0.13 |
+| [11.5, 12.5) | Full (1.0) | 0.20 (+ transition) | 0.13 (+ transition) |
 | [12.5, 16.0) | Full (1.0) | 0.40 | 0.25 |
 | [16.0, 17.5) | Linear decay | 0.28 | 0.17 |
 
 Formula: `correction = gate × (coeffD × (daniel - x) + coeffS × (sunny - x))`, clamped to [-1.2, 1.2].
+
+#### 10.1 Stream-Conditioned Gamma Transition
+
+For charts in the `[11.5, 12.5)` range where Daniel already indicates a Gamma-tier difficulty (`refD > 12.0`) and the chart exhibits low chord density (`chordRate < 0.45`, indicating pure single-note speed streams):
+- `streamWeight = clamp((0.45 - chordRate) / 0.15, 0, 1)`
+- `t = clamp((refD - 12.0) / 0.8, 0, 1) * streamWeight`
+- `coeffD = 0.20 + 0.20 * t`
+- `coeffS = 0.13 + 0.12 * t`
+
+This smooth transition eliminates the boundary discontinuity at `x = 12.5` caused by PAVA isotonic plateaus on pure speed streams without disturbing dense chorded or tech charts.
 
 This leverages the observation that Daniel and Sunny have higher discriminative power than Azusa in the Alpha–Eta range (RC 11–17), while Azusa is more reliable at the extremes.
 
@@ -361,7 +371,7 @@ This leverages the observation that Daniel and Sunny have higher discriminative 
 
 ### 11.2 Isotonic Calibration Table
 
-**`AZUSA_ISOTONIC_POINTS`** (79 entries): Each entry is `[preOutputValue, rcValue]`. Fitted using the Pool Adjacent Violators Algorithm (PAVA) on 526 benchmark samples. This is a monotonic non-decreasing function that provides the final RC mapping.
+**`AZUSA_ISOTONIC_POINTS`** (84 entries): Each entry is `[preOutputValue, rcValue]`. Fitted using the Pool Adjacent Violators Algorithm (PAVA) on 526 benchmark samples. This is a monotonic non-decreasing function that provides the final RC mapping.
 
 ---
 
