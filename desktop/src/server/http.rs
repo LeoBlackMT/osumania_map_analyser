@@ -330,6 +330,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     // GET /offsets/status：当前内存偏移表状态与生成器就绪态（P2 Topic 9 / 10 / 12）
     if path == "/offsets/status" {
         let stable_table = crate::osu::offsets::find_stable_table(None);
+        let ppysb_table = crate::osu::offsets::find_stable_table_variant(None, "ppysb");
         let lazer_default = crate::osu::offsets::default_lazer_table();
         let gen_ready = find_gen_executable(&shared).is_some();
         let shadow_diag = crate::osu::compare::current_diagnostics();
@@ -345,6 +346,13 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "arch": "x86",
                 "anchors_count": stable_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
                 "loaded": stable_table.is_ok()
+            },
+            "ppysb": {
+                "client": "ppysb",
+                "version": ppysb_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
+                "arch": "x86",
+                "anchors_count": ppysb_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
+                "loaded": ppysb_table.is_ok()
             },
             "lazer": {
                 "client": "lazer",

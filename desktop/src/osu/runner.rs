@@ -13,6 +13,33 @@ use crate::osu::invariants::{FrameAction, Gate};
 use crate::osu::model::{Client, Reason, Snapshot};
 use super::*;
 
+#[cfg(windows)]
+pub fn detect_stable_variant(target: &win::Target) -> &'static str {
+    if let Ok(var) = std::env::var("MMA_STABLE_VARIANT") {
+        if var.eq_ignore_ascii_case("ppysb") {
+            return "ppysb";
+        }
+        if var.eq_ignore_ascii_case("stable") {
+            return "stable";
+        }
+    }
+    // 检测是否加载了 SBInjector / PpySBPatcher 拓展模块
+    if let Ok(modules) = win::module_list(target.pid) {
+        for (_, mod_name) in modules {
+            let lower = mod_name.to_ascii_lowercase();
+            if lower.contains("sb_pp_ffi") || lower.contains("ppysb") || lower.contains("sbpatcher") {
+                return "ppysb";
+            }
+        }
+    }
+    "stable"
+}
+
+#[cfg(not(windows))]
+pub fn detect_stable_variant(_target: &win::Target) -> &'static str {
+    "stable"
+}
+
 /// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
 #[cfg(windows)]
 pub fn run(reader: Reader) {
@@ -235,8 +262,13 @@ pub fn run(reader: Reader) {
                 }
                 if client == Client::Stable && stable_table.is_none() {
                     let exe_dir = target.image_path.parent();
-                    let loaded = offsets::find_stable_table(exe_dir)
-                        .unwrap_or_else(|_| offsets::default_stable_table());
+                    let variant = detect_stable_variant(target);
+                    let loaded = offsets::find_stable_table_variant(exe_dir, variant)
+                        .unwrap_or_else(|_| if variant == "ppysb" {
+                            offsets::default_ppysb_table()
+                        } else {
+                            offsets::default_stable_table()
+                        });
                     eprintln!(
                         "[osu] stable table loaded: client={} ver={} verified_build={}",
                         loaded.client, loaded.version, loaded.verified_build
@@ -260,7 +292,28 @@ pub fn run(reader: Reader) {
                 if anchors.is_none() {
                     let mut on_progress =
                         |progress: ScanProgress| publish_scan_progress(&reader, progress);
-                    match resolve_anchors(target, &mut regions, stable_table.as_ref(), &mut on_progress) {
+                    let scan_res = resolve_anchors(target, &mut regions, stable_table.as_ref(), &mut on_progress);
+                    let scan_res = match scan_res {
+                        Err(Reason::SignatureMiss("statusPtr"))
+                            if client == Client::Stable
+                                && stable_table.as_ref().map(|t| t.client.as_str()) != Some("ppysb") =>
+                        {
+                            eprintln!("[osu] statusPtr missing with default table, attempting ppysb fallback...");
+                            let exe_dir = target.image_path.parent();
+                            let ppysb_table = offsets::find_stable_table_variant(exe_dir, "ppysb")
+                                .unwrap_or_else(|_| offsets::default_ppysb_table());
+                            match resolve_anchors(target, &mut regions, Some(&ppysb_table), &mut on_progress) {
+                                Ok(res) => {
+                                    eprintln!("[osu] successfully resolved anchors via ppysb table!");
+                                    stable_table = Some(ppysb_table);
+                                    Ok(res)
+                                }
+                                Err(_) => scan_res,
+                            }
+                        }
+                        other => other,
+                    };
+                    match scan_res {
                         Ok((table, elapsed_ms)) => {
                             eprintln!(
                                 "[osu] anchors resolved in {}ms: statusPtr=0x{:08X} baseAddr=0x{:08X} playTimeAddr=0x{:08X} rulesetsAddr=0x{:08X} menuModsPtr=0x{:08X} getAudioLengthPtr=0x{:08X} settingsClassAddr=0x{:08X}",

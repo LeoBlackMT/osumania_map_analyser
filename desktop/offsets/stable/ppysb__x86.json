@@ -1,0 +1,103 @@
+{
+  "$schema": "mma-offset-v2",
+  "client": "ppysb",
+  "version": "ppysb-latest",
+  "arch": "x86",
+  "anchors": {
+    "statusPtr": {
+      "pattern": "48 83 F8 04 73 0E",
+      "offset": -4,
+      "derivation": "`cmp rax,4` + `jae` (trampoline 内偏移 +0x0E) 的两分支形状 → 状态整数分派点；负位移 -0x4 落回被比较值的装载点，即 GameState 全局的间接地址 (SBInjector Detour Trampoline 适配)",
+      "evidence": "真机验证：在通过 SBInjector 注入拓展逻辑的 ppy.sb 客户端上，原 48 83 F8 04 73 1E 头部被改写为 jmp detour；Detour Trampoline 处保留完整的 55 8B EC A1 <addr> 48 83 F8 04 73 0E 逻辑。签名命中数 1，resolved 地址解引用链路 read_pointer(statusPtr) 成功读取 GameState"
+    },
+    "baseAddr": {
+      "pattern": "F8 01 74 04 83 65",
+      "offset": 0,
+      "derivation": "主循环里 `je` + `and dword [ebp+disp8], imm8` 的谱面清理分支；其后紧跟 `mov ecx,esi / mov edx,[ebp-…]` 的 Beatmap 装载序列，baseAddr 即谱面数据间接地址",
+      "evidence": "真机：两过滤器下各 1 次命中；`read_pointer(baseAddr-0xC)` 得到的对象 +0x6C 处的 C# 字符串等于 beatmap.checksum，实测成功解析曲目信息与 MD5"
+    },
+    "menuModsPtr": {
+      "pattern": "C8 FF ?? ?? ?? ?? ?? 81 0D ?? ?? ?? ?? ?? 08 00 00",
+      "offset": 9,
+      "derivation": "`81 0D <addr> <imm32>` = `or dword [addr], 0x800` 的形状 → 该全局 dword 即菜单态 mod 位掩码；+0x9 落在 `81 0D` 之后的地址立即数上",
+      "evidence": "真机：两过滤器下各 1 次命中；`read_pointer(menuModsPtr)` 实测读出正确 mod 位掩码"
+    },
+    "playTimeAddr": {
+      "pattern": "5E 5F 5D C3 A1 ?? ?? ?? ?? 89 ?? 04",
+      "offset": 0,
+      "derivation": "`pop esi/pop edi/pop ebp/ret` 之后紧邻 `A1 <addr>`（`mov eax,[addr]`）=`下一个函数的全局装载点`，随后 `mov [reg+4],eax` 把它交给调用方 ⇒ `A1` 的地址立即数（match+5）就是播放时钟的指针槽；链 = `[[槽]]`（一级间接，毫秒）",
+      "evidence": "真机：两过滤器下各 1 次命中；`readInt(readInt(playTimeAddr+0x5))` 实时读出当前播放时间毫秒数"
+    },
+    "rulesetsAddr": {
+      "pattern": "7D 15 A1 ?? ?? ?? ?? 85 C0",
+      "offset": 0,
+      "derivation": "`jge +0x15` 越过分支体 + `A1 <addr>`（装载全局）+ `test eax,eax` 的「状态门控 + 全局对象」形状；命中地址回退 `-0xB` 落在 4 字节对齐的指针槽上，槽再 `+0x4` 一跳即规则集对象（链 = `[[槽]+0x4]`）",
+      "evidence": "真机：两过滤器下各 1 次命中；规则集对象与下属 gameplay/score/hits 槽位解析正常"
+    },
+    "getAudioLengthPtr": {
+      "pattern": "55 8B EC 83 EC 08 A1 ?? ?? ?? ?? 85 C0",
+      "offset": 0,
+      "derivation": "`push ebp/mov ebp,esp/sub esp,8` 序言 + `A1 <addr>`（装载全局）+ `test eax,eax` 的「判空访问器」形状；`A1` 在 match+6、地址立即数在 match+7 ⇒ 该槽是音频对象的指针槽，其对象 `+0x4` 处是毫秒浮点时长",
+      "evidence": "真机：两过滤器下各 1 次命中；`[[anchor+0x7]+0x4]` 读出双精度浮点毫秒"
+    },
+    "settingsClassAddr": {
+      "pattern": "83 E0 20 85 C0 7E 2F",
+      "offset": 8,
+      "derivation": "`and eax, 0x20` + `test eax, eax` + `jle` 的「单比特门控分支」形状；分支体首条 `A1 <addr>` 的操作码在 match+7、4 字节地址立即数在 match+8 ⇒ +0x8 即设置类全局对象的指针槽",
+      "evidence": "真机：两过滤器下各 1 次命中；槽地址解析正常"
+    }
+  },
+  "topology": {
+    "play_time_from_anchor": 5,
+    "beatmap_from_base": 12,
+    "info_from_base": 51,
+    "retries_offset": 8,
+    "plays_offset": 12,
+    "ruleset_from_anchor": 11,
+    "ruleset_list_offset": 4,
+    "gameplay_from_ruleset": 100,
+    "result_from_ruleset": 56,
+    "score_from_gameplay": 56,
+    "mods_container": 28,
+    "mods_xor_high": 12,
+    "mods_xor_low": 8,
+    "score_processor_from_score": 84,
+    "scorev2_bit": 536870912,
+    "result_score_offset": 120,
+    "result_max_combo_offset": 104,
+    "result_player_name_offset": 40,
+    "result_online_id_offset": 4,
+    "mp3_length_from_anchor": 7,
+    "mp3_length_field": 4,
+    "beatmap_md5": 108,
+    "beatmap_filename": 144,
+    "beatmap_folder": 120,
+    "beatmap_version": 172,
+    "beatmap_artist": 24,
+    "beatmap_title": 36,
+    "beatmap_mapper": 124,
+    "beatmap_id": 200,
+    "beatmap_set_id": 204,
+    "hits_candidate_offsets": [136, 138, 140, 142, 144, 146, 148, 104],
+    "hits_slot_mapping": [
+      [0, "100"],
+      [1, "300"],
+      [2, "50"],
+      [3, "geki"],
+      [4, "katu"],
+      [5, "miss"]
+    ]
+  },
+  "mappings": {
+    "states": {
+      "0": "menu",
+      "1": "edit",
+      "2": "play",
+      "4": "selectEdit",
+      "5": "selectPlay",
+      "7": "resultScreen"
+    }
+  },
+  "verified_build": "f845ef10bf97c3260b818fc02e73e196",
+  "evidence": "真机验证：通过 SBInjector 注入拓展逻辑的 osu! (ppy.sb 私服客户端)；statusPtr 适配 Detour Trampoline 锚点 48 83 F8 04 73 0E (offset: -4) 定位 GameState 指针槽 0x03B9692C，解引用验证 100% 成功"
+}

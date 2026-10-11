@@ -16,7 +16,8 @@ offsets/
 │   ├── 2026.921.0.0__10.0.12__x64.json
 │   └── 2026.1005.0.0__10.0.12__x64.json
 └── stable/                 # osu!stable 偏移表目录 / osu!stable offset tables
-    └── stable__x86.json
+    ├── stable__x86.json    # 官方标准客户端 / Official client
+    └── ppysb__x86.json     # ppy.sb 私服注入客户端 / ppy.sb client (SBInjector)
 ```
 
 ---
@@ -24,8 +25,8 @@ offsets/
 ## 使用指南 / Usage Guide
 
 ### 1. 日常游玩 / Daily Play
-- **通常无需进行任何操作**：安装包内自带的偏移表已覆盖当前主流的 osu!stable 与 osu!lazer 版本。
-- 启动 `mma-shell.exe` 后，壳程序会自动在此目录或用户缓存目录检索与当前游戏版本完全匹配的偏移表。
+- **通常无需进行任何操作**：安装包内自带的偏移表已覆盖当前主流的 osu!stable（含 ppy.sb 客户端）与 osu!lazer 版本。
+- 启动 `mma-shell.exe` 后，壳程序会自动检索并自动识别匹配当前游戏版本（包括自动识别 SBInjector / ppy.sb 客户端）。
 
 ### 2. 当 osu!(lazer) 更新后 / When osu!(lazer) Updates
 如果 osu!(lazer) 进行了新版本更新，且提示偏移表未匹配（`lazer-offsets-missing`），可通过以下任意一种方式一键生成新版本的偏移表：
