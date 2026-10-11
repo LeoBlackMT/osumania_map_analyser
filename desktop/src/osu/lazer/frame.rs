@@ -1,8 +1,8 @@
-use crate::osu::model::{Client, Reason, Snapshot};
+use crate::osu::model::{Client, LazerMod, Reason, Snapshot};
 use crate::osu::offsets::{LookupError, OffsetTable};
 use super::fields::*;
 use super::resolve::*;
-use super::screen::{read_screen_state, runtime_probe, ScreenOutcome};
+use super::screen::{read_eetype, read_screen_state, runtime_probe, ScreenOutcome};
 use super::source::*;
 use super::table::*;
 use super::types::*;
@@ -282,18 +282,22 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     match resolved.selected_mods.clone() {
         Ok(offset) => {
             chain.selected_mods = read_ptr_field(source, game_base, offset);
-            snapshot.lazer_mods = None;
-            if chain.selected_mods.is_none() {
+            if let Some(selected_mods) = chain.selected_mods {
+                snapshot.lazer_mods = read_lazer_mods(source, table, selected_mods, &resolved, modules);
+                if snapshot.lazer_mods.is_none() {
+                    for field in ["play.mods", "menu.mods", "resultsScreen.mods"] {
+                        gaps.push(gap(field, "offsets-missing-ScoreInfo.ModsJson"));
+                    }
+                }
+            } else {
+                snapshot.lazer_mods = None;
                 gaps.push(gap("play.mods", "read"));
                 gaps.push(gap("menu.mods", "read"));
                 gaps.push(gap("resultsScreen.mods", "read"));
-            } else {
-                for field in ["play.mods", "menu.mods", "resultsScreen.mods"] {
-                    gaps.push(gap(field, "offsets-missing-ScoreInfo.ModsJson"));
-                }
             }
         }
         Err(error) => {
+            snapshot.lazer_mods = None;
             gaps.push(offsets_gap("play.mods", &error));
             gaps.push(offsets_gap("menu.mods", &error));
             gaps.push(offsets_gap("resultsScreen.mods", &error));
@@ -644,6 +648,176 @@ pub fn read_tick(
     Ok(frame)
 }
 
+/// 将已解析的类型名映射为 osu!mania / lazer 的 acronym 与默认速率。
+pub fn mod_acronym_from_type_name(name: &str) -> Option<(&'static str, Option<f64>)> {
+    if name.contains("DoubleTime") {
+        Some(("DT", Some(1.5)))
+    } else if name.contains("Nightcore") {
+        Some(("NC", Some(1.5)))
+    } else if name.contains("HalfTime") {
+        Some(("HT", Some(0.75)))
+    } else if name.contains("Daycore") {
+        Some(("DC", Some(0.75)))
+    } else if name.contains("HardRock") {
+        Some(("HR", None))
+    } else if name.contains("Easy") {
+        Some(("EZ", None))
+    } else if name.contains("Hidden") {
+        Some(("HD", None))
+    } else if name.contains("Flashlight") {
+        Some(("FL", None))
+    } else if name.contains("FadeIn") {
+        Some(("FI", None))
+    } else if name.contains("Mirror") {
+        Some(("MR", None))
+    } else if name.contains("Invert") {
+        Some(("IN", None))
+    } else if name.contains("HoldOff") {
+        Some(("HO", None))
+    } else if name.contains("Classic") {
+        Some(("CL", None))
+    } else if name.contains("ScoreV2") {
+        Some(("SV2", None))
+    } else if name.contains("DifficultyAdjust") {
+        Some(("DA", None))
+    } else if name.contains("NoFail") {
+        Some(("NF", None))
+    } else if name.contains("Relax") {
+        Some(("RX", None))
+    } else if name.contains("Autoplay") {
+        Some(("AT", None))
+    } else if name.contains("Cinema") {
+        Some(("CN", None))
+    } else if name.contains("Perfect") {
+        Some(("PF", None))
+    } else if name.contains("SuddenDeath") {
+        Some(("SD", None))
+    } else if name.contains("DualStages") {
+        Some(("DS", None))
+    } else if name.contains("Key1") {
+        Some(("1K", None))
+    } else if name.contains("Key2") {
+        Some(("2K", None))
+    } else if name.contains("Key3") {
+        Some(("3K", None))
+    } else if name.contains("Key4") {
+        Some(("4K", None))
+    } else if name.contains("Key5") {
+        Some(("5K", None))
+    } else if name.contains("Key6") {
+        Some(("6K", None))
+    } else if name.contains("Key7") {
+        Some(("7K", None))
+    } else if name.contains("Key8") {
+        Some(("8K", None))
+    } else if name.contains("Key9") {
+        Some(("9K", None))
+    } else if name.contains("WindUp") {
+        Some(("WU", None))
+    } else if name.contains("WindDown") {
+        Some(("WD", None))
+    } else if name.contains("ConstantSpeed") {
+        Some(("CS", None))
+    } else if name.contains("AdaptiveSpeed") {
+        Some(("AS", None))
+    } else {
+        None
+    }
+}
+
+/// 从 SelectedMods 链（`Bindable<IReadOnlyList<Mod>>`）读取当前态启用的 mods 列表。
+pub fn read_lazer_mods(
+    source: &dyn Source,
+    table: &OffsetTable,
+    selected_mods_ptr: u64,
+    resolved: &Resolved,
+    modules: &[(u64, String)],
+) -> Option<Vec<LazerMod>> {
+    if modules.is_empty() {
+        return None;
+    }
+    let bindable_val_offset = resolved.bindable_value.clone().unwrap_or(32);
+    let list_or_array = read_ptr_field(source, selected_mods_ptr, bindable_val_offset)?;
+    let mt = read_u64(source, list_or_array)?;
+    if !plausible_ptr(mt) || mt == list_or_array || mt < 0x1000_0000_0000 {
+        return None;
+    }
+
+    let val_at_8 = read_u64(source, list_or_array + 8).unwrap_or(0);
+    let (items_array, size) = if plausible_ptr(val_at_8) {
+        let size = read_i32(source, list_or_array + 16).unwrap_or(0);
+        (val_at_8, size)
+    } else {
+        let size = val_at_8 as i32;
+        (list_or_array, size)
+    };
+
+    if size < 0 || size > 64 {
+        return None;
+    }
+    if size == 0 {
+        return Some(Vec::new());
+    }
+    let items_mt = read_u64(source, items_array)?;
+    if !plausible_ptr(items_mt) {
+        return None;
+    }
+
+    let count = (size as usize).min(32);
+    let mut mods = Vec::new();
+    for i in 0..count {
+        let elem_addr = match field_addr(items_array, 16 + (i as i64) * 8) {
+            Some(addr) => addr,
+            None => continue,
+        };
+        let mod_obj = match read_u64(source, elem_addr) {
+            Some(obj) if plausible_ptr(obj) => obj,
+            _ => continue,
+        };
+
+        let type_name = match read_eetype(source, table, mod_obj, modules) {
+            Ok(read) => read.type_name.unwrap_or_default(),
+            Err(_) => String::new(),
+        };
+
+        if let Some((acronym, default_speed)) = mod_acronym_from_type_name(&type_name) {
+            let mut speed_change = default_speed;
+            let mut overall_difficulty = None;
+
+            if default_speed.is_some() {
+                for offset in [0x10, 0x18, 0x20, 0x28, 0x30, 0x38] {
+                    if let Some(bindable) = read_ptr_field(source, mod_obj, offset) {
+                        if let Some(val) = read_f64(source, bindable + 0x20) {
+                            if val.is_finite() && val >= 0.25 && val <= 3.0 {
+                                speed_change = Some(val);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else if acronym == "DA" {
+                for offset in [0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48] {
+                    if let Some(bindable) = read_ptr_field(source, mod_obj, offset) {
+                        if let Some(val) = read_f64(source, bindable + 0x20) {
+                            if val.is_finite() && val >= 0.0 && val <= 11.0 {
+                                overall_difficulty = Some(val);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            mods.push(LazerMod {
+                acronym: acronym.to_string(),
+                speed_change,
+                overall_difficulty,
+            });
+        }
+    }
+    Some(mods)
+}
+
 #[cfg(not(windows))]
 pub fn attach(
     _target: &crate::osu::win::Target,
@@ -660,3 +834,62 @@ pub fn read_tick(
 ) -> Result<LazerFrame, Reason> {
     Err(Reason::PlatformUnsupported)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mod_acronym_mappings() {
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModDoubleTime"),
+            Some(("DT", Some(1.5)))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mods.ModNightcore"),
+            Some(("NC", Some(1.5)))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mods.ModHalfTime"),
+            Some(("HT", Some(0.75)))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModHardRock"),
+            Some(("HR", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModFadeIn"),
+            Some(("FI", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModMirror"),
+            Some(("MR", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModInvert"),
+            Some(("IN", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModHoldOff"),
+            Some(("HO", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mods.ModClassic"),
+            Some(("CL", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mods.ModScoreV2"),
+            Some(("SV2", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mods.ModDifficultyAdjust"),
+            Some(("DA", None))
+        );
+        assert_eq!(
+            mod_acronym_from_type_name("osu.Game.Rulesets.Mania.Mods.ManiaModKey7"),
+            Some(("7K", None))
+        );
+        assert_eq!(mod_acronym_from_type_name("osu.Game.Unknown"), None);
+    }
+}
+

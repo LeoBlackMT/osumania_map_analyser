@@ -279,8 +279,25 @@ export function updatePauseCountVisibility() {
     pauseCountEl.hidden = false;
 }
 
+function resolveEffectiveSource() {
+    if (state.activeSource) {
+        return state.activeSource;
+    }
+    if (state.malody4Alive) {
+        return "malody4";
+    }
+    if (state.malodyAlive) {
+        return "malody";
+    }
+    if (state.etternaAlive) {
+        return "etterna";
+    }
+    return null;
+}
+
 export function isCurrentSourcePlaying() {
-    switch (state.activeSource) {
+    const source = resolveEffectiveSource();
+    switch (source) {
         case "osu":
             return Boolean(state.isInPlayState);
         case "malody":
@@ -295,7 +312,8 @@ export function isCurrentSourcePlaying() {
 }
 
 export function isCurrentSourceMenu() {
-    switch (state.activeSource) {
+    const source = resolveEffectiveSource();
+    switch (source) {
         case "osu":
             return state.clientStateName === "menu";
         case "malody":
@@ -312,8 +330,10 @@ export function updateCardPlayVisibility() {
         return;
     }
 
+    const currentSource = resolveEffectiveSource();
+
     // 无活跃数据源时（如未开游戏、已退出游戏）：始终显示卡片以展示等待提示，防止卡片位置丢失
-    if (!state.activeSource) {
+    if (!currentSource) {
         mainCardEl.classList.toggle("card-hidden-by-play", false);
         mainCardEl.setAttribute("aria-hidden", "false");
         return;

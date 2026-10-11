@@ -45,6 +45,18 @@ pub fn read_f64(source: &dyn Source, addr: u64) -> Option<f64> {
     Some(f64::from_le_bytes(bytes.try_into().ok()?))
 }
 
+/// 2 字节小端读（ushort；PE / CLI 元数据解析用）。
+pub fn read_u16(source: &dyn Source, addr: u64) -> Option<u16> {
+    let bytes = source.read(addr, 2)?;
+    Some(u16::from_le_bytes(bytes.try_into().ok()?))
+}
+
+/// 1 字节读。
+pub fn read_u8(source: &dyn Source, addr: u64) -> Option<u8> {
+    let bytes = source.read(addr, 1)?;
+    Some(bytes[0])
+}
+
 /// 对象字段的指针读：base + offset、非空、8 字节对齐。
 pub fn read_ptr_field(source: &dyn Source, base: u64, offset: i64) -> Option<u64> {
     let addr = field_addr(base, offset)?;

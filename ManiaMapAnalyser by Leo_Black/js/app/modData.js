@@ -144,7 +144,11 @@ export function getModData(data, {
                 addCodesFromString(modCodes, modItem, sortedKnownModCodes);
                 continue;
             }
-            addCodesFromString(modCodes, modItem?.acronym, sortedKnownModCodes);
+            addCodesFromString(
+                modCodes,
+                modItem?.acronym || modItem?.code || modItem?.shortName || modItem?.name,
+                sortedKnownModCodes,
+            );
         }
     }
 
@@ -161,18 +165,24 @@ export function getModData(data, {
                     continue;
                 }
 
-                const acronym = String(modItem?.acronym || "").toUpperCase();
+                const acronym = String(
+                    modItem?.acronym || modItem?.code || modItem?.shortName || modItem?.name || "",
+                ).toUpperCase();
                 if (acronym) {
                     modCodes.add(acronym);
                 }
 
-                const speedChange = Number(modItem?.settings?.speed_change);
+                const speedChange = Number(
+                    modItem?.settings?.speed_change ?? modItem?.speed_change ?? modItem?.rate,
+                );
                 if (Number.isFinite(speedChange) && speedChange > 0) {
                     lazerSpeedChange = speedChange;
                 }
 
                 if (acronym === "DA") {
-                    const overallDifficulty = Number(modItem?.settings?.overall_difficulty);
+                    const overallDifficulty = Number(
+                        modItem?.settings?.overall_difficulty ?? modItem?.overall_difficulty,
+                    );
                     if (Number.isFinite(overallDifficulty)) {
                         daOverallDifficulty = overallDifficulty;
                     }

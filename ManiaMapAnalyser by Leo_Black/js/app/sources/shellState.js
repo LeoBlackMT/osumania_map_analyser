@@ -199,9 +199,14 @@ export function applyMalody4Selection(payload) {
     state.malody4LastSeq = payload.sequence != null ? payload.sequence : null;
     state.malody4LastSeenAt = Date.now();
     state.malody4Alive = Date.now() - state.malody4LastSeenAt <= MALODY4_ALIVE_WINDOW_MS;
+    if (payload.screen) {
+        state.malody4Screen = payload.screen;
+        state.malody4Playing = payload.screen === "playing";
+    }
     // L2 续约：只有"真的选中了谱面"的帧才算新鲜事件。hidden 帧（path 为空）与心跳必须
     // 排除，否则壳只要在跑（hidden 心跳永不停止）就会把路由永久钉在 malody4，饿死 osu/Etterna。
     if (payload.path && payload.event !== "heartbeat") {
         notifySourceEvent("malody4");
     }
+    updateCardPlayVisibility();
 }
