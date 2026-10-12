@@ -1316,13 +1316,22 @@ pub fn backoff(attempt: usize) -> Duration {
 /// 由 `packet.rs` 发 `null`，绝不重发上一帧的掩码。
 ///
 /// 两道门（本步加固）：
-/// ① **状态门**：局内掩码只在 `play`/`resultScreen` 发、结算掩码只在 `resultScreen` 发；
+/// ① **状态门**：局内掩码只在 `play` 发、结算掩码只在 `resultScreen` 发——每个槽只喂
+///    **它自己那条链在自己那个态**里的值；
 /// ② **链有效性门**：局内/结算链不可信（指针缺失或非对齐垃圾）时同样发 `null`——
 ///    菜单/选歌里这两个槽是残留指针，读出来的掩码与当前局无关（真机实测选歌态
 ///    `score_base = 0x01000101`），绝不能进载荷。
+///
+/// 结算态**不再**发局内掩码（issue #91）：结算时玩法/分数对象**正在被释放**，"指针合理"
+/// 不等于"内容可信"——真机 13 帧结算态里 `score_base` 仍有 2 帧非零、链门放行，读出来的
+/// 是垃圾掩码（可能带 DT/HT 这类速率位）。I-06 的期望指针表在结算态本就不列
+/// `gameplay`/`score`（[`expected_pointers`]）；链门只能挡"指针缺失/非对齐"这一层，
+/// 挡不住"释放后仍看着合理"，所以状态门必须自己收窄到 `play`。页面在非游玩态取三槽并集，
+/// 垃圾掩码会让整局难度被误判成上一局的 mod，直到掩码归零才自愈。tosu 在结算态给
+/// `play.mods` 填的是**结算链**的值（`buildResultV2.ts` 的 `currentMods`），页面侧同样
+/// 是并集 ⇒ 我们的 `null` 与 tosu 的非空值**页面可见码集相同**（影子对拍那一格仍相等）。
 pub fn mask_for_state(snapshot: &Snapshot) -> (Option<u32>, Option<u32>, Option<u32>) {
-    let play = if (snapshot.is_play_state() || snapshot.is_result_state()) && play_chain_valid(snapshot)
-    {
+    let play = if snapshot.is_play_state() && play_chain_valid(snapshot) {
         snapshot.play_mods_mask
     } else {
         None

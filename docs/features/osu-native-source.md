@@ -338,3 +338,4 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 - **首次附着/锚点失效后的检测时间由扫描决定**：stable 冷启动首次全量扫描实测 7–15 s、破坏性测试现场 11.2 s；lazer 冷路径 12.6–18.6 s（`scan_ms=14426` 为其一例）——这期间页面靠 `#osu-scan-hint` 的提示而不是假数据。
 - **`MIN_DWELL` 未接线**（§8）；**保持期内的图表读数是上一份的**（`state.name` 实时，`beatmap.time.live`/hits 是最后一张好图的值，≤2.5 s 或到恢复完成为止，结算界面不可见）。
 - **tosu 4.25.1 的已知缺陷（我们的有意偏离）**：它在非结算态发布垃圾 `resultsScreen.mods`（观测 `number=1529628200`），页面在非游玩态取三槽并集 ⇒ tosu 模式下 NM 图会被算成 DT；我们的 native 路径只在结算态发布它（更正确但与 tosu 不同）。见计划 Step 9 进度记录与 `D-notes.md`。
+- **结算态不发 `play.mods`（issue #91 的修复；与 tosu 的第二处有意偏离）**：结算时局内链（`gameplay → score`）**正在被释放**——"指针合理"不等于"内容可信"（真机 13 帧结算态里 `score_base` 仍有 2 帧非零、链有效性门直接放行；`expected_pointers` 在结算态本就不列 `gameplay`/`score`），读出的垃圾掩码可能带 DT/HT 这类速率位 ⇒ 页面在非游玩态取三槽并集，整局难度会被误判成上一局的 mod，直到掩码归零才自愈。`mask_for_state` 现在只在 `play` 态发局内掩码；tosu 在结算态给 `play.mods` 填的是**结算链**的值（`buildResultV2.ts` 的 `currentMods`）⇒ 两侧的**页面可见码集**仍相同，影子对拍的 `mod_signature` 一格照旧相等。
