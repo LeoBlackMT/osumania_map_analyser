@@ -4,6 +4,7 @@ import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
+import { applyLnCorrectionToRcFields } from "./lnCorrection.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
@@ -407,14 +408,20 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         if (rcNumeric >= RC_FUSION_LOW_BAND_MAX) {
             if (plan.onDisagree === "companella") {
+                // 4K LN 后修正（Companella 输出之后；spec 见 lnCorrection.js / docs/features/ln-correction.md）
+                const lnCorrected = applyLnCorrectionToRcFields({
+                    numeric: companellaResult.numericDifficulty,
+                    rcLabel: companellaResult.estDiff,
+                    lnRatio: plan.lnRatio,
+                });
                 return {
                     ...mixedResult,
                     estDiff: composeDifficultyFromRcLn(
-                        companellaResult.estDiff,
+                        lnCorrected.rcLabel,
                         plan.lnDifficulty,
                         plan.lnRatio,
                     ),
-                    numericDifficulty: companellaResult.numericDifficulty,
+                    numericDifficulty: lnCorrected.numeric,
                     numericDifficultyHint: companellaResult.numericDifficultyHint,
                     mixedCompanellaPlan: null,
                     // 胶囊来源：数值确实换成了 Companella 的结果。
@@ -425,14 +432,20 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         const weight = RC_AZUSA_COMPANELLA_FUSION_WEIGHT;
         const fused = Number((rcNumeric * weight + companellaNumeric * (1 - weight)).toFixed(2));
+        // 4K LN 后修正（同上；未触发时逐位保持原行为）
+        const lnCorrected = applyLnCorrectionToRcFields({
+            numeric: fused,
+            rcLabel: numericToRcLabel(fused),
+            lnRatio: plan.lnRatio,
+        });
         return {
             ...mixedResult,
             estDiff: composeDifficultyFromRcLn(
-                numericToRcLabel(fused),
+                lnCorrected.rcLabel,
                 plan.lnDifficulty,
                 plan.lnRatio,
             ),
-            numericDifficulty: fused,
+            numericDifficulty: lnCorrected.numeric,
             numericDifficultyHint: null,
             mixedCompanellaPlan: null,
             // 胶囊来源：低难段的 0.5/0.5 融合——数值由 Azusa 与 Companella 共同决定。
@@ -440,14 +453,20 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         };
     }
 
+    // 4K LN 后修正（同 fuseRc 分支；未触发时逐位保持原行为）
+    const lnCorrected = applyLnCorrectionToRcFields({
+        numeric: companellaResult.numericDifficulty,
+        rcLabel: companellaResult.estDiff,
+        lnRatio: plan.lnRatio,
+    });
     return {
         ...mixedResult,
         estDiff: composeDifficultyFromRcLn(
-            companellaResult.estDiff,
+            lnCorrected.rcLabel,
             plan.lnDifficulty,
             plan.lnRatio,
         ),
-        numericDifficulty: companellaResult.numericDifficulty,
+        numericDifficulty: lnCorrected.numeric,
         numericDifficultyHint: companellaResult.numericDifficultyHint,
         mixedCompanellaPlan: null,
         // 胶囊来源：无 fuseRc 计划（Azusa 不可用）时整体采用 Companella。

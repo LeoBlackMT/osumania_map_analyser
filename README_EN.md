@@ -85,6 +85,7 @@ Desktop shell guide: [docs/shell-guide.md](docs/shell-guide.md).
 ## Algorithm Documentation
 - Roxy is a 4K RC meta-structural estimator focused on high-difficulty ranges (numeric difficulty 11~17, Alpha to Emik Zeta high). Its core operates in two layers: structural analysis across 7 aspects yielding structured numeric difficulty, followed by a Ridge linear meta-model blending Azusa and Daniel reference predictions, weighted 0.4/0.6 with Azusa on the final output to reduce variance. The meta-model is calibrated to 0.5 Dan ordinal scale. See the algorithm documentation [here](docs/roxy_algorithm.md).
 - Azusa integrates Daniel and Sunny Rework outputs based on beatmap data, with specialized tuning for 4K RC beatmaps. See the algorithm documentation [here](docs/azusa_algorithm.md).
+- Polaris is a 7K table-calibration estimator. It builds on Sunny and corrects systematic star-to-dan mapping deviations with real play data (especially for speed-mod and LN-heavy charts). 7K only; other key counts fall back to Sunny. See the algorithm documentation [here](docs/polaris_algorithm.md).
 
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md).

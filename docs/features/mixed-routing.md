@@ -107,6 +107,8 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
 | C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
+- **4K LN 后修正（lnCorrection）**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，若 `plan.lnRatio > 0.375`，对数值叠加 lnRatio 门控修正（全量 +0.5、ramp 0.375→0.55）并重派生 RC 半标签（`numeric 与 estDiff 同源`）；未触发时逐位保持原有行为。该修正属「移植算法输出之后」的修正（不改 Daniel / Companella 本体），详见 [ln-correction.md](ln-correction.md)。
+
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
 ---
@@ -151,7 +153,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 - **SunnyWindow**（`forceSunnyWindow`）：在管道之后由 `analysis.js` 用 SunnyWindow 的 LN 段覆盖最终标签的 LN 半，并把新值写回 `pendingMixedCompanellaContext.lnDifficulty`（同时把 `lnRatio` 置 4e65 以强制显示 LN 段）→ 融合仍使用被覆盖后的 LN 半。
 - **马拉松时长修正**：pipeline 在 `durationS > 300 && 4K && 算法 ∈ {Azusa, Roxy, Mixed}` 时前置一次 Ett，并把 `marathonCorrection` 注入估算器；修正发生在 Mixed 路由**之前**，会改变 Roxy/Azusa 的数值，因此也可能改变 R1–R5 的胜负（详见 [marathon-correction.md](marathon-correction.md)）。
 - **aleju03 低段 LN 接管**（分支 `feat/aleju03-ln-estimator`）：`Sunny` 的 `estDiff` 含 LN 半且该半以 `<` 开头（表下限，如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；否则保持表值。该接管只影响 LN 半，RC 半与胶囊语义不变。临时测试分支 `temp/mixed-ln-aleju03` 则对非 RC 模式一律接管（用于对比测试）。
-- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v8|算法|beatmapIdentity|modSignature`（`analysis.js:489`），**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
+- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v9|算法|beatmapIdentity|modSignature`（`analysis.js:489`），**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
 
 ---
 

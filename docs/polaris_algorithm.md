@@ -1,0 +1,91 @@
+# Polaris Estimator Documentation
+
+> Target audience: humans / AI. Polaris is a first-party estimator of this project (like Azusa / Roxy). This document describes its scope, correction model, output semantics, validation and retune procedure.
+> Shared-module constraints apply (see docs/guides/module-conventions.md): the estimator is DOM-free, pure and runs identically under Node (benchmark runner) and the browser.
+
+---
+
+## 1. Overview
+
+Polaris is a **7K table-calibration estimator**. It takes an osu!mania `.osu` beatmap as input, uses **Sunny Rework** as its baseline, and outputs difficulty labels whose `star → dan` mapping is corrected with behaviourally-fitted, smooth adjustment curves:
+
+```
+Parse → Sunny baseline (star/lnRatio) → scope gate → star → level (per side, from interval tables)
+      → Polaris corrections (B + R·f(rate) + H) → labels / numericDifficulty
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `estDiff` | string | Corrected RC/LN tier labels, e.g. `Regular 6 mid/high \|\| LN 6 mid/low` |
+| `numericDifficulty` | number \| null | Corrected continuous RC-side level (Reform scale); `null` when the star is outside the RC table range |
+| `star` | number | Sunny raw sr (unchanged; the star capsule always shows the Sunny sr) |
+| `actualEstimatorAlgorithm` | string | `"Polaris"` when applied; `"Sunny"` when the estimator fell back |
+| `debug` | object | `{ rate, rcBase, rcLevel, lnBase, lnLevel }` intermediate values |
+
+Rationale: the `js/estimator/intervals/*` tables are a direct `Sunny star → dan` mapping, which carries systematic deviations. A behavioural audit against ~4.8M real plays (Mania Tracker dataset, 2026-10 snapshot) quantified them per level, per rate and per LN ratio; Polaris applies the fitted corrections instead of rewriting the tables.
+
+## 2. Scope & fallback
+
+Polaris is deliberately narrow in v1:
+
+| Condition | Behaviour |
+|---|---|
+| `columnCount === 7` | Polaris applies (both RC and LN sides) |
+| Other key counts (4K/6K/10K/…) | Fall back to Sunny (`actualEstimatorAlgorithm = "Sunny"`) |
+| `cvtFlag` contains `IN` / `HO` (chart-converting mods) | Fall back to Sunny — no fitted evidence for converted charts |
+| non-finite `star` / `lnRatio` | Fall back to Sunny |
+
+The result object is the full Sunny result (`star`, `lnRatio`, `columnCount`, `graph`, …) with `estDiff` / `numericDifficulty` replaced. **`star` is Sunny's raw sr by construction, so Polaris is not part of `NORMALIZATION_ALGORITHMS`** in `runAnalysisPipeline`.
+
+## 3. What is corrected (measured deviations)
+
+Measured on the Mania Tracker behavioural dataset (in-table charts with ≥8 players, n = 6899 chart×rate; `delta = play-implied dan − table mapping`):
+
+1. **DT rate response (largest)**: at 1.5x, RC charts sit ~+0.7 to +1.4 dan above their table mapping across levels 5–11 (paired same-chart difference +0.95; LN +0.75). The table ladder rises less than actual difficulty when the chart is sped up.
+2. **LN side**: full-LN charts (`lnRatio ≥ 0.97`) run ~+1.0 dan above their LN mapping; mid-`lnRatio` LN charts ~+0.2; the level shape adds a low-mid elevation.
+3. **Level shape at 1.0x**: small (±0.3 dan), e.g. a local elevation around level 3 and a slight negative tail at the bottom edge. HT (rate < 1.0) showed conflicting small effects across measurement designs and is **not corrected**.
+
+## 4. Correction model
+
+Implemented in `js/estimator/polarisCorrection.js`:
+
+```
+corr(side, level, rate, lnRatio) = B_side(level) + R_side(level) · f(rate) + H(lnRatio)
+
+f(rate) = clamp((rate − 1) / 0.5, 0, 1)     # rate ≤ 1.0 → 0 (no correction); rate ≥ 1.5 → 1 (capped)
+```
+
+- **`B_side(level)`** — 1.0x level baseline. 29 knots at 0.5 level spacing, linear interpolation, clamped outside.
+- **`R_side(level)`** — DT increment at 1.5x for the same level (0 for levels < ≈3, peaking ≈1.1–1.2 around level 8–9, decaying to ≈0.2–0.4 at ≥12). Negative values clamped to 0.
+- **`H(lnRatio)`** — LN-side lnRatio term (6 knots; ≈0 below 0.5, ≈+0.25 in 0.55–0.85, up to **+1.0 at lnRatio ≥ 0.97**).
+
+Fitting: additive (backfitting) joint fit on the Mania Tracker snapshot; per-table knots smoothed with a 3-point kernel. Validation: group split by `beatmap_id` (70/30) — held-out `mean|delta|` improves **6.8 %** (0.680 → 0.634), full-fit bias +0.170 → −0.002; on the flagged subset (≥1 dan, |z| ≥ 3) the mean absolute miss improves **17 %** (1.64 → 1.36). The full-fit → CV gap is ≈0, i.e. the curve family is low-capacity and not overfit.
+
+### Table mapping helpers (inside the estimator)
+
+- `star → level`: piecewise-linear with the exact structure used by the fitting scripts (bands contribute `(lo, n−0.1)` and `(hi, n+0.1)`; level `n` is derived from the label: numeric token with `Intro` shift, non-numeric base = previous level + 1). Linear extrapolation outside the table using the first/last 5-knot slope.
+- `level → label`: nearest band centre; stars outside the table keep the `<` / `>` bound labels, and `numericDifficulty` is `null` there.
+- **Extended range** (`extendedEstimationRange`): the RC side uses the extended table (`7k-rc-ext.js`) like Sunny does. Note: the `Wild N` bases of the extended table have no numeric semantics elsewhere in the project; Polaris continues the sequence (`Stellium` = 14 → `Wild 8` = 15 → `Wild 9` = 16) so that the mapping stays monotone. Corrections are fitted on the default range and extend flat beyond it. LN has no extended table.
+
+## 5. Output semantics
+
+- `estDiff` = corrected `RC label || LN label`; the LN half is omitted when `lnRatio < 0.15` and `enableAlwaysShowLNDifficulty` is off (same rule as Sunny's `estDiff`).
+- `numericDifficulty` is the corrected **RC-side** level rounded to 2 dp (the LN side is a label-only surface, consistent with other estimators' numeric semantics). Telemetry treats Polaris as a native-numeric algorithm (`rcNative` in analysis.js) — the value is the standard Reform continuous scale.
+- The star capsule, vibro gate, graph and cache keys are unchanged: `star` is the Sunny raw sr and the cache key includes the algorithm name segment.
+
+## 6. Validation & regression
+
+- **Unit / smoke** (temp scripts, not committed): JS↔fit port equivalence (`maxDiff < 1e-9`), synthetic 7K RC/full-LN charts at 1.0x/1.5x/0.75x, 4K and `HO` fallback, pipeline integration.
+- **Golden regression** (`test/compare-golden.mjs`): existing algorithms must stay bit-identical (Polaris only adds a new dispatch branch; it is not part of the harness contract because the harness corpus is 4K-only, where Polaris falls back to Sunny — 6K/7K paths are covered by synthetic samples per `guides/adding-to-worker.md` §4).
+- **Benchmark**: `VSRG-DanEstimation-Benchmark` currently contains no 7K samples, so the benchmark cannot score Polaris; the behavioural dataset re-scoring above is the acceptance metric. Do not add per-chart special cases from either source.
+
+## 7. Retune procedure
+
+1. Re-run the fit scripts (temp, gitignored) against a fresh Mania Tracker snapshot; regenerate knots.
+2. Re-run the group-CV check — do not accept a full-fit improvement without a held-out improvement.
+3. Update `polarisCorrection.js` constants; re-run the port test and smoke tests; regenerate the port vectors from the new knots.
+4. Re-run the golden compare (0 diffs) and, if the change can affect 4K LN rows, the Mixed benchmark harness before/after.
+
+---
+
+*Polaris v1 (2026-10). Fitted against the Mania Tracker behavioural dataset snapshot; see also `docs/features/difficulty-estimation.md` and `docs/features/ln-correction.md`.*

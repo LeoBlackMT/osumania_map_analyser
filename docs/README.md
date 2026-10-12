@@ -31,8 +31,9 @@
 | [presets-guide.md](presets-guide.md) | 人类 | 预设系统新手教程（零基础双语教学，逐按钮讲解） |
 | [azusa_algorithm.md](azusa_algorithm.md) | 人类/AI | Azusa算法说明文档(英文) |
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
+| [polaris_algorithm.md](polaris_algorithm.md) | 人类/AI | Polaris算法说明文档(英文，7K 表修正估算器) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
-| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（6 种估计算法、4/6/7K、LN/RC 段位） |
+| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（7 种估计算法、4/6/7K、LN/RC 段位） |
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、回退链、标签与胶囊取值、Companella 融合三路） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
@@ -40,6 +41,7 @@
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
+| [features/ln-correction.md](features/ln-correction.md) | AI | 4K LN 数值后修正功能文档（Companella 输出后 +0.5 lnRatio 门控修正、幅度依据、接入点、验证） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v6**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
@@ -103,8 +105,9 @@ Use the links to jump to the corresponding document. For documents with the same
 | [presets-guide.md](presets-guide.md) | Human | Presets beginner guide (bilingual tutorial, every button explained) |
 | [azusa_algorithm.md](azusa_algorithm.md) | Human/AI | Azusa algorithm document (English) |
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
+| [polaris_algorithm.md](polaris_algorithm.md) | Human/AI | Polaris algorithm document (English; 7K table-calibration estimator) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
-| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (6 algorithms, 4/6/7K, LN/RC dan tiers) |
+| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (7 algorithms, 4/6/7K, LN/RC dan tiers) |
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: which algorithm wins when, exact thresholds, fallback chains, label and capsule values, Companella fusion routes) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
@@ -112,6 +115,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
+| [features/ln-correction.md](features/ln-correction.md) | AI | 4K LN post-correction document (gated +0.5 numeric after Companionella output, magnitude rationale, wiring, validation) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; a transport-layer section: native osu source + tosu fallback + the browser-only invariant) |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v6, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |

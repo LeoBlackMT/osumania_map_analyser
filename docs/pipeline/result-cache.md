@@ -57,7 +57,7 @@ fetchBeatmapFile() → 查缓存（analysis.js:492-502）
 `analysis.js:489`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v8"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v9"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
@@ -65,7 +65,7 @@ const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v8` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:489） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Etterna junk 文件（技能值全零）不再显示 `0.00`——快照里 `ettResult` 的语义变化，旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）**；**v8：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1** |
+| `star-v9` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:489） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Etterna junk 文件（技能值全零）不再显示 `0.00`——快照里 `ettResult` 的语义变化，旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）**；**v8：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1**；**v9：4K LN 后修正（lnCorrection——Companella 输出之后 +0.5 门控修正）+ 新估算器 Polaris——Mixed 在 4K LN 主导图上的 numeric/estDiff 语义变化，旧快照必须失效** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:179） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
 | `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
