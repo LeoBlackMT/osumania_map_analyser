@@ -174,6 +174,29 @@ Benchmark（官方 runner，4K RC，当时数据集 526 行）：
 4. 11~17 段仍有 ~2pp exact 的"表级"空间（CV 稳定复现），但任何重拟合都以低难/高难段退化换取——全局单调表无法分带优化，拆分拼接（cut 方案）也因插值过渡区与单调约束失效。
 5. C3 三连证伪闭环：一致性硬门控（一轮）→ 参数面平坦（一轮）→ 条件权重/软融合（本轮），低难融合机制族内无剩余结构。
 
+### 2026-10 轮（分支 `feat/polaris-estimator` 的后续调研：键型族修正——**全轴被严格 CV 否决**）
+
+**背景**：在 Polaris（7K 表修正）+ 4K LN 后修正落地后，尝试利用 Mania Tracker 行为数据集（4.84M plays，`Desktop/Dev/files/mania-tracker-dataset`，仅聚合 CSV、**不含任何 .osu**）与 benchmark，进一步引入"键型族（tag family）修正"。三处候选全部经严格 CV 否决，过程与证据如下（全部脚本在本地私有 `temp/polaris/fit/`，gitignore 不入库）。
+
+**1. 7K tag 族——否**。以 `charts_7k.csv`（in_table、n_players≥8，n=6899）拟合"残差 = y − Polaris 修正"，做 level/rate 混淆控制回归 + 按 beatmap 分组 CV：全 8 族联合 held-out 仅 **+0.53%**，与 shuffle 安慰剂（+0.15%）几乎无差；in-sample 反而 **−0.12%**。唯一有量的 `lnrelease`（level-matched diff +0.84）单族 CV **−0.16%**（族只在 L3–6、跨 beatmap 不泛化）；`lninverse` 在低/高段**反号**（+0.7 → −0.5），常量会主动搞错。⇒ **原始 tag 表的"效应"几乎全是 level/rate 混淆。**
+
+**2. 两个必须记住的数据陷阱（导致早期假阳性 +4.52%）**：
+- **pooled-algo 混淆**：`charts_4k.csv` 的 `companella_numeric` 列在 **algo=Azusa 的行上也存在**（是 CX 原始输出，非采纳值）。把 `algo∈{Azusa,Companella}` 混池拟合 `y=play_implied−companella_numeric` 会得到假的 +4.52%——因为 algo=Azusa 行 mean_y=−0.364 vs algo=Companella +0.53，相差 0.9，混池后 tag 只是在编码"这行被谁采纳"。**正确做法：只取 `algo=="Companella"` 的行（n=8278）**，真实增益 +4.08%。
+- **nps 是难度水平的近共线代理，绝不可用**：在 rate==1.0 内 `corr(nps, companella_numeric)=0.827`（跨 rate 混池时会稀释到 0.054，极具迷惑性）。nps-only 的"CV +14%"与 shuffle 安慰剂 **+14.26% 完全相同** ⇒ 纯属把难度刻度重学一遍、与 CX 自身校准互相抵消。
+
+**3. 4K tag 族（Companella 基线，9 族）——被 LOO 与退化性否决**。只取 `algo=="Companella"` 后，9 族联合 group CV +4.08%，shuffle 安慰剂 ±0.1%。但 drop-one 显示 `quadstream`/`chordjack` 贡献 ≈0（早期 −0.71 的 quadstream beta 也是 algo 混淆的产物）；`ln` 族 prevalence=0.998（近乎全体，退化为全局截距而非"族"）。剔除后退化为 6 族，CV 反而 **+4.11%**。
+
+**4. 独立于 Mania Tracker 的本地特征验证（决定性）**。为绕开"MT tag 定义 ≠ 本仓 pattern 定义"的映射不可验证问题（数据集无 .osu、benchmark 分类正交），直接用本仓 `js/patterns/service.analyzePatternFromText` 跑 benchmark 全部谱面（737/776 成功），产出本地 `SpecificTypes`/`Pattern`，与**已含 LN 修正的当前 `Mixed.csv`** 按谱面名连接：
+- 本地族对 benchmark delta 的分组 CV（按谱面名分组）**+2.52%**，安慰剂 −0.12…+0.61% ⇒ 本地特征确有真信号，**映射风险不成立**。
+- 但结构定位彻底清楚：**RC 行残差 = −0.004（已完全校准）** ⇒ RC 侧族效应（Quadstream+0.15/Handstream+0.10/Jumpstream+0.09）不是系统偏差，**不该修**；**LN 行残差 = +0.570**（`lnRatio≥0.375` 的 100 行）⇒ 全部剩余信号都在 LN，且**所有 LN 子类型残差一致在 +0.40~+0.76**（HS Density/Inverse +0.76、Shield +0.67、JS Density +0.62、Speedy WC +0.60、Release +0.57…）——这是**一个统一的 LN 偏移，不是可分的"族"**。
+
+**5. 结论**：**不新增"pattern 族修正"、不改 LN 幅度**。
+- 水平相关 LN 修正（按 2-dan 分箱 knot）CV **−1.19%**（knot 非单调：L4 +1.58 / L10 −0.11 / L14 +1.0，100 行样本不稳）。
+- 提高 LN 修正幅度也不稳：train-fit bonus=+0.574（隐含 magnitude→1.07）held-out 仅 **+1.18%**；敏感度扫描在 0.25→+2.08%、0.50→+1.56%、0.75→**−0.87%** 之间跳 ⇒ 最优值不稳定。**当前 flat +0.5 已属合理保守值。**
+- **可复用教训**：① 行为数据集的算法残差若按"采纳算法"混池，会引入与 base 身份相关的巨大伪效应，**必须严格按被采纳算法分层**；② 任何"密度/速度"类连续特征在**同难度内**检验前，先看它与难度本身的相关系数（>0.8 即共线，只能当难度代理）；③ 当所有差异最终收敛成一个统一偏移时，说明缺的不是模型而是**标注样本量**（benchmark LN 仅 100 行）。
+
+**未来正确方向**：若要吃 LN 剩余的 +0.57，需要**更多 LN 标注样本**（或改用本仓自算 LN 结构难度作连续特征重拟合，但同样受样本量限制），而不是更花哨的键型族模型。4K RC 侧已无系统性偏差可修；7K 侧受 benchmark 无 7K 样本限制，只能用 Mania Tracker 行为集（已做 Polaris）。
+
 ### 2026-10 轮（分支 `feat/speed-estimation-refinement`，Follow Speed 扩充 30 样本与 Gamma 速度流平滑过渡）
 
 - **背景**：基准数据集扩充 30 个 Follow Speed 练习曲样本（Gamma/Delta 段位，746 → 776 行），Speed 样本总数由 147 增至 177 行。
