@@ -4,6 +4,31 @@
 
 ## 中文
 
+### 壳设置
+
+- **常规设置**：
+  - **Game client**：选择需要使用的数据源。
+    - Auto：自动选择目前活跃的来源。优先级：游玩中 > 近期活动 > osu! > Etterna > Malody 4 > Malody
+    - 可锁定为某个来源（Osu! / Etterna / Malody / Malody 4）
+  - **Etterna root / Malody V root / Malody 4.3.7 root**：三个游戏的运行目录。
+    - 按需填写需要使用的游戏目录，用于寻找谱面进行分析。
+    - 留空令程序自动探测。推荐使用`bridges/install-bridge.ps1`脚本自动写入。
+  - **Always on Top**：保持窗口置顶。默认快捷键Ctrl+Shift+T。
+  - **Click-Through**：点击穿透。默认快捷键Ctrl+Shift+S。
+  - **Hotkeys**：用于调整上述功能的快捷键。重启以生效。支持 Ctrl/Shift/Alt/Win + 单个字母键 A–Z。
+  - **Log level**：日志等级。
+    - 如果你不清楚这个是做什么的，请不要随意修改。
+    - 当需要反馈问题时，请修改此项为 `debug`，随后一并报告`logs/`目录下的日志文件。
+- **Memory Offsets Management：内存偏移表管理**
+  - **osu!stable Offsets/osu!lazer Offsets**：osu! stable和lazer的偏移表状态。
+  - **Offsets Actions**：偏移表相关操作
+    - **Live Generator**：生成 lazer 偏移表。
+      - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
+      - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
+    - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新。
+
+### 卡片设置
+
 - **预设（Presets）**：
     - **Preset**: 选择预设以一键应用下方所有设置。
         - Default: 恢复默认配置。
