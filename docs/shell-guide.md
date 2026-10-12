@@ -135,78 +135,62 @@ Malody V 有两个互不影响的通道，按需选择：
 
 ## What this is
 
-mma-shell is an optional small window program that: shows the analysis card in a **standalone always-on-top mini
-window** (can overlay games/browsers); and, **without tosu running**, lets the card receive data from **Etterna**, the
-**Malody V editor** or the **Malody 4.3.7 native client**. The classic browser usage (tosu plugin) is unaffected.
+This project originally gathered osu! data via tosu. However, as features expanded, tosu alone no longer met all requirements. The desktop shell (`mma-shell`) is a recommended mini-window application that displays the analysis card in a standalone window. It allows the card to receive data from osu!stable / lazer, Etterna, Malody V and its editor, or the Malody 4.3.7 client without needing to launch tosu; at the same time, if memory reading fails, tosu support is still preserved as a fallback.
 
-- System requirements: Windows / Linux (the bridge installer is a PowerShell script, Windows-only; on Linux follow the manual steps below). 
-- Etterna and Malody V data sources need their game bridge files installed (see "Bridges" below); **Malody 4.3.7 needs no game-side files at all** — it is read-only observation with zero injection, and the installer only records its path. 
-- Minimum game versions: **Etterna 0.70+** (Linux needs the official 0.75+ Linux build); **Malody V 6.6.43+** (no Linux version — this source is Windows-only); the **Malody 4.3.7 native client** (Windows only, and only that exact version). 
-- Supported chart types: `.mc`, `.ssc`, `.sm`.
+- System requirements: Windows / Linux (the bridge installer is a PowerShell script, Windows only; for Linux, follow the manual steps below).
+- Etterna and Malody V sources require installing their respective bridge files (see "Bridges" below).
+- Minimum game versions:
+  - Etterna 0.70+ (Linux requires the official 0.75+ Linux release)
+  - Malody V 6.6.43+ (Windows only)
+  - Malody 4.3.7 (Windows only)
+  - osu!stable and lazer are manually maintained across updates
+- Supported beatmap/chart types: `.mc`, `.ssc`, `.sm`, `.osu`.
 
-> Note:
-> - This subproject is inspired by [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna); thanks to its author for the ideas and parts of the code.
-> - The shell is experimental — unknown issues may exist. Please report anything you find.
-> - Due to Malody V API limitations, before you install the plugin the Malody V source works only in the editor. With the **in-game song-selection bridge** installed, **selection, gameplay and results all follow automatically** (see the Malody V part of "Bridges"). The "MMA Analyze" button in the editor keeps working as the fallback channel when the plugin is not installed.
-> - The Malody 4.3.7 source is the opposite: it **follows the highlighted chart automatically during selection and gameplay** (read-only observation), with nothing to install on the game side. It supports the 4.3.7 version only; on a version mismatch this source becomes unavailable with a reason while the other three data sources keep working.
-> - Default OD after conversion is 9 (`.sm` / `.ssc` / `.mc` charts); the **exception** is the Malody 4.3.7 and Malody V sources, whose OD comes from the in-game judge level (A–E) together with the run's speed. For Malody V it also depends on whether **Pro** is on (the strict group): when the Pro state is unknown nothing is guessed — dynamic OD is turned off and the status line says why.
+> - This subproject is inspired by [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna); thanks to its author [JoseMGS3](https://github.com/JoseMGS3) for the inspiration and parts of the code.
+> - The shell is currently in its early stages; unknown issues may exist. Please provide feedback if you encounter any problems.
+> - Converted charts from Etterna default to OD 9; OD for Malody 4.3.7 and Malody V is determined jointly by the in-game judge rank (A–E or Pro) and speed rate (mods or Turbo Mode). See [docs/features/malody-od.md](features/malody-od.md) for details.
 
-## Quick start
+## 1. Quick Start
 
-- Download the archive from the release page (recommended), or just `mma-shell.exe` (Windows) / `mma-shell` (Linux) from CI artifacts.
-  - **Archive**: it already contains the plugin folder, `mma-shell.exe` and `bridges/` — extract it into the tosu
-    plugin folder (`tosu/static/`) as a whole.
-  - **Standalone exe**: place it inside the `ManiaMapAnalyser by Leo_Black` plugin folder and double-click to run.
-  - If you don't use tosu, just extract it wherever you like.
-- Then install the Etterna and Malody V bridge files per the "Bridges" section below (Malody 4.3.7 needs no game-side files — the installer merely records its path).
-- If needed, edit `mma-shell-config.json` to configure the shell (game install paths `etternaRoot` / `malodyRoot` / `malody4Root`,
-  `hotkeys`, etc.). In offline mode / without tosu you can also edit `mma-settings.json` for the card display
-  (see "Configuration").
-- Start the shell: select a song in Etterna to display, or select a chart in Malody V and click "MMA Analyze" in the
-  editor, or simply open Malody 4.3.7 and select/play a chart to have the card follow it.
-- Source indicator: the small dot at the end of the card's top status row — pink = osu!, purple = Etterna,
-  cyan = Malody 4, blue = Malody V, hollow grey = no data source.
+- Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly.
+- If you need to use it with Etterna or Malody V, run `bridges/install-bridge-zh.bat` or `bridges/install-bridge.bat`. For Linux users, refer to the "Bridges" section below to install bridge files manually.
+- Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, check whether auto-detected game directories are correct; otherwise, fill in the game directories you use to locate beatmaps for analysis. See [docs/settings.md](settings.md) for settings details and [docs/presets-guide.md](presets-guide.md) for preset usage.
+- Once configured, restart the application if needed, and it will be ready to use. In the Malody V editor, click the `MMA Analyze` button manually to analyze. Window controls are described below.
+- Source indicator: the small dot at the end of the top status row on the card — pink = osu!, purple = Etterna, bright cyan = Malody 4, blue = Malody V, hollow grey = no current data source.
 
-## Window controls
+## 2. Window Controls
 
-| Action | How |
-| --- | --- |
-| Move the whole window | drag the top drag bar (glow strip with the `⋮⋮` hint). The strip follows the **card's top edge**, so with the card docked at the bottom (reverse extension) it sits right above the card, and hovering it shows a thin full-window outline marking the window you are about to move |
-| Resize | drag any window edge (borderless, draggable on all sides). Cannot see where the window ends? Move the cursor towards an edge: the edge you are within ~16 pixels of lights up — that glow is exactly where the drag border is (a corner lights two edges at once) |
-| Zoom | `Ctrl` + mouse wheel, or `Ctrl +` / `Ctrl -`; `Ctrl 0` resets |
-| Always-on-top toggle (default on) | `Ctrl + Shift + T` by default (global shortcut) |
-| Click-through toggle (default off) | `Ctrl + Shift + C` by default (global shortcut) |
-| Open the settings window | `Ctrl+Shift+S` by default (global shortcut; `mma-shell.exe --settings` or a browser also works — see "Settings window") |
-| Close | `Alt+F4` or `Ctrl+Q` by default (global shortcut) |
+| Action | Method |
+| :---: | :--- |
+| Move window | Drag the top drag bar (the glowing bar with the `⋮⋮` mark). Hovering displays an outline showing the full window boundary |
+| Resize window | Drag any window edge (borderless, draggable on all sides). Hover near an edge to make it glow |
+| Page zoom | Hold `Ctrl` and scroll mouse wheel; or `Ctrl +` / `Ctrl -`; `Ctrl 0` to reset |
+| Toggle always-on-top (default on) | `Ctrl+Shift+T` by default (global shortcut) |
+| Toggle click-through (default off) | `Ctrl+Shift+C` by default (global shortcut) |
+| Open settings window | `Ctrl+Shift+S` by default (global shortcut; you can also run `mma-shell.exe --settings` or open in a browser) |
+| Close window | `Ctrl+Q` by default (global shortcut) |
+| Refresh card | Focus the window and press `F5`; press `Ctrl+F5` to refresh cache |
 
-Window position/size/topmost/click-through are remembered across launches. Global shortcuts keep working while the
-window is unfocused or click-through is active (Windows/X11; global shortcuts are unavailable on **Linux Wayland**
-sessions — while the shell window is focused, in-page shortcuts take over with the same key bindings).
+Window position, size, topmost, and click-through states are remembered automatically. Global shortcuts remain active even when the window is unfocused or click-through is enabled.
 
-## Bridges
+## 3. Bridges
 
-**Recommended: automated install** (the installer is a Windows PowerShell script; on Linux, follow the manual steps
-below)**.** The bridges folder ships an interactive installer — double-click
-`bridges/install-bridge.bat` (or `bridges/install-bridge-zh.bat` for the Chinese UI; or run
-`powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]`) and pick Install / Uninstall
-and the game from the menu:
+Recommended: automated installation (the installer is a Windows PowerShell script, Windows only; on Linux, follow manual steps below). The bridges directory includes an interactive installer with options for Install / Uninstall and game selection:
 
-- Auto-detects game install folders (running process → env vars → common paths; Malody V additionally probes Steam libraries).
-- If detection finds nothing: pick the folder from a browse dialog or type a path (`/`, `\`, `\\`, wrapping quotes and trailing slashes are all normalized).
-- Installs into the Etterna Rebirth theme by default (theme-structure pre-check; installable themes are listed when Rebirth is missing).
-- Writes the game paths into `mma-shell-config.json` for you.
-- Picking the third game option, **Malody 4**, copies **no files at all**: it only writes `malody4Root` into `mma-shell-config.json` (nothing to do on the game side), and uninstall clears just that key.
-- On uninstall it reuses the game folder recorded in the config and asks which theme to remove,
-  touching only its own injection lines — other scripts (e.g. DanOverlay) coexist.
-- Full flags & behavior: [bridges/README.md](../bridges/README.md) (`-Game` `-Uninstall` `-Chinese` `-Yes` `-Root` `-Theme` `-ConfigPath`).
+- Double-click `bridges/install-bridge.bat` (English interface) or `bridges/install-bridge-zh.bat` (Chinese interface); or run `powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 [-Chinese]` from command line.
+- Automatically probes game installation directories (running process → environment variables → common paths or Steam libraries).
+- If probing fails, choose "Browse" in the folder dialog or enter the path manually (`/`, `\`, or `\\` are all supported).
+- Installs to Etterna's Rebirth theme by default, or other themes passing theme structure validation.
+- Automatically writes game paths into `mma-shell-config.json`.
+- Selecting the third option, Malody 4, only writes `malody4Root` into `mma-shell-config.json` (no files copied on the game side); uninstalling only clears this key.
+- Uninstalling prioritizes the game path recorded in config, asks which theme to remove from, and only removes its own injected lines, coexisting with other scripts.
+- For advanced parameters and full behavior, see [bridges/README.md](../bridges/README.md) (`-Game`, `-Uninstall`, `-Chinese`, `-Yes`, `-Root`, `-Theme`, `-ConfigPath`).
 
-To install manually, follow the steps below.
+If you prefer to install manually, follow the steps below.
 
 ### Etterna
 
-1. Copy `bridges/etterna/mma_bridge.lua` into
-   `Etterna/Themes/<your theme>/BGAnimations/ScreenSelectMusic decorations/`; then add one line before `return t` in
-   that folder's `default.lua`: `t[#t + 1] = LoadActor("mma_bridge.lua")`. Example:
+1. Copy `bridges/etterna/mma_bridge.lua` to `Etterna/Themes/<your_theme>/BGAnimations/ScreenSelectMusic decorations/`; then add a line before `return t` in that directory's `default.lua`: `t[#t + 1] = LoadActor("mma_bridge.lua")`. For example:
 
 ```lua
 -- BGAnimations/ScreenSelectMusic decorations/default.lua
@@ -215,175 +199,66 @@ To install manually, follow the steps below.
         widthRatio = widthRatio,
     }),
 }
--- add here
+-- Add here
 t[#t + 1] = LoadActor("mma_bridge.lua")
--- Other lua scripts you installed before (e.g. DanOverlay) can stay — they coexist.
+-- If you previously installed other lua scripts such as DanOverlay, they can coexist without removal.
 return t
 ```
 
-2. Copy `bridges/etterna/mma_gameplay.lua` into
-   `Etterna/Themes/<your theme>/BGAnimations/ScreenGameplay overlay/`; add `t[#t + 1] = LoadActor("mma_gameplay.lua")`
-   before `return t` in its `default.lua` too.
-3. **Re-install both files after every theme update** (theme packages overwrite and remove them).
-4. Open `mma-shell-config.json` next to the plugin and fill in `etternaRoot` (e.g. `D:\\Games\\Etterna`).
+2. Copy `bridges/etterna/mma_gameplay.lua` to `Etterna/Themes/<your_theme>/BGAnimations/ScreenGameplay overlay/`; similarly add `t[#t + 1] = LoadActor("mma_gameplay.lua")` before `return t` in its `default.lua`.
+3. Reinstall these two files whenever the theme is updated (theme updates overwrite them).
+4. Open `mma-shell-config.json` in the plugin directory and set `etternaRoot` (e.g. `D:\\Games\\Etterna`).
 
 ### Malody V
 
-- Put `bridges/malody/mma_editor.lua` into `MalodyV/editor/` (create the folder if missing). Then open the game →
-  open the chart editor → **MMA Analyze** → the card shows this chart's analysis.
-- Or, in the game editor's top-left, open the plugin manager and import the file.
-- Open `mma-shell-config.json` next to the plugin and fill in `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`). **You normally do not need to**: the shell auto-detects the running process, `MMA_MALODY_ROOT`, Steam libraries and common install paths.
+Malody V offers two independent channels; choose as needed:
 
-#### In-game song-selection bridge (recommended: selection / gameplay / results all follow)
+#### A. Editor Channel
 
-1. **Get the loader first.** Download the asset `bepinex-il2cpp-788.zip` from the upstream BepInEx 6 IL2CPP `6.0.0-be.788` GitHub release and save it as `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip` (that folder is not committed), or point `MMA_BEPINEX_LOADER_ZIP` at it. The archive is checked against SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`; a mismatch aborts without writing a byte. You also need the **Unity reference assemblies** `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (that folder is not committed either; source <https://unity.bepinex.dev/libraries/2022.3.62.zip>, `MMA_MALODY_UNITY_LIBS_ZIP` may point elsewhere, SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`). The installer places it at `BepInEx\\unity-libs\\2022.3.62.zip`: BepInEx would otherwise download that file on the first launch and afterwards only reuse it without validating it, so one incomplete download breaks every later launch. **Users who download the whole release package need to prepare nothing — it is already in the package.**
-2. **Double-click `install-bridge.bat`** → **Install** → **Malody V** → **in-game song-selection bridge**. The installed file is `BepInEx\\plugins\\MalodyInsight\\MMAMalodySelection.dll`.
-3. **Verify**: with the shell running, start the game and move through the song list — the card should follow immediately, and star ratings should move with the judge level, Pro and the rate.
-4. **Uninstall**: same entry point, choose **Uninstall**. Only files this installer recorded are removed; the loader is kept (delete the six items listed under Troubleshooting if you want it gone).
+- Place `bridges/malody/mma_editor.lua` in `MalodyV/editor/` (create the folder if it does not exist). Then start the game → open the chart editor → click `MMA Analyze` → the card displays analysis for the chart.
+- Alternatively, click the top-left button in the game editor → Plugin Management → Import.
+- Open `mma-shell-config.json` in the plugin directory and set `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`). You usually do not need to set this manually: the shell automatically detects running processes, `MMA_MALODY_ROOT` environment variable, Steam libraries, and common paths. Manual entry is only needed if auto-detection fails.
 
-> If the upstream `MalodyInsightBridge.dll` is installed, the installer **reports it with instructions but never deletes it** — both plugins patch the same game methods (double hooking). Remove that file yourself before switching to this fork.
+#### B. In-Game Song Selection Bridge
 
-**Troubleshooting**
+1. Prepare the loader. Download `bepinex-il2cpp-788.zip` from BepInEx 6 IL2CPP `6.0.0-be.788` GitHub Releases and save it to `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`, or set the `MMA_BEPINEX_LOADER_ZIP` environment variable pointing to it. The installer validates SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`. You also need the Unity reference assemblies `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (source: [https://unity.bepinex.dev/libraries/2022.3.62.zip](https://unity.bepinex.dev/libraries/2022.3.62.zip); `MMA_MALODY_UNITY_LIBS_ZIP` can point elsewhere, SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`). The installer puts it in `BepInEx\unity-libs\2022.3.62.zip`. Users downloading full release packages need no preparation; it is included.
+2. Double-click `install-bridge.bat` (or `install-bridge-zh.bat`) → Install → Malody V → In-game song selection bridge. The destination file is `BepInEx\plugins\MalodyInsight\MMAMalodySelection.dll`.
+3. If not using the installation script, extract `bepinex-il2cpp-788.zip` directly into the Malody V root directory, and place `2022.3.62.zip` at `BepInEx\unity-libs\2022.3.62.zip`.
+4. Verification: Start the game while the shell is running. A BepInEx console window should appear. In the song selection screen, change charts; the card should update immediately, and star rating moves with judge level, Pro, and rate.
+5. Uninstall: Use the same installer menu and select Uninstall. Only files tracked by this installer are removed; the loader is kept. If you want to remove the loader, manually delete `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`, `dotnet\`, and `BepInEx\`.
 
-- **The card does nothing / stays empty**: make sure the shell is running, then open its log (see "Logs") and search for `malody bridge`. If you see `REJECTED … malodyRoot unavailable`, the shell could not resolve the game folder — fill in `malodyRoot` in `mma-shell-config.json` by hand.
-- **Port 17653 already in use**: the card stops following and the shell log says the port is taken. Close extra `mma-shell` instances (only one can run at a time) or restart the shell.
-- **Nothing changes in game**: check `BepInEx\\LogOutput.log` in the game folder — it should contain `Selection bridge ready` and a series of `Observe …` lines. If the file does not exist at all, the loader was never loaded (usually antivirus quarantining `winhttp.dll`, or the game has not been restarted since installing).
-- **Star ratings do not move with the rate**: confirm the installed DLL is this fork's `MMAMalodySelection.dll` and not the upstream one.
-- **Pro (strict group) has no effect**: the plugin reads Pro on its own — you do **not** need to open the JUDGE panel. If the status line says "dynamic OD off: Pro state unknown", open the JUDGE panel once and close it.
-- **The console reports `End of Central Directory record could not be found` at startup**: `BepInEx\\unity-libs\\2022.3.62.zip` was damaged by the first download (truncated or never finished) and BepInEx only ever reuses that broken file — the `Unable to execute IL2CPP chainloader, no plugins will be loaded` right after it is the consequence, so no plugin ever loads (and nothing in the game reacts). **Re-running the installer fixes it**: it verifies that file against SHA256 and replaces it. Restart the game afterwards.
-- **Remove the loader completely**: after uninstalling, delete these six items from the game folder by hand — `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`, `dotnet\\`, `BepInEx\\`.
+> If you previously installed `MalodyInsightBridge.dll`, the installer will report that both plugins hook the same game methods. Back up and remove the old DLL before installing this bridge.
 
-### Malody 4.3.7 (nothing to install)
+### Malody 4.3.7 (No Installation Needed)
 
-- **No action on the game side**: no files copied, no plugin installed, no game setting changed. Choosing **Malody 4** in the installer only records the game folder as `malody4Root` in `mma-shell-config.json` (you may also fill it in by hand, e.g. `D:\\Games\\Malody-4.3.7`).
-- Afterwards, keep the shell running and start the game: selecting/playing a chart makes the card follow it. If the highlighted chart is not in the indexed set (this source indexes only `.mc` Key charts under `beatmap/`), the card keeps the previous chart and reports the reason.
-- To switch the source off completely, point the `MMA_MALODY4_ROOT` environment variable at a nonexistent path (leaving the config empty does **not** disable it — see "Configuration").
+- No action required on the game side: select Malody 4 in the installer to write the game path to `malody4Root` in `mma-shell-config.json` (or fill it in manually, e.g. `D:\\Games\\Malody-4.3.7`).
+- Keep the shell running and start the game; selecting or playing charts in-game will follow automatically. If the selected chart is outside the index scope (this source only indexes `.mc` Key charts under `beatmap/`), the card retains the previous result and displays the reason.
 
-## Configuration
+## 4. Notes
 
-The shell has two independent config files, both **next to the exe** (auto-created on first run), independent of tosu
-settings (the tosu side only serves the osu! source):
+- If the shell window cannot open your system browser, the page copies the link to your clipboard and notifies `Link copied — open it in your browser.`; paste it into your browser manually.
+- When the settings window cannot be opened via shortcut, users may edit `mma-settings.json` directly to configure card display. Changes take effect automatically within ~30 seconds. Refer to [settings.md](settings.md) when making changes to avoid errors.
+- Invalid configuration or corrupted JSON automatically falls back to defaults with a warning in the log.
+- When tosu is online, tosu's settings file takes precedence (`settings/<plugin_folder>.values.json` in tosu directory, read-only; the shell neither generates nor uses `mma-settings.json` in this state). In this case, edit settings via tosu and manage presets on tosu's Presets page.
+- If you want to disable a data source, set the corresponding game installation directory in settings to an invalid directory.
 
-**① Shell config `mma-shell-config.json`** (shell-only):
+## 5. Logs
 
-```json
-{
-  "gameClient": "Auto",
-  "etternaRoot": "",
-  "malodyRoot": "",
-  "malody4Root": "",
-  "hotkeys": { "topmost": "Ctrl+Shift+T", "clickThrough": "Ctrl+Shift+C", "settings": "Ctrl+Shift+S", "close": "Ctrl+Q" },
-  "logLevel": "info"
-}
-```
+Shell runtime logs are written to the `logs/` directory next to the executable: `logs/mma-shell-YYYYMMDD.log` (rotated daily, kept for 7 days). When troubleshooting, set `logLevel` to `debug` and attach the latest log to [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues). Always check log contents first when encountering issues.
 
-- **gameClient**:
-  - `Auto` (recommended; play state > recent activity > osu!>Etterna>Malody 4>Malody auto-follow)
-  - or lock to one source (`Osu!` / `Etterna` / `Malody` / `Malody 4`).
-- **etternaRoot / malodyRoot / malody4Root**: game install paths. `malody4Root` is written by the installer's **Malody 4** option (nothing to do on the Malody 4.3.7 game side); leaving it empty does **not** disable the source, because the shell's heuristic may still adopt a passing folder — to disable it, point the `MMA_MALODY4_ROOT` environment variable at a nonexistent path. Use forward slashes or double backslashes
-  (`D:/Games/Etterna` or `D:\\Games\\Etterna` — a single `\` is invalid JSON escaping).
-- **hotkeys**: window shortcuts. Defaults `Ctrl+Shift+T` topmost / `Ctrl+Shift+C` click-through / `Ctrl+Shift+S` open
-  the settings window / `Ctrl+Q` close.
-  Change if they conflict with your system (Ctrl/Shift/Alt/Win + single letter A–Z). Hotkeys register at startup
-  only — restart the shell after editing.
-- **logLevel**: log level. `debug` / `info` / `warn` / `error` / `off` (default `info`).
+## 6. Troubleshooting / Known Issues
 
-**② Plugin settings `mma-settings.json`**:
-
-- Since some users don't use tosu, the shell provides an **offline mode**: edit `mma-settings.json` directly to
-  configure the card display. Edits are picked up automatically within ~30 seconds (the shell re-reads the config
-  periodically and pushes a settings frame — no restart needed; if the shell isn't running, they apply on next launch).
-  - While tosu is **online** the tosu settings file wins (`settings/<plugin folder name>.values.json` inside the tosu
-    install, read-only — the shell neither creates nor uses `mma-settings.json` then).
-  - While tosu is **offline** the local `mma-settings.json` wins: the criterion is tosu being online, not the tosu
-    settings file existing. With tosu installed but not running, old values left in `values.json` are **not** used.
-    Offline with no local file, the shell generates a default skeleton from the plugin's `settings.json`.
-- Keys match the tosu settings UI exactly; users who only change `gameClient` / `etternaRoot` / `malodyRoot` / `malody4Root` never
-  touch this file (those live in `mma-shell-config.json`).
-- A **graphical settings window** is now provided as well (see "Settings window" below). Editing the JSON files
-  directly still works; refer to [settings.md](settings.md) for the key meanings.
-
-A malformed config falls back to defaults with a warning in the log.
-
-## Settings window
-
-The shell ships a graphical settings window (the `settings.html` page, served by the shell's local port `24061`) for
-the **shell config** (Shell), the **card settings** (Card Settings — the overlay card's own display and behaviour
-settings) and **presets** (Presets). The window is hosted by the shell process, so **the shell must be
-running**; changes only affect the card display itself and never interrupt an analysis (while it is open the main
-window's always-on-top is temporarily cancelled — see below), and closing it does not quit the shell.
-
-Three ways to open it (any one works):
-
-| How | What to do |
-| --- | --- |
-| Global shortcut | `Ctrl+Shift+S` by default (change `hotkeys.settings` in `mma-shell-config.json`; restart the shell after editing) |
-| Command line | `mma-shell.exe --settings`. If a shell is already running it forwards the request to that instance and **exits immediately** (no second overlay window, no main-window flash) |
-| Browser | open `http://127.0.0.1:24061/settings.html` (local machine only; from any other address the page just shows `Open this page from the desktop shell: http://127.0.0.1:24061/settings.html`) |
-
-The window's navigation order is **Shell → Card Settings → Presets**: **Shell** (`gameClient`, the three game roots
-with the paths actually adopted, hotkeys, log level; root changes show the adopted path right away and hotkey changes
-tell you a restart is needed), **Card Settings** (the overlay card's own settings: the same keys as the tosu settings
-UI, grouped as in `settings.json`; every change is saved immediately) and **Presets** (the full preset manager,
-identical to `presets.html`). The window remembers its own position and size in `mma-shell-state.json`'s `settings` field
-next to the exe (with backward compatibility for the legacy `mma-shell-settings-window.json`); while it is open the main
-window's always-on-top is temporarily cancelled (restored per the saved state when the settings window closes or fails
-to build — the main window's state file is not touched by this).
-
-**The Card Settings form is generated from `settings.json`** (no code is needed per setting):
-
-- At runtime the page reads the plugin's `settings.json` and renders one row per entry: `header` becomes a group title,
-  `checkbox` / `options` / `text` / `color` become the matching controls, and the default comes from the entry's
-  `value`. The two system keys `preset` and `presetStorage` are not shown here (they belong to the preset area below).
-- **Adding a setting needs no change to the settings page**: add the entry to `settings.json` (the tosu settings-UI
-  definition plus its default) and keep `config.js`'s `defaults` and the matching parse/apply pair in sync as the
-  repository's `AGENTS.md` requires — the page picks it up automatically the next time it opens.
-- Entries whose `settings.json` type is `button` that are reachable from the shell (four of them: settings guide,
-  presets guide, report issue, benchmark results) are not part of the form; they are rendered as the **Links** row at
-  the very top of the page (below the status bar, above the nav), so they are visible the moment the window opens
-  instead of at the bottom of the Card Settings form. The other two (presets manage page, debug page) point at
-  tosu-hosted addresses that do not exist inside the shell, so the settings window does not offer them (`settings.json`
-  and tosu's own settings dashboard keep all six). The read-only notice below still shows the tosu presets-page address
-  while tosu is online, so that entry point is not lost.
-- **Link behaviour**: clicking a link never navigates the settings window away. Inside the shell window, when the
-  system browser cannot be opened (`window.open` is blocked), the page **copies the address to the clipboard** and
-  shows `Link copied — open it in your browser.` so you can paste it into your own browser. The preset area's **Guide**
-  button goes through the same path (it previously did nothing inside the shell window).
-- **The hotkey fields always have a value**: at startup the shell checks `mma-shell-config.json`'s `hotkeys` and fills
-  in any missing or empty key with its built-in default (`topmost` / `clickThrough` / `close` / `settings`, where
-  opening the settings window defaults to **`Ctrl+Shift+S`**) without ever overwriting a value you wrote — so the
-  "Open settings window" field in the Shell panel never shows up empty. Hotkeys register at startup only: restart the
-  shell after changing them there.
-
-**Online and offline behave differently**:
-
-- **tosu online (read-only)**: the whole form is disabled and the shell rejects saves (HTTP 403). Change plugin
-  settings in the tosu settings UI; manage presets on tosu's **Presets page** — the settings window shows that page's
-  URL with a copy button (the URL comes from the button entry in the plugin's `settings.json`, with host:port replaced
-  by the current `wsEndpoint`).
-- **Offline (writable)**: each change is written to the local `mma-settings.json` immediately and **broadcast to the
-  overlay right away** (no restart; the periodic re-read also re-checks within ~30 seconds). The preset area works and
-  custom presets live in the local `mma-settings.json`'s `presetStorage` key, so they survive a restart. Offline the
-  **LastSavedPreset row is not shown** (that is a tosu settings-page follow marker).
-- tosu starting or stopping mid-run: the shell follows within ≤30 seconds and switches what is writable together with
-  the page and its preset area.
-
-## Logs
-
-Shell logs go to the `logs/` folder **next to the exe**: `logs/mma-shell-YYYYMMDD.log` (rotated daily, 7 kept). When
-troubleshooting, set `logLevel` to `debug` and post the latest log to
-[Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues). If something misbehaves, check the log output
-first.
-
-## Troubleshooting / known issues
-
-- **Hollow grey dot / frozen card**: game not running, bridge not installed (Malody 4.3.7 needs no bridge), or shell not running.
-- **Malody 4.3.7 not following**: set `logLevel` to `debug` and read the shell log — it reports the reason (process not found / version mismatch / access denied / chart not indexed, and so on). Common causes are a game version other than 4.3.7, a wrong game folder, or a chart that is not an `.mc` Key chart under `beatmap/`.
-- **Malody editor no reaction / timeout**: shell not running, or the window hasn't finished loading (start the shell
-  first, wait a few seconds, then trigger).
-- **White/black flash on open**: known cosmetic quirk of transparency; doesn't affect use.
-- **Card body occasionally shows No Data**: for Etterna, switch to another chart and back; for Malody, click
-  MMA Analyze again.
+- **Hollow grey dot / Card frozen**: Confirm the game is running, bridges are installed, and the shell is running.
+- **Port 17653 in use**: Card does not move and shell log indicates the port is occupied. Close extra `mma-shell` instances (only one can run at a time) or restart the shell.
+- **Malody V related**
+  - **Card does not respond / Stays empty**: Confirm the shell is running; open shell logs (`logs/mma-shell-YYYYMMDD.log`) and search for `malody bridge`. If `REJECTED … malodyRoot unavailable` appears, the shell failed to resolve the game path; fill in `malodyRoot` manually in `mma-shell-config.json`.
+  - **No changes visible in-game**: Check `BepInEx\LogOutput.log` in the game directory — it should contain `Selection bridge ready` and `Observe …` lines. If the file does not exist, the loader was not loaded (possibly antivirus quarantined `winhttp.dll`).
+  - **Console error `End of Central Directory record could not be found` on startup**: `BepInEx\unity-libs\2022.3.62.zip` is corrupted, and BepInEx will only reuse this bad file, causing the subsequent `Unable to execute IL2CPP chainloader, no plugins will be loaded` log. Re-running the installer fixes this; restart the game afterwards.
+  - **Star rating does not change with rate**: Confirm the installed plugin is this fork's `MMAMalodySelection.dll` and not upstream `MalodyInsightBridge.dll`.
+  - **Pro judge does not take effect**: The plugin reads Pro actively; you do not need to open the JUDGE panel. If the status line displays "Dynamic OD disabled: Pro status unknown", open the JUDGE panel once and close it.
+- **Malody 4.3.7 does not analyze**: Set `logLevel` to `debug` and check shell logs — it provides the reason (process not found / version mismatch / access denied / chart not in index, etc.). Common causes are game versions other than 4.3.7, wrong directory, or charts not being `.mc` Key charts under `beatmap/`.
+- **Card body occasionally shows No Data**: For Etterna, switch to another chart and switch back. For Malody, click `MMA Analyze` again.
+- **Cannot find window position**: Delete `mma-shell-state.json` and restart the shell.
 
 # 了解更多 / Learn more
 

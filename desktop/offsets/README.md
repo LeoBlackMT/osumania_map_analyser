@@ -1,62 +1,73 @@
-# offsets — 内存偏移表与生成器 / Memory Offset Tables & Generator
+# 内存偏移表与生成工具说明
 
-本目录包含 ManiaMapAnalyser 原生内存读取所需的纯数据偏移表与生成工具。  
-This directory contains pure-data offset tables and generation tools required for ManiaMapAnalyser native memory reading.
+本目录包含桌面壳（mma-shell）读取 osu! 游戏状态所需的偏移表及生成工具。
 
----
-
-## 目录结构 / Directory Structure
+## 目录结构
 
 ```text
 offsets/
-├── README.md               # 本说明文档 / This document
-├── manifest.json           # 偏移表索引与 Ed25519 签名清单 / Manifest & Ed25519 signatures
-├── gen.exe                 # (可选/分发) osu!lazer 活体偏移生成器 / Live offset generator
-├── lazer/                  # osu!lazer 偏移表目录 / osu!lazer offset tables
-│   ├── 2026.921.0.0__10.0.12__x64.json
-│   ├── 2026.921.0__10.0.12__x64.json
-│   ├── 2026.1005.0.0__10.0.12__x64.json
-│   └── 2026.1005.0__10.0.12__x64.json
-└── stable/                 # osu!stable 偏移表目录 / osu!stable offset tables
-    ├── stable__x86.json    # 官方标准客户端 / Official client
-    └── ppysb__x86.json     # ppy.sb 私服注入客户端 / ppy.sb client (SBInjector)
+├── manifest.json       # 偏移表索引文件
+├── gen.exe             # osu!lazer 偏移表生成工具
+├── stable/             # osu!stable 偏移表（含官方客户端与 ppy.sb 客户端）
+└── lazer/              # osu!lazer 各版本偏移表
 ```
 
----
+## 使用说明
 
-## 使用指南 / Usage Guide
+### 1. 常规使用
+发行包内置的偏移表已经适配主流版本的 osu!stable 与 osu!lazer。启动 `mma-shell.exe` 后，程序会自动匹配对应的游戏版本，通常不需要进行额外配置。
 
-### 1. 日常游玩 / Daily Play
-- **通常无需进行任何操作**：安装包内自带的偏移表已覆盖当前主流的 osu!stable（含 ppy.sb 客户端）与 osu!lazer 版本。
-- 启动 `mma-shell.exe` 后，壳程序会自动检索并自动识别匹配当前游戏版本（包括自动识别 SBInjector / ppy.sb 客户端）。
+### 2. osu!lazer 更新后的处理
+当 osu!lazer 更新后，若现有偏移表无法匹配当前游戏版本，可以通过以下方式生成或获取新的偏移表：
 
-### 2. 当 osu!(lazer) 更新后 / When osu!(lazer) Updates
-如果 osu!(lazer) 进行了新版本更新，且提示偏移表未匹配（`lazer-offsets-missing`），可通过以下任意一种方式一键生成新版本的偏移表：
+方式一：通过设置面板生成
+1. 保持 osu!lazer 运行在主菜单或选歌界面。
+2. 按 `Ctrl+Shift+S` 打开桌面壳设置面板，进入 Memory Offsets Management。
+3. 点击 Live Generator 按钮，程序将扫描当前运行的 lazer 进程并生成偏移表。
 
-#### 方式一：在壳管理界面一键生成（推荐）
-1. 启动 osu!(lazer) 并停留在主菜单或选歌界面。
-2. 打开 ManiaMapAnalyser 壳设置面板中的「偏移表管理 (Offsets Management)」。
-3. 点击 **「扫描并生成偏移表 (Scan & Generate Offsets)」** 按钮，生成完成后刷新卡片即可生效。
+方式二：运行 `gen.exe`
+1. 保持 osu!lazer 运行在主菜单或选歌界面。
+2. 运行本目录下的 `gen.exe`。
+3. 在控制台菜单中输入 `1` 并回车执行扫描。生成器会自动将新表写入 `offsets/lazer/` 及系统的配置目录。
+4. 生成完成后按回车退出，重启桌面壳或切换谱面即可生效。控制台中输入 `3` 可切换中英文界面。
 
-#### 方式二：双击运行 `gen.exe`
-1. **先启动 osu!(lazer)**：进入游戏并停留在主界面或选歌界面。
-2. 双击运行本目录下的 **`gen.exe`**。
-3. 控制台将弹出交互式菜单，输入数字 `1` 并按回车执行扫描。
-4. 生成器会在数秒内完成内存扫描与活体自校验，并自动将新表保存至 `offsets/lazer/` 与 `%APPDATA%/ManiaMapAnalyser/offsets/lazer/`。
-5. 按回车键退出，切换谱面或重启 `mma-shell.exe` 即刻生效。
-
-*(注：可在交互菜单中按 `3` 随时切换中文 / 英文界面)*
+方式三：检查远端更新
+在桌面壳设置面板的 Memory Offsets Management 中，点击 Check Remote Updates，可检查并同步官方更新的偏移表。
 
 ---
 
-## 原理与安全性保障 / Safety & Design Guarantees
+# Memory Offset Tables & Generator Documentation
 
-1. **绝对安全只读 (Read-Only Safety)**
-   - 生成器与壳程序仅申请 Windows 进程只读权限（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`）。
-   - **绝不**向游戏注入任何 DLL，**绝不**修改游戏内存或代码，绝不挂载调试器。
-2. **零卡顿与零挂起 (Zero Thread Suspension)**
-   - 区别于开发期采集所用的 `dotnet-dump`，`gen.exe` 在扫描时**完全不挂起**游戏线程，游戏全程平滑运行无卡顿。
-3. **免 .NET SDK 依赖 (Zero SDK Footprint)**
-   - 纯原生机器码（Rust 编写），无需用户安装 .NET SDK、Visual Studio 或任何开发运行库。
-4. **活体自校验门禁 (Live Validation Gate)**
-   - 提取的 GameBase、曲目 MD5Hash、界面 ScreenStack 及 VTable 必须通过活体结构自证，100% 验证成功才允许落盘，绝不产生损坏或错误的表。
+This directory contains offset tables and tools required by the desktop shell (mma-shell) to read osu! game states.
+
+## Directory Layout
+
+```text
+offsets/
+├── manifest.json       # Offset tables manifest index
+├── gen.exe             # Offset table generator for osu!lazer
+├── stable/             # osu!stable offset tables (official client and ppy.sb client)
+└── lazer/              # osu!lazer offset tables by version
+```
+
+## Usage
+
+### 1. General Usage
+The release package includes offset tables matching current versions of osu!stable and osu!lazer. When `mma-shell.exe` starts, it automatically selects the appropriate table for the running game client. No manual configuration is needed under normal circumstances.
+
+### 2. Handling osu!lazer Updates
+When osu!lazer updates and existing tables cannot match the new build, you can acquire or generate a new table using one of the following methods:
+
+Method 1: Generate from the Settings Window
+1. Keep osu!lazer running on the main menu or song selection screen.
+2. Press `Ctrl+Shift+S` to open the shell settings window, then go to Memory Offsets Management.
+3. Click Live Generator. The shell scans the running lazer process and generates the offset table.
+
+Method 2: Run `gen.exe`
+1. Keep osu!lazer running on the main menu or song selection screen.
+2. Launch `gen.exe` in this directory.
+3. Type `1` in the console menu and press Enter to start scanning. The tool writes the new table to `offsets/lazer/` and the system appdata folder.
+4. Press Enter to exit after generation. Restart the shell or change songs to apply. Type `3` in the console menu to toggle between English and Chinese.
+
+Method 3: Check for Remote Updates
+In the shell settings window under Memory Offsets Management, click Check Remote Updates to check for and download official updated tables.

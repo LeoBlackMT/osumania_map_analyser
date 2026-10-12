@@ -1,99 +1,119 @@
-# ManiaMapAnalyser desktop shell
+# ManiaMapAnalyser 桌面壳
 
-Tauri v2 桌面壳（Windows / Linux）：加载同一插件页面（**缺省一律**壳自身 24061 静态服务——只有壳配置显式 `osuTransport: "tosu"` 才恢复旧策略"在线 = tosu 插件页 / 离线 = 24061"），并作为本地聚合桥。Linux 下支持 Etterna 数据源（0.75+ 官方 Linux 版）；Malody V 无 Linux 版（该源仅 Windows）；**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` + PE 校验属 Win32 语义，其他平台以 `platform-unsupported` 优雅不可用）；**osu 原生读取同样仅 Windows**（`ReadProcessMemory` / `VirtualQueryEx`，其他平台报 `platform-unsupported` 并回落 tosu）。人类使用教程见 [docs/shell-guide.md](../docs/shell-guide.md)；技术说明见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md)、osu 原生传输见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) 与 `docs/CONTRACT.md`（本目录，契约版本 **6**）；源码架构与模块设计规约详见 [docs/architecture.md](docs/architecture.md)。
+ManiaMapAnalyser 桌面壳（mma-shell）基于 Tauri v2 开发，支持 Windows 与 Linux。桌面壳承载插件的网页前端，在置顶透明窗口中显示分析卡片，并负责聚合与分发来自多个音游客户端的数据。
 
-| 能力 | 端口/路径 | 说明 |
-|---|---|---|
-| Malody 编辑器通道 | 24060 | 文件通道为主：编辑器 WriteFile `*_mma_request.json` → 壳扫描 → 谱面 = 同目录 `<base>.mc|.osu` → song 帧 → 页面分析 → 卡片展示（不回写 txt）。另保留 POST/GET resolve（诊断/备用） |
-| 静态服务 | 24061 `/` | 服务插件目录（exe 所在目录优先；兼容上溯探测）。主窗**缺省**导航到这里（见下"窗口"） |
-| WS | 24061 `/ws` | hello/state/song/malody4_selection/settings/result/control/ping 帧（见 CONTRACT.md） |
-| **osu 兼容 origin** | **24062** | 壳内 osu 原生读取器的 **tosu 兼容子集**：WS `/websocket/v2`（150 ms 一帧）、WS `/websocket/commands`（黑洞）、`GET /files/beatmap/{file,background}`；全部响应带 `Access-Control-Allow-Origin: *`，Host 门禁只放行本机 24062。**缺省实时载荷**；`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 固定谱面回放（测试用）。绑定失败不 exit，只记日志 + 推 `state.errors` 并回落 tosu |
-| **osu 原生读取** | `osu/` 模块 | 250 ms 一拍只读内存：按位数分派（stable 32 位签名扫描 / lazer 64 位偏移表驱动）；句柄权限恒 `PROCESS_VM_READ\|PROCESS_QUERY_INFORMATION`；L0–L3 四层门；不健康时**不出帧**（绝不发假数据）。详见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) |
-| 设置 | 24061 `/settings` | **权威链只看 tosu 是否在线**：在线 = tosu 设置文件（`settings/<插件目录名>.values.json`，只读）> 离线 = `mma-settings.json`（缺则按 settings.json 生成骨架，**不读** tosu 文件）。GET 全量；POST 请求键优先读-改-写并广播（在线 403 / 非法 body 400 / 写失败 500） |
-| 壳配置 | 24061 `/shell-config` | GET 返回 `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`（resolved = 实际采纳路径）；POST 请求键优先读-改-写（400 = body 非法 / base 不可读 / 写失败，此时不写盘），成功后失效根目录探测缓存并广播 settings 帧。启动时对**已有**文件只补不改：`hotkeys` 缺失/空串的键按内置默认补齐（含设置窗口的 `Ctrl+Shift+S`），用户值原样保留 |
-| 设置窗口 | 24061 `/open-settings` + `/settings.html` | POST 打开/聚焦设置窗口（异步发起建窗；无 app 句柄 → 503）；`settings.html` 是窗口承载的设置页（导航 **Shell → Card Settings → Presets**：壳配置 + 卡片设置 + 完整预设，由静态分支服务）。表单**由 `settings.json` schema 在运行时生成**（新增设置只改 settings.json + config.js defaults + 解析/应用函数，设置页零改动）；`settings.json` 的 button 条目中壳内可达的 4 个渲染成**页面顶部**的 **Links** 行（状态栏下方、导航栏上方，打开窗口第一眼可见；另两个 `PresetButton`/`DebugButton` 指向 tosu 自己的页面，由 `settingsLinks.js EXCLUDED_LINK_IDS` 排除，settings.json 不动），壳窗口内链接走 `window.open` → 剪贴板兜底提示 |
-| 内存特征表管理 | 24061 `/offsets/status` + `/offsets/generate` + `/offsets/update` | GET 查询当前 stable/lazer 特征表版本与生成器就绪态；POST `/offsets/generate` 免 SDK 活体自校验生成当前游戏的偏移表；POST `/offsets/update` 校验 Ed25519 签名清单并同步远端表 |
-| 影子对拍诊断 | 24061 `/shadow/status` + `/shadow/reset` | GET 查询当前 L3 影子比对状态、匹配率与逐字段差异；POST `/shadow/reset` 重置对拍计数 |
-| 封面 | 24061 `/cover/...` | 白名单具体文件（图片扩展名，同帧下发 URL） |
-| Etterna 轮询 | — | 2Hz 轮询 `Save/MmaBridge.txt`/`Save/MmaGameplay.txt`（首读基线不推送） |
-| Malody 轮询 | — | 1.5s 轮询 chart/（两级目录 mtime 快筛，仅 stat 目录层） |
-| Malody 4.3.7 只读观察 | `malody4/` 模块 | 200ms 一拍：读锚点身份键 + tail 游戏日志取场景 + 轮询 `config.json` 取变速位/判定档；**零文件写入游戏目录**、不注入；谱面库索引（流式 md5）在后台线程构建 |
-| tosu 探测 | - | `tosu.env` 逐级向上探测（2–3 层）→ `GET {ip}:{port}/` 健康检查（30s 周期） |
+用户操作指引参见 [docs/shell-guide.md](../docs/shell-guide.md)。技术架构说明参见 [docs/features/desktop-shell.md](../docs/features/desktop-shell.md) 及 [docs/CONTRACT.md](docs/CONTRACT.md)。
 
-窗口：透明/置顶/点击穿透（`set_ignore_cursor_events`，快捷键切换）；`WebviewUrl::External` **缺省一律**指向 `http://127.0.0.1:24061/`（壳配置 `osuTransport != "tosu"`，即缺省 `auto`）——主窗必须能跟壳说话，原生传输的端点下发与桥都只在壳自己的页面上生效；只有壳配置显式 `"osuTransport": "tosu"`（逃生开关）才恢复旧策略（在线 ⇒ tosu 插件页 / 离线 ⇒ 24061）。全局快捷键与窗口状态（位置/尺寸/置顶/穿透）持久化到 `mma-shell-state.json`。**Wayland 会话**下全局快捷键不可用（XGrabKey 注册成功但不触发），窗口聚焦时由页面内快捷键经 control 帧兜底（键位一致）；Windows/X11 行为不变。
+## 服务端口与核心模块
 
-**设置窗口**（第二个 OS 窗口，label `settings`）：承载 `http://127.0.0.1:24061/settings.html`（壳配置 + 卡片设置 Card Settings + 完整预设）。三个入口 —— 全局快捷键 `hotkeys.settings`（默认 `Ctrl+Shift+S`）、CLI `--settings`（已有实例时转交 `POST /open-settings` 后 `exit(0)`，不建任何窗口）、`POST /open-settings`（浏览器/脚本；`settings.html` 缺失时只记 warn 不建窗）。窗口几何写入 `mma-shell-state.json` 的 `settings` 字段（向前兼容读取遗留的 `mma-shell-settings-window.json`）；打开期间主窗置顶临时取消（**不写**主窗状态文件，关闭/失败时按该文件恢复）。在线只读、离线可写（详见 `docs/shell-guide.md` 的「设置窗口」与 `docs/features/desktop-shell.md` §4）。
+| 端口/模块 | 用途 | 说明 |
+| --- | --- | --- |
+| 24060 | Malody 编辑器通道 | 接收 Malody V 编辑器生成的分析请求并提供解析接口 |
+| 24061 `/` | 静态资源服务 | 提供插件目录下的静态页面，包括主卡片、设置页与预设管理器 |
+| 24061 `/ws` | 主 WebSocket 通道 | 推送状态、谱面数据、设置和控制命令等帧数据 |
+| 24061 `/settings` | 插件设置接口 | 读取与写入卡片设置，tosu 在线时读取 tosu 配置，离线时读写 `mma-settings.json` |
+| 24061 `/shell-config` | 壳配置接口 | 读取与修改 `mma-shell-config.json`，包括游戏路径、快捷键与日志等级 |
+| 24061 `/open-settings` | 设置窗口唤起 | 触发打开独立的设置窗口 |
+| 24061 `/offsets/*` | 偏移表管理 | 提供偏移表状态查询、活体生成及远端同步接口 |
+| 24061 `/cover/*` | 封面代理 | 转发谱面背景图片资源 |
+| 24062 | osu! 兼容服务 | 模拟 tosu 的 `/websocket/v2` 与谱面文件服务接口，供页面按原生方式读取数据 |
+| `osu/` | osu! 内存读取模块 | 在 Windows 下通过读取内存直接获取 osu!stable 和 osu!lazer 的游戏状态 |
+| `malody4/` | Malody 4.3.7 读取模块 | 在 Windows 下通过内存与日志观察 Malody 4.3.7 的选歌和游玩状态 |
+| Etterna 轮询 | 外部文件读取 | 轮询 Etterna 桥接脚本写入的数据文件 |
 
-壳配置（exe 旁，首启自动生成）：`mma-shell-config.json`（`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`；`malody4Root` 由桥安装器的 **Malody 4** 选项写入——该选项零文件复制）与 `mma-settings.json`（全量插件设置；离线权威，在线时由 tosu 设置文件取代且不生成/不使用本地文件）。
+## 窗口与界面交互
 
-构建与运行（开发态）：`cargo run --release`；打包：`release.ps1`（Windows，zip）/ `desktop/build-linux.sh`（Linux，tar.gz，需 Tauri Linux 系统依赖，与 CI 一致）。
+- 主窗口：支持透明背景、无边框拖拽、窗口缩放、窗口置顶与点击穿透。相关状态（位置、尺寸、置顶、穿透）自动记录在 `mma-shell-state.json` 中。
+- 设置窗口：独立的配置窗口，承载 `settings.html`。可通过全局快捷键 `Ctrl+Shift+S`、命令行参数 `--settings` 或接口调用打开。
+- 全局快捷键：默认提供置顶（`Ctrl+Shift+T`）、点击穿透（`Ctrl+Shift+C`）、打开设置（`Ctrl+Shift+S`）以及退出（`Ctrl+Q`）。快捷键可在 `mma-shell-config.json` 中自定义。在 Linux Wayland 环境下，全局快捷键受限时由窗口聚焦后的内部快捷键处理。
 
-开发环境变量：
+## 平台支持情况
 
-- `MMA_PLUGIN_DIR`：覆盖插件目录解析（缺省：exe 所在目录优先，兼容上溯探测 `ManiaMapAnalyser by Leo_Black`）
-- `MMA_SKIP_TOSU_PROBE=1`：跳过 tosu.env 探测（强制离线模式）
-- `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT`：覆盖游戏根目录（优先于配置/自动探测）
-- `MMA_MALODY4_ROOT`：覆盖 Malody 4.3.7 根目录（同上；任何非空值即被采纳，故指向不存在的路径可用于**关断**该源）
-- `MMA_OSU_COMPAT_REPLAY=1`：把 24062 从**实时载荷**切回 B1 的固定谱面回放（测试用；缺省实时）
-- `MMA_LAZER_OFFSETS=<表路径>`：显式指定 lazer 偏移表（优先于 `<exe 目录>\offsets\lazer\*.json`）
-- `MMA_OSU_COMPARE=0` / `MMA_OSU_COMPARE_INTERVAL_MS` / `MMA_OSU_COMPARE_OUT` / `MMA_OSU_TOSU` / `MMA_OSU_COMPARE_FULL=1`：影子对拍装置的开关/节奏/落点/tosu 端点/整包落盘（dev-only，默认开启、100 ms 一拍）
+- Windows：支持全部功能，包括 osu! 原生内存读取、Malody 4.3.7 只读观察、Malody V 桥接以及 Etterna 桥接。
+- Linux：支持静态界面展示与 Etterna 桥接。osu! 内存读取与 Malody 4.3.7 依赖 Windows API，在 Linux 下不可用，osu! 数据将回落至 tosu。
 
-**osu 原生传输的能力与限制**（完整清单见 [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)）：
+## 配置文件说明
 
-- **偏移表随壳分发与动态更新**：发布包（`release.ps1`）自动打包 `offsets/` 目录（含 `stable/` 与 `lazer/` 纯数据偏移表及签名 `manifest.json`）并随包编译分发 `gen.exe`。产物输出至 `release/{timestamp}-{version}/` 下（包含带壳完整包 `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` 及纯插件本体包 `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`）。支持通过设置页 Live Generator 按钮一键活体生成，或通过内置 Ed25519 签名通道在线静默更新。本地缓存落地在 `%APPDATA%\ManiaMapAnalyser\offsets\`，若不可用则优雅回退至内嵌默认表。
-- **lazer 的字段缺口**（7 条，逐条进 `sources.osu.degradedFields`）：mods 三槽、`play.hits`/`resultsScreen.hits`、`files.background`/`files.audio`；因此 lazer 上 `modSignature` 只在 NM 时与 tosu 逐字节相等，hits/livePP 面不可用。
-- **受限会话下的运行方式（真机实测）**：在工作区上下文里 `Toolhelp32` 只能看到自己那一族进程（表现为"游戏没在跑"、读不到游戏）——**把 `mma-shell.exe` 复制到工作区外（如 `%TEMP%\mma-shell\`）再启动**即可正常附着（本机实测：从 `desktop\target\debug` 启动不可用，复制到 `%TEMP%` 后可用）。同一结论也适用于 `tools/lazer-offsets-gen`。
-- **Linux**：无内存读取（`platform-unsupported`），osu 走 tosu；其余源行为不变。
+配置文件位于可执行文件同级目录下：
+- `mma-shell-config.json`：壳程序运行配置，包括数据源偏好、各游戏根目录、快捷键映射与日志等级。
+- `mma-settings.json`：卡片显示设置。仅在 tosu 离线时由桌面壳负责维护；tosu 在线时直接采用 tosu 的设置文件。
+- `mma-shell-state.json`：窗口运行状态，记忆主窗口与设置窗口的位置、大小与状态。
 
-日志：`logs/mma-shell-YYYYMMDD.log`（按日轮转保留 7；`logLevel` 过滤；成功=debug、失败=error）。
+## 构建与运行
+
+开发态运行：
+```bash
+cargo run --release
+```
+
+打包发布：
+- Windows：运行根目录下的 `release.ps1`。
+- Linux：运行 `desktop/build-linux.sh`。
+
+常用开发环境变量：
+- `MMA_PLUGIN_DIR`：覆盖插件静态资源目录路径。
+- `MMA_SKIP_TOSU_PROBE=1`：跳过 tosu 探测，强制运行在离线模式。
+- `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` / `MMA_MALODY4_ROOT`：覆盖对应游戏的根目录路径。
+- `MMA_LAZER_OFFSETS`：显式指定 lazer 偏移表文件路径。
+- `MMA_OSU_COMPAT_REPLAY=1`：将 24062 端口切换为回放固定测试数据。
 
 ---
 
-# ManiaMapAnalyser desktop shell (English)
+# ManiaMapAnalyser Desktop Shell
 
-Tauri v2 desktop shell (Windows / Linux): loads the same plugin page (by default **always** the shell's own 24061 static server — only an explicit shell-config `osuTransport: "tosu"` restores the old "online = tosu plugin page / offline = 24061" policy) and acts as a local aggregation bridge. On Linux the Etterna data source is supported (official 0.75+ Linux build); Malody V has no Linux version (that source is Windows-only), and the **Malody 4.3.7 source is Windows-only as well** (`ReadProcessMemory` plus the PE check are Win32 semantics; elsewhere it degrades gracefully to `platform-unsupported`); the **osu native reader is Windows-only too** (`ReadProcessMemory` / `VirtualQueryEx`; elsewhere it reports `platform-unsupported` and falls back to tosu). Human-facing guide: [docs/shell-guide.md](../docs/shell-guide.md); technical details: [docs/features/desktop-shell.md](../docs/features/desktop-shell.md), the osu native transport in [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) and `docs/CONTRACT.md` (this folder, contract v**6**).
+The ManiaMapAnalyser desktop shell (mma-shell) is developed with Tauri v2 and supports both Windows and Linux. It hosts the overlay web frontend, displaying the analysis card in an always-on-top transparent window, and aggregates data from multiple rhythm game clients.
 
-| Capability | Port/Path | Notes |
-|---|---|---|
-| Malody editor channel | 24060 | File channel primary: editor WriteFile `*_mma_request.json` → shell scans → chart = same-dir `<base>.mc\|.osu` → song frame → page analysis → shown on the card (no txt writeback). POST/GET resolve kept for diagnostics/fallback |
-| Static server | 24061 `/` | Serves the plugin folder (exe's own dir first; upward probe fallback). The main window navigates here **by default** (see "Window") |
-| WS | 24061 `/ws` | hello/state/song/malody4_selection/settings/result/control/ping frames (see CONTRACT.md) |
-| **osu compatible origin** | **24062** | The **tosu-compatible subset** served by the in-shell osu reader: WS `/websocket/v2` (one frame per 150 ms), WS `/websocket/commands` (black hole), `GET /files/beatmap/{file,background}`; every response carries `Access-Control-Allow-Origin: *`, and the Host gate only admits local 24062. **Live payload by default**; `MMA_OSU_COMPAT_REPLAY=1` falls back to the B1 fixed-chart replay (testing). A bind failure does not exit: it logs, pushes into `state.errors` and falls back to tosu |
-| **osu native reader** | `osu/` modules | One 250 ms tick of read-only memory: client dispatch by bitness (stable = 32-bit signature scan / lazer = 64-bit offset-table driven); handle access is always `PROCESS_VM_READ\|PROCESS_QUERY_INFORMATION`; four gates L0–L3; when unhealthy it **emits no frame** (never fabricates data). See [docs/features/osu-native-source.md](../docs/features/osu-native-source.md) |
-| Settings | 24061 `/settings` | **The authority chain only checks whether tosu is online**: online = tosu settings file (`settings/<plugin folder>.values.json`, read-only) > offline = `mma-settings.json` (skeleton generated from settings.json when missing; the tosu file is **not** read). GET returns everything; POST is a request-key-first read-modify-write that broadcasts (403 online / 400 unparsable body / 500 write failure) |
-| Shell config | 24061 `/shell-config` | GET returns `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}` (`resolved` = the paths actually adopted); POST is a request-key-first read-modify-write (400 = bad body / unreadable base / write failure, and nothing is written then); on success the root-detection caches are cleared and a settings frame is broadcast. At startup an **existing** file is only backfilled, never rewritten: missing/empty `hotkeys` keys get their built-in default (including `Ctrl+Shift+S` for the settings window) while user values stay untouched |
-| Settings window | 24061 `/open-settings` + `/settings.html` | POST opens/focuses the settings window (window creation is dispatched asynchronously; 503 without an app handle); `settings.html` is the page it hosts (nav **Shell → Card Settings → Presets**: shell config + card settings + the full preset manager, served by the static branch). Its form is **generated at runtime from the `settings.json` schema** (a new setting only touches settings.json + config.js defaults + the parse/apply pair — zero settings-page changes), and the four button entries reachable from the shell become the **Links** row at the top of the page (below the status bar, above the nav, visible the moment the window opens; the other two — `PresetButton` / `DebugButton` — point at tosu's own pages and are dropped by `settingsLinks.js EXCLUDED_LINK_IDS` without touching settings.json). Inside the shell window links go through `window.open` with a clipboard fallback notice |
-| Memory Offsets | 24061 `/offsets/status` + `/offsets/generate` + `/offsets/update` | GET queries stable/lazer table versions and generator readiness; POST `/offsets/generate` extracts and verifies offsets live from running game; POST `/offsets/update` verifies Ed25519 signature manifest and updates remote tables |
-| Shadow Diagnostics | 24061 `/shadow/status` + `/shadow/reset` | GET queries live L3 shadow comparison match rates and per-field diff details; POST `/shadow/reset` resets stats |
-| Cover | 24061 `/cover/...` | Whitelisted concrete files (image extensions, URL sent in same frame) |
-| Etterna polling | — | 2Hz on `Save/MmaBridge.txt`/`Save/MmaGameplay.txt` (first read = baseline, no push) |
-| Malody polling | — | 1.5s over chart/ (two-level dir mtime fast filter; only stats dir layers) |
-| Malody 4.3.7 read-only observation | `malody4/` modules | One 200 ms tick: anchor identity key + game-log tail for the scene + `config.json` polling for speed mods/judge; **zero files written into the game folder**, no injection; the chart-library index (streamed md5) is built on a background thread |
-| tosu probe | - | `tosu.env` upward search (2–3 levels) → `GET {ip}:{port}/` health check (30s cycle) |
+For end-user operation guides, see [docs/shell-guide.md](../docs/shell-guide.md). For technical architecture details, refer to [docs/features/desktop-shell.md](../docs/features/desktop-shell.md) and [docs/CONTRACT.md](docs/CONTRACT.md).
 
-Window: transparent / always-on-top / click-through (`set_ignore_cursor_events`, toggled by shortcuts); `WebviewUrl::External` points **by default** to `http://127.0.0.1:24061/` (shell config `osuTransport != "tosu"`, i.e. the default `auto`) — the main window must be able to talk to the shell, since both the native transport's endpoint delivery and the bridge only work on the shell's own page; only an explicit `"osuTransport": "tosu"` (escape hatch) restores the old policy (online ⇒ tosu plugin page / offline ⇒ 24061). Global shortcuts and window state (pos/size/topmost/click-through) persist to `mma-shell-state.json`. On **Wayland sessions** global shortcuts register but never fire (XGrabKey is a no-op there) — while the shell window is focused, in-page shortcuts take over via control frames (same key bindings); Windows/X11 behavior is unchanged.
+## Ports and Core Modules
 
-**Settings window** (a second OS window, label `settings`): hosts `http://127.0.0.1:24061/settings.html` (shell config + card settings + the full preset manager). Three entry points — the global shortcut `hotkeys.settings` (`Ctrl+Shift+S` by default), the CLI `--settings` (with an instance already running it forwards `POST /open-settings` and exits 0 without creating any window), and `POST /open-settings` (browser/script; a missing `settings.html` logs a warning and opens nothing). Its geometry is saved into `mma-shell-state.json`'s `settings` field (with backward compatibility for the legacy `mma-shell-settings-window.json`); while it is open the main window's topmost is temporarily cancelled (**without** writing the main window's state file — restored from it on close/failure). Read-only online, writable offline (see the "Settings window" section of `docs/shell-guide.md` and §4 of `docs/features/desktop-shell.md`).
+| Port / Module | Purpose | Description |
+| --- | --- | --- |
+| 24060 | Malody editor channel | Receives analysis requests from the Malody V editor and exposes resolution endpoints |
+| 24061 `/` | Static file server | Serves frontend assets, including the overlay card, settings page, and presets manager |
+| 24061 `/ws` | Main WebSocket stream | Broadcasts frames for state, beatmap data, settings, and controls |
+| 24061 `/settings` | Plugin settings API | Reads and writes card display settings; uses tosu values when tosu is online, and `mma-settings.json` when offline |
+| 24061 `/shell-config` | Shell configuration API | Reads and updates `mma-shell-config.json` for paths, hotkeys, and log levels |
+| 24061 `/open-settings` | Settings window trigger | Dispatches requests to open or focus the settings window |
+| 24061 `/offsets/*` | Offsets management | Provides offset status queries, live table generation, and remote update endpoints |
+| 24061 `/cover/*` | Cover proxy | Proxies beatmap background image assets |
+| 24062 | osu! compatible origin | Emulates tosu's `/websocket/v2` and beatmap file endpoints for native reading paths |
+| `osu/` | osu! memory reader | Reads osu!stable and osu!lazer game states directly from memory on Windows |
+| `malody4/` | Malody 4.3.7 reader | Observes Malody 4.3.7 song selection and gameplay via process memory and logs on Windows |
+| Etterna polling | File polling | Polls file outputs generated by the Etterna bridge scripts |
 
-Shell config (next to the exe, auto-created on first run): `mma-shell-config.json` (`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`; `malody4Root` is written by the installer's **Malody 4** option, which copies zero files) and `mma-settings.json` (full plugin settings; the offline authority — while tosu is online the tosu settings file replaces it and no local file is created or used).
+## Window and Interaction
 
-Build & run (dev): `cargo run --release`; packaging: `release.ps1` (Windows, zip) / `desktop/build-linux.sh` (Linux, tar.gz; needs the Tauri Linux system deps, same as CI).
+- Main Window: Supports transparency, borderless dragging, resizing, always-on-top, and click-through mode. Window geometry and toggle states are saved in `mma-shell-state.json`.
+- Settings Window: A dedicated configuration window hosting `settings.html`. Can be opened via the global shortcut `Ctrl+Shift+S`, CLI flag `--settings`, or the HTTP trigger endpoint.
+- Global Hotkeys: Default hotkeys include always-on-top (`Ctrl+Shift+T`), click-through (`Ctrl+Shift+C`), settings (`Ctrl+Shift+S`), and close (`Ctrl+Q`). Keys can be customized in `mma-shell-config.json`. Under Linux Wayland where global shortcuts may not trigger, internal hotkeys handle events when the window is focused.
 
-Dev env vars:
+## Platform Support
 
-- `MMA_PLUGIN_DIR`: override plugin folder resolution (default: exe's own dir first, upward probe for `ManiaMapAnalyser by Leo_Black` fallback)
-- `MMA_SKIP_TOSU_PROBE=1`: skip tosu.env probe (force offline mode)
-- `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT`: override game roots (env > config > auto-detect)
-- `MMA_MALODY4_ROOT`: override the Malody 4.3.7 root (same precedence; any non-empty value is accepted, so pointing it at a nonexistent path is how you disable that source)
-- `MMA_OSU_COMPAT_REPLAY=1`: switch 24062 from the **live payload** back to the B1 fixed-chart replay (testing; live is the default)
-- `MMA_LAZER_OFFSETS=<table path>`: explicit lazer offset table (takes precedence over `<exe dir>\lazer-offsets\<lazer>__<runtime>__<arch>.json`)
-- `MMA_OSU_COMPARE=0` / `MMA_OSU_COMPARE_INTERVAL_MS` / `MMA_OSU_COMPARE_OUT` / `MMA_OSU_TOSU` / `MMA_OSU_COMPARE_FULL=1`: the shadow-comparison rig's switch / cadence / output path / tosu endpoint / full-payload dumping (dev-only; enabled by default, one record per 100 ms)
+- Windows: Full support for all features, including osu! native memory reading, Malody 4.3.7 external observation, Malody V bridge, and Etterna bridge.
+- Linux: Supports the overlay frontend and Etterna bridge. The native memory reader and Malody 4.3.7 rely on Windows APIs and are marked unsupported on Linux, where osu! falls back to tosu.
 
-**osu native transport: capability & limitations** (full list: [docs/features/osu-native-source.md](../docs/features/osu-native-source.md)):
+## Configuration Files
 
-- **Offset Tables Distribution & Dynamic Updates**: The release package (`release.ps1`) bundles the `offsets/` folder (pure data tables for stable and lazer + signed `manifest.json`) and compiles `gen.exe` beside `mma-shell.exe`. Output is created under `release/{timestamp}-{version}/` (containing both the with-shell zip `ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip` and plugin-only zip `ManiaMapAnalyser-by-Leo_Black-v{version}.zip`). Supports live generation from the settings window via the Live Generator button, as well as Ed25519-signed online updates. Local cache is stored in `%APPDATA%\ManiaMapAnalyser\offsets\`, silently falling back to bundled/embedded tables when offline.
-- **lazer field gaps** (7, each reported in `sources.osu.degradedFields`): the three mod slots, `play.hits`/`resultsScreen.hits`, and `files.background`/`files.audio`; hence on lazer `modSignature` is byte-identical to tosu only for NM, and the hits/livePP surface is unavailable.
-- **Running inside a restricted session (measured)**: in the workspace context `Toolhelp32` only sees its own process family (the game looks "not running" and cannot be read) — **copy `mma-shell.exe` outside the workspace (e.g. `%TEMP%\mma-shell\`) and start it there** to attach normally (measured: starting from `desktop\target\debug` does not work, copying to `%TEMP%` does). The same applies to `tools/lazer-offsets-gen`.
-- **Linux**: no memory reading (`platform-unsupported`), osu goes through tosu; the other sources are unchanged.
+Configuration files are located in the executable directory:
+- `mma-shell-config.json`: Shell runtime configuration including source preference, game roots, hotkey definitions, and log levels.
+- `mma-settings.json`: Card display settings. Managed by the shell when tosu is offline; replaced by tosu's settings file when tosu is online.
+- `mma-shell-state.json`: Window runtime state, storing positions, sizes, and toggle states for main and settings windows.
 
-Logs: `logs/mma-shell-YYYYMMDD.log` (daily rotation, 7 kept; filtered by `logLevel`; success=debug, failure=error).
+## Building and Development
+
+Run in development mode:
+```bash
+cargo run --release
+```
+
+Build release packages:
+- Windows: Run `release.ps1` from the repository root.
+- Linux: Run `desktop/build-linux.sh`.
+
+Common development environment variables:
+- `MMA_PLUGIN_DIR`: Overrides the static asset directory path.
+- `MMA_SKIP_TOSU_PROBE=1`: Skips tosu probing and forces offline mode.
+- `MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` / `MMA_MALODY4_ROOT`: Overrides respective game root paths.
+- `MMA_LAZER_OFFSETS`: Explicitly specifies the path to a lazer offset table.
+- `MMA_OSU_COMPAT_REPLAY=1`: Switches port 24062 to replay static test data.

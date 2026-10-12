@@ -171,6 +171,31 @@
 
 ## English
 
+### Shell Settings
+
+- **General Settings**:
+  - **Game client**: Select the data source to use.
+    - Auto: Automatically selects the currently active source. Priority: Playing > Recent activity > osu! > Etterna > Malody 4 > Malody.
+    - Can be locked to a specific source (Osu! / Etterna / Malody / Malody 4).
+  - **Etterna root / Malody V root / Malody 4.3.7 root**: Installation directories for the three games.
+    - Fill in the game directories as needed to locate beatmaps for analysis.
+    - Leave blank for automatic detection. Recommended to use the `bridges/install-bridge.ps1` script to populate automatically.
+  - **Always on Top**: Keeps the window pinned on top. Default shortcut Ctrl+Shift+T.
+  - **Click-Through**: Ignores mouse events to pass clicks through to windows underneath. Default shortcut Ctrl+Shift+C.
+  - **Hotkeys**: Configures shortcuts for the features above. Restart the shell to take effect. Supports Ctrl/Shift/Alt/Win + single letter key A–Z.
+  - **Log level**: Log verbosity level.
+    - If you are unsure what this does, do not change it arbitrarily.
+    - When reporting an issue, change this to `debug` and provide the log file under the `logs/` directory.
+- **Memory Offsets Management**:
+  - **osu!stable Offsets / osu!lazer Offsets**: Offset table status for osu!stable and lazer.
+  - **Offsets Actions**: Offset table operations:
+    - **Live Generator**: Generate lazer offset tables.
+      - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
+      - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
+    - **Check Remote Updates**: Check whether new offset tables are available on GitHub.
+
+### Card Settings
+
 - **Presets**:
     - **Preset**: Select a preset to apply all settings below at once.
         - Default: Reset to the factory default configuration.
