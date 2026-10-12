@@ -314,7 +314,7 @@ value   = lowBase × lowGate + (highBase + lowLift) × highGate
 
 Uses `piecewiseBlock` to interpolate through two block tables:
 - **`AZUSA_CALIBRATION_LOW_BLOCKS`**: 17 blocks covering numeric range [1.92, 9.83] → RC [1.0, 10.3]
-- **`AZUSA_CALIBRATION_HIGH_BLOCKS`**: 39 blocks covering numeric range [11.43, 19.35] → RC [10.4, 17.95]
+- **`AZUSA_CALIBRATION_HIGH_BLOCKS`**: 43 blocks covering numeric range [11.4336, 27.0] → RC [10.4, 20.0]
 
 The low and high calibrations are blended by gate weight, providing a smooth transition between the two calibration regimes.
 
@@ -367,7 +367,7 @@ This leverages the observation that Daniel and Sunny have higher discriminative 
 
 **`AZUSA_CALIBRATION_LOW_BLOCKS`** (17 entries): Maps blend values in [1.92, 9.83] to RC [1.0, 10.3]. Each entry is `[xMin, xMax, rcValue]`. The block structure allows for piecewise-constant calibration with linear transitions between blocks.
 
-**`AZUSA_CALIBRATION_HIGH_BLOCKS`** (39 entries): Maps blend values in [11.43, 19.35] to RC [10.4, 17.95]. Same structure as low blocks but with finer granularity in the upper range.
+**`AZUSA_CALIBRATION_HIGH_BLOCKS`** (43 entries): Maps blend values in [11.4336, 27.0] to RC [10.4, 20.0]. Same structure as low blocks but with finer granularity in the upper range.
 
 ### 11.2 Isotonic Calibration Table
 
@@ -375,7 +375,7 @@ This leverages the observation that Daniel and Sunny have higher discriminative 
 
 ---
 
-## 13. Marathon Duration Correction (Estimator-Embedded)
+## 12. Marathon Duration Correction (Estimator-Embedded)
 
 Since v2.0.2, Azusa applies a **marathon duration correction** inside the estimator itself: `options.marathonCorrection = { durationS, ettValues }` (optional; absent or missing MSD skillsets → no correction, bit-identical to the legacy output). The corrected `finalNumeric` drives `numericDifficulty`, `estDiff` and `star` derivation, so the estimator output is the final difficulty value — no post-output pipeline patching. Direct calls without the option (e.g. the benchmark runner) yield the uncorrected baseline.
 
@@ -391,7 +391,7 @@ Since v2.0.2, Azusa applies a **marathon duration correction** inside the estima
 
 **Calibration note.** Parameters were calibrated on the benchmark's `course` subset (34 maps, all RC; user-authorized) with an order-constrained grid; `scale = 0.40`, `cap = 0.50` chosen (merged MAE 0.3167, zero new inversions vs the linear 0.20/min version's 0.3225 which failed the 8th/9th order check). Validation: course MAE 0.4782 → 0.3544 (Azusa), Bias −0.424 → −0.085; see the calibration table in [features/marathon-correction.md](features/marathon-correction.md) §8.
 
-## 12. Algorithm Complexity
+## 13. Algorithm Complexity
 
 - **Time**: O(n) where n = number of tap notes. The main loop in `buildDifficultyCurve` processes each note once with constant work per note (4 decay windows × 5 skills = 20 exponential decays). The `summarize` step sorts 5 arrays of size n: O(n log n). Overall complexity is dominated by O(n log n).
 

@@ -67,13 +67,13 @@ The desktop shell reads osu!lazer memory read-only and therefore needs a `Type.F
 
 ### 原理（How it works）
 
-- 单文件工具集（`main.rs` + 5 个模块），裸 `rustc` 编译，**零外部依赖**，与 `tools/malody4-anchor-check` 同一路子：只读、不注入、不写游戏、不挂调试器。
+- 单文件工具集（`main.rs` + 10 个模块），裸 `rustc` 编译，**零外部依赖**，与 `tools/malody4-anchor-check` 同一路子：只读、不注入、不写游戏、不挂调试器。
 - `collect` 按**位数**区分进程（stable 是 32 位、lazer 是 x64，进程名都叫 `osu!.exe`），采一份 dump 实测 **2.96 GiB / ~70 s 游戏挂起**（挂起就是 `createdump` 写盘的时间）。
 - `extract` 自己解析 dump 的内存范围表并在其中扫**我们自己的锚点模式**，再按 `spec.rs::SITE_DELTAS` 找**站点**、按 `spec.rs::GAME_BASE_HOPS` 多跳解出 GameBase（候选必须过"`dumpobj` 类型"与"有表时 `[gameBase] == 表 vtable`"两条判据，逐条尝试都逐字打印）；随后照着 `spec.rs::CHAIN` 逐级解引用（地址来自上一层 `dumpobj` 的 Value 列），并用 dump 的**原始字节**核对 SOS 打印的每个值 —— 这同时机械证明了"SOS 的 Offset 基准 = 对象地址"。
 - `il` 直接解析 PE/CLI 元数据（ECMA-335 表 + `#Strings`/`#Blob` 堆 + 字段签名解码 + `#extends` 继承链），得到"字段存在性/实例性/类型/声明顺序/显式布局"的结构行；**元数据推导的偏移永不出表**。
 - `emit` 用双见证校验出表（`desktop/src/osu/offsets.rs::load` 的 JSON 形状），另有 fixture/溯源/版本三道拒绝门；`self-test` 用**合成 minidump + fixture** 把同一条代码路径跑通（29 个用例，无需游戏）。
 
-- Single-file tool (`main.rs` + five modules), built with bare `rustc`, **zero external dependencies**, same style as `tools/malody4-anchor-check`: read-only, no injection, no writes into the game, no debugger attach.
+- Single-file tool (`main.rs` + ten modules), built with bare `rustc`, **zero external dependencies**, same style as `tools/malody4-anchor-check`: read-only, no injection, no writes into the game, no debugger attach.
 - `collect` separates the two clients by **bitness** (stable is 32-bit, lazer is x64, both processes are named `osu!.exe`) and collects a dump — measured **2.96 GiB / ~70 s of game suspension** (the suspension is `createdump` writing the file).
 - `extract` parses the dump's own memory ranges, scans them for **our own anchor pattern**, then resolves GameBase as `site = anchor − spec::SITE_DELTAS[i]` followed by the `spec::GAME_BASE_HOPS` dereference chain (every candidate must pass the `dumpobj` type check and, when a table vtable is supplied, the `[gameBase] == table vtable` check; every attempt is printed verbatim), then walks `spec.rs::CHAIN` level by level (the next address comes from the previous `dumpobj`'s Value column) and checks every SOS-printed value against the **dump bytes** — which also mechanically proves that "SOS offsets are object-address based".
 - `il` parses PE/CLI metadata directly (ECMA-335 tables, `#Strings`/`#Blob` heaps, field signature decoding, the `#extends` base chain) to produce structural rows (existence, instance-ness, type, declaration order, explicit layout); **metadata-derived offsets are never published**.

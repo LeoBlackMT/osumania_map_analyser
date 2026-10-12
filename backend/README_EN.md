@@ -55,6 +55,7 @@ backend/
   internal/config/              .env loading + validation
   internal/ratelimit/           in-memory fixed-window limiter
   internal/store/               SQLite schema + queries
+  internal/spec/                Authoritative telemetry whitelists, validation rules and bounds
   internal/telemetry/           POST /api/v1/event handler
   internal/analytics/           aggregation + distributions
   internal/web/                 / dashboard + /api/v1/stats (+ embedded HTML)

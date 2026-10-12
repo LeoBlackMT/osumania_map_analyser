@@ -29,7 +29,7 @@
 | `js/pipeline/` | 共享（Node benchmark 使用） | **禁止** `window`/`document`；纯函数、显式 options 传参、不读 state（见 §2.1） |
 | `js/estimator/`、`js/ett/`、`js/interlude/`、`js/parser/`、`js/patterns/`、`js/rework/` | 共享（Node benchmark 使用） | **禁止** `window`/`document` |
 
-`appContext.js` 顶层就执行 `document.getElementById`（`js/app/appContext.js:23-62` `statusEl` 等 DOM refs）——共享模块**不得** import 它或任何 `js/app/` 模块。
+`appContext.js` 顶层就执行 `document.getElementById`（`js/app/appContext.js:103` 起 `statusEl` 等 DOM refs）——共享模块**不得** import 它或任何 `js/app/` 模块。
 
 ### 2.1 `js/pipeline/` 目录规则
 
@@ -49,14 +49,14 @@
 
 Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)`（相对**模块文件**解析），**勿**改成相对字符串——相对字符串会相对 `index.html` 解析而失效。
 
-- Worker 创建：`manager.js:18-21` `ensureWorker()` 内 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`
-- WASM 路径：`calc.js:56-59` `locateFile` 的 `new URL(\`./versions/${path}\`, import.meta.url)`；`calc.js:73` 同模式（Node 侧经 `toWasmPath` 转文件系统路径）
+- Worker 创建：`manager.js:17-24` `ensureWorker()` 内 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`
+- WASM 路径：`calc.js:67-79` `locateFile` 的 `new URL(\`./versions/${path}\`, import.meta.url)`；`calc.js:76` 同模式（Node 侧经 `toWasmPath` 转文件系统路径）
 - **worker 内 WASM 已验证可用**：`import.meta.url` 按**模块文件**解析（calc.js 自己的 URL），worker 中与主线程一致——`locateFile` 生成的 wasm URL 指向同源静态资源，fetch 实例化正常（task 12 实测，无需改动 loader）。
 - ONNX 路径：`companellaEstimator.js:63`（`ort.env.wasm.wasmPaths`）、`companellaEstimator.js:67`（`dan_model.onnx` URL）
 
 ### 4. 动态 `import()` 唯一场景
 
-全项目唯一的动态 import 是 `companellaEstimator.js:46-55` `getOrtNamespace()`：按环境懒加载 ONNX Runtime（Node → `ort.node.min.mjs`，浏览器 → `ort.wasm.min.mjs`）。同类例外：`companellaEstimator.js:70` `import("node:url")`（仅 Node 分支）。
+全项目唯一的动态 import 是 `companellaEstimator.js:46-56` `getOrtNamespace()`：按环境懒加载 ONNX Runtime（Node → `ort.node.min.mjs`，浏览器 → `ort.wasm.min.mjs`）。同类例外：`companellaEstimator.js:70` `import("node:url")`（仅 Node 分支）。
 
 新增功能**不得**再引入其他 `import()`——需要条件加载时优先用顶层静态 import 加环境分支。
 
@@ -64,7 +64,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 - **不直接 import / `fs.readFileSync` `.wasm` 文件**：经 `js/ett/versions/` 的 JS glue（`minaclac-*.js`，Emscripten 导出）实例化；`.wasm` 作为静态资源由浏览器 fetch（`calc.js:56-59` `locateFile`）。
 - Node 下经 glue 的 `wasmBinary` 传入预读字节（`calc.js:65-74` `loadEtternaModule`），不要自己加载 `.wasm`。
-- 新增 Etterna 版本：`.wasm` + `.js` glue 成对放入 `js/ett/versions/`，并在 `js/ett/versions/index.js` 注册 loader（`calc.js:47-53` `WASM_FILE_BY_VERSION` 同步登记文件名）。
+- 新增 Etterna 版本：`.wasm` + `.js` glue 成对放入 `js/ett/versions/`，并在 `js/ett/versions/index.js` 注册 loader（`calc.js:62` `WASM_FILE_BY_VERSION` 同步登记文件名）。
 - **MSD 上限 patch**：`js/ett/versions/` 下除 `minaclac-68.0-unofficial.wasm`（其 40.0 常量非技能上限）外的 `.wasm` 均已应用 40.0→100.0 的等长替换（`tools/patch-minaclac-msd-cap.mjs`，用法见 `tools/README.md`）。新增 Etterna 版本后须重新运行该脚本；修改 wasm 字节后同步递增 `js/ett/constants.js` 的 `WASM_ASSET_VERSION`（浏览器缓存失效）。
 
 ### 6. 文件夹名精确
@@ -73,11 +73,11 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 7. 双层 state 约定
 
-`state` 定义于 `js/app/appContext.js:64`，关键字段在 `appContext.js:76-89`：
+`state` 定义于 `js/app/appContext.js:149`，关键字段在 `appContext.js:161-215`：
 
-- **写** `user*` 字段（用户真实偏好，可为 `"Auto"`）：`userContentBar`/`userSrText`/`userDiffText`（`appContext.js:79-81`）
-- **读** 解析后字段：`contentBar`/`srText`/`diffText`（`appContext.js:76-78, 87`）；`effectiveContentBar`（`appContext.js:77`）为谱面级覆盖
-- **估计算法双层**：`estimatorAlgorithm`（用户选择，`appContext.js:88`）vs `actualEstimatorAlgorithm`（实际执行，`appContext.js:89`，如 Azusa 因 LN 过高降级为 Sunny）——分析后读后者，缓存命中时从快照恢复，勿重算
+- **写** `user*` 字段（用户真实偏好，可为 `"Auto"`）：`userContentBar`/`userSrText`/`userDiffText`（`appContext.js:170-172`）
+- **读** 解析后字段：`contentBar`/`srText`/`diffText`（`appContext.js:167, 169, 178`）；`effectiveContentBar`（`appContext.js:168`）为谱面级覆盖
+- **估计算法双层**：`estimatorAlgorithm`（用户选择，`appContext.js:179`）vs `actualEstimatorAlgorithm`（实际执行，`appContext.js:180`，如 Azusa 因 LN 过高降级为 Sunny）——分析后读后者，缓存命中时从快照恢复，勿重算
 - 写入 `state.contentBar = "Auto"` 是 bug
 - 设置全流程见 [../pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)
 
@@ -89,22 +89,22 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 9. 版本号一致性
 
-`index.js` 内部版本（`index.js:3` `_VERSION`）必须与 `metadata.txt` 外部版本（`metadata.txt:6` `Version`）一致（当前均为 `1.7.1`）。发布新版本时两处同步修改——`metadata.txt` 版本暴露给 tosu 插件管理界面，`_VERSION` 供插件内部判断更新。
+`index.js` 内部版本（`index.js:4` `_VERSION`）必须与 `metadata.txt` 外部版本（`metadata.txt:6` `Version`）一致（当前均为 `2.1.0`）。发布新版本时两处同步修改——`metadata.txt` 版本暴露给 tosu 插件管理界面，`_VERSION` 供插件内部判断更新。
 
-- 依据：`CLAUDE.md:53`
+- 依据：`CLAUDE.md:65`
 
 ### 10. 无 co-author/license/copyright；settings 全英文
 
-- 未获用户允许**禁止**添加 co-author、license、copyright 等信息（`CLAUDE.md:46`）
-- `settings.json` 全程英文；标题与描述简洁直白、面向普通用户，不用内部术语（`CLAUDE.md:43-44`）；checkbox 放 options 之前、Link 放最前（`CLAUDE.md:44`）
+- 未获用户允许**禁止**添加 co-author、license、copyright 等信息（`CLAUDE.md:55`）
+- `settings.json` 全程英文；标题与描述简洁直白、面向普通用户，不用内部术语（`CLAUDE.md:52-53`）；checkbox 放 options 之前、Link 放最前（`CLAUDE.md:53`）
 
 ### 11. Benchmark 影响面
 
- 改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:67`）。
+ 改动 `js/estimator/`、`js/parser/`、`js/ett/`、`js/patterns/` 会改变独立仓库 `VSRG-DanEstimation-Benchmark` 的 benchmark 结果——算法相关改动必须按 benchmark 流程验证，且不得读取 samples 中的谱面样本（防过拟合，`CLAUDE.md:83`）。
 
 ### 12. 性能与兼容
 
-插件运行在纯浏览器（tosu overlay）环境：避免不兼容的 API 与过于复杂的算法；不应当使用除 tosu 之外的第三方工具获取数据或进行计算，不要求用户启用 Node 等环境，确保插件的独立性和可移植性（`CLAUDE.md:42`）。
+插件运行在纯浏览器（tosu overlay）环境：避免不兼容的 API 与过于复杂的算法；不应当使用除 tosu 之外的第三方工具获取数据或进行计算，不要求用户启用 Node 等环境，确保插件的独立性和可移植性（`CLAUDE.md:50`）。
 
 ### 13. AI 工作流程：不嵌套子代理
 
@@ -112,7 +112,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 14. 文档同步义务
 
-新增/修改功能或管线必须同步更新对应文档：新功能编写技术文档；修改功能更新文档；管线破坏性更改更新管线文档与指南（`docs/README.md:14-16`、`CLAUDE.md:41`）；新增/删除文档需同步 `docs/README.md` 索引（`docs/README.md:17`）。
+新增/修改功能或管线必须同步更新对应文档：新功能编写技术文档；修改功能更新文档；管线破坏性更改更新管线文档与指南（`docs/README.md:14-16`、`CLAUDE.md:49`）；新增/删除文档需同步 `docs/README.md` 索引（`docs/README.md:19`）。
 
 ## 快速检查清单
 

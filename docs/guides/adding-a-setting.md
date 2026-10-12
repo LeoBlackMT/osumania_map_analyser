@@ -3,7 +3,7 @@
 > 面向 AI 的操作指南。文中所有 `path:line symbol` 引用均相对本仓库根目录（插件文件夹名为 `ManiaMapAnalyser by Leo_Black`，含空格，路径引用必须精确）。**照抄步骤不保证正确——每步引用的行号是编写时核实的，动手前请重新打开对应文件确认。**文中 path:line 行号为编写时快照，代码演进后可能漂移；定位源码请以符号名（symbol）为准，必要时用 grep 复核。
 > 配套文档：先读 [pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md)（设置管线"怎么工作"）与 [pipeline/result-cache.md](../pipeline/result-cache.md)（缓存"怎么工作"）；本文是"怎么动手"。缓存失效的**该不该加**判断见 [cache-invalidation.md](cache-invalidation.md)。
 
-## 0. 速览：新增一个设置要动 5 个文件
+## 0. 速览：新增一个设置要动 5 个文件（外加 1 步文档）
 
 ```
 ManiaMapAnalyser by Leo_Black/
@@ -13,6 +13,8 @@ ManiaMapAnalyser by Leo_Black/
 ├── js/app/appContext.js ← ④ state 字段 + parser 解构导出
 └── js/app/settings.js   ← ⑤ 两处接线：applyXxxSetting 函数 + applySettingsFrom（启动）+ SETTING_HANDLERS 表（运行时）+ SETTING_RECOMPUTE_KEYS / SETTING_CACHE_KEYS 集合
 ```
+
+步骤 1–5 是代码侧（5 个文件），步骤 6 是判断"该不该进缓存失效列表"（通常不必新增文件，只改 `settings.js` 的一个集合），步骤 7 是文档同步——所以**正文共 7 步，代码文件仍是 5 个**。
 
 管线总览见 settings-pipeline.md §2（启动流程）与 §5（运行时变更流程）。**最容易漏的是第 5 步——settings.js 的两处接线（启动手工链 + 运行时数据表），以及第 6 步缓存失效**。下面以虚构设置 `enableExample`（checkbox）为主线走完全程，每步附真实代码作为模板。
 
@@ -25,8 +27,8 @@ ManiaMapAnalyser by Leo_Black/
 **条目格式**（字段固定为 `uniqueID` / `type` / `title` / `description` / `options` / `value`）：
 
 - `uniqueID`：PascalCase，**命令通道键名与它完全一致**（settings-pipeline.md §3）。state 字段则是小驼峰（步骤 4）。
-- `type`：tosu 支持 `header` / `checkbox` / `options` / `text` / `button` / `color`（CLAUDE.md:44 附近说明仅限这些值）。
-- `title` / `description`：**必须全英文**，tosu 不支持中文（CLAUDE.md:44）；描述要简洁直白、面向普通用户，不用内部术语（CLAUDE.md:43）。
+- `type`：tosu 支持 `header` / `checkbox` / `options` / `text` / `button` / `color`（CLAUDE.md:53 附近说明仅限这些值）。
+- `title` / `description`：**必须全英文**，tosu 不支持中文（CLAUDE.md:53）；描述要简洁直白、面向普通用户，不用内部术语（CLAUDE.md:52）。
 - `options`：checkbox 类为 `[]`，options 类为字符串数组。
 - `value`：默认值，checkbox 为布尔、options 为字符串（字符串数组中的一项）。
 
@@ -60,7 +62,7 @@ ManiaMapAnalyser by Leo_Black/
 }
 ```
 
-**摆放位置规则**（CLAUDE.md:44）：Link 部分（header `hLinks` settings.json:3）放在最前；**checkbox 类放在 options 类之前**；按现有 header 分组归类（如功能开关放进 `hFunctions` settings.json:245 分组内），新 header 用 `type: "header"`。
+**摆放位置规则**（CLAUDE.md:53）：Link 部分（header `hLinks` settings.json:3）放在最前；**checkbox 类放在 options 类之前**；按现有 header 分组归类（如功能开关放进 `hFunctions` settings.json:287 分组内），新 header 用 `type: "header"`。
 
 > ⚠️ 陷阱：tosu 不支持中文标题/描述，全英文；uniqueID 一旦定下就贯穿后续所有步骤（命令通道键名、parser 名、state 字段名都从它派生）；options 的枚举值列表必须与步骤 2 的 `APP_CONFIG.options` 一致（漏掉任一值会在 parser 白名单校验时被回退到默认值）。
 
@@ -70,11 +72,11 @@ ManiaMapAnalyser by Leo_Black/
 
 文件：`ManiaMapAnalyser by Leo_Black/config.js`。
 
-- `APP_CONFIG.defaults`（config.js:76-115）：加键 `enableExample: false`。键名用 **state 字段名（小驼峰）**，不是 uniqueID（注意 `VibroDetection` settings.json:277 ↔ `vibroDetection` config.js:88 的差异）。
-- **options 型设置**：还要加 `APP_CONFIG.options` 枚举（config.js:5-17），如 `exampleMode: ["Off", "Light", "Full"]`——`createSettingsParsers` 用它构造 `createSet` 白名单校验解析结果（settingsParser.js:234-244）。
+- `APP_CONFIG.defaults`（config.js:79-121）：加键 `enableExample: false`。键名用 **state 字段名（小驼峰）**，不是 uniqueID（注意 `VibroDetection` settings.json:319 ↔ `vibroDetection` config.js:90 的差异）。
+- **options 型设置**：还要加 `APP_CONFIG.options` 枚举（config.js:5-17），如 `exampleMode: ["Off", "Light", "Full"]`——`createSettingsParsers` 用它构造 `createSet` 白名单校验解析结果（settingsParser.js:250-262）。
 
 ```js
-// config.js defaults 块内（:76-115）
+// config.js defaults 块内（:79-121）
 enableExample: false,
 // config.js options 块内（:5-17），options 型设置专属
 exampleMode: ["Off", "Light", "Full"],
@@ -88,13 +90,13 @@ exampleMode: ["Off", "Light", "Full"],
 
 文件：`ManiaMapAnalyser by Leo_Black/js/parser/settingsParser.js`。
 
-在工厂 `createSettingsParsers(appConfig)`（settingsParser.js:233）内部添加 `parse{uniqueID}Value`，**同时在返回表（settingsParser.js:561-600）导出**。
+在工厂 `createSettingsParsers(appConfig)`（settingsParser.js:250）内部添加 `parse{uniqueID}Value`，**同时在返回表（settingsParser.js:582-621）导出**。
 
-**命名约定**：`parse{uniqueID}Value`（如 `parseEnablePauseDetectionValue` settingsParser.js:369）。settings.js 按此约定引用（settings-pipeline.md §3）。
+**命名约定**：`parse{uniqueID}Value`（如 `parseEnablePauseDetectionValue` settingsParser.js:390）。settings.js 按此约定引用（settings-pipeline.md §3）。
 
-**取原始值**：用 `extractSettingValue(settingsPayload, key)`（settingsParser.js:211）——它兼容三种 payload 形状（数组 `[{uniqueID, value}]`、对象键值、嵌套 `{settings: {...}}`），新 parser 一律经它取值，不要自己解析。
+**取原始值**：用 `extractSettingValue(settingsPayload, key)`（settingsParser.js:228）——它兼容三种 payload 形状（数组 `[{uniqueID, value}]`、对象键值、嵌套 `{settings: {...}}`），新 parser 一律经它取值，不要自己解析。
 
-**checkbox parser 模板**（对照 `parseEnablePauseDetectionValue` settingsParser.js:369）：
+**checkbox parser 模板**（对照 `parseEnablePauseDetectionValue` settingsParser.js:390）：
 
 ```js
 function parseEnableExampleValue(settingsPayload) {
@@ -103,9 +105,9 @@ function parseEnableExampleValue(settingsPayload) {
 }
 ```
 
-`normalizeBooleanSetting`（settingsParser.js:179）接受布尔/数字/字符串（"true"/"1" 等），无效值回退默认。**已有 normalize 辅助可复用，不要自己写**：`normalizeBooleanSetting`、`normalizeContentBarValue`（:5）、`normalizeEstimatorAlgorithmValue`（:34）等。
+`normalizeBooleanSetting`（settingsParser.js:196）接受布尔/数字/字符串（"true"/"1" 等），无效值回退默认。**已有 normalize 辅助可复用，不要自己写**：`normalizeBooleanSetting`、`normalizeContentBarValue`（:5）、`normalizeEstimatorAlgorithmValue`（:36）等。
 
-**options parser 模板**（对照 `parseContentBarValue` settingsParser.js:268，白名单校验 + 回退链）：
+**options parser 模板**（对照 `parseContentBarValue` settingsParser.js:285，白名单校验 + 回退链）：
 
 ```js
 function parseExampleModeValue(settingsPayload) {
@@ -118,23 +120,23 @@ function parseExampleModeValue(settingsPayload) {
 }
 ```
 
-options 型设置需在工厂顶部建 `createSet`（settingsParser.js:234-244 同款写法：`const exampleModeSet = createSet(appConfig?.options?.exampleMode);`）。
+options 型设置需在工厂顶部建 `createSet`（settingsParser.js:250-262 同款写法：`const exampleModeSet = createSet(appConfig?.options?.exampleMode);`）。
 
-**返回表**（settingsParser.js:574-614）末尾加：
+**返回表**（settingsParser.js:582-621）末尾加：
 
 ```js
 return {
-    // ... 现有 39 个
+    // ... 现有 38 个
     parseEnableExampleValue,
     parseExampleModeValue,
 };
 ```
 
 > ⚠️ 陷阱：
-> - **parser 名与键名必须精确匹配**：命令通道键名 = uniqueID = PascalCase（`parseVibroDetectionValue` 内部取键 `"VibroDetection"` settingsParser.js:387，大写 V）。漏改大小写 = 设置永远读不到。
+> - **parser 名与键名必须精确匹配**：命令通道键名 = uniqueID = PascalCase（`parseVibroDetectionValue` 内部取键 `"VibroDetection"` settingsParser.js:400-404，大写 V）。漏改大小写 = 设置永远读不到。
 > - 返回表漏导出 = appContext.js 解构（步骤 4）与 settings.js import（步骤 5）直接报 undefined。
 > - 不要为布尔设置发明新 normalize——`normalizeBooleanSetting` 已覆盖所有输入形态。
-> - options 型设置参考 `parseCardOpacityValue`（枚举比对 + 非法值回退默认，settingsParser.js:440-453）；数值/字符串归一化参考 `parseWsEndpointValue`（settingsParser.js:520-545）。非法/缺失一律落回 `appConfig.defaults`（回退链总述见 settings-pipeline.md §3）。
+> - options 型设置参考 `parseCardOpacityValue`（枚举比对 + 非法值回退默认，settingsParser.js:461-475）；数值/字符串归一化参考 `parseWsEndpointValue`（settingsParser.js:541-556）。非法/缺失一律落回 `appConfig.defaults`（回退链总述见 settings-pipeline.md §3）。
 
 ---
 
@@ -142,36 +144,36 @@ return {
 
 文件：`ManiaMapAnalyser by Leo_Black/js/app/appContext.js`。
 
-**state 区域**（appContext.js:64-151）加字段，用 `APP_CONFIG.defaults` 初始化：
+**state 区域**（appContext.js:149-287）加字段，用 `APP_CONFIG.defaults` 初始化：
 
 ```js
 enableExample: APP_CONFIG.defaults.enableExample,
 exampleMode: APP_CONFIG.defaults.exampleMode,
 ```
 
-**parser 解构**（appContext.js:187-226）加导出——settings.js 从 appContext.js import parser，不直接 import settingsParser.js：
+**parser 解构**（appContext.js:291-328）加导出——settings.js 从 appContext.js import parser，不直接 import settingsParser.js：
 
 ```js
 parseEnableExampleValue,
 parseExampleModeValue,
 ```
 
-**显示相关设置注意双层 state**（settings-pipeline.md §4）：`state.userContentBar` / `state.userSrText` / `state.userDiffText`（appContext.js:79-81）是用户意图层（可为 `"Auto"`），`state.contentBar` / `state.srText` / `state.diffText`（appContext.js:76-78）是解析值层。规则：**写 `user*` 字段、读解析值字段**（展示代码读解析值层；`contentBar` 之上还有谱面级覆盖，正确读法是 `getActiveContentBar()` appContext.js:228 / `contentBarShows(section)` appContext.js:232）。若新设置是这类显示选项，需要同时建 `user*` 与解析值两层并仿 `applyContentBarSetting` settings.js:478 写 apply 函数。
+**显示相关设置注意双层 state**（settings-pipeline.md §4）：`state.userContentBar` / `state.userSrText` / `state.userDiffText`（appContext.js:170-172）是用户意图层（可为 `"Auto"`），`state.contentBar` / `state.srText` / `state.diffText`（appContext.js:167, 169, 178）是解析值层。规则：**写 `user*` 字段、读解析值字段**（展示代码读解析值层；`contentBar` 之上还有谱面级覆盖，正确读法是 `getActiveContentBar()` appContext.js:331 / `contentBarShows(section)` appContext.js:335）。若新设置是这类显示选项，需要同时建 `user*` 与解析值两层并仿 `applyContentBarSetting` settings.js:506 写 apply 函数。
 
 > ⚠️ 陷阱：
-> - state 字段名小驼峰，uniqueID PascalCase——命名时对照 `state.vibroDetection`（appContext.js:111）↔ `"VibroDetection"`。
-> - 全部用 `APP_CONFIG.defaults.xxx` 初始化，禁止硬编码字面量（唯一例外 `wsEndpoint` appContext.js:150 带 `|| SOCKET_HOST` 回退）。
+> - state 字段名小驼峰，uniqueID PascalCase——命名时对照 `state.vibroDetection`（appContext.js:201）↔ `"VibroDetection"`。
+> - 全部用 `APP_CONFIG.defaults.xxx` 初始化，禁止硬编码字面量（唯一例外 `wsEndpoint` appContext.js:242 带 `|| SOCKET_HOST` 回退）。
 > - 解构列表与 createSettingsParsers 返回表顺序无关但必须一一对应，漏一个 = settings.js 运行时 TypeError。
 
 ---
 
 ## 步骤 5 — settings.js 两处接线（最容易漏）
 
-文件：`ManiaMapAnalyser by Leo_Black/js/app/settings.js`。**启动路径**（`applySettingsFrom` settings.js:912-949，手工逐行）与**运行时路径**（`SETTING_HANDLERS` 表 settings.js:731-768，数据驱动）必须同步添加，否则新设置在启动/运行时有一条路径不生效（settings-pipeline.md §9）。**注意：只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
+文件：`ManiaMapAnalyser by Leo_Black/js/app/settings.js`。**启动路径**（`applySettingsFrom` settings.js:923-960，手工逐行）与**运行时路径**（`SETTING_HANDLERS` 表 settings.js:736-773，数据驱动）必须同步添加，否则新设置在启动/运行时有一条路径不生效（settings-pipeline.md §9）。**注意：只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
 
 ### 5a. 添加 apply 函数
 
-仿 `applyPauseDetectionSetting` settings.js:566 的统一模式：`parse→compare(与 state 现值比较)→mutate state→side effects→return changed`（settings-pipeline.md §9）：
+仿 `applyPauseDetectionSetting` settings.js:578 的统一模式：`parse→compare(与 state 现值比较)→mutate state→side effects→return changed`（settings-pipeline.md §9）：
 
 ```js
 export function applyEnableExampleSetting(value) {
@@ -183,23 +185,24 @@ export function applyEnableExampleSetting(value) {
 }
 ```
 
-**import 也要加**：settings.js:1-52 的 import 块加入 `parseEnableExampleValue`（从 `./appContext.js`）。options 型若用了自定义 normalize，还需在 settings.js:53-64 的 `../parser/settingsParser.js` import 中补充。
+**import 也要加**：settings.js:1-56 的 import 块加入 `parseEnableExampleValue`（从 `./appContext.js`）。options 型若用了自定义 normalize，还需在 settings.js:57-62 的 `../parser/settingsParser.js` import 中补充。
 
 ### 5b. 加入 applySettingsFrom（启动基线链）
 
-`applySettingsFrom`（settings.js:912-949）加一行：`applyEnableExampleSetting(parseEnableExampleValue(source));`。它由两条路径调用：settings.json 文件基线（settings.js:951-953）与无文件时的 defaults 回退对象（settings.js:954-992，该对象手工拼装 36 键，全部来自 `APP_CONFIG.defaults`）。**回退对象建议同步加键**（如 `enableExample: APP_CONFIG.defaults.enableExample`）——虽然 parser 缺键时会回退 defaults（少了也能跑），但保持全量模式与现有代码一致。
+`applySettingsFrom`（settings.js:923-960）加一行：`applyEnableExampleSetting(parseEnableExampleValue(source));`。它由两条路径调用：settings.json 文件基线（settings.js:962-963）与无文件时的 defaults 回退对象（settings.js:964-1001，该对象手工拼装 34 键，全部来自 `APP_CONFIG.defaults`）。**回退对象建议同步加键**（如 `enableExample: APP_CONFIG.defaults.enableExample`）——虽然 parser 缺键时会回退 defaults（少了也能跑），但保持全量模式与现有代码一致。
 
 ### 5c. 加入 SETTING_HANDLERS 表 + 键集合
 
-运行时监听 `setupSettingsCommandListener`（settings.js:802）内已数据化，新增设置只需**在表中加一行**：
+运行时监听 `setupSettingsCommandListener`（settings.js:807）只负责订阅命令并把载荷交给 `applySettingsPayload`（settings.js:832，**这是运行时应用的真正入口**：tosu `getSettings` 命令、壳 settings 帧、离线 `/settings` GET 三条来源共用它）。设置的应用逻辑已数据化，新增设置只需**在表中加一行**：
 
-- **`SETTING_HANDLERS` 表**（settings.js:731-768）加一行：`{ key: "enableExample", parse: parseEnableExampleValue, apply: applyEnableExampleSetting }`。监听器自动循环（settings.js:829-831）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，全部走 hasKey 守卫（`applyIf` settings.js:824-825 = `hasKey(key) ? applyFn(parseResult) : false`；`hasKey` settings.js:818-823，数组按 `uniqueID` 查找、对象用 `hasOwnProperty`）。**hasKey 守卫的作用**：tosu 命令可能不发全部设置（用户没碰过的分组），直接 apply 会让 parser 内部回退的 config defaults 覆盖 settings.json 基线——守卫让未发送的键保持基线不动（settings-pipeline.md §3）。loadSettings 的文件基线阶段不走此守卫。
-- **重算键集**：若新设置是计算/显示相关（应触发 `scheduleRecompute`），加入 `SETTING_RECOMPUTE_KEYS`（settings.js:771-779）。纯显示类不加（`changed` 为 true 时立即应用视觉变更，不重算）。
-- **缓存失效键集**：若新设置影响计算结果，加入 `SETTING_CACHE_KEYS`（settings.js:782-788）——缓存键不含任何设置（`analysis.js:305` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**。纯显示设置**不得**加入（覆盖检查处理）。
+- **`SETTING_HANDLERS` 表**（settings.js:736-773）加一行：`{ key: "enableExample", parse: parseEnableExampleValue, apply: applyEnableExampleSetting }`。`applySettingsPayload` 自动循环（settings.js:848-849）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，全部走 hasKey 守卫（`applyIf` settings.js:843-844 = `hasKey(key) ? applyFn(parseResult) : false`；`hasKey` settings.js:837-841，数组按 `uniqueID` 查找、对象用 `hasOwnProperty`）。**hasKey 守卫的作用**：tosu 命令可能不发全部设置（用户没碰过的分组），直接 apply 会让 parser 内部回退的 config defaults 覆盖 settings.json 基线——守卫让未发送的键保持基线不动（settings-pipeline.md §3）。loadSettings 的文件基线阶段不走此守卫。
+- **重算键集**：若新设置是计算/显示相关（应触发 `scheduleRecompute`），加入 `SETTING_RECOMPUTE_KEYS`（settings.js:776-783）。纯显示类不加（`changed` 为 true 时立即应用视觉变更，不重算）。
+- **缓存失效键集**：若新设置影响计算结果，加入 `SETTING_CACHE_KEYS`（settings.js:787-794）——缓存键不含任何设置（`analysis.js:489` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**。纯显示设置**不得**加入（覆盖检查处理）。
+- **现成范例**：`gameClient`（settings.js:772）是最小可用的"五路齐全"样板——它同时出现在 `SETTING_HANDLERS`、`SETTING_CACHE_KEYS`（`:792`）、`appContext.js:328` 解构与 `settingsParser.js:620` 返回表中，可作为对照。
 
 > ⚠️ 陷阱（本步密集区）：
-> - **两处必须同步**：`applySettingsFrom`（settings.js:912-949）与 `SETTING_HANDLERS` 表（settings.js:731-768）漏一处 = 启动或运行时一条路径失效。
-> - 键名字符串必须是 uniqueID 原样（`"VibroDetection"` settings.js:745 大写 V 的前车之鉴），parser 名 `parse{uniqueID}Value`、函数名 `apply{uniqueID}Setting` 三处命名要一致。
+> - **两处必须同步**：`applySettingsFrom`（settings.js:923-960）与 `SETTING_HANDLERS` 表（settings.js:736-773）漏一处 = 启动或运行时一条路径失效。
+> - 键名字符串必须是 uniqueID 原样（`"VibroDetection"` settings.js:751 大写 V 的前车之鉴），parser 名 `parse{uniqueID}Value`、函数名 `apply{uniqueID}Setting` 三处命名要一致。
 > - `SETTING_RECOMPUTE_KEYS` / `SETTING_CACHE_KEYS` 的键名与 `SETTING_HANDLERS` 的 `key` 完全一致（同为 uniqueID），改表时同步集合，否则重算/缓存失效漏判。
 > - apply 函数必须返回 changed 布尔，监听器聚合依赖它；函数内 compare 用 `state.xxx !== next` 而非 `!== value`（value 可能未归一化）。
 
@@ -209,7 +212,7 @@ export function applyEnableExampleSetting(value) {
 
 **先判断该不该加**：判断标准见 [cache-invalidation.md](cache-invalidation.md)（决策指南）。粗判：设置影响**估算结果/解析/分析产物**（算法选择、倍速、OD、键型分析、SV 检测、etterna 版本等）→ 计算影响；只影响**外观/显示**（颜色、透明度、文案、布局）→ 纯显示。显示类**不得**加入失效列表——覆盖检查（result-cache.md §6）已处理，加入只会白白丢命中。
 
-**若是计算影响设置**：在失效集合（`settings.js:782-788 SETTING_CACHE_KEYS`）加键。缓存键不含任何设置（`analysis.js:305` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**：
+**若是计算影响设置**：在失效集合（`settings.js:787-794 SETTING_CACHE_KEYS`）加键。缓存键不含任何设置（`analysis.js:489` 的 key 只有 estimator|identity|modSignature，见 result-cache.md §5），漏加会**静默提供陈旧结果**：
 
 ```js
 // settings.js SETTING_CACHE_KEYS 内追加
@@ -217,20 +220,20 @@ export function applyEnableExampleSetting(value) {
 ```
 
 > ⚠️ 陷阱：
-> - 失效集合的键名必须与 `SETTING_HANDLERS` 的 `key` 完全一致（同为 uniqueID 原样），由监听器按表遍历自动判断（settings.js:851-855）——不需要也不存在手工 `xxxChanged` 条件变量。
-> - 不要与"关闭缓存时清一次"混淆：`applyEnableResultCacheSetting` settings.js:666 内 settings.js:672-674 是停用前清理残留，不是运行期失效（result-cache.md §9）。
+> - 失效集合的键名必须与 `SETTING_HANDLERS` 的 `key` 完全一致（同为 uniqueID 原样），由监听器按表遍历自动判断（settings.js:870-873）——不需要也不存在手工 `xxxChanged` 条件变量。
+> - 不要与"关闭缓存时清一次"混淆：`applyEnableResultCacheSetting` settings.js:693 内 settings.js:699-701 是停用前清理残留，不是运行期失效（result-cache.md §9）。
 > - 新计算影响设置若加入了失效集合，记得同时把它的键加进 `SETTING_RECOMPUTE_KEYS`（步骤 5c），否则重算不会被触发，只有缓存被清空。
 
 ---
 
 ## 步骤 7 — 更新文档
 
-- **docs/settings.md**（人类设置说明，中英双语，直白语言，CLAUDE.md:43）：新增该设置的说明条目，保持与现有条目的编号/格式一致。
+- **docs/settings.md**（人类设置说明，中英双语，直白语言，CLAUDE.md:52）：新增该设置的说明条目，保持与现有条目的编号/格式一致。
 - **对应功能/管线文档**：若设置接通了功能逻辑（如分析、显示、估计算法），更新对应技术文档（docs/README.md:14-16 的要求）。
-- **docs/README.md 索引**：新增文档（不是新设置）才需要加条目；类别子目录 README 同理。本文档的索引条目已存在于 `docs/guides/README.md:18`（新增指南时需自行添加）。
+- **docs/README.md 索引**：新增文档（不是新设置）才需要加条目；类别子目录 README 同理。本文档的索引条目已存在于 `docs/guides/README.md`（新增指南时需自行添加）。
 - 若新设置改变了管线语义（如缓存键、失效语义、双层 state 规则），同步修改 [pipeline/settings-pipeline.md](../pipeline/settings-pipeline.md) 与 [pipeline/result-cache.md](../pipeline/result-cache.md)。
 
-> ⚠️ 陷阱：CLAUDE.md:41 要求"新增/修改功能时务必修改对应文档，确保内容与实际功能一致"；只改代码不改文档 = 文档漂移，后续 LLM 会按旧文档工作。
+> ⚠️ 陷阱：CLAUDE.md:49 要求"新增/修改功能时务必修改对应文档，确保内容与实际功能一致"；只改代码不改文档 = 文档漂移，后续 LLM 会按旧文档工作。
 
 ---
 
@@ -257,7 +260,7 @@ Select-String -LiteralPath "ManiaMapAnalyser by Leo_Black\js\app\settings.js" -P
 - [ ] config.js：defaults 键与 settings.json `value` 一致；options 型有 `APP_CONFIG.options` 枚举且与 settings.json `options` 一致
 - [ ] settingsParser.js：`parse{uniqueID}Value` 定义 + 返回表导出，键名精确匹配 uniqueID
 - [ ] appContext.js：state 字段（`APP_CONFIG.defaults` 初始化）+ parser 解构导出
-- [ ] settings.js：import + `apply{uniqueID}Setting` + `applySettingsFrom` + applyIf 链 + changed/recomputeNeeded 聚合（**三处接线全部到位**）
-- [ ] 计算影响设置：失效列表（settings.js:833-850）已加条件；纯显示设置未加
+- [ ] settings.js：import + `apply{uniqueID}Setting` + `applySettingsFrom`（启动）+ `SETTING_HANDLERS` 行（运行时，经 `applySettingsPayload` 应用）+ changed/recomputeNeeded 聚合（**三处接线全部到位**）
+- [ ] 计算影响设置：`SETTING_CACHE_KEYS`（settings.js:787-794）已加键；纯显示设置未加
 - [ ] 文档：docs/settings.md、功能/管线文档、docs/README.md 与类别 README 已同步
 - [ ] 用 `Test-Path` 确认新设置名在 5 个文件中都出现，行号与本文引用一致（引用行号以实际读取为准）

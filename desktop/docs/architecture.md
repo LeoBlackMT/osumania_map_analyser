@@ -8,7 +8,7 @@
 
 `mma-shell` 作为 ManiaMapAnalyser 的跨游戏本地聚合桥接外壳，承载了以下核心职责：
 1. **本地多源数据采集**：直接读取 osu! (stable x86 与 lazer x64) 进程内存、Malody 4.3.7 进程内存与数据库、Malody V 桥接、以及 tosu 代理探测；
-2. **本地网络协议适配**：提供 24060（POST 桥接）、24061（本地静态文件托管与配置服务）、24062（统一高频 WebSocket 广播通道）；
+2. **本地网络协议适配**：提供 24060（Malody 编辑器 POST 桥接）、24061（本地静态文件托管、`/shell-config` 与 `/ws` 帧循环）、24062（壳内 osu 原生读取器的 tosu 兼容子集 origin）、17653（Malody V BepInEx 选曲桥）；
 3. **窗口与桌面宿主**：基于 Tauri v2 承载 WebView2 覆盖层窗口，支持跨窗口置顶、无缝拖拽、点击穿透热键、无边框透明渲染；
 4. **纯数据驱动偏移体系**：解耦所有硬编码结构位移，通过外置纯数据表（`offsets/`）与活体验证器保障对上游游戏更新的快速适配。
 
@@ -20,6 +20,10 @@
 desktop/src/
 ├── main.rs                        # 极简应用启动入口 (委派 app::run())
 ├── lib.rs                         # 核心导出与库入口
+├── frames.rs                      # 壳-页面桥帧定义与端口/时限常量 (CONTRACT_VERSION = 6)
+├── etterna.rs                     # Etterna 桥轮询 (2Hz 读 MmaBridge.txt / MmaGameplay.txt)
+├── malodyv.rs                     # Malody V 编辑器文件通道轮询
+├── settings_window.rs             # 设置窗口 (壳内第二个 OS 窗口，承载 settings.html)
 │
 ├── app/                           # 【UI 表现层】Tauri v2 窗口、托盘与快捷键生命周期
 │   ├── builder.rs                 # Tauri AppBuilder 构建与生命周期挂钩
@@ -45,10 +49,15 @@ desktop/src/
 ├── config.rs                      # [门面] 保持原有 use crate::config::* 绝对兼容
 │
 ├── malody4/                       # 【Malody 4 内存与分析引擎】
-│   ├── spec.rs                    # [纯标准库] 常量、ClientSpec、RawSettings、内存规格
-│   ├── anchor.rs                  # PE 头解析、特征码扫描、签名自证
+│   ├── spec.rs                    # [纯标准库] 规格常量、已知版本表、PE 静态校验与文法解析
+│   ├── anchor.rs                  # 版本表、身份键解析、PE 版本校验与 Win32 读取层
+│   ├── config.rs                  # config.json 只读解析 (user_mods 变速位 / user_judge_level 判定档)
+│   ├── gamelog.rs                 # 游戏日志场景行解析 (`switch to N` / `switchback`) 与日志文件选择器
 │   ├── library.rs                 # 谱面本地索引构建与 SQLite 数据库查询
-│   ├── runtime.rs                 # 后台轮询主循环、Attached 状态持有、日志拦截与心跳
+│   ├── model.rs                   # 线上记录模型：场景、mod 速率、判定档、selection 记录与不可用原因
+│   ├── selection.rs               # selection 状态机 (纯逻辑，不持有任何阈值)
+│   ├── settings.rs                # 从 mod.rs 拆出的设置项 (同语义，父模块再导出)
+│   ├── runtime.rs                 # 后台轮询主循环、索引构建线程、进程附着与 selection/song 帧分发
 │   └── mod.rs                     # 模块聚合与公共入口
 │
 ├── osu/                           # 【osu! 原生内存与对拍引擎】
@@ -86,16 +95,18 @@ desktop/src/
 │
 ├── server/                        # 【本地网络与 IPC 服务层】
 │   ├── state.rs                   # 子系统状态封装 (BroadcastHub, SettingsHub, SourcesRegistry, WindowBridge)
-│   ├── bridge.rs                  # Malody HTTP 桥接门面
+│   ├── bridge.rs                  # 17653 Malody V BepInEx 选曲桥门面与统一重导出
 │   ├── bridge/                    # --- 桥接子模块划分 ---
-│   │   ├── state.rs               # MalodyBridgeState、ContentKey、LogGate
-│   │   ├── settings.rs            # SettingsSnapshot、判定缩放与判定线推导
-│   │   ├── chart.rs               # 沙箱路径安全检查、谱面字段推导、SongFrame
-│   │   └── handler.rs             # HTTP POST /malody-select 与 /malody-state 路由处理
-│   ├── ws.rs                      # 24062 广播服务、心跳保持与客户端连接池
-│   ├── http.rs                    # 24061 本地 HTTP 静态托管、/shell-config REST API
-│   ├── log.rs                     # 环形内存日志缓冲与滚动落盘
-│   ├── error.rs                   # 服务端专用错误类型
+│   │   ├── state.rs               # MalodyBridgeState、去重基线与事件分类
+│   │   ├── settings.rs            # 判定档、Pro/Turbo 开关与 winScale 计算与交叉校验
+│   │   ├── chart.rs               # 谱面路径沙箱校验、元数据与键数派生、song 帧生成
+│   │   └── http.rs                # 17653 HTTP 监听、POST /selection 门禁流转与 WS 补发
+│   ├── ws.rs                      # 24061 /ws 帧循环 (hello/state/song/settings 出站 + diag/control/result 入站)
+│   ├── http.rs                    # 24061 单 listener (静态 /settings /cover) 与 WS 分发
+│   ├── post.rs                    # 24060 POST：Malody 编辑器分析入口 + resolve 通道
+│   ├── osu_compat.rs              # 24062 tosu 兼容子集 origin (/websocket/v2 + 两条文件路由)
+│   ├── osu_source.rs              # sources.osu (契约 v6) 组装：读取器健康位 + 壳配置 + 24062 绑定结果
+│   ├── log.rs                     # 环形内存日志缓冲与按日滚动落盘
 │   └── mod.rs                     # 顶层服务聚合与生命周期
 ```
 
@@ -113,9 +124,10 @@ desktop/src/
 
 ### 3.2 外部通信协议保持严格兼容
 前端页面与桌面壳的通信受到 [`desktop/docs/CONTRACT.md`](CONTRACT.md) v6 协议保护：
-- **24060 POST**：Malody 桥接通信通道；
-- **24061 HTTP**：页面静态资源托管、`/shell-config` 读取与修改、`/offsets/generate` 与 `/offsets/update` 操作；
-- **24062 WS**：原生广播通道，推送 `sources.osu`、`sources.malody`、`sources.malody4` 等结构帧。
+- **24060 POST**：Malody 编辑器分析入口与 resolve 通道；
+- **24061 HTTP**：页面静态资源托管、`/shell-config` 读取与修改、`/offsets/generate` 与 `/offsets/update` 操作、以及 `/ws` 结构帧循环；
+- **24062 WS**：壳内 osu 原生读取器的 tosu 兼容子集 origin（`/websocket/v2` + `/files/beatmap/*`），仅在 `sources.osu.mode == "native"` 时被页面使用；
+- **17653 POST**：Malody V BepInEx 选曲桥（`POST /selection`）。
 
 ---
 

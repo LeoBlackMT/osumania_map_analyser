@@ -92,14 +92,6 @@
 - **参数面已穷尽**（五算法 debug 转储 + 离线全参数搜索）：w∈[0.4,0.7] 平坦（0.5 对称最优），scope>11 重新引入 11-17 泄漏且族级稳定性崩坏（17-19 worse），Roxy finalNumeric 作第三信号单调变差（0.528→0.533）——当前配置位于该机制族的平台上。
 - **辅助发现**：数据集扩充后（746 行）低难段大部分行（84/137）走 LN/Mix 分支（ln∈(0.15,0.18]），「RC course 被 LN 分支劫持」不是个别现象而是低难段的主体路径——低难改进必须同时覆盖两条分支。
 
-## 4A. 基准验证基础设施（harness 模式，2026-09 起）
-
-- **不触碰 benchmark 仓库的验证方法**：把官方 runner + esm-loader 复制到本地私有临时目录（gitignore，不入库），改副本路径（插件 import 指向本地 js、samples 用绝对路径只读引用、输出重定向到该临时目录、禁用 bid 缓存拷贝），`node --loader esm-loader.mjs benchmark-runner.mjs --algorithm X` 即可全量复现官方结果（Sunny 745/746 行逐位一致；Mixed 因 main 后续合入的 Ett 0.74.0 重建有 45 行漂移，属预期）。
-- **先转储后搜索**：给 runner 副本加 debug 转储（每行导出 numeric/star/actualAlgo/流程内 Companella/Roxy finalNumeric 等），一次批量跑完五个算法，之后所有参数搜索（融合权重、scope 阈值、三方融合、族级稳定性）都在离线脚本里秒级完成，只对最终配置跑一次确认。**不要用 10 分钟一轮的整跑去做参数搜索。**
-- **official results/ 有滞后**：官方 CSV 生成后 main 又合入了影响估算的提交（Ett wasm 重建等），跨版本对比必须用同代码同环境的 harness before/after，不能拿官方旧数字当基线。
-
----
-
 ## 4. 方法论（有效的工作流）
 
 1. **先离线探针，再改生产代码**：用 benchmark `results/` 的 got 值模拟候选改动的效果（如量化、路由规则），确认方向后再实现。注意：**离线模拟会忽略 Mixed 路由交互**（Azusa 量化离线显示 +9.3pp，真实 Mixed 反而退化——因为 azusaNumeric 参与换路 delta），最终必须真实验证。
@@ -108,6 +100,14 @@
 4. **小样本段（<11 的 20 张、≥17 的 6~22 张）不可靠**：Exact ±5pp 可能只是 1-2 张图；除非有明确的机制性理由（如序数模型上界外推），否则不要为小样本段做针对性修复。
 5. **group-split CV 是唯一可信的过拟合判据**：full-fit 提升（如 53.9%→61%）若无 CV 支撑（39.5% vs 旧 47.5%）即过拟合。
 6. **训练集边界决定外推行为**：只拟合 11~17 → 上界外推偏低；纳入 ≥17 → 修复。拟合集应覆盖目标 scope 的完整边界。
+
+---
+
+## 4.1 基准验证基础设施（harness 模式，2026-09 起）
+
+- **不触碰 benchmark 仓库的验证方法**：把官方 runner + esm-loader 复制到本地私有临时目录（gitignore，不入库），改副本路径（插件 import 指向本地 js、samples 用绝对路径只读引用、输出重定向到该临时目录、禁用 bid 缓存拷贝），`node --loader esm-loader.mjs benchmark-runner.mjs --algorithm X` 即可全量复现官方结果（Sunny 745/746 行逐位一致；Mixed 因 main 后续合入的 Ett 0.74.0 重建有 45 行漂移，属预期）。
+- **先转储后搜索**：给 runner 副本加 debug 转储（每行导出 numeric/star/actualAlgo/流程内 Companella/Roxy finalNumeric 等），一次批量跑完五个算法，之后所有参数搜索（融合权重、scope 阈值、三方融合、族级稳定性）都在离线脚本里秒级完成，只对最终配置跑一次确认。**不要用 10 分钟一轮的整跑去做参数搜索。**
+- **official results/ 有滞后**：官方 CSV 生成后 main 又合入了影响估算的提交（Ett wasm 重建等），跨版本对比必须用同代码同环境的 harness before/after，不能拿官方旧数字当基线。
 
 ---
 
@@ -120,6 +120,7 @@
 - **Azusa LN 门控生效**：`rcLnRatioLimit=0.18` 在入口断言（此前只存在于文档，见 §3.5）。
 - **缓存键 bump star-v4 → star-v5**（低难 numeric/estDiff 语义变化）。
 - **缓存键 bump star-v5 → star-v6**（Roxy `graph` 时间轴从 canonical 还原为原始谱面时间；旧快照的 `times` 会导致图表 x 轴窗口与进度线错位——见 [graph-visualization.md](../features/graph-visualization.md) §4.5 与 roxy_algorithm.md）。
+- **缓存键 bump star-v6 → star-v7**（Etterna junk 文件（技能值全零）不再显示 `0.00`，快照里 `ettResult` 语义变化：旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`——见 [../breakings/2026-09-20-ett-ux-and-companella-capsule.md](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）。
 - **缓存键 bump star-v7 → star-v8**（与主线 `star-v7`（Etterna junk 文件不再显示 `0.00`）合流后重新编号；Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断，即 `|z| <= |mean/scale|`——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分、标签从 Delta 级掉到 Beta low，见 roxy_algorithm.md §11.1；报告图的 `metaNumeric` 由 `9.60 → 13.92`，最终数值 `11.65 → 14.19`，标签 `Beta low → Delta mid/high`，其 Azusa(14.48)/Daniel(14.62) 参考未变）。**为什么不是按 σ 截断**：issue #70 的两张参考图几乎同源（同一时间轴、90.1% 的行内音符数相同、98.3% 的音符能在对方里找到同列同刻的对应音符），只因为 `overlapRate` 是 0.7772 对 0.7413——刚好跨过 lowCj 闸门的 0.75 下界——一张触发一张不触发；±3σ 截断下仍差 1.01 分（触发的那张仍被压低 1.86 分），而 Azusa(差 0.06)/Daniel(差 0.07)/Roxy structural(差 0.10) 都认为两张同难。改成关闭状态截断后两图差 0.05、标签一致。**名单只含 `corr_lowCj`**：其余 corr_* 项病态程度低 1~3 个量级（`corr_courseSustainLift` 的 beta/scale 仅 21、`corr_denseJsLift` 仅 0.4、另两项 beta 恒为 0），且在 benchmark 上携带有效信号——一并按 σ 截断会改动 7 行、其中 4 行变差（MAE `0.2424`），只处理 `corr_lowCj` 则不改变任何已报出数值。对照的"直接删除该特征"方案会连带丢掉它在 `f ≈ mean` 处的常数贡献（+0.028），使全表整体下移（实测改动 474/746 行）。
 
 Benchmark（harness harness before/after，746 行，官方 results 为旧代码口径不可直接对比）：
@@ -157,7 +158,7 @@ Benchmark（官方 runner，4K RC，当时数据集 526 行）：
 
 ### 2026-09 二轮（分支 `feat/estimator-accuracy-opt-2026-09`，全方案被拒）
 
-在 2026-09 一轮（融合）基础上做的全量离线实验轮：一次性转储（746 行 × sunny/azusa 双口径/roxy(含 111 维特征)/流程内 companella/mixed 全中间值）后用离线脚本横扫参数面，未逐轮整跑。harness 与官方 results 逐行对比仅 45 行漂移（Ett 0.74.0 重建，§4A 已知）；roxy 特征重放金标准验证误差 <1e-4（管线可信）。
+在 2026-09 一轮（融合）基础上做的全量离线实验轮：一次性转储（746 行 × sunny/azusa 双口径/roxy(含 111 维特征)/流程内 companella/mixed 全中间值）后用离线脚本横扫参数面，未逐轮整跑。harness 与官方 results 逐行对比仅 45 行漂移（Ett 0.74.0 重建，§4.1 已知）；roxy 特征重放金标准验证误差 <1e-4（管线可信）。
 
 | 方案 | 结果 | 裁决 |
 |---|---|---|

@@ -16,16 +16,19 @@
 
 ## 2. 如何打开预设管理器？
 
+### 使用 tosu
+
 预设管理器是一个独立的网页页面，位于插件目录内：
 
-1. 在浏览器地址栏输入：`http://localhost:24050/<插件目录名>/presets.html`
-   - 例如插件目录名为 `ManiaMapAnalyser by Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
-   - 下载下来的目录名可能不同，请根据实际情况修改。一般情况为 `ManiaMapAnalyser.by.Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`。
-   - 如果修改过端口，把 `24050` 换成你的端口
-2. 页面加载后，你看到的就是预设管理器。
-3. **不用 tosu、只用桌面壳（离线）**：预设区就在桌面壳的**设置窗口**里（打开方式见 [shell-guide.md](shell-guide.md) 的「设置窗口」；也可以直接在浏览器打开 `http://127.0.0.1:24061/settings.html`），功能与这个页面相同。
+- 在浏览器地址栏输入：`http://localhost:24050/<插件目录名>/presets.html`
+- 假设插件目录名为 `ManiaMapAnalyser by Leo_Black`，则访问 `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
+- 下载下来的目录名可能不同，请根据实际情况修改。
+- 如果修改过端口，把 `24050` 换成你的端口
 
-> 提示：这个页面只是管理工具，不影响游戏内显示的叠加界面。预设应用后，游戏内的显示会立即更新（tosu 在线时经 tosu；离线壳模式下经设置窗口，同样立即生效）。
+### 使用桌面壳
+
+- 按 `Ctrl+Shift+S` 打开设置页面。往下翻即可找到，或点击上方导航栏。
+- 也可以直接在浏览器打开 `http://127.0.0.1:24061/settings.html`
 
 ## 3. 界面总览
 
@@ -35,9 +38,9 @@
 - **左侧列表**：所有预设的列表，分为 **System**（系统预设）和 **My Presets**（我的预设）两组。
 - **右侧编辑区**：上方是 **Preset Info**（预设信息），下方是**设置表单**（所有可配置项，每项前面有一个复选框）。
 
-> 提示：刚打开或刷新页面时，My Presets 会先显示"Loading presets…"，等 tosu 的设置数据到达后才会显示真实的预设列表。
+> 提示：刚打开或刷新页面时，My Presets 会先显示"Loading presets…"，等 tosu 的设置数据到达后才会显示预设列表。
 
-## 4. 左侧列表详解
+## 4. 左侧列表
 
 ### System（系统预设）
 
@@ -67,7 +70,7 @@
 
 你创建的预设都在这里。首次使用时会自动创建 **Custom1 / Custom2 / Custom3** 三个固定槽位（它们不可以重命名或删除，但可以应用和覆盖保存内容）。之后你可以创建任意多个自定义预设。
 
-## 5. 右侧编辑区详解
+## 5. 右侧编辑区
 
 ### Preset Info（预设信息）
 
@@ -91,7 +94,7 @@
 
 表单值会跟随 tosu 的实时广播自动刷新（正在输入的那一项除外）。
 
-## 6. 顶部操作栏逐个按钮讲解
+## 6. 顶部操作栏
 
 | 按钮 | 作用 | 注意事项 |
 | --- | --- | --- |
@@ -103,7 +106,7 @@
 | **Import** | 导入 .json 预设文件 | 选择文件后自动导入；格式错误会提示 |
 | **Guide** | 在新窗口打开这份新手教程 | 随时查阅，不离开管理器 |
 
-### 推荐工作流程
+### 推荐使用流程
 
 1. **创建预设**：先点击 **New**，随后在表单里调整设置（勾选想要的项）→ 填写 Preset Info → 点 **Save**。
 2. **应用预设**：在左侧列表点某行的 **Apply**（或编辑后点 **Apply Checked**）。
@@ -146,16 +149,19 @@ The plugin ships with 10 built-in presets (read-only system presets). You can al
 
 ## 2. How do I open the Presets Manager?
 
-The manager is a standalone page inside the plugin folder:
+### Using tosu
 
-1. Open your browser and go to: `http://localhost:24050/<plugin folder name>/presets.html`
-   - E.g. `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
-   - The downloaded folder name may differ; adjust accordingly. Usually it is `ManiaMapAnalyser.by.Leo_Black`, so visit `http://localhost:24050/ManiaMapAnalyser.by.Leo_Black/presets.html`.
-   - If you changed the port, replace `24050` with your port.
-2. The page that loads is the Presets Manager.
-3. **Without tosu, using only the desktop shell (offline)**: the preset area lives inside the shell's **settings window** (see the "Settings window" section of [shell-guide.md](shell-guide.md); you can also open `http://127.0.0.1:24061/settings.html` in a browser directly). It works exactly like this page.
+The Presets Manager is a standalone web page located inside the plugin directory:
 
-> Note: this page is only a management tool. Applying a preset updates the in-game overlay immediately (through tosu while it is online; through the settings window in offline shell mode, equally immediate).
+- Enter in your browser address bar: `http://localhost:24050/<plugin folder name>/presets.html`
+- If the plugin folder name is `ManiaMapAnalyser by Leo_Black`, visit `http://localhost:24050/ManiaMapAnalyser%20by%20Leo_Black/presets.html`
+- The downloaded folder name may differ; adjust accordingly.
+- If you changed the port, replace `24050` with your port.
+
+### Using the desktop shell
+
+- Press `Ctrl+Shift+S` to open the settings page. Scroll down to find presets, or click Presets in the top navigation bar.
+- You can also open `http://127.0.0.1:24061/settings.html` directly in your browser.
 
 ## 3. Interface overview
 
@@ -167,7 +173,7 @@ The manager has three parts:
 
 > Note: right after opening or refreshing the page, My Presets shows "Loading presets…" until tosu's settings data arrives.
 
-## 4. The list in detail
+## 4. Left list
 
 ### System presets
 
@@ -193,7 +199,7 @@ The **SYSTEM** badge marks system presets; a `v1`-style label next to the name i
 
 Your own presets. On first use the plugin auto-creates three fixed slots **Custom1 / Custom2 / Custom3** (they cannot be renamed or deleted, but their content can be overwritten). After that you can create unlimited custom presets.
 
-## 5. The editor in detail
+## 5. Right editor area
 
 ### Preset Info
 
@@ -215,7 +221,7 @@ This is the "partial preset" feature: check only what you want to manage.
 
 Form values auto-refresh from tosu's live broadcast (except the field you are typing in).
 
-## 6. Action bar buttons, one by one
+## 6. Top action bar
 
 | Button | What it does | Notes |
 | --- | --- | --- |

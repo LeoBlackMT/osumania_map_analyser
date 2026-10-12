@@ -8,11 +8,11 @@
 性能优化分支落地后的 worker 架构：**估算 + 全部附属段收敛为一次 `pipeline` 消息往返**，worker 内跑共享纯函数 `runAnalysisPipeline`，主线程只剩渲染、缓存与浏览器专属逻辑（vibro 判定、Companella ONNX、SV/auto-profile）。
 
 ```
-analysis.js:374 runInWorker(pipelineInput)         ← manager.js:40 runInWorker
+analysis.js:600 runInWorker(pipelineInput)         ← manager.js:89 runInWorker
   │  成功 → Promise<{ id, result }>                ← compute.worker.js:31（一次往返）
-  │  Worker 构造失败 → manager.js:42 返回 null
+  │  Worker 构造失败 → manager.js:91 返回 null
   ▼
-analysis.js:375  wp ? await wp : await runAnalysisPipeline(pipelineInput)   ← 主线程同步回退，同一函数
+analysis.js:602  wp ? await wp : await runAnalysisPipeline(pipelineInput)   ← 主线程同步回退，同一函数
   ▼
 Node 回归脚本（computeOutput）直接 await runAnalysisPipeline（第三端，无 worker）
 ```
@@ -21,39 +21,39 @@ Node 回归脚本（computeOutput）直接 await runAnalysisPipeline（第三端
 
 ## 2. Worker 生命周期（manager.js）
 
-`js/app/worker/manager.js` 是 worker 的唯一持有者，模块级闭包变量 `worker / nextId / pendingRequests / messageHandlerAttached`（manager.js:11-16）。
+`js/app/worker/manager.js` 是 worker 的唯一持有者，模块级闭包变量 `worker / nextId / pendingRequests / messageHandlerAttached / workerDisabled`（manager.js:11-15）。
 
 ### 2.1 创建与复用
 
-- `ensureWorker()`（manager.js:16-43）：`worker` 已存在直接返回（**单例复用**）；不存在则 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`（manager.js:19-22，`import.meta.url` 相对**模块文件**解析：`new URL` 模式，勿改相对字符串，见 module-conventions.md §3）。
-- **构造失败**（不支持 Worker 的环境，如部分 WebView/禁用 worker 的浏览器）：`catch` 置 `worker = null`（manager.js:38-41），**不抛错**，由调用方走同步回退。
-- 崩溃恢复：`ensureWorker()` 为新建 worker 注册 `error` 监听；worker 运行时崩溃会**拒绝全部在途请求、`terminate()` 已死实例并置 `worker = null`**，下一次请求自动重建。这同时避免崩溃后 pending promise/listener 永久滞留。
+- `ensureWorker()`（manager.js:17-49）：`worker` 已存在直接返回（**单例复用**）；不存在则 `new Worker(new URL("./compute.worker.js", import.meta.url), { type: "module" })`（manager.js:21-24，`import.meta.url` 相对**模块文件**解析：`new URL` 模式，勿改相对字符串，见 module-conventions.md §3）。
+- **构造失败**（不支持 Worker 的环境，如部分 WebView/禁用 worker 的浏览器）：`catch` 置 `worker = null` 且 `workerDisabled = true`（manager.js:43-47），**不抛错**，由调用方走同步回退。
+- 崩溃恢复：`ensureWorker()` 为新建 worker 注册 `error` 监听（manager.js:28-42）；worker 运行时崩溃会**拒绝全部在途请求、`terminate()` 已死实例并置 `worker = null`**。与旧描述不同：崩溃后**不自动重建**——`workerDisabled = true` 永久降级主线程（worker 内 WASM 路径/加载问题会反复失败，每次都是 No data；主线程 `calc.js` 路径正常）。
 
 ### 2.2 请求取消与响应匹配
 
-`runInWorker(input)`（manager.js:83-124）：
+`runInWorker(input)`（manager.js:89-131）：
 
-- `generateId()`（manager.js:45-48）自增 `nextId` 生成 `req-<n>-<ts>`。
-- 每次新请求先 `rejectAllPending(new Error("Worker request superseded"))`（manager.js:50-56）：**旧的在途请求立即 settle，不再保留 listener/promise**，避免快速换歌/改设置时累积泄漏。
-- 响应匹配改为**单一共享 `message` 监听**（`attachMessageHandler`，manager.js:58-75）：按 `event.data.id` 查 `pendingRequests` Map；查得到才 resolve/reject 并清理超时，查不到（已过期/已取消）直接忽略。因此旧请求的迟到响应永远不会污染新请求，也不需要逐请求 `removeEventListener`。
+- `generateId()`（manager.js:51-54）自增 `nextId` 生成 `req-<n>-<ts>`。
+- 每次新请求先 `rejectAllPending(new Error("Worker request superseded"))`（manager.js:56-62、:95）：**旧的在途请求立即 settle，不再保留 listener/promise**，避免快速换歌/改设置时累积泄漏。
+- 响应匹配改为**单一共享 `message` 监听**（`attachMessageHandler`，manager.js:64-81）：按 `event.data.id` 查 `pendingRequests` Map；查得到才 resolve/reject 并清理超时，查不到（已过期/已取消）直接忽略。因此旧请求的迟到响应永远不会污染新请求，也不需要逐请求 `removeEventListener`。
 - 正常完成或错误时 `pendingRequests.delete(id)` + `clearTimeout(timeoutId)`；错误 reject `new Error(error)`，成功 resolve result。
 
 ### 2.3 30s 超时
 
-- 每个请求的 `setTimeout`（manager.js:95-100）：30s 内未收到响应 → 从 `pendingRequests` 删除并 `reject(new Error("Worker timeout"))`。
+- 每个请求的 `setTimeout`（manager.js:101-106）：30s 内未收到响应 → 从 `pendingRequests` 删除并 `reject(new Error("Worker timeout"))`。
 - `postMessage` 同步抛错时也会清理该请求并 reject。
 - **stale 粒度差异**（详见 §7）：pipeline 单次往返消息在 worker 内**不可中断**，30s 超时是唯一的最坏情况保护；旧 4 估算器消息时代可以在每个 runX 边界丢弃过期请求，粒度更细。
 
 ### 2.4 同步回退链
 
 ```
-runInWorker 返回 null（Worker 构造失败，manager.js:38-41）
-  → analysis.js:375 走 await runAnalysisPipeline(pipelineInput)
+runInWorker 返回 null（Worker 构造失败，manager.js:43-47 / :91）
+  → analysis.js:602 走 await runAnalysisPipeline(pipelineInput)
   → 同一函数、同一输入，逐位相同输出
   → 仅有的代价：估算在主线程同步执行（可能卡顿）
 ```
 
-`isWorkerAvailable()`（manager.js:129-131）暴露可用性查询（当前仅 debug 面板使用）。
+`isWorkerAvailable()`（manager.js:135-137）暴露可用性查询（当前仅 debug 面板使用）。
 
 ## 3. 消息协议
 
@@ -61,10 +61,10 @@ runInWorker 返回 null（Worker 构造失败，manager.js:38-41）
 
 | 方向 | 载荷 | 位置 |
 | --- | --- | --- |
-| 主线程 → worker | `{ id, type: "pipeline", input }`，`input = { rawText, estimatorAlgorithm, options }` | manager.js:64 |
+| 主线程 → worker | `{ id, type: "pipeline", input }`，`input = { rawText, estimatorAlgorithm, options }` | manager.js:110（`postMessage`）|
 | worker → 主线程 | `{ id, result }`（成功，经 structuredClone，`[]` 转移列表）或 `{ id, error }`（失败） | compute.worker.js:31/:34 |
 
-worker 端处理（compute.worker.js:23-37）：
+worker 端处理（compute.worker.js:21-37）：
 
 - `data.type === "pipeline"` 分支：校验 `id / input / input.rawText`，缺失回 `{ id, error: "Missing pipeline input" }`（:26）。
 - `runAnalysisPipeline(input)` 是 **async**（ett WASM + interlude）→ **必须经 `.then/.catch` 回传**（:29-35），不能同步 `postMessage`。
@@ -72,7 +72,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 3.2 旧 4 估算器消息（保留不动）
 
-`{ id, osuText, options }` → 白名单分派（compute.worker.js:39-81）：Daniel/Azusa/Roxy/Sunny 各自 `runXEstimatorFromText(osuText, options)`，Azusa/Roxy 无效结果回退 Sunny 并改写 `actualEstimatorAlgorithm`（:60-69，`isValidResult` :84-88）。**该分支无调用方**（analysis.js 已全部走 pipeline），保留是兼容旧代码路径的防御（worker 是独立入口，防外部复用/调试）。
+`{ id, osuText, options }` → 白名单分派（compute.worker.js:39-81）：Daniel/Azusa/Roxy/Sunny 各自 `runXEstimatorFromText(osuText, options)`，Azusa/Roxy 无效结果回退 Sunny 并改写 `actualEstimatorAlgorithm`（:60-69，`isValidResult` :84-88；pipeline 内同语义白名单见 runAnalysisPipeline.js:168-209）。**该分支无调用方**（analysis.js 已全部走 pipeline），保留是兼容旧代码路径的防御（worker 是独立入口，防外部复用/调试）。
 
 ### 3.3 返回契约
 
@@ -82,7 +82,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 4.1 定位与约束
 
-`js/pipeline/runAnalysisPipeline.js:94` `export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options = {}, parsed = null })`。
+`js/pipeline/runAnalysisPipeline.js:96` `export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options = {}, parsed = null })`。
 
 - **DOM-free / state-free / JSON-safe**：所有输入显式传入，**禁止读 `state`/`window`/`document`**（含 appContext）；共享模块纯度约束见 module-conventions.md §2。
 - **异步**：ett WASM（`analyzeEtternaFromText`）与 interlude（`calculateInterludeStar`）均 async。
@@ -91,7 +91,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 4.2 输入选项清单（全部显式传参）
 
-`options` 完整清单（runAnalysisPipeline.js:78-81 + analysis.js:350-372 构造处）：
+`options` 完整清单（runAnalysisPipeline.js:96 形参 + analysis.js:571-598 构造处）：
 
 | 选项 | 类型 | 说明 |
 | --- | --- | --- |
@@ -111,11 +111,11 @@ worker 端处理（compute.worker.js:23-37）：
 | `etternaVersion` | string | 主 Ett 版本 |
 | `companellaEtternaVersion` | string | Companella 二次 Ett 版本 |
 
-全部由 analysis.js 从 `state` 取值显式构造（analysis.js:350-372），pipeline 内不读 state。附属段开关默认 false，**仅请求需要的段**，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界由 analysis.js 主线程回退分支兜底，见 analysis-pipeline.md §7.4）。
+全部由 analysis.js 从 `state` 取值显式构造（analysis.js:571-598），pipeline 内不读 state。附属段开关默认 false，**仅请求需要的段**，避免 worker 白算（5K 等非支持键数谱面被 override 强制 Pattern 的边界由 analysis.js 主线程回退分支兜底，见 analysis-pipeline.md §7.4）。
 
 ### 4.3 输出契约
 
-`runAnalysisPipeline.js:274-292` 返回对象（16 个业务字段 + errors）：
+`runAnalysisPipeline.js:372-392` 返回对象（业务字段 + errors；另含 `ppMetrics` 条件字段）：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -140,20 +140,20 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 4.4 软失败通道与 pattern sanitize
 
-- **附属段各自 try/catch**（runAnalysisPipeline.js:213-272）：失败置空字段/NaN + 独立 `xxxError` 文本，**不并入 `errors[]`**。原因：旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError`/need* 门控）依赖主线程 override 后的状态，由 analysis.js 按旧条件决定是否并入（Pattern :618-621、Interlude :564-567、Etterna :655-661），保证逐字一致。
+- **附属段各自 try/catch**（pipeline 第 5–10 段：SunnyWindow runAnalysisPipeline.js:264-279、Interlude :294-303、Pattern :305-317、Ett :319-344、Companella 二次 Ett :346-367）：失败置空字段/NaN + 独立 `xxxError` 文本，**不并入 `errors[]`**。原因：旧代码的 errors.push 带展示条件（`shouldReportEtternaError`/`isKeycountError`/need* 门控）依赖主线程 override 后的状态，由 analysis.js 按旧条件决定是否并入（Interlude :823、Pattern :877、Etterna :919-922），保证逐字一致。
 - **pattern sanitize**（`sanitizePatternResult` runAnalysisPipeline.js:45-70）：cluster 对象带 `format()`/`Importance` getter（patterns/clustering.js:112-131），structuredClone/postMessage 会抛 DataCloneError。pipeline 只输出 analysis.js 消费的纯数据字段（`Pattern/SpecificTypes/RatingMultiplier/BPM/Mixed/Amount` + report 的 `Category/LNPercent/HBRowRatio/ModeTag/SVAmount/Duration`）。**getter 求值结果不输出**（Importance），消费侧只读数据字段。
 
 ### 4.5 归一化与 vibro 顺序约束
 
-**归一化**（runAnalysisPipeline.js:177-185）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr）。
+**归一化**（runAnalysisPipeline.js:219-229）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr）。
 
 **vibro 顺序约束（关键）**：
 
-1. **pipeline 内 vibro 判定用归一化前 star**（runAnalysisPipeline.js:169-175）：`vibroStar = Number(selectedRework?.star)`，`eligible = Number.isFinite(vibroStar) && vibroStar > 5.0`，与旧 analysis.js `selectedRework?.star` 顺序一致（算法自身 star，非归一化后口径）。
-2. **Etterna 口径的 isVibroMap 判定留在主线程**（analysis.js:914-919 / :931-936）：`isVibroMap = isVibroMap || (state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD))`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro` 本身是共享纯函数（`js/patterns/chartVibro.js`，`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。注意这里是 **`||` 取或**：元数据关键词结论（见下条）不被覆盖，MSD 口径只做补充。
-3. **元数据关键词通道在 analysis.js 初始化时先判**（analysis.js:673-677）：`isVibroMap = state.vibroDetection ? detectVibroFromMetadata(parsedInfo?.metadata) : false`（`detectVibroFromMetadata` 在 `js/patterns/chartVibro.js`，Title / Version 含 `APP_CONFIG.vibroKeywords` 即判 vibro，大小写不敏感）。它不依赖 Ett、只受 `VibroDetection` 开关控制且**不看 star 门控**，所以第 2 条的 MSD 判定必须写成取或，否则关键词命中会被赋回 `false`。
+1. **pipeline 内 vibro 判定用归一化前 star**（runAnalysisPipeline.js:211-217）：`vibroStar = Number(selectedRework?.star)`，`eligible = Number.isFinite(vibroStar) && vibroStar > 5.0`，与旧 analysis.js `selectedRework?.star` 顺序一致（算法自身 star，非归一化后口径）。
+2. **Etterna 口径的 isVibroMap 判定留在主线程**（analysis.js:928-933 / :945-950）：`isVibroMap = isVibroMap || (state.vibroDetection && vibroEligible && detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD))`，其中 `vibroValues` 由 `resolveVibroMsdValues` 提供——**4K 固定使用 0.72.3 的 Etterna MSD**（主结果已是 0.72.3 时直接复用，否则补算一次）；**非 4K 直接用主结果**（= 0.74.0 n-key）。`detectVibro` 本身是共享纯函数（`js/patterns/chartVibro.js`，`JackSpeed/Overall >= 0.95`），**等 ettResult 就绪后**在主线程执行，pipeline 只负责把 `vibro.eligible` 算好带出。注意这里是 **`||` 取或**：元数据关键词结论（见下条）不被覆盖，MSD 口径只做补充。
+3. **元数据关键词通道在 analysis.js 初始化时先判**（analysis.js:687-691）：`isVibroMap = state.vibroDetection ? detectVibroFromMetadata(parsedInfo?.metadata) : false`（`detectVibroFromMetadata` 在 `js/patterns/chartVibro.js`，Title / Version 含 `APP_CONFIG.vibroKeywords` 即判 vibro，大小写不敏感）。它不依赖 Ett、只受 `VibroDetection` 开关控制且**不看 star 门控**，所以第 2 条的 MSD 判定必须写成取或，否则关键词命中会被赋回 `false`。
 
-**归一化星数复用决策**（runAnalysisPipeline.js:109-127，仅性能优化，不改数值）：
+**归一化星数复用决策**（runAnalysisPipeline.js:148-166，仅性能优化，不改数值）：
 
 | 算法 | 内部 Sunny 调用 | 可复用？ | 处理 |
 | --- | --- | --- | --- |
@@ -169,7 +169,7 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 5.1 parsed 实例只读契约
 
-`runAnalysisPipeline.js:96-101`：外部传入 `parsed`（已 `process()` 的 `OsuFileParser` 实例）则复用，否则内部 `new OsuFileParser(rawText)` + `process()`。估算器/归一化/SunnyWindow/Interlude 共享同一实例。
+`runAnalysisPipeline.js:97-104`：外部传入 `parsed`（已 `process()` 的 `OsuFileParser` 实例）则复用，否则内部 `new OsuFileParser(rawText)` + `process()`。估算器/归一化/SunnyWindow/Interlude 共享同一实例。
 
 - **必须是实例，不是 `getParsedData()` 的结果**：`getParsedData()`（osuFileParser.js:40-55）不含 `timingPoints`/`noteTimes`，而 `modIN`/`modHO` 是实例方法（osuFileParser.js:280/:327），内部调 `getBeatLengthAt` → `this.timingPoints`，纯数据对象会挂掉转换路径。见 task-9 learnings。
 - `getParsedData()` 只读契约（估算器读取侧）：`columnCount / columns / noteStarts / noteEnds / noteTypes / od / gameMode / status / lnRatio / metaData / breaks / objectIntervals`（osuFileParser.js:41-54）。
@@ -179,8 +179,8 @@ worker 端处理（compute.worker.js:23-37）：
 
 `modIN`（osuFileParser.js:280）/`modHO`（:327）**原地变异**实例（noteTypes 元素写入 / 数组重赋值 + lnRatio 重算）。共享实例必须保持 pristine：
 
-- 各核心在 `parsed` 提供 **且 cvtFlag ∈ {IN, HO}** 时，先字段拷贝 clone（`cloneOsuParser`，sunnyAlgorithm.js:55-71、sunnyWindowAlgorithm.js:200、chartBuilder.js:71-87，三处文件局部重复）再在 clone 上转换，共享实例不被污染，等价于各自 fresh-parse 行为。
-- 无转换需求时直接复用实例（`needsConvert ? cloneOsuParser(parsed) : parsed`，sunnyAlgorithm.js:79-82 模式）。
+- 各核心在 `parsed` 提供 **且 cvtFlag ∈ {IN, HO}** 时，先字段拷贝 clone（`cloneOsuParser`，sunnyAlgorithm.js:69-85、sunnyWindowAlgorithm.js:200、chartBuilder.js:71-87，三处文件局部重复）再在 clone 上转换，共享实例不被污染，等价于各自 fresh-parse 行为。
+- 无转换需求时直接复用实例（`needsConvert ? cloneOsuParser(parsed) : parsed`，sunnyAlgorithm.js:95 模式）。
 
 ### 5.3 roxy canonicalize 共享边界
 
@@ -211,11 +211,11 @@ worker 端处理（compute.worker.js:23-37）：
 
 ### 7.1 Companella（异步 ONNX，输入来自 pipeline）
 
-`classifyCompanellaDifficulty`（companellaEstimator.js:181，async ONNX，唯一动态 `import()` 场景，companellaEstimator.js:48-55 按环境懒加载 ort）**留在主线程**，analysis.js:742 调用：
+`classifyCompanellaDifficulty`（companellaEstimator.js:181，async ONNX，唯一动态 `import()` 场景，companellaEstimator.js:48-55 按环境懒加载 ort）**留在主线程**，analysis.js:1041 调用：
 
-- 触发条件：4K（`rework.columnCount === 4`）且 `pendingCompanellaEstimate`（算法=Companella）或 `pendingMixedCompanellaContext`（算法=Mixed，来自 `rework.mixedCompanellaPlan`，analysis.js:504-506）。
-- **数据来源全部来自 pipeline 结果**：`companellaMsdValues` 取 `pipelineResult.companellaEttResult?.values ?? pipelineResult.ettResult?.values`（二次 Ett 已在 pipeline 内完成，一次往返）；`interludeStar`、`sunnyStar`（= rework.star）同源。pipeline 未计算二次 Ett（估算失败等边界）时回退主线程直接计算（analysis.js:726-738，旧路径）。
-- Companella 直接覆盖最终难度（:749-753）；Mixed 经 `applyCompanellaToMixedResult`（mixedEstimator.js:302）融合（:755-767）。
+- 触发条件：4K（`rework.columnCount === 4`）且 `pendingCompanellaEstimate`（算法=Companella）或 `pendingMixedCompanellaContext`（算法=Mixed，来自 `pipelineResult.rework.mixedCompanellaPlan`，analysis.js:761）。
+- **数据来源全部来自 pipeline 结果**：`companellaMsdValues` 取 `pipelineResult.companellaEttResult?.values`（二次 Ett 已在 pipeline 内完成，一次往返；无二次结果时回退 `ettResult?.values`，见 analysis.js:1012-1038）；`interludeStar`、`sunnyStar`（= rework.star）同源。pipeline 未计算二次 Ett（估算失败等边界）时回退主线程直接计算（analysis.js:1024-1037，旧路径）。
+- Companella 直接覆盖最终难度（analysis.js:1048-1052）；Mixed 经 `applyCompanellaToMixedResult`（mixedEstimator.js:302）融合（analysis.js:1054-1071）。
 - **为什么留主线程**：ONNX 推理需要 ort 命名空间 + `ort.env.wasm.wasmPaths`（companellaEstimator.js:62-64）动态 import 与 worker 环境的兼容性未被验证，且输入已由 pipeline 备齐，主线程跑不增加往返。
 
 ### 7.2 graph 留 pipeline（实测决策）
@@ -228,21 +228,21 @@ graph 数组占 withGraph 消息体 ~99%，但 **structuredClone 耗时 0.6~3.2m
 
 | 层 | 粒度 | 机制 |
 | --- | --- | --- |
-| 主线程请求序号 | 每次 `fetchBeatmapFile`（analysis.js:231-233 `analysisRequestSeq`） | 每个 await 后 `isStaleRequest()` 检查（:325/:332/:495/:576/:676/:732/:747），过期立即 return |
+| 主线程请求序号 | 每次 `fetchBeatmapFile`（analysis.js:377-379 `analysisRequestSeq`） | 每个 await 后 `isStaleRequest()` 检查（:530/:622/:751/:930/:947/… 多道），过期立即 return |
 | worker pendingRequests | 每次 `runInWorker` | 新请求先 `rejectAllPending`；共享 `message` 监听按 id 匹配 `pendingRequests`，过期/已取消响应直接忽略 |
-| pipeline 消息内部 | **一次往返，不可中断** | worker 内 `runAnalysisPipeline` 一旦开始就跑到结束；30s 超时（manager.js:95-100）是最坏情况保护 |
+| pipeline 消息内部 | **一次往返，不可中断** | worker 内 `runAnalysisPipeline` 一旦开始就跑到结束；30s 超时（manager.js:101-106）是最坏情况保护 |
 | 旧 4 估算器消息 | **每次 runX 可中止** | 旧消息时代主线程可在估算器之间丢弃过期响应（粒度更细，现已无调用方） |
 
 **pipeline 单次往返的取舍**：一次性带回全部产物（含二次 Ett、pattern、graph），代价是 worker 内无法在中途放弃，30s 超时兜底。对典型谱面（总耗时 <1s）无实际影响。
 
 ## 9. 与 analysis.js 的接线要点
 
-- `analysis.js:345-400` 构造 `errors`/`pipelineInput` 并调用；`pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput)`（:375）。
-- 成功后 `parsedInfo = pipelineResult.parsedSummary`（:376）→ `applyContentBarOverride(parsedInfo.columnCount)`（:377）。
-- `vibroEligible` 提升为主函数级变量（analysis.js:447），ETT 段消费（:666）。
-- SunnyWindow 合并留在 analysis.js（:509-521）：LN 段替换 `resolvedEstDiff`、`typePercentageData`、`lnStar` 等展示/缓存逻辑逐行未变。
-- 缓存命中分支（:472-489）不走 pipeline：从快照恢复 + 命中重派生（sixKConst :482-486 / debugUseAmount :609-617，详见 result-cache.md 与 breaking-changes ⑦⑧）。
-- 估算失败路径：pipeline 抛错 → 外层 catch（:378-400）`resetReworkDisplay()` + `errors.push("Rework failed: ...")` + 最小 OsuFileParser 补齐 parsedInfo（失败路径回退元信息解析，与旧 parseMetadataFromBeatmap 行为一致）。
+- `analysis.js:566-614` 构造 `errors`/`pipelineInput` 并调用；`pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput)`（:602）。
+- 成功后 `parsedInfo = pipelineResult.parsedSummary`（:613）→ `applyContentBarOverride(parsedInfo.columnCount)`（:614）。
+- `vibroEligible` 提升为主函数级变量（analysis.js:701），由 pipeline 结果赋值（:749）、ETT 段消费（:928/:945）。
+- SunnyWindow 合并留在 analysis.js（pipeline 只回传 `sunnyWindow` 字段，合并逻辑在主线程）。
+- 缓存命中分支（analysis.js:491-502 取快照、:726-744 恢复 + 命中重派生）：不走 pipeline——从快照恢复 `rework`/`parsedInfo`，并重派生 sixKConst（:737-741）与 pattern 的 debugUseAmount 后处理（:840-843、:867-869），详见 result-cache.md 与 breakings ⑦⑧。
+- 估算失败路径：pipeline 抛错 → 内层 catch（analysis.js:615-643）`errors.push("Rework failed: ...")`（:621）+ `resetReworkDisplay()` + 最小 OsuFileParser 补齐 parsedInfo（:629-638，失败路径回退元信息解析，与旧 parseMetadataFromBeatmap 行为一致）。
 
 ## 10. 变更记录
 

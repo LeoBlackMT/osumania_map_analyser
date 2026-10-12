@@ -19,7 +19,7 @@
   ▼
 ┌─ ① 解析 ───────────────────────────────────────────────────────────┐
 │ patternOsuParser.parseOsuManiaFromText                               │
-│   ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js:252    │
+│   ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js:246    │
 │   输入: .osu 文本  →  输出: chart（createChart, chart.js:17）         │
 │   chart = { Keys, Notes, BPM, SV, FirstNote, LastNote }              │
 │   Notes 为时间行数组，每行 Data 为长度 Keys 的 NoteType 数组          │
@@ -46,7 +46,7 @@
   ▼
 ┌─ ④ 模式发现（findPatterns） ────────────────────────────────────────┐
 │ findPatterns.find                                                   │
-│   ManiaMapAnalyser by Leo_Black/js/patterns/findPatterns.js:109      │
+│   ManiaMapAnalyser by Leo_Black/js/patterns/findPatterns.js:118      │
 │   输入: primitive 行 → 输出: patterns 段列表                         │
 │   （滑动窗口按顺序匹配 6 个核心模式 + 按键数选择的具体模式集）        │
 └──────────────────────────────────────────────────────────────────────┘
@@ -54,8 +54,7 @@
   ▼
 ┌─ ⑤ 聚类（clustering） ──────────────────────────────────────────────┐
 │ clustering.calculateClusteredPatterns                               │
-│   ManiaMapAnalyser by Leo_Black/js/patterns/clustering.js:146        │
-│   输入: patterns → 输出: clusters（按 BPM 聚合，统计具体子类型占比， │
+│   ManiaMapAnalyser by Leo_Black/js/patterns/clustering.js:146        ││   输入: patterns → 输出: clusters（按 BPM 聚合，统计具体子类型占比， │
 │   计算 Amount / Importance / RatingMultiplier）                      │
 └──────────────────────────────────────────────────────────────────────┘
   │
@@ -77,10 +76,10 @@
   │
   ▼
 消费端（浏览器侧，非共享模块）:
-  • js/app/analysis.js:606  调用 analyzePatternFromText(rawText)
-  • js/app/analysis.js:609  mergeDuplicateClusters（display.js:307）合并同 Pattern 簇
-  • js/app/display.js:650   renderPatternClusters 渲染 5 条进度条
-  • js/app/analysis.js:792 report.ModeTag 参与模式标签决策（见第 7 节）
+  • js/app/analysis.js:887  调用 analyzePatternFromText(rawText)（applyPatternData）
+  • js/app/display.js:309   mergeDuplicateClusters 合并同 Pattern 簇
+  • js/app/display.js:739   renderPatternClusters 渲染 5 条进度条
+  • js/app/analysis.js:1139-1141 report.ModeTag 参与模式标签决策（见第 7 节）
 ```
 
 ## 3. 各模块职责表
@@ -88,10 +87,10 @@
 | 文件（`ManiaMapAnalyser by Leo_Black/js/...`） | 导出符号 | 职责 |
 | --- | --- | --- |
 | `patterns/chart.js` | `NoteType`（:1）、`createTimeItem`（:9）、`createBPM`（:13）、`createChart`（:17） | 数据模型：音符类型枚举（NOTHING/NORMAL/HOLDHEAD/HOLDBODY/HOLDTAIL）与 chart 结构 |
-| `parser/patternOsuParser.js` | `parseOsuManiaFromText`（:252） | .osu 文本 → chart：解析 Difficulty/TimingPoints/HitObjects，处理 Hold（typ & 128）与 SV，无 timing 时兜底 500ms/拍 |
+| `parser/patternOsuParser.js` | `parseOsuManiaFromText`（:246） | .osu 文本 → chart：解析 Difficulty/TimingPoints/HitObjects，处理 Hold（typ & 128）与 SV，无 timing 时兜底 500ms/拍 |
 | `patterns/primitives.js` | `calculatePrimitives`（:58）、`lnPercent`（:135）、`svTime`（:152）、`detectDirection`（:34） | 逐行基础特征提取：Note 数、Jacks 数、方向/滚动、LN 头/体/尾分列；LN 比例；SV 时间量（供 SV 谱检测） |
-| `patterns/patternsDef.js` | `CorePattern`（:24）、`CORE_PATTERN_LIST`（:33）、6 个 `CORE_*` 核心匹配函数（:158-:202）、`SPECIFIC_4K`（:554）/`SPECIFIC_7K`（:582）/`SPECIFIC_OTHER`（:611）、`resolveRatingMultiplier`（:39） | 模式定义中心：核心模式集合、具体子类型匹配器（按键数分组注册）、评分倍率解析 |
-| `patterns/findPatterns.js` | `find`（:109） | 模式发现：滑动窗口贪心匹配核心模式与具体子类型，产出带时间范围的 pattern 段 |
+| `patterns/patternsDef.js` | `CorePattern`（:24）、`CORE_PATTERN_LIST`（:33）、6 个 `CORE_*` 核心匹配函数（:160-:201）、`SPECIFIC_4K`（:556）/`SPECIFIC_7K`（:584）/`SPECIFIC_OTHER`（:613）、`resolveRatingMultiplier`（:39） | 模式定义中心：核心模式集合、具体子类型匹配器（按键数分组注册）、评分倍率解析 |
+| `patterns/findPatterns.js` | `find`（:118） | 模式发现：滑动窗口贪心匹配核心模式与具体子类型，产出带时间范围的 pattern 段 |
 | `patterns/clustering.js` | `calculateClusteredPatterns`（:146） | 聚类：按 BPM 聚合同类段、统计具体子类型占比、计算 Amount（时间总量）/Importance（Amount×倍率×BPM）/RatingMultiplier |
 | `patterns/categorise.js` | `categoriseChart`（:9） | 分类：按 Importance 选出主导簇，产出 Category 名称（含 Hybrid/Tech 后缀） |
 | `patterns/summary.js` | `fromChart`（:35）、`resolveModeTag`（:28）、`hbRowRatio`（:11） | 汇总编排：调用 find→clustering→categorise，计算 LN 比例、HB 行比例与内部 ModeTag，裁剪/排序簇 |
@@ -100,11 +99,11 @@
 
 ## 4. 管线各步详解
 
-### ① 解析 — `parser/patternOsuParser.js:252` `parseOsuManiaFromText`
+### ① 解析 — `parser/patternOsuParser.js:246` `parseOsuManiaFromText`
 
 - 按行切分 `.osu` 文本，分节解析 `[Difficulty]`（CircleSize → Keys，缺省 4）、`[TimingPoints]`、`[HitObjects]`。
-- 命中 `[HitObjects]` 中 `type & 128` 的物件标记为 Hold，记录 `EndTime`（`patternOsuParser.js:236-247`）；其余为 HitCircle。
-- 输出 `createChart(keys, snaps, bpm, sv)`（`chart.js:17`）：`Notes` 为时间行数组，每行 `Data` 是长度为 `Keys` 的 `NoteType` 数组——这是后续所有计算的统一输入。无 timing points 时兜底 `createBPM(4, 500.0)` 与速度 1.0（`patternOsuParser.js:279-282`）。
+- 命中 `[HitObjects]` 中 `type & 128` 的物件标记为 Hold，记录 `EndTime`（`patternOsuParser.js:230-241`）；其余为 HitCircle。
+- 输出 `createChart(keys, snaps, bpm, sv)`（`chart.js:17`）：`Notes` 为时间行数组，每行 `Data` 是长度为 `Keys` 的 `NoteType` 数组——这是后续所有计算的统一输入。无 timing points 时兜底 `createBPM(4, 500.0)` 与速度 1.0（`patternOsuParser.js:273-276`）。
 
 ### ② 汇总入口 — `patterns/service.js:4` `analyzePatternFromText`
 
@@ -124,16 +123,16 @@
 - `lnPercent`（`primitives.js:135`）：`lnotes / notes`，HOLDHEAD 计入总数与 LN 数；
 - `svTime`（`primitives.js:152`）：累计速度 ≠1 的时间区间（`SV_SPEED_EPS` 容差），极端 BPM（`SV_EXTREME_BPM_*`）时强制超过 `SV_AMOUNT_THRESHOLD`——供 SV 谱检测（见第 8 节）。
 
-### ④ 模式发现 — `patterns/findPatterns.js:109` `find`
+### ④ 模式发现 — `patterns/findPatterns.js:118` `find`
 
-- 按键数选择具体模式集：`chart.Keys === 4` → `SPECIFIC_4K()`，`=== 7` → `SPECIFIC_7K()`，其余 → `SPECIFIC_OTHER()`（`findPatterns.js:113-115`）。
-- `matches`（`findPatterns.js:91`）对 primitive 序列做**滑动窗口贪心匹配**：从头部依次调用 6 个核心匹配函数 `CORE_STREAM`/`CORE_CHORDSTREAM`/`CORE_JACKS`/`CORE_COORDINATION`/`CORE_DENSITY`/`CORE_WILDCARD`（`findPatterns.js:96-101`），命中即消费对应数量的行（`remaining = remaining.slice(1)` 前进一格），未命中则只前进 1 行。
+- 按键数选择具体模式集：`chart.Keys === 4` → `SPECIFIC_4K()`，`=== 7` → `SPECIFIC_7K()`，其余 → `SPECIFIC_OTHER()`（`findPatterns.js:122-124`）。
+- `matches`（`findPatterns.js:99`）对 primitive 序列做**滑动窗口贪心匹配**：从头部依次调用 6 个核心匹配函数 `CORE_STREAM`/`CORE_CHORDSTREAM`/`CORE_JACKS`/`CORE_COORDINATION`/`CORE_DENSITY`/`CORE_WILDCARD`（`findPatterns.js:104-110`），命中即消费对应数量的行（`remaining = remaining.slice(1)` 前进一格），未命中则只前进 1 行。
 - 每个匹配段由 `appendFoundPattern`（`findPatterns.js:40`）产出 `{ Pattern, SpecificType, Mixed, Start, End, MsPerBeat }`；`Mixed` 表示段内 MsPerBeat 波动超过 `PATTERN_STABILITY_THRESHOLD`（`findPatterns.js:43`）。
 - `ENABLE_MULTI_LABEL_SAME_WINDOW`（`config.js:110`，默认 true）控制同一窗口是否允许多个具体子类型标签同时记录（`appendCoreMatches`，`findPatterns.js:65-89`）。
 
 ### ⑤ 聚类 — `patterns/clustering.js:146` `calculateClusteredPatterns`
 
-- `assignClusters`（`clustering.js:42`）：按 `BPM_CLUSTER_THRESHOLD`（5.0 BPM）把同型段聚为 BPM 簇；Mixed 段按 Pattern 单独聚类（`clustering.js:71`）。簇 BPM = 段内平均 MsPerBeat 反算（`createClusterBuilder.calculate`，`clustering.js:32-35`）。
+- `assignClusters`（`clustering.js:42`）：按 `BPM_CLUSTER_THRESHOLD`（5.0 BPM）把同型段聚为 BPM 簇；Mixed 段按 Pattern 单独聚类（`clustering.js:71`）。簇 BPM = 段内平均 MsPerBeat 反算（`createClusterBuilder.calculate`，`clustering.js:22-35`）。
 - `specificClusters`（`clustering.js:81`）：按 `Pattern@@mixed@@BPM` 分组（`clustering.js:86`），统计各具体子类型占比（`SpecificTypes`，按占比降序），合并重叠时间区间得到 `Amount`（`patternAmount`，`clustering.js:4`）。
 - 每个簇带 `RatingMultiplier`（`resolveRatingMultiplier`，见第 6 节）与 `Importance` getter = `Amount × RatingMultiplier × BPM`（`clustering.js:119-121`）；`format(rate)` 生成 `"185BPM Jumpstream"` / `"~180BPM Mixed Jacky WC"` 之类的显示文本（`clustering.js:122-130`）。
 - 谱面同时存在 Density/Wildcard 簇且含 Release 子类型时，Release 簇倍率乘以 `RELEASE_WITH_DW_MULTIPLIER`（0.8，`clustering.js:134-141`）。
@@ -166,25 +165,25 @@
 
 | 核心模式 | 匹配函数 | 判据要点（简化） | 体系 |
 | --- | --- | --- | --- |
-| `Stream` | `CORE_STREAM`（:158） | 连续 5 行单键、无 jack、首尾不同列 | RC |
-| `Chordstream` | `CORE_CHORDSTREAM`（:179） | 4 行内多键且后续行存在多键、无 jack | RC |
-| `Jacks` | `CORE_JACKS`（:173） | 当前行 jack ≥ 2 且 MsPerBeat < 2000 | RC |
-| `Coordination` | `CORE_COORDINATION`（:188） | 当前行存在 LN 头/体/尾 | LN |
-| `Density` | `CORE_DENSITY`（:194） | 当前行存在 LN 头（`isLnHeadContext`） | LN |
-| `Wildcard` | `CORE_WILDCARD`（:199） | 当前行存在 LN 头（兜底） | LN |
+| `Stream` | `CORE_STREAM`（:160） | 连续 5 行单键、无 jack、首尾不同列 | RC |
+| `Chordstream` | `CORE_CHORDSTREAM`（:181） | 4 行内多键且后续行存在多键、无 jack | RC |
+| `Jacks` | `CORE_JACKS`（:175） | 当前行 jack ≥ 2 且 MsPerBeat < 2000 | RC |
+| `Coordination` | `CORE_COORDINATION`（:190） | 当前行存在 LN 头/体/尾 | LN |
+| `Density` | `CORE_DENSITY`（:196） | 当前行存在 LN 头（`isLnHeadContext`） | LN |
+| `Wildcard` | `CORE_WILDCARD`（:201） | 当前行存在 LN 头（兜底） | LN |
 
 ### 具体子类型（按键数注册）
 
-`SPECIFIC_4K`（:554）、`SPECIFIC_7K`（:582）、`SPECIFIC_OTHER`（:611）返回 `makeSpecificPatterns` 结构（:543），每个核心模式挂一组具体匹配器，按 `COORDINATION_SPECIFIC_ORDER`/`DENSITY_SPECIFIC_ORDER`/`WILDCARD_SPECIFIC_ORDER`（`config.js:111-113`）排序（`reorderSpecific`，:66）。例如：
+`SPECIFIC_4K`（:556）、`SPECIFIC_7K`（:584）、`SPECIFIC_OTHER`（:613）返回 `makeSpecificPatterns` 结构（:545），每个核心模式挂一组具体匹配器，按 `COORDINATION_SPECIFIC_ORDER`/`DENSITY_SPECIFIC_ORDER`/`WILDCARD_SPECIFIC_ORDER`（`config.js:111-113`）排序（`reorderSpecific`，:66）。例如：
 
-- Stream（4K）：`STREAM_4K_ROLL`（:295）、`STREAM_4K_TRILL`（:306）、`STREAM_4K_MINITRILL`（:315）；
-- Chordstream（4K）：Handstream（:250）、Jumpstream（:256）、Double/Triple Jumpstream（:265/:274）、Jumptrill（:283）、Split Trill（:289）；
-- Jacks：Longjacks（:219）、Quadstream（:232）、Gluts（:238）、Chordjacks（:204）、Minijacks（:213）；
-- Coordination（LN）：`COORDINATION_COLUMN_LOCK`（:367）、`COORDINATION_SHIELD`（:395）、`COORDINATION_RELEASE`（:411）；
-- Density（LN）：`DENSITY_4K_JUMPSTREAM`（:468）、`DENSITY_4K_HANDSTREAM`（:473）、`DENSITY_4K_INVERSE`（:478）等（基于 `headRows` 提取 LN 头列再套用 RC 判据，:109）；
-- Wildcard（LN）：`WILDCARD_JACK`（:503）、`WILDCARD_SPEED`（:520）。
+- Stream（4K）：`STREAM_4K_ROLL`（:297）、`STREAM_4K_TRILL`（:308）、`STREAM_4K_MINITRILL`（:317）；
+- Chordstream（4K）：Handstream（:252）、Jumpstream（:258）、Double/Triple Jumpstream（:267/:276）、Jumptrill（:285）、Split Trill（:291）；
+- Jacks：Longjacks（:221）、Quadstream（:234）、Gluts（:240）、Chordjacks（:206）、Minijacks（:215）；
+- Coordination（LN）：`COORDINATION_COLUMN_LOCK`（:369）、`COORDINATION_SHIELD`（:397）、`COORDINATION_RELEASE`（:413）；
+- Density（LN）：`DENSITY_4K_JUMPSTREAM`（:470）、`DENSITY_4K_HANDSTREAM`（:475）、`DENSITY_4K_INVERSE`（:480）等（基于 `headRows` 提取 LN 头列再套用 RC 判据，:109）；
+- Wildcard（LN）：`WILDCARD_JACK`（:505）、`WILDCARD_SPEED`（:522）。
 
-7K/其他键数通过别名复用（如 `CHORDSTREAM_OTHER_DOUBLE_STREAMS = CHORDSTREAM_7K_DOUBLE_STREAMS`，:362-365）。
+7K/其他键数通过别名复用（如 `CHORDSTREAM_OTHER_DOUBLE_STREAMS = CHORDSTREAM_7K_DOUBLE_STREAMS`，:364）。
 
 ### `resolveRatingMultiplier`（`patternsDef.js:39`）的作用
 
@@ -196,10 +195,10 @@
 
 ## 7. `debugUseAmount` 设置的影响
 
-- 定义：`settings.json:405` `debugUseAmount`（checkbox，"Use Amount For Category"，默认 false；属于 `settings.json:397` 的 Debug Options 分组），运行时状态见 `js/app/appContext.js:82`，解析器 `js/parser/settingsParser.js:289-290`。
-- 作用位置：`js/app/analysis.js:611-621`（**浏览器侧消费逻辑，不在共享的 `js/patterns/` 内**）。在 `mergeDuplicateClusters`（`display.js:307`，按 `Pattern` 合并同型簇、Amount 求和、BPM 取最大、子类型占比按 Amount 加权归一）之后：
+- 定义：`settings.json:452` `debugUseAmount`（checkbox，"Use Amount For Category"，默认 false；属于 `settings.json:436` 的 Debug Options 分组），运行时状态见 `js/app/appContext.js:173`，解析器 `js/parser/settingsParser.js`。
+- 作用位置：`js/app/analysis.js:842-856`（**浏览器侧消费逻辑，不在共享的 `js/patterns/` 内**）。在 `mergeDuplicateClusters`（`display.js:309`，按 `Pattern` 合并同型簇、Amount 求和、BPM 取最大、子类型占比按 Amount 加权归一）之后：
   - **默认（false）**：`Category` 保持 `categoriseChart` 基于 **Importance** 的判定结果；
-  - **开启（true）**：`mergedClusters` 改为按 **Amount** 降序（`analysis.js:612`），并把 `report.Category` 强制改为 Amount 最大的簇——其 `SpecificTypes[0]` 占比 > 0.05 时取具体子类型名，否则取核心模式名（`analysis.js:613-620`）。
+  - **开启（true）**：`mergedClusters` 改为按 **Amount** 降序（`analysis.js:846`），并把 `report.Category` 强制改为 Amount 最大的簇——其 `SpecificTypes[0]` 占比 > 0.05 时取具体子类型名，否则取核心模式名（`analysis.js:847-854`）。
 - 即：默认分类看"重要程度（Importance）"，开启后改看"时间总量（Amount）"。该设置**只改分类来源，不改簇本身的计算**；且它不参与结果缓存键，切换时会触发 `clearResultCache()`。
 
 ## 8. 与 modeLogic 的衔接（模式标签）
@@ -207,18 +206,18 @@
 模式标签判定存在**两层**，需注意区分：
 
 1. **`js/patterns/` 内部（共享层）**：`summary.js:28` `resolveModeTag` 基于 `lnPercent`/`hbRowRatio` 产出 `report.ModeTag`（RC/LN/HB/Mix，阈值 `config.js:95-97`），并据此过滤 LN 模式（`summary.js:41-43`）与选择倍率表（第 6 节）。
-2. **`js/app/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（`modeLogic.js:1`，仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:792` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar === "None") ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:793-795`）——即只要显示 Pattern 内容，优先用 `js/patterns/` 内部更完整的判定。
-3. 标签渲染：`setModeTag`（`js/app/hud.js:143`）/ `setModeTagAdvanced`（`hud.js:171`，基于 typePercentageData）；`resolveAutoDisplayProfile`（`modeLogic.js:31`）据此决定自动档位（RC → Etterna/MSD，其余 → Pattern/ReworkSR）。
+2. **`js/app/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（由 `modeLogic.js:3` 从 `js/patterns/config.js:128` 再导出；仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:1138` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar === "None") ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:1139-1141`）——即只要显示 Pattern 内容，优先用 `js/patterns/` 内部更完整的判定。
+3. 标签渲染：`setModeTag`（`js/app/hud.js:142`）/ `setModeTagAdvanced`（`hud.js:170`，基于 typePercentageData）；`resolveAutoDisplayProfile`（`modeLogic.js:22`）据此决定自动档位（RC → Etterna/MSD，其余 → Pattern/ReworkSR）。
 
 详细模式标签功能见 [mode-tagging.md](mode-tagging.md)。
 
 ## 9. 注意事项
 
 1. **非 4/6/7K 谱面主体遵循内容设置**：卡片主体不再按键数强制回退为 Pattern（旧行为经 `setEffectiveContentBarForMap("Pattern")` 强制覆盖，已移除）。Graph 为 estimator 星数序列，任意键数均可渲染（`GRAPH_SUPPORTED_KEY_SET` 已随移除）。`js/patterns/` 本身对任意键数均能计算（`SPECIFIC_OTHER` 兜底）。
-2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:798-806`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
-3. **vibro 检测的影响**：vibro 检测在 `js/patterns/chartVibro.js`——`detectVibro`（Etterna 数值与 jack 速度比）、`detectVibroFromMetadata`（标题/难度名含 `APP_CONFIG.vibroKeywords`，当前 `["vibro"]`，大小写不敏感）与 `detectVibroFromLongjackPattern`（pattern report 的 Longjacks 簇；仅有定义、无调用点，阈值见 `config.js:107-108` 的 `LONGJACK_VIBRO_*`）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:1156`）隐藏 Numeric Difficulty 显示，`diffText === "Difficulty"` 时显示 `"VIBRO"`。
-   - **判定顺序**：关键词通道在 `parsedInfo` 就绪时先判（`analysis.js:673-677`，只受 `VibroDetection` 总开关控制，不看星数）；MSD 通道等 `ettResult` 就绪后判定（`analysis.js:914-919` / `:931-936`：`state.vibroDetection` + 星数 `> 5.0` + `detectVibro` 命中），与关键词结论**取或**（`isVibroMap = isVibroMap || …`），不覆盖。**检测所用 Etterna MSD**（仅 MSD 通道需要）：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
-4. **`needPatternAnalysis` 触发条件**（`analysis.js:410-415`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
+2. **SV 检测对分类的影响**：`useSvDetection` 开启时（`analysis.js:1144-1152`），若 `report.SVAmount ≥ SV_AMOUNT_THRESHOLD`（2000ms，`config.js:102`，由 `svTime` `primitives.js:152` 计算），`report.Category` 被覆盖为 `"SV"` 并显示 SV 标签；`svTime` 对极端 BPM 会强制超阈值（`primitives.js:217-219`）。注意 SV 覆盖发生在 app 层，`js/patterns/` 内的 `Category` 不受影响。
+3. **vibro 检测的影响**：vibro 检测在 `js/patterns/chartVibro.js`——`detectVibro`（Etterna 数值与 jack 速度比）、`detectVibroFromMetadata`（标题/难度名含 `APP_CONFIG.vibroKeywords`，当前 `["vibro"]`，大小写不敏感）与 `detectVibroFromLongjackPattern`（pattern report 的 Longjacks 簇；仅有定义、无调用点）。它**不直接改 Category**，命中时 `setForceHideNumericDifficulty(isVibroMap)`（`analysis.js:1170`）隐藏 Numeric Difficulty 显示，`diffText === "Difficulty"` 时显示 `"VIBRO"`。
+   - **判定顺序**：关键词通道在 `parsedInfo` 就绪时先判（`analysis.js:689-691`，只受 `VibroDetection` 总开关控制，不看星数）；MSD 通道等 `ettResult` 就绪后判定（`analysis.js:910-949` 区间内两处：`state.vibroDetection` + `vibroEligible` + `detectVibro` 命中），与关键词结论**取或**（`isVibroMap = isVibroMap || …`），不覆盖。**检测所用 Etterna MSD**（仅 MSD 通道需要）：4K 固定为 0.72.3（`resolveVibroMsdValues`，主结果非 0.72.3 时单独补算）；非 4K 直接用主结果（0.74.0 n-key——0.72.3 对非 4K 无有效输出）。
+4. **`needPatternAnalysis` 触发条件**（`analysis.js:707-712`）：Pattern 显示、srText/diffText 为 "Pattern"、`useSvDetection`、vibro 检测或自动档位启用任一满足即运行——模式分析可能被"顺带"执行以服务其他功能，即使界面上没显示 Pattern 条。
 5. **共享模块约束**：`js/patterns/` 与 `js/parser/patternOsuParser.js` 在 Node benchmark runner 中也会加载，禁止引入 `window`/`document`；新增文件 import 必须带 `.js` 扩展名（浏览器解析习惯与 Node esm-loader 的要求）。
 6. **`rate` 参数未使用**：`service.js:4` 的 `rate` 目前被忽略（`void rate`），倍速换算由调用侧（`analysis.js` 传入原始文本）或显示层 `format(rate)`（`clustering.js:122`）处理。
 
@@ -226,5 +225,5 @@
 
 - 共享计算：`ManiaMapAnalyser by Leo_Black/js/patterns/`（service/summary/primitives/findPatterns/clustering/categorise/patternsDef/config/chart/chartVibro）、`ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js`
 - 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js`、`js/app/display.js`、`js/app/hud.js`、`js/app/modeLogic.js`、`js/app/appContext.js`（vibro 纯函数统一在共享模块 `js/patterns/chartVibro.js`，原 `js/app/vibro.js` 已并入）
-- 设置定义：`ManiaMapAnalyser by Leo_Black/settings.json`（`debugUseAmount` :405）、`js/parser/settingsParser.js`
+- 设置定义：`ManiaMapAnalyser by Leo_Black/settings.json`（`debugUseAmount` :452）、`js/parser/settingsParser.js`
 - 上游参考：Interlude (YAVSRG) RC 算法 → `ManiaMapAnalyser by Leo_Black/js/interlude/`

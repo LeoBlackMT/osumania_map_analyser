@@ -41,10 +41,10 @@
 
 ## 4. 埋点位置
 
-- `index.js`：`const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top"` + `window.__MMA_TELEMETRY_ENDPOINT`。
-- `main.js` `initialize()`：`loadSettings()` 之后 `initTelemetry()` + `startTelemetryHeartbeat()`。
-- `socketHandlers.js`：`setupSocketListener()` 的 `api_v2` 回调顶部 `noteTelemetryActivity()`。
-- `analysis.js` `fetchBeatmapFile()`：顶部记录 `analysisStartedAt`；成功路径末尾（`rework && metadataErrors.length===0 && !isStaleRequest()`）调 `trackTelemetryAnalyze(...)`。缓存命中/未命中都上报（命中 `durationMs≈0` 体现缓存效果）；失败、stale、auto-profile 提前 return 均不上报。
+- `index.js:6`：`const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top"` + `window.__MMA_TELEMETRY_ENDPOINT`（`index.js:95`）。
+- `main.js:30-32` `initialize()`：`loadSettings()` 之后 `initTelemetry()` + `startTelemetryHeartbeat()`。
+- `socketHandlers.js`：`setupSocketListener()`（`:340`）的 `api_v2` 回调首行调 `applySignalState(data)`，其函数体顶部（`:151`）`noteTelemetryActivity()`。
+- `analysis.js` `fetchBeatmapFile()`：顶部记录 `analysisStartedAt`（`:401`）；成功路径末尾（`rework && metadataErrors.length===0 && !isStaleRequest()`）调 `trackTelemetryAnalyze(...)`（`:1344`）。缓存命中/未命中都上报（命中 `durationMs≈0` 体现缓存效果）；失败、stale、auto-profile 提前 return 均不上报。
 
 ## 5. 与 CLAUDE.md 的关系
 

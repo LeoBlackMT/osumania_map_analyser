@@ -164,7 +164,7 @@
 
 ### 11.2 桥协议（入站，17653）
 
-请求门禁顺序**固定**（任一不过即拒，插队会被上游误判为"没收到"）：`Host` 必须精确为 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653` 否则 **403** → `path != "/selection"` ⇒ **404** → 任意 `Origin` 头存在 ⇒ **403** → 非 `POST` ⇒ **405** → `Content-Type` 的 type 不是 `application/json` ⇒ **415** → body 长度不满足 `0 < len <= 16384` ⇒ **413** → JSON 解析失败 ⇒ **400**。成功一律 **202**（插件只看 2xx，`Plugin.cs:701`）。
+请求门禁顺序**固定**（任一不过即拒，插队会被上游误判为"没收到"）：`Host` 必须精确为 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653` 否则 **403** → `path != "/selection"` ⇒ **404** → 任意 `Origin` 头存在 ⇒ **403** → 非 `POST` ⇒ **405** → `Content-Type` 的 type 不是 `application/json` ⇒ **415** → body 长度不满足 `0 < len <= 16384` ⇒ **413** → JSON 解析失败 ⇒ **400**。成功一律 **202**（插件只看 2xx，`BridgeClient.cs:57`）。
 
 载荷 8 字段（全部按缺省容错）：`path` / `speed_rate` / `screen` / `sequence` / `event` / `version` / `chart_hash` / `source`。
 

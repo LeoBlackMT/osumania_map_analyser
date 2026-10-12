@@ -1,6 +1,6 @@
 # Malody 4.3.7 原生客户端数据源（malody4）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构与路由见 [multi-source.md](multi-source.md)；壳侧契约见 `desktop/docs/CONTRACT.md`（v3）；动态 OD 表见 [malody-od.md](malody-od.md)。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构与路由见 [multi-source.md](multi-source.md)；壳侧契约见 `desktop/docs/CONTRACT.md`（当前 v6；malody4 帧于 v3 引入）；动态 OD 表见 [malody-od.md](malody-od.md)。
 
 ## 1. 定位
 
@@ -21,11 +21,11 @@
 
 轮询节奏：主循环 200ms 一拍；`malody4_selection` 帧的心跳间隔 2s，换锚点/换场景有 300ms 防抖；`playing` 的"新鲜"窗口为 10s（日志目录消失等异常下 `playing` 自然失鲜，而不是永驻）。
 
-**判定档 / 变速位的取值链（内存优先，`config.json` 兜底）**：游戏只在**开局与退出**时把 `config.json` 整份重写（实测游戏内改判定 / 改 mod 前后该文件的 mtime 一动不动），所以这个文件永远反映不了本局中途的改动——判定档与变速位因此改从进程内存读，`config.json` 只在内存读不到时顶上。每 tick 都**重新读指针**（两个对象都在惰性单例后面、拆解路径会把指针清零，缓存指针等于把上一局的设置当成现役值），任一环不成立即回落 `config.json`、**绝不发布一个可能错的数字**：指针为 0（`P` 在首个场景之前就是 0）、指针不是 4 字节对齐或超出 32 位用户地址空间、判定档不在 `0..=4`、对象块短读、以及 `P+0x04 & !P+0x00 != 0`（`P+0x04` 是由 `P+0x00` 复制后**只清位**得来的，这条不变量是 `P` 的免费身份证明；不成立说明那个地址上的东西不是我们以为的对象）。两条链都读到时**发布 `S`**（"玩家设的值"，且早于首个场景就存在），`P` 只当旁证——连续 3 拍不一致才记一条一次性的 warn，因为那只可能是其中一条链的偏移理解有误。
+**判定档 / 变速位的取值链（内存优先，`config.json` 兜底）**：游戏只在**开局与退出**时把 `config.json` 整份重写（实测游戏内改判定 / 改 mod 前后该文件的 mtime 一动不动），所以这个文件永远反映不了本局中途的改动——判定档与变速位因此改从进程内存读，`config.json` 只在内存读不到时顶上。每 tick 都**重新读指针**（两个对象都在惰性单例后面、拆解路径会把指针清零，缓存指针等于把上一局的设置当成现役值），任一环不成立即回落 `config.json`、**绝不发布一个可能错的数字**：指针为 0（`P` 在首个场景之前就是 0）、指针不是 4 字节对齐或超出 32 位用户地址空间、判定档不在 `0..=4`、对象块短读、以及 `P+0x04 & !P+0x00 != 0`（`P+0x04` 是由 `P+0x00` 复制后**只清位**得来的，这条不变量是 `P` 的免费身份证明；不成立说明那个地址上的东西不是我们以为的对象）。发布顺序见 `MemoryProbe::published()`（`desktop/src/malody4/spec.rs:83-89`）：**优先发布 `P`**（本局真正会用的值，首个场景之前为 0），`P` 读不到再退到 `S`（"玩家设的值"，早于首个场景就存在）；两条链都读到且不一致时**仍发布 `P`**，`S` 只当旁证——连续 3 拍不一致才记一条一次性的 warn，因为那只可能是其中一条链的偏移理解有误（`probe.disagreement()`，`spec.rs:91-95`）。
 
 `config.json` 是**软信号，不是门**：附着后的 30s 内两者不一致只记一条 warn（两边数字都给出），**不拒绝、不覆盖**内存值——本局中途改判定造成的分歧正是这个设计的目的。有效值（来源 + 判定档字母 + 速率）**发生变化时**记一条 info：`malody4 settings: source=memory|config.json judge=<A~E|unknown> speed_rate=<n.nn>`，同值绝不重复记（200ms 一拍，逐 tick 记会淹掉日志）。
 
-**版本门（重要）**：附着前校验目标 PE 的 `TimeDateStamp == 0x5D79AC91` **且**文件大小 `4,750,848`（版本表在 `desktop/src/malody4/anchor.rs` 里只出现一处）。任一项不符 → **整条通道不可用并给出 `target-mismatch:*` 原因**，绝不"按偏移量猜着读"——RVA 属于特定二进制，猜错会把任意内存当成 md5。设置单例的 RVA（`0x8311C4` / `0x8310C4`）与四个字段偏移（`0x9C` / `0xD0` / `0x14` / `0x00`）同样**只对这一个构建成立**，与 `KNOWN_CLIENTS` 同处 `anchor.rs` 且全仓库只此一处，消费者一律按名字引用。
+**版本门（重要）**：附着前校验目标 PE 的 `TimeDateStamp == 0x5D79AC91` **且**文件大小 `4,750,848`（版本表 `KNOWN_CLIENTS` 在 `desktop/src/malody4/spec.rs` 里只出现一处）。任一项不符 → **整条通道不可用并给出 `target-mismatch:*` 原因**，绝不"按偏移量猜着读"——RVA 属于特定二进制，猜错会把任意内存当成 md5。设置单例的 RVA（`0x8311C4` / `0x8310C4`）与四个字段偏移（`0x9C` / `0xD0` / `0x14` / `0x00`）同样**只对这一个构建成立**，与 `KNOWN_CLIENTS` 同处 `desktop/src/malody4/spec.rs`（`anchor.rs` 只负责用这些常量读进程内存）且全仓库只此一处，消费者一律按名字引用。
 
 隐私：`config.json` 里还有 `user_id` / `token` / `sound_hash` 等字段，壳**只读上面两个字段**，其余一律不进结构体、不进日志、不落盘、不提交；测试夹具全部为合成数据。设置单例的内存读取只读判定档与 `user_mods` 两个字段，**不写、不注入、不分配**目标进程内存。
 
@@ -33,7 +33,8 @@
 
 - **遍历范围**：`<root>/beatmap/**`，递归深度上限 8 层。
 - **准入判据（两类谱面都收）**：
-  - `.mc`：`meta.mode ∈ {0, 6}`（两种 Key 模式）**且** `meta.mode_ext.column` 存在。真机实测 `mode=6` 是列式 Key 谱（声明 `column=8` 时 note 的 `column` 取值为 `0..7`，与声明一致），旧判据 `mode == 0` 曾把 13 张 8K 谱挡在库外；`mode=1/2/3/4/5`（Catch/Pad/Taiko）即便带 `column` 也**拒收**——转换器处理不了，收进来只会变成"分析失败"。
+  - `.mc`：`meta.mode ∈ {0, 6}`（两种 Key 模式）**且** `meta.mode_ext.column` 存在。真机实测 `mode=6` 是列式 Key 谱（声明 `column=8` 时 note 的 `column` 取值为 `0..7`，与声明一致），旧判据 `mode == 0` 曾把 **17** 张真 Key 谱挡在库外（其中 13 张是 `mode=6` + `column=8`）；`mode=1/2/3/4/5`（Catch/Pad/Taiko）即便带 `column` 也**拒收**——转换器处理不了，收进来只会变成"分析失败"。
+  - `.osu`：`[General] Mode = 3`（osu!mania）**且** `[Difficulty] CircleSize` 给出键数（`desktop/src/malody4/library.rs:3-16`）。osu! 的其它模式（`Mode` 0/1/2）一律拒收；`Mode=3` 但缺/非法 `CircleSize` 也拒收（键数未知，下游分析必需）。为什么要收 `.osu`：真机对照显示，玩家选中库里的 `.osu` 谱面时锚点给出的是**该 `.osu` 文件自己的 md5**，"只索引 `.mc`"的旧判据必然对它报 `chart-not-indexed`；而 `.osu` 又恰好是页面 `externalSource.js` 的 `looksLikeOsu()` 直通目标格式，收它对源头零成本。
   - `.osu`：从文件头读 `[General] Mode` 必须为 `3`（osu!mania），`[Difficulty] CircleSize` 作键数，`[Metadata]` 取 Title/Artist/Version。**游戏自己就会播放 `.osu` 谱面**（真机实测：某曲目目录下只有 `.mc` 是 4K，而玩家在游戏内选中的 7K 是那个 `.osu`，锚点给出的正是它的 md5），所以 `.osu` 必须进索引；且 `.osu` 本来就是目标格式，**无需转换**（`externalSource` 的 `looksLikeOsu()` 直通）。
   - `__MACOSX` 目录、`._*` 文件、symlink/reparse point 一律跳过（跳过计数进日志，不静默；非 Key 模式与 `.osu` 头部不合规各自单独计数）。
 - **哈希**：逐文件单趟流式 md5（64 KiB 块喂 `Md5`，绝不整份读进内存），同时保留前 64 KiB 前缀提取头部（`.mc` 走**手工括号配对**取 `meta`、`.osu` 走**分区感知的 INI 扫描**，都不整份 JSON 解析）。
@@ -42,7 +43,7 @@
 - **`reason` 与 `path_count` 的边界**：见 §7.1——**游戏持有的身份键并不总能对应到磁盘文件**（真机实测 25 个身份键里只有 6 个能在盘上找到），这类谱面按 `chart-unknown-identity` 处理，不再反复重建索引。
 - 索引进度：索引未构建完成前整源按"未就绪"处理（`no-library`），构建完成后后台线程独占写入、主循环只读。
 
-## 4. 帧与契约（v3）
+## 4. 帧与契约（malody4 帧于 v3 引入）
 
 契约版本从 v2 升到 **v3**（`desktop/docs/CONTRACT.md`），本源的帧变化是这次升级的内容之一：
 
@@ -81,9 +82,9 @@
 ## 7. 已知限制与未做项（如实标注）
 
 - **判定 OD 动态化仅覆盖 PC 端窗口**：判定档 × 速率 → 等效 OD 的换算与 `FAIR` 模组不建模的限制见 [malody-od.md](malody-od.md)。
-- **判定档 / 变速位的内存链只对 4.3.7 这一个构建成立**：`S` / `P` 的 RVA 与四个字段偏移和锚点 RVA 一样是构建专用的（同处 `anchor.rs`）。读不到就如实回落 `config.json`——行为与改动前完全一致（不报错、不影响其余信号），只是不再"立即生效"；将来换二进制时这条链会随版本门一起 fail closed，而不是按旧偏移读出垃圾。
+- **判定档 / 变速位的内存链只对 4.3.7 这一个构建成立**：`S` / `P` 的 RVA 与四个字段偏移和锚点 RVA 一样是构建专用的（同处 `desktop/src/malody4/spec.rs`）。读不到就如实回落 `config.json`——行为与改动前完全一致（不报错、不影响其余信号），只是不再"立即生效"；将来换二进制时这条链会随版本门一起 fail closed，而不是按旧偏移读出垃圾。
 - **screen 显示门控未做**：`screen` 只进 state 帧与诊断，卡片不会因"当前是结算/选曲场景"而隐藏或清空。
-- **只索引 `.mc`**：库里的 `.osu` 谱面不会被跟随（§3 的理由与代价）。
+- **索引 `.mc` 与 `.osu` 两类**：库里的 `.osu` 谱面同样会被跟随（`desktop/src/malody4/library.rs:3-22`；`.osu` 需 `[General] Mode = 3` 且 `[Difficulty] CircleSize` 给出键数）。旧版"只索引 `.mc`"已被替换——真机实测选中库内 `.osu` 谱面时锚点给出的是该 `.osu` 自己的 md5，"只索引 `.mc`"必报 `chart-not-indexed`。
 - **单一库、单一实例**：只支持一个 `malody4Root` 下的一个 `beatmap/`；多个 `malody.exe` 同时运行时整条通道不可用（`multiple-instances`），不"选一个猜"。
 - **只支持 4.3.7 这一个二进制**：其他版本（含 4.3.x 的其他构建）一律 `target-mismatch:*`；新增版本 = 往 `KNOWN_CLIENTS` 加一行并重新取证。
 - **不做原生 MSD、不做暂停检测 / livePP**：非 osu 源一律不提供（与 Etterna/Malody V 口径一致）。
@@ -120,24 +121,24 @@ Platform: **Windows only** (`ReadProcessMemory` and the PE version check are Win
 
 Cadence: a 200 ms main loop, a 2 s `malody4_selection` heartbeat, 300 ms debounce on anchor/scene changes, and a 10 s freshness window for `playing`.
 
-**Judge / speed resolution chain (memory first, `config.json` fallback)**: the game rewrites the whole `config.json` only **on start and on exit** (measured: its mtime does not move while the player changes the judge level or the mods in game), so the file can never reflect a mid-session change — the judge level and the speed mod are therefore read from process memory, and `config.json` is used only when the memory read yields nothing. The pointers are **re-read every poll** (both objects sit behind lazy singletons whose teardown path zeroes them, so caching a pointer would publish the previous session's settings), and every broken link falls back to `config.json` instead of publishing a possibly-wrong number: a zero pointer (`P` is 0 before the first scene), a pointer that is not 4-byte aligned or lies outside the 32-bit user address space, a judge level outside `0..=4`, a short object read, and `P+0x04 & !P+0x00 != 0` (since `P+0x04` is produced by copying `P+0x00` and only **clearing** bits, that invariant is a free identity proof for `P`; when it fails the object is not what we think it is). When both chains read, **`S` is published** ("what the player set", and it exists before the first scene) and `P` is only a corroborator — a persistent disagreement (3 consecutive polls) logs one warning, because it can only mean that one of the two chains is misread.
+**Judge / speed resolution chain (memory first, `config.json` fallback)**: the game rewrites the whole `config.json` only **on start and on exit** (measured: its mtime does not move while the player changes the judge level or the mods in game), so the file can never reflect a mid-session change — the judge level and the speed mod are therefore read from process memory, and `config.json` is used only when the memory read yields nothing. The pointers are **re-read every poll** (both objects sit behind lazy singletons whose teardown path zeroes them, so caching a pointer would publish the previous session's settings), and every broken link falls back to `config.json` instead of publishing a possibly-wrong number: a zero pointer (`P` is 0 before the first scene), a pointer that is not 4-byte aligned or lies outside the 32-bit user address space, a judge level outside `0..=4`, a short object read, and `P+0x04 & !P+0x00 != 0` (since `P+0x04` is produced by copying `P+0x00` and only **clearing** bits, that invariant is a free identity proof for `P`; when it fails the object is not what we think it is). The publish order is `MemoryProbe::published()` (`desktop/src/malody4/spec.rs:83-89`): **`P` is published first** (the value this play actually uses; it is 0 before the first scene), and `S` is only the fallback when `P` cannot be read. When both chains read and disagree, **`P` is still published** and `S` is only a corroborator — a persistent disagreement (3 consecutive polls) logs one warning, because it can only mean that one of the two chains is misread (`probe.disagreement()`, `spec.rs:91-95`).
 
 `config.json` is a **soft signal, never a gate**: within 30 s after attach a disagreement logs one warning carrying both numbers and **never rejects or overrides** the memory value — a mid-session judge change is exactly what this design is for. When the effective value (source, judge letter, rate) **changes**, one info line is logged: `malody4 settings: source=memory|config.json judge=<A~E|unknown> speed_rate=<n.nn>`; the same value is never logged twice (a 200 ms poll would otherwise flood the log).
 
-**Version gate**: before attaching, the target PE must have `TimeDateStamp == 0x5D79AC91` **and** file size `4,750,848` (the version table lives in exactly one place, `desktop/src/malody4/anchor.rs`). Any mismatch makes the **whole channel unavailable with a `target-mismatch:*` reason** instead of guessing offsets — the RVA belongs to one specific binary. The settings-singleton RVAs (`0x8311C4` / `0x8310C4`) and the four field offsets (`0x9C` / `0xD0` / `0x14` / `0x00`) are **build-specific in exactly the same way**, live next to `KNOWN_CLIENTS` in `anchor.rs`, and are referenced by name everywhere else.
+**Version gate**: before attaching, the target PE must have `TimeDateStamp == 0x5D79AC91` **and** file size `4,750,848` (the version table `KNOWN_CLIENTS` lives in exactly one place, `desktop/src/malody4/spec.rs`). Any mismatch makes the **whole channel unavailable with a `target-mismatch:*` reason** instead of guessing offsets — the RVA belongs to one specific binary. The settings-singleton RVAs (`0x8311C4` / `0x8310C4`) and the four field offsets (`0x9C` / `0xD0` / `0x14` / `0x00`) are **build-specific in exactly the same way**, live next to `KNOWN_CLIENTS` in `spec.rs` (`anchor.rs` only uses these constants to read process memory), and are referenced by name everywhere else.
 
 Privacy: `config.json` also holds `user_id` / `token` / `sound_hash`; only the two fields above are read, nothing else is parsed, logged, persisted or committed, and all fixtures are synthetic. The settings-singleton read touches only the judge level and `user_mods`; it never writes to, injects into, or allocates memory in the target process.
 
 ## 3. Library index and identity
 
 - Walks `<root>/beatmap/**` to a depth cap of 8.
-- Admission: only `.mc` whose own `meta.mode == 0` (Key mode) with `meta.mode_ext.column` present; `__MACOSX`, `._*` files and symlinks/reparse points are skipped with counters in the log.
+- Admission: both `.mc` and `.osu` are indexed, each by its own header. `.mc`: `meta.mode ∈ {0, 6}` (the two Key modes) **and** `meta.mode_ext.column` present. `.osu`: `[General] Mode = 3` (osu!mania) **and** `[Difficulty] CircleSize` present with a key count (`desktop/src/malody4/library.rs:3-16`); osu! modes 0/1/2 and `.osu` files without a valid `CircleSize` are rejected. `__MACOSX`, `._*` files and symlinks/reparse points are skipped with counters in the log.
 - Streamed md5 per file (64 KiB chunks) plus a 64 KiB prefix scanned by manual bracket pairing for `meta`.
 - Duplicate md5 resolves deterministically to the lexicographically smallest relative path; the rest are counted in the log.
 - Identity is `mdy4:{md5}`; `mdy4:` and Malody V's `mdy:` are independent prefixes of **two different sources** and never collide, and the md5 is the game's own key, so renames and title changes do not matter.
-- **Deliberate `.mc`-only deviation**: the external spec suggests indexing `.mc` and optionally `.osu`; this implementation does **not** index `.osu`, because `meta.mode == 0` is the Key-mode criterion for `.mc` and `.osu` has no equivalent field, so accepting `.osu` would pull other osu! modes into the index. Cost: a `.osu` chart in the library can never be followed.
+- **Both `.mc` and `.osu` are indexed** (`desktop/src/malody4/library.rs:3-22`): `.osu` needs `[General] Mode = 3` and a `[Difficulty] CircleSize` key count. The older "only `.mc` is indexed" rule is gone — on a real machine, selecting a library `.osu` chart makes the anchor report that `.osu` file's own md5, which the `.mc`-only index could only reject as `chart-not-indexed`. Both formats feed the page's `externalSource.js` `looksLikeOsu()` passthrough.
 
-## 4. Frames and contract (v3)
+## 4. Frames and contract (malody4 frames introduced in v3)
 
 The contract moved from v2 to **v3** (`desktop/docs/CONTRACT.md`) and this source is part of that bump: a new `malody4_selection` frame (the frame set grows from seven to **eight** types) with `{path, speed_rate, screen, sequence, event, version, chart_hash, source}` and `event ∈ anchor-changed / scene-changed / heartbeat / hidden`; `song.source` gains `"malody4"`; `requestId` gains the `n{seq}` prefix; `song.meta.judge` is optional (`A`–`E`, absent = unknown, page falls back to judge C); `state.sources.malody4{alive, playing, screen, reason?, judge?}`.
 
@@ -163,7 +164,7 @@ Priority is `["osu", "etterna", "malody4", "malody"]`. L1 preempts when the shel
 
 ## 7. Known limitations
 
-Dynamic judge OD covers the PC windows only (see [malody-od.md](malody-od.md)); the judge/speed memory chain is **build-specific** to the 4.3.7 binary (its RVAs and field offsets live next to the anchor RVA in `anchor.rs`) and falls back to `config.json` whenever it cannot read — identical to the pre-change behaviour (no error, no impact on the other signals), just without the immediate effect, and a future binary fails closed with the version gate instead of reading garbage at stale offsets; screen-based display gating is not implemented (`screen` is diagnostic only); only `.mc` is indexed, so `.osu` charts in the library are never followed; one library and one instance only (several `malody.exe` processes make the channel unavailable as `multiple-instances`); only the 4.3.7 binary is supported (any other build is `target-mismatch:*`); no native MSD, no pause detection, no live PP; no administrator rights required (same-user reads suffice, and a policy block reports `access-denied`).
+Dynamic judge OD covers the PC windows only (see [malody-od.md](malody-od.md)); the judge/speed memory chain is **build-specific** to the 4.3.7 binary (its RVAs and field offsets live next to the anchor RVA in `desktop/src/malody4/spec.rs`) and falls back to `config.json` whenever it cannot read — identical to the pre-change behaviour (no error, no impact on the other signals), just without the immediate effect, and a future binary fails closed with the version gate instead of reading garbage at stale offsets; screen-based display gating is not implemented (`screen` is diagnostic only); both `.mc` and `.osu` are indexed, so `.osu` charts in the library are followed; one library and one instance only (several `malody.exe` processes make the channel unavailable as `multiple-instances`); only the 4.3.7 binary is supported (any other build is `target-mismatch:*`); no native MSD, no pause detection, no live PP; no administrator rights required (same-user reads suffice, and a policy block reports `access-denied`).
 
 ### 7.1 Coverage boundary: charts whose identity cannot be resolved are not followed (measured)
 
