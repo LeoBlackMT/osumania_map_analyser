@@ -42,6 +42,7 @@
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/ln-correction.md](features/ln-correction.md) | AI | 4K LN 数值后修正功能文档（Companella 输出后 +0.5 lnRatio 门控修正、幅度依据、接入点、验证） |
+| [features/companella-offset.md](features/companella-offset.md) | AI | Companella 系统性偏移校正功能文档（4K Companella 路线 RC +0.443 / LN +0.786 常数后修正、与 LN 修正的两级顺序、必须限定 algo==Companella 子集拟合的理由、验证） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v6**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |

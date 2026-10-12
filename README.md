@@ -104,6 +104,7 @@
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
 - [未来lk](https://space.bilibili.com/419035379): 赞助了300M Token。
 - [Entitley](https://space.bilibili.com/3546767926758173)于[Malody V小卡片](https://www.bilibili.com/video/BV1S6et6EEND/)视频下方发表的[评论](https://www.bilibili.com/video/BV1S6et6EEND/#reply314476062705)：提供了灵感来源和 BepInEx 插件的部分源码。
+- [aleju03](https://github.com/aleju03)：通过其项目 [mania-hub](https://github.com/aleju03/mania-hub) 免费提供了大规模真实游玩行为数据集（4.84M plays，4K/7K），用于难度判定与玩家实际成绩的对照分析，是 Polaris 与 4K LN 后修正的数据基础。
 
 ---------
 本页自2026/6/21起累计访问量，感谢大家的支持！

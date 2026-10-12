@@ -5,6 +5,7 @@ import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 import { applyLnCorrectionToRcFields } from "./lnCorrection.js";
+import { applyCompanellaOffset } from "./companellaOffset.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
@@ -389,11 +390,27 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     };
 }
 
+// Companella 输出后的两级修正（顺序固定）：
+//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法的整体尺度差；
+//   2) 4K LN 后修正（lnRatio 门控，lnCorrection.js）—— 修正 LN 主导谱面的残余低估。
+// 两级都只作用于 Companella 侧数值；未触发时逐位保持原行为。
+function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side }) {
+    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side });
+    return applyLnCorrectionToRcFields({
+        numeric: offsetApplied.numeric,
+        rcLabel: offsetApplied.rcLabel,
+        lnRatio,
+    });
+}
+
 export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
     const plan = mixedResult?.mixedCompanellaPlan;
     if (!plan) {
         return mixedResult;
     }
+    // 侧判定与行为数据集 / Polaris 同语义：lnRatio ≥ 0.375 记为 LN 侧。
+    // 注意不能用 modeTagFromLnRatio（其阈值为 0.15 / 0.9，与数据集的 0.375 分侧不同）。
+    const side = Number(plan.lnRatio) >= 0.375 ? "LN" : "RC";
 
     // 低难融合路径：Companella 与计划携带的 Azusa RC 基准做固定权重平均，
     // estDiff 由融合数值重新派生（numeric 与 estDiff 保持同源）。
@@ -408,11 +425,12 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         if (rcNumeric >= RC_FUSION_LOW_BAND_MAX) {
             if (plan.onDisagree === "companella") {
-                // 4K LN 后修正（Companella 输出之后；spec 见 lnCorrection.js / docs/features/ln-correction.md）
-                const lnCorrected = applyLnCorrectionToRcFields({
+                // Companella 输出后修正（系统性偏移 + LN；见 companellaOffset.js / lnCorrection.js）
+                const lnCorrected = applyCompanellaPostCorrections({
                     numeric: companellaResult.numericDifficulty,
                     rcLabel: companellaResult.estDiff,
                     lnRatio: plan.lnRatio,
+                    side,
                 });
                 return {
                     ...mixedResult,
@@ -432,11 +450,12 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         const weight = RC_AZUSA_COMPANELLA_FUSION_WEIGHT;
         const fused = Number((rcNumeric * weight + companellaNumeric * (1 - weight)).toFixed(2));
-        // 4K LN 后修正（同上；未触发时逐位保持原行为）
-        const lnCorrected = applyLnCorrectionToRcFields({
+        // Companella 输出后修正（同上；未触发时逐位保持原行为）
+        const lnCorrected = applyCompanellaPostCorrections({
             numeric: fused,
             rcLabel: numericToRcLabel(fused),
             lnRatio: plan.lnRatio,
+            side,
         });
         return {
             ...mixedResult,
@@ -453,11 +472,12 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         };
     }
 
-    // 4K LN 后修正（同 fuseRc 分支；未触发时逐位保持原行为）
-    const lnCorrected = applyLnCorrectionToRcFields({
+    // Companella 输出后修正（同 fuseRc 分支；未触发时逐位保持原行为）
+    const lnCorrected = applyCompanellaPostCorrections({
         numeric: companellaResult.numericDifficulty,
         rcLabel: companellaResult.estDiff,
         lnRatio: plan.lnRatio,
+        side,
     });
     return {
         ...mixedResult,

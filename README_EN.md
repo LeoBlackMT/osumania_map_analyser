@@ -106,6 +106,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): Provided the improved Sunny LN algorithm.
 - [未来lk](https://space.bilibili.com/419035379): Sponsored 300M tokens.
 - [Entitley](https://space.bilibili.com/3546767926758173): Provided inspiration and partial BepInEx plugin source code in the [comment](https://www.bilibili.com/video/BV1S6et6EEND/#reply314476062705) on the [Malody V card](https://www.bilibili.com/video/BV1S6et6EEND/) video.
+- [aleju03](https://github.com/aleju03): Provided a large-scale real-play behavioural dataset (4.84M plays, 4K/7K) for free through the [mania-hub](https://github.com/aleju03/mania-hub) project, used to compare dan verdicts against how players actually score. This is the data foundation for Polaris and the 4K LN post-correction.
 
 ---------
 Total page views since June 21, 2026. Thanks for your support!
