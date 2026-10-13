@@ -20,6 +20,7 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [marathon-correction.md](marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [ln-correction.md](ln-correction.md) | AI | 4K LN 数值后修正功能文档（Companella 输出后 +0.5 lnRatio 门控修正、幅度依据、接入点、验证） |
+| [companella-offset.md](companella-offset.md) | AI | Companella 系统性偏移校正功能文档（4K **RC 侧** +0.443 常数后修正、按 Companella 权重缩放（融合值 ×0.5）、LN 侧不施加的量纲理由、与 LN 修正的两级顺序、必须限定 algo==Companella 子集且先校验量纲的理由、验证） |
 | [telemetry.md](telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界） |
 | [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna、Malody V、Malody 4 接入、转换器、路由决策表、败方门控、能力边界；含 osu 传输层：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [desktop-shell.md](desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v6**、24062 osu 兼容端点与端点下发、Malody V 选曲桥端点 17653、窗口操控、构建发布；人类教程见 docs/shell-guide.md） |
@@ -52,6 +53,7 @@
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [marathon-correction.md](marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [ln-correction.md](ln-correction.md) | AI | 4K LN post-correction document (gated +0.5 numeric after Companionella output, magnitude rationale, wiring, validation) |
+| [companella-offset.md](companella-offset.md) | AI | Companella systematic-offset correction document (4K **RC-side only** +0.443 constant post-correction, scaled by Companella's weight in the value (fused value x0.5), why the LN side is excluded on dimensionality grounds, two-level order with the LN correction, why the fit must be restricted to the algo==Companella subset and checked for dimensional consistency first, validation) |
 | [telemetry.md](telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries) |
 | [multi-source.md](multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; includes the osu transport layer: native source + tosu fallback + the browser-mode invariant) |
 | [desktop-shell.md](desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v6, the 24062 osu-compatible origin and endpoint delivery, the Malody V selection-bridge endpoint 17653, window controls, build & release; human tutorial: docs/shell-guide.md) |
