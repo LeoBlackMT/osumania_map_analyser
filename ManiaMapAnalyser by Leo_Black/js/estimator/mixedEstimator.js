@@ -391,11 +391,13 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
 }
 
 // Companella 输出后的两级修正（顺序固定）：
-//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法的整体尺度差；
+//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法分量的整体尺度差；
 //   2) 4K LN 后修正（lnRatio 门控，lnCorrection.js）—— 修正 LN 主导谱面的残余低估。
 // 两级都只作用于 Companella 侧数值；未触发时逐位保持原行为。
-function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side }) {
-    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side });
+// companellaWeight：当前数值中 Companella 的占比（纯 Companella = 1，0.5/0.5 融合 = 0.5）——
+// 偏移刻画的是 Companella 分量的尺度差，融合值只有一半来自它，必须按权重缩放。
+function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side, companellaWeight = 1 }) {
+    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side, companellaWeight });
     return applyLnCorrectionToRcFields({
         numeric: offsetApplied.numeric,
         rcLabel: offsetApplied.rcLabel,
@@ -426,11 +428,13 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         if (rcNumeric >= RC_FUSION_LOW_BAND_MAX) {
             if (plan.onDisagree === "companella") {
                 // Companella 输出后修正（系统性偏移 + LN；见 companellaOffset.js / lnCorrection.js）
+                // 数值整体来自 Companella，Companella 权重 = 1。
                 const lnCorrected = applyCompanellaPostCorrections({
                     numeric: companellaResult.numericDifficulty,
                     rcLabel: companellaResult.estDiff,
                     lnRatio: plan.lnRatio,
                     side,
+                    companellaWeight: 1,
                 });
                 return {
                     ...mixedResult,
@@ -450,12 +454,15 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         const weight = RC_AZUSA_COMPANELLA_FUSION_WEIGHT;
         const fused = Number((rcNumeric * weight + companellaNumeric * (1 - weight)).toFixed(2));
-        // Companella 输出后修正（同上；未触发时逐位保持原行为）
+        // Companella 输出后修正（同上；未触发时逐位保持原行为）。
+        // 融合值里 Companella 只占 (1 − weight)——0.5/0.5 融合下按 0.5 缩放偏移，
+        // 否则会把只占一半的 Companella 尺度差全额计入融合结果。
         const lnCorrected = applyCompanellaPostCorrections({
             numeric: fused,
             rcLabel: numericToRcLabel(fused),
             lnRatio: plan.lnRatio,
             side,
+            companellaWeight: 1 - weight,
         });
         return {
             ...mixedResult,
@@ -473,11 +480,13 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
     }
 
     // Companella 输出后修正（同 fuseRc 分支；未触发时逐位保持原行为）
+    // 数值整体来自 Companella，Companella 权重 = 1。
     const lnCorrected = applyCompanellaPostCorrections({
         numeric: companellaResult.numericDifficulty,
         rcLabel: companellaResult.estDiff,
         lnRatio: plan.lnRatio,
         side,
+        companellaWeight: 1,
     });
     return {
         ...mixedResult,

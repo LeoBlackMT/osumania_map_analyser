@@ -38,7 +38,7 @@ corr = 0.5 × clamp((lnRatio − 0.375) / (0.55 − 0.375), 0, 1)   # 且 lnRati
 
 - `js/estimator/lnCorrection.js`：纯函数模块（`computeLnRatioCorrection` / `applyLnCorrectionToRcFields`），共享 DOM-free 约束。
 - `js/estimator/mixedEstimator.js applyCompanellaToMixedResult`：三个"采纳 Companella（或融合）数值"的返回路径（C6 / C8 / C9，见 [mixed-routing.md](mixed-routing.md) §5）统一包裹。未触发时 `applied=false` **原样返回**（非 LN 行与非 4K 流程逐位不变）。
-- **与 Companella 系统性偏移的顺序（固定）**：本修正不是该合并点上的唯一后处理。包装函数 `applyCompanellaPostCorrections` 先应用 [companella-offset.md](companella-offset.md) 的按侧常数偏移（RC +0.443 / LN +0.786），**再**应用本 LN 修正——顺序不可交换：偏移先把 Companella 拉回自身真实尺度（算法级），本修正再叠加谱面侧的 LN 残余低估（谱面级）。CV 实测两级互补：单独偏移 +9.21%，叠加后 +4.84%（相对已偏移基线）。
+- **与 Companella 系统性偏移的顺序（固定）**：本修正不是该合并点上的唯一后处理。包装函数 `applyCompanellaPostCorrections` 先应用 [companella-offset.md](companella-offset.md) 的 Companella 偏移（**仅 RC 侧** +0.443，并按 Companella 权重缩放），**再**应用本 LN 修正。顺序不可交换：偏移把 Companella 分量拉回自身尺度（算法级、来源侧的尺度差），本修正再叠加谱面侧的 LN 残余低估（谱面级）。两级**作用域不重叠**：偏移只在 `lnRatio < 0.375`（RC 侧）生效，本修正只在 `lnRatio > 0.375` 生效——因此对任一具体谱面，实际只有一级在动。
 - 修正语义：`numeric = round2(numeric + corr)`；RC 半段标签 = `numericToRcLabel(修正值)`；LN 半段（`plan.lnDifficulty`，来自 Sunny 的 4K LN 表）不动。
 - 胶囊：`companellaCapsule` 不因修正改变（数值来源未变）。
 - 缓存：语义变化由 `star-v8 → star-v9` 覆盖（见 [../pipeline/result-cache.md](../pipeline/result-cache.md) §5）。

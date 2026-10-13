@@ -86,7 +86,14 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 ### 3.8 Companella 系统性偏移校正（companellaOffset）
 
-Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K in-table 子集（限定 `algo == "Companella"`、≥8 玩家，n=8278 chart×rate）上，`play-implied − Companella` 的均值为 **RC +0.443 / LN +0.786**，且随难度层级、倍率均无系统依赖（finer binning 无额外 CV 收益）。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上，于 LN 修正**之前**叠加按侧常数偏移（`companellaOffset.js`：`side = lnRatio ≥ 0.375 ? "LN" : "RC"`），并重派生 RC 半段标签。严格分组 CV（按 `beatmap_id % 10` 分折）：Companella-only 基线 MAE 0.9708 → 0.8813（+9.21%）；叠加 LN 修正后 0.9211 → 0.8765（+4.84%，两级互补）。**必须限定 `algo == "Companella"` 子集拟合**——若混入 Roxy/Azusa 行，偏移会被它们的残余分布污染而失准。详见 [companella-offset.md](companella-offset.md)。
+Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K RC 侧子集（限定 `side == "RC"` 且 `algo == "Companella"`、≥8 玩家，n=5621 chart×rate）上，`play-implied − Companella 数值` 的均值为 **+0.443**，且随难度层级、倍率均无系统依赖。该子集上 `leo_numeric` 与 `companella_numeric` **逐位相等**，故两者同量纲、可直接拟合。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上，于 LN 修正**之前**施加偏移（`companellaOffset.js`），并重派生 RC 半段标签。
+
+两条作用域约束：
+
+- **按 Companella 权重缩放**：C6/C9（数值整体来自 Companella）权重 1 ⇒ +0.443；C8（低难 0.5/0.5 Azusa⊕Companella 融合）权重 0.5 ⇒ +0.2215。数据侧确认全额施加到融合值会过修正（Mix 带 n=1645：基线 bias +0.226，本设计 +0.004，全额 ⇒ −0.217）。
+- **LN 侧不施加**（偏移 0）：行为数据集对 LN 侧取用的判定量是 **LN 半段**（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值**不同量纲**，故 `play-implied − companella_numeric`（LN 侧 +0.786）不能作为偏移；LN 侧同量纲残余是 +0.191，但它描述的是 LN 半段（Sunny LN 表），与 Companella 无关。LN 侧唯一同量纲证据只有 benchmark 的 102 行 ln 样本，按项目判据不足以支撑常数。LN 侧修正仍由 §3.7 承担。
+
+严格分组 CV（RC 侧纯 Companella，按 `beatmap_id % 10` 分折）：带符号 bias +0.443 → **+0.077**，MAE 0.9107 → **0.8611（−5.44%）**，10/10 折同号（+0.41…+0.49）。详见 [companella-offset.md](companella-offset.md)。
 
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
