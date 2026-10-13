@@ -193,8 +193,9 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
             actualEstimatorAlgorithm = "Sunny";
         }
     } else if (estimatorAlgorithm === "Polaris") {
-        // Polaris（7K 表修正）：star 恒为 Sunny 原始 sr（生效时）——7K 之外与 cvt 旗标下由
-        // 估算器内部回退 Sunny（actualEstimatorAlgorithm = "Sunny"），不进 NORMALIZATION_ALGORITHMS。
+        // Polaris（表修正：7K 的 RC+LN、4K 的 LN）：star 恒为 Sunny 原始 sr（生效时）——
+        // 其他键数与 cvt 旗标下由估算器内部回退 Sunny（actualEstimatorAlgorithm = "Sunny"），
+        // 不进 NORMALIZATION_ALGORITHMS。
         selectedRework = runPolarisEstimatorFromText(rawText, options, parser);
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
         if (!isValidResult(selectedRework)) {

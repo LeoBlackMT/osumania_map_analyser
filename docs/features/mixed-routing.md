@@ -84,6 +84,8 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L5 | `columnCount !== 4`（6K/7K） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
 
 - Azusa 在 L1/L2 的调用参数：`forceSunnyReferenceHo: false` + `precomputedSunnyResult: sunnyBaseline`（星数口径与缓存复用）。
+- **L1 实际上只在 `lnRatio ∈ [0.15, 0.18]` 这一窄带内可能触发**：Azusa 自带 `UnsupportedLN` 入口门（`lnRatio > 0.18` 直接返回无效结果），而 L1 要求 `canUseRcResult(azusa)`。行为数据集完全印证：4K RC 侧 `algo == "Azusa"` 的 19,839 行 `lnRatio` **最大值为 0.180，>0.18 的行数为 0**；LN 侧谱面（`lnRatio ≥ 0.375`）98.7% 落在 L2。⇒ **对真正的 LN 谱面，本树恒为 L2 的纯 Companella**，L1 的融合计划（`onDisagree = "companella"`）对它们不可达；带融合计划的 C8 路径实际来自 RC 树的 R4'（`onDisagree = "azusa"`）与这一窄带。
+- 由此推出的一条推论：**LN 半标签在任何路径下都由 Sunny 的 LN 表给出，且此前不被任何后修正触碰**（`lnCorrection` 只修 numericDifficulty，即 RC 半）。该半段的表校准现由 Polaris 承担（4K LN），见 [../polaris_algorithm.md](../polaris_algorithm.md) §1。
 - 最终标签 `estDiff = composeDifficultyFromRcLn(rc, ln, lnRatio)`：`lnRatio ≥ 0.15` 才有 `"RC || LN"`，否则只有 RC 段（`LN` 树必然 ≥ 0.90，`Mix` 树在 0.15–0.90 之间，故两者都会显示 LN 半）。
 - `numericDifficulty` / `numericDifficultyHint` 恒取 **RC 半**的数值（LN 估计不产出数值——与"数值难度只覆盖 RC 算法"的既有约定一致）。
 - `lnRatio` 会按 HO 归零：`hoEnabled ? 0 : 归一化后的 lnRatio`。

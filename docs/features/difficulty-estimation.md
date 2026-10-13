@@ -24,7 +24,7 @@
 | **Azusa** | worker | `azusaEstimator.js:832 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
-| **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 7K 表修正：以 Sunny 为基线，对 star→段位表映射叠加行为数据拟合的平滑修正（DT 速率响应 / LN 侧 lnRatio / 层级形状） | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
+| **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，两张表各修各自需要修的那一半：**7K** 修 RC+LN 两侧（7K 的 Mixed 恒为 Sunny 基线）；**4K** 只修 LN 半（4K RC 的最终答案来自 Mixed 路由链，不是表映射）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 4/7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；4K 下 `numericDifficulty` 保持 Sunny 值（RC 半未修）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`） |
@@ -102,7 +102,7 @@ Companella 作为移植算法，其输出相对玩家实际表现存在**整体�
 - Azusa / Roxy / Mixed 的 `star` 字段是自身 numeric 难度的线性映射（`3.4 + 0.38 * numericDifficulty`，`azusaEstimator.js:992`、`roxyEstimator.js:1634`），**不是** Sunny sr；Mixed 的 star 还可能继承被选中的 Roxy/Azusa/Daniel 子算法（`mixedEstimator.js:380-388`）；
 - `runAnalysisPipeline.js:225-229`：当 `actualEstimatorAlgorithm` 为 Azusa/Roxy/Mixed（即未回退 Sunny）时，用与"Sunny 算法选择"完全相同的调用 `runSunnyEstimatorFromText(rawText, estimatorOptions)` 重算 sr 并覆盖 `rework.star`（同一函数、同一 options，逐位一致）；
 - **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
-- **Polaris 排除**：star 本就是 Sunny sr（7K 生效时与 Sunny 选择逐位一致；非 7K/cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
+- **Polaris 排除**：star 本就是 Sunny sr（4/7K 生效时与 Sunny 选择逐位一致；非 4/7K 与 cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`runAnalysisPipeline.js:204`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`runAnalysisPipeline.js:213` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
 - 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:1096`），命中恢复一致；缓存键带 `star-v9` 版本前缀使旧快照失效（沿革见 [result-cache.md](../pipeline/result-cache.md) §5）。
@@ -178,7 +178,7 @@ export const DAN_INDEX = {
 
 - **Azusa** → [docs/azusa_algorithm.md](../azusa_algorithm.md)（英文）
 - **Roxy** → [docs/roxy_algorithm.md](../roxy_algorithm.md)（英文）
-- **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，7K 表修正估算器）
+- **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，表修正估算器：7K 的 RC+LN、4K 的 LN）
 - **Sunny / Etterna / Daniel / Companella / Interlude** → [README.md 参考内容区](../../README.md#参考内容)（原文链接：Sunny Rework、Etterna、Daniel、Companella、Interlude 仓库）
 
 ## 9. 注意事项

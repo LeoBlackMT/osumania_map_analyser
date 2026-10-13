@@ -51,6 +51,44 @@ const H_LN = Object.freeze([
     [0.99, 1.001],
 ]);
 
+// ── 4K LN 曲线（同一模型，独立系数）────────────────────────────────────────
+// 4K 上只有 **LN 半**需要表校准：RC 半的最终答案来自 Mixed 的路由链
+// （Roxy/Azusa/Daniel/Companella），不是表映射，故 4K 的 RC 侧不做修正
+// （computePolarisCorrection 在 keyCount===4 且 side==="RC" 时返回 0）。
+//
+// 为什么 LN 半必须校准：LN 侧谱面在 Mixed 里 98.7% 落到 L2 → **纯 Companella**
+// （Azusa 自带 lnRatio > 0.18 的 UnsupportedLN 门，把 LN/Mix 树的 L1 融合分支压到
+// [0.15, 0.18] 这 0.03 宽的窗口里），而 LN 半标签恒由 Sunny 的 LN 表给出 —— 也就是说
+// 显示的 LN 标签此前从未被任何修正触碰过。
+//
+// 拟合人群：Mania Tracker 4K LN 侧（in-table & ≥8 玩家，Companella 路由，n=2657；
+// level 范围 5.00~16.60）。R 在拟合期即施加 R ≥ 0 约束（保证 ∂level/∂rate ≥ 0 是
+// 拟合结果的性质，而不是靠运行时守护去钳）。
+// 严格分组 CV（beatmap_id % 5）：MAE 0.7285 → 0.6854（**−5.91%**），bias +0.191 → −0.013，
+// 改善行占比 57.2%；同人群的常数对照只做到 −3.21%。
+const B_LN4_FIT = Object.freeze([
+    0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+    0.000, -0.160, -0.254, -0.280, -0.129, 0.030, 0.128, 0.219, 0.218,
+    0.215, 0.158, 0.119, 0.108, 0.121, 0.104, 0.033, 0.025, 0.098,
+    0.237, 0.379,
+]);
+
+const R_LN4_FIT = Object.freeze([
+    0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+    0.000, 0.032, 0.122, 0.122, 0.090, 0.070, 0.123, 0.172, 0.302,
+    0.400, 0.419, 0.301, 0.206, 0.207, 0.215, 0.294, 0.296, 0.306,
+    0.176, 0.016,
+]);
+
+const H_LN4 = Object.freeze([
+    [0.4375, 0.025],
+    [0.575, 0.029],
+    [0.725, 0.032],
+    [0.85, 0.063],
+    [0.935, 0.177],
+    [0.99, 0.416],
+]);
+
 // ── 单调性不变量（Monotonicity Invariant）──────────────────────────────────
 // Polaris 输出的是"表映射 level + 修正量"，所以两条单调性是对**复合曲线**的要求：
 //
@@ -100,39 +138,48 @@ function repairPolarisCurve(side, fitB, fitR) {
 }
 
 const REPAIRED = {
-    RC: repairPolarisCurve("RC", B_RC_FIT, R_RC_FIT),
-    LN: repairPolarisCurve("LN", B_LN_FIT, R_LN_FIT),
+    "7K:RC": repairPolarisCurve("RC", B_RC_FIT, R_RC_FIT),
+    "7K:LN": repairPolarisCurve("LN", B_LN_FIT, R_LN_FIT),
+    "4K:LN": repairPolarisCurve("LN", B_LN4_FIT, R_LN4_FIT),
 };
 
-const B_RC = REPAIRED.RC.B;
-const R_RC = REPAIRED.RC.R;
-const B_LN = REPAIRED.LN.B;
-const R_LN = REPAIRED.LN.R;
+/** 按 (键数, 侧) 取生效曲线；null = 该组合不做修正（4K RC）。 */
+function curveFor(keyCount, side) {
+    if (Number(keyCount) === 4) {
+        return side === "LN" ? REPAIRED["4K:LN"] : null;
+    }
+    return side === "LN" ? REPAIRED["7K:LN"] : REPAIRED["7K:RC"];
+}
+
+/** LN 侧的 lnRatio 项（4K / 7K 各一套）。 */
+function lnRatioTermFor(keyCount) {
+    return Number(keyCount) === 4 ? H_LN4 : H_LN;
+}
 
 /**
- * 本模块加载时对**原始拟合系数**的单调性诊断。两个数组都为空即系数本身合规；
+ * 本模块加载时对**原始拟合系数**的单调性诊断。数组都为空即系数本身合规；
  * 非空表示拟合出的样条逆序、运行时已把它抬正——应当回到拟合脚本而不是依赖兜底。
  */
 export const POLARIS_MONOTONICITY = Object.freeze({
     minLevelStep: POLARIS_MIN_LEVEL_STEP,
-    rawViolations: Object.freeze([
-        ...REPAIRED.RC.violations.map((v) => Object.freeze(v)),
-        ...REPAIRED.LN.violations.map((v) => Object.freeze(v)),
-    ]),
-    repaired: REPAIRED.RC.violations.length + REPAIRED.LN.violations.length > 0,
+    rawViolations: Object.freeze(Object.keys(REPAIRED).flatMap(
+        (name) => REPAIRED[name].violations.map((v) => Object.freeze({ curve: name, ...v })),
+    )),
+    repaired: Object.keys(REPAIRED).some((name) => REPAIRED[name].violations.length > 0),
 });
 
 /**
- * 校验**实际生效**的曲线满足单调性不变量。恒应返回空数组（用于测试与自检）；
+ * 校验**实际生效**的全部曲线满足单调性不变量。恒应返回空数组（用于测试与自检）；
  * 非空即说明不变量被破坏，属需要修复的缺陷。
  */
 export function verifyPolarisMonotonicity() {
     const out = [];
     const tolerance = 1e-9;
-    for (const [side, B, R] of [["RC", B_RC, R_RC], ["LN", B_LN, R_LN]]) {
+    for (const [name, curves] of Object.entries(REPAIRED)) {
+        const { B, R } = curves;
         for (let i = 0; i < R.length; i += 1) {
             if (R[i] < 0) {
-                out.push({ side, kind: "rate", level: POLARIS_LEVEL_KNOTS[i], value: R[i] });
+                out.push({ curve: name, kind: "rate", level: POLARIS_LEVEL_KNOTS[i], value: R[i] });
             }
         }
         for (const f of [0, 1]) {
@@ -141,7 +188,7 @@ export function verifyPolarisMonotonicity() {
                     + (B[i] - B[i - 1])
                     + f * (R[i] - R[i - 1]);
                 if (step < POLARIS_MIN_LEVEL_STEP - tolerance) {
-                    out.push({ side, f, level: POLARIS_LEVEL_KNOTS[i], step });
+                    out.push({ curve: name, f, level: POLARIS_LEVEL_KNOTS[i], step });
                 }
             }
         }
@@ -194,24 +241,28 @@ function interpKnots(pairs, x) {
  *
  * @param {object} input
  * @param {"RC"|"LN"} input.side  谱面侧（与 Mixed/数据集的 0.375 lnRatio 切分同语义）
- * @param {number} input.level    表映射得到的连续 level（starToLevel 输出；对应数据集的 leo_continuous）
+ * @param {number} input.level    表映射得到的连续 level（starToLevel 输出；4K LN 侧对应数据集 leo_numeric）
  * @param {number} input.rate     速率（speedRate；1.0 = NM，1.5 = DT）
  * @param {number} [input.lnRatio]  LN 侧使用；RC 侧忽略
- * @returns {number} 修正量（可为负）；rate < 1.0 时返回 0
+ * @param {number} [input.keyCount] 键数（4 / 7）；4K 只对 LN 侧有曲线，RC 侧返回 0
+ * @returns {number} 修正量（可为负）；rate < 1.0 或无曲线时返回 0
  */
-export function computePolarisCorrection({ side, level, rate, lnRatio = 0 }) {
+export function computePolarisCorrection({ side, level, rate, lnRatio = 0, keyCount = 7 }) {
     const lv = Number(level);
     const r = Number(rate);
     if (!Number.isFinite(lv) || !Number.isFinite(r) || r < 1.0) {
         return 0;
     }
-    const isLn = side === "LN";
-    let corr = interpCurve(isLn ? B_LN : B_RC, lv);
-    if (r > 1.0) {
-        corr += interpCurve(isLn ? R_LN : R_RC, lv) * Math.min(1.0, (r - 1.0) / 0.5);
+    const curve = curveFor(keyCount, side);
+    if (!curve) {
+        return 0;
     }
-    if (isLn) {
-        corr += interpKnots(H_LN, Number(lnRatio));
+    let corr = interpCurve(curve.B, lv);
+    if (r > 1.0) {
+        corr += interpCurve(curve.R, lv) * Math.min(1.0, (r - 1.0) / 0.5);
+    }
+    if (side === "LN") {
+        corr += interpKnots(lnRatioTermFor(keyCount), Number(lnRatio));
     }
     return corr;
 }

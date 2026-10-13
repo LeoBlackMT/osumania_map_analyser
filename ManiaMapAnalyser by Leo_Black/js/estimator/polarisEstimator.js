@@ -1,15 +1,21 @@
 // js/estimator/polarisEstimator.js
-// Polaris —— 7K 表修正估计器（共享 DOM-free 纯函数模块；Node benchmark 与浏览器同一实现）。
+// Polaris —— 表修正估计器（共享 DOM-free 纯函数模块；Node benchmark 与浏览器同一实现）。
 //
-// 定位：Sunny 的 star→段位表映射在 7K 上存在系统性偏差（变速响应、LN 全条群、层级形状）。
-// Polaris 以 Sunny 为基线，对"star→level 连续映射"叠加行为数据拟合的平滑修正后输出标签：
-//   level_side = starToLevel(表, star) + computePolarisCorrection({side, level, rate, lnRatio})
-// 修正模型细节见 polarisCorrection.js；算法文档见 docs/polaris_algorithm.md。
+// 定位：Sunny 的 star→段位表映射存在系统性偏差，Polaris 以 Sunny 为基线，对
+// "star→level 连续映射"叠加行为数据拟合的平滑修正后输出标签：
+//   level = starToLevel(表, star) + computePolarisCorrection({side, level, rate, lnRatio, keyCount})
+// 修正模型细节与系数来源见 polarisCorrection.js；算法文档见 docs/polaris_algorithm.md。
 //
-// 作用域与回退：
-//   - 仅 7K（columnCount === 7）；其他键数回退 Sunny（actualEstimatorAlgorithm = "Sunny"）。
-//   - cvt（IN/HO）改图旗标下无拟合证据，回退 Sunny。
-//   - star：本就是 Sunny 原始 sr（管线归一化集合无需加入）。
+// 作用域（两张表各修各自需要修的那一半）：
+//   - **7K**：RC 半 + LN 半都修。7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物。
+//   - **4K**：**只修 LN 半**。4K 的 RC 半最终答案来自 Mixed 的路由链（Roxy/Azusa/Daniel/
+//     Companella），不是表映射，修它没有依据；而 LN 半恒由 Sunny 的 LN 表给出——
+//     LN 侧谱面在 Mixed 里 98.7% 落到纯 Companella 的 L2 路径（Azusa 的 UnsupportedLN
+//     门把 L1 融合分支压到 [0.15, 0.18] 这 0.03 宽的窗口里），所以显示的 LN 标签
+//     此前从未被任何修正触碰过。
+//   - 其他键数与 cvt（IN/HO）改图旗标：回退 Sunny（actualEstimatorAlgorithm = "Sunny"）。
+//   - star：本就是 Sunny 原始 sr（管线归一化集合无需加入）；numeric：7K 取修正后的 RC level，
+//     4K 保持 Sunny 的数值（RC 半未修）。
 // 数据来源（拟合）：Mania Tracker 行为数据集，见文档；禁止修改为逐图/逐样本特判。
 
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
@@ -129,6 +135,15 @@ function levelToLabel(map, level, star, table) {
     return map.bandLabels[best];
 }
 
+// Sunny 的 estDiff 拆成两半：4K 下 RC 半原样沿用（Polaris 不修 4K 的 RC 半）
+function splitSunnyHalves(estDiff) {
+    const parts = String(estDiff ?? "").split("||").map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+        return { rc: parts[0], ln: parts[parts.length - 1] };
+    }
+    return { rc: parts[0] ?? "", ln: null };
+}
+
 /**
  * 运行 Polaris 估计器。
  *
@@ -136,40 +151,58 @@ function levelToLabel(map, level, star, table) {
  * @param {object} options  与其他估算器同构（speedRate/odFlag/cvtFlag/withGraph/
  *   extendedEstimationRange/enableAlwaysShowLNDifficulty），可选 precomputedSunnyResult 复用 Sunny
  * @param {object|null} parsed  可选的已 process() OsuFileParser 实例
- * @returns {object} Sunny 结果 + 修正后的 estDiff/numericDifficulty；
- *   `actualEstimatorAlgorithm` 为 "Polaris"（7K 生效）或 "Sunny"（回退）
+ * @returns {object} Sunny 结果 + 修正后的 estDiff（7K 另含修正后的 numericDifficulty）；
+ *   `actualEstimatorAlgorithm` 为 "Polaris"（4K/7K 生效）或 "Sunny"（回退）
  */
 export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null) {
     const sunny = options.precomputedSunnyResult || runSunnyEstimatorFromText(osuText, options, parsed);
 
     const columnCount = Number(sunny.columnCount);
+    const is7k = columnCount === 7;
+    const is4k = columnCount === 4;
     const star = Number(sunny.star);
     const lnRatio = Number(sunny.lnRatio);
     const cvtText = String(options.cvtFlag ?? "").toUpperCase();
     const hasCvtFlag = cvtText.includes("IN") || cvtText.includes("HO");
 
-    if (columnCount !== 7 || !Number.isFinite(star) || !Number.isFinite(lnRatio) || hasCvtFlag) {
+    if ((!is7k && !is4k) || !Number.isFinite(star) || !Number.isFinite(lnRatio) || hasCvtFlag) {
         return { ...sunny, actualEstimatorAlgorithm: "Sunny" };
     }
 
-    const keys = DAN_INDEX[7];
+    const keys = DAN_INDEX[columnCount];
     const useExtended = options.extendedEstimationRange === true;
-    const rcTable = (useExtended ? keys.RC.extended : keys.RC.default) ?? keys.RC.default;
     const lnTable = keys.LN?.default ?? null;
 
     const rate = Number(options.speedRate ?? 1.0) || 1.0;
-    const rcMap = getLevelMap(rcTable);
-    const rcBase = starToLevel(rcMap, star);
-    const rcLevel = rcBase + computePolarisCorrection({ side: "RC", level: rcBase, rate });
-    const rcLabel = levelToLabel(rcMap, rcLevel, star, rcTable);
 
+    // ── RC 半：7K 由表校准；4K 原样沿用 Sunny（4K RC 的最终答案来自路由链，不是表）──
+    let rcLabel = "";
+    let rcBase = null;
+    let rcLevel = null;
+    if (is7k) {
+        const rcTable = (useExtended ? keys.RC.extended : keys.RC.default) ?? keys.RC.default;
+        const rcMap = getLevelMap(rcTable);
+        rcBase = starToLevel(rcMap, star);
+        rcLevel = rcBase + computePolarisCorrection({ side: "RC", level: rcBase, rate, keyCount: 7 });
+        rcLabel = levelToLabel(rcMap, rcLevel, star, rcTable);
+    } else {
+        rcLabel = splitSunnyHalves(sunny.estDiff).rc;
+    }
+
+    // ── LN 半：4K / 7K 都校准（LN 标签在两边的来源都是 Sunny 的 LN 表）──
     let lnLabel = null;
     let lnBase = null;
     let lnLevel = null;
     if (lnTable) {
         const lnMap = getLevelMap(lnTable);
         lnBase = starToLevel(lnMap, star);
-        lnLevel = lnBase + computePolarisCorrection({ side: "LN", level: lnBase, rate, lnRatio });
+        lnLevel = lnBase + computePolarisCorrection({
+            side: "LN",
+            level: lnBase,
+            rate,
+            lnRatio,
+            keyCount: columnCount,
+        });
         lnLabel = levelToLabel(lnMap, lnLevel, star, lnTable);
     }
 
@@ -177,9 +210,13 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
         && !(lnRatio < 0.15 && options.enableAlwaysShowLNDifficulty !== true);
     const estDiff = showLnHalf ? `${rcLabel} || ${lnLabel}` : rcLabel;
 
-    // numeric：仅当 star 位于 RC 表范围内时输出（表外沿用边界标签语义，不给外推数值）
-    const rcInRange = star >= rcTable[0][0] && star <= rcTable[rcTable.length - 1][1];
-    const numericDifficulty = rcInRange ? Number(rcLevel.toFixed(2)) : null;
+    // numeric：7K 取修正后的 RC level（且要求 star 在 RC 表范围内）；4K 保持 Sunny 的数值
+    let numericDifficulty = sunny.numericDifficulty;
+    if (is7k) {
+        const rcTable = (useExtended ? keys.RC.extended : keys.RC.default) ?? keys.RC.default;
+        const rcInRange = star >= rcTable[0][0] && star <= rcTable[rcTable.length - 1][1];
+        numericDifficulty = rcInRange ? Number(rcLevel.toFixed(2)) : null;
+    }
 
     return {
         ...sunny,
@@ -189,8 +226,9 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
         actualEstimatorAlgorithm: "Polaris",
         debug: {
             rate,
-            rcBase: Number(rcBase.toFixed(4)),
-            rcLevel: Number(rcLevel.toFixed(4)),
+            keyCount: columnCount,
+            rcBase: rcBase === null ? null : Number(rcBase.toFixed(4)),
+            rcLevel: rcLevel === null ? null : Number(rcLevel.toFixed(4)),
             lnBase: lnBase === null ? null : Number(lnBase.toFixed(4)),
             lnLevel: lnLevel === null ? null : Number(lnLevel.toFixed(4)),
         },
