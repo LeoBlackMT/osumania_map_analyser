@@ -61,6 +61,29 @@ f(rate) = clamp((rate − 1) / 0.5, 0, 1)     # rate ≤ 1.0 → 0 (no correctio
 
 Fitting: additive (backfitting) joint fit on the Mania Tracker snapshot; per-table knots smoothed with a 3-point kernel. Validation: group split by `beatmap_id` (70/30) — held-out `mean|delta|` improves **6.8 %** (0.680 → 0.634), full-fit bias +0.170 → −0.002; on the flagged subset (≥1 dan, |z| ≥ 3) the mean absolute miss improves **17 %** (1.64 → 1.36). The full-fit → CV gap is ≈0, i.e. the curve family is low-capacity and not overfit.
 
+### Monotonicity invariant
+
+Because Polaris emits `level + correction`, both monotonicity properties are properties of the **composite curve**, not of the correction alone:
+
+```
+g(l) = l + B(l) + R(l)·f        f = clamp((rate − 1) / 0.5, 0, 1) ∈ [0, 1]
+
+1) ∂level/∂star > 0   ⇔  g strictly increasing in l
+2) ∂level/∂rate ≥ 0   ⇔  R(l) ≥ 0   (g is monotone in f, f is monotone in rate)
+```
+
+Both are guaranteed **by construction** at module load rather than checked after the fact:
+
+- each curve is linear interpolation between knots, so piecewise-linear — adjacent-knot increments `Δg > 0` are sufficient for the whole curve;
+- `Δg` is **linear in `f`**, so the endpoints `f = 0` and `f = 1` decide the entire range (no grid search needed);
+- therefore raising `B` at the worst endpoint and clamping negative `R` to zero fixes any inversion in a single pass, with no iteration.
+
+`POLARIS_MIN_LEVEL_STEP` (0.05 per 0.5-level knot) is the enforced floor — a real margin rather than a bare `> 0`, so float noise or an aggressive refit cannot land within rounding distance of an inversion.
+
+Outside the knot range, interpolation is clamped to a constant, so `g` has slope exactly 1 there — **extrapolation at the extreme boundary is monotone by construction**, which is the case the guard exists for (at Stellium/Wild levels the sample is thin and the fitted spline is free to wobble).
+
+Runtime repair changes numbers only when the **fitted coefficients are themselves inverted**. Whether that happened is exported separately as `POLARIS_MONOTONICITY.rawViolations`; a non-empty list means the spline is inverted somewhere and the fit script should be revisited — the runtime guard is a safety net, not a licence to ship an inverted curve. For the current coefficients the list is empty and the tightest raw step is **+0.269** (LN, level 6.25→6.75), so the invariant holds with room to spare. The effective curves can be re-checked at any time with `verifyPolarisMonotonicity()` (always expected to return `[]`).
+
 ### Table mapping helpers (inside the estimator)
 
 - `star → level`: piecewise-linear with the exact structure used by the fitting scripts (bands contribute `(lo, n−0.1)` and `(hi, n+0.1)`; level `n` is derived from the label: numeric token with `Intro` shift, non-numeric base = previous level + 1). Linear extrapolation outside the table using the first/last 5-knot slope.
@@ -75,7 +98,7 @@ Fitting: additive (backfitting) joint fit on the Mania Tracker snapshot; per-tab
 
 ## 6. Validation & regression
 
-- **Unit / smoke** (temp scripts, not committed): JS↔fit port equivalence (`maxDiff < 1e-9`), synthetic 7K RC/full-LN charts at 1.0x/1.5x/0.75x, 4K and `HO` fallback, pipeline integration.
+- **Unit / smoke** (temp scripts, not committed): JS↔fit port equivalence (`maxDiff < 1e-9`), synthetic 7K RC/full-LN charts at 1.0x/1.5x/0.75x, 4K and `HO` fallback, pipeline integration. Monotonicity: `verifyPolarisMonotonicity()` empty, `POLARIS_MONOTONICITY.rawViolations` empty, and a dense level × rate grid (both sides, step 0.05) showing a strictly increasing composite in the star direction and a non-decreasing one in the rate direction.
 - **Golden regression** (`test/compare-golden.mjs`): existing algorithms must stay bit-identical (Polaris only adds a new dispatch branch; it is not part of the harness contract because the harness corpus is 4K-only, where Polaris falls back to Sunny — 6K/7K paths are covered by synthetic samples per `guides/adding-to-worker.md` §4).
 - **Benchmark**: `VSRG-DanEstimation-Benchmark` currently contains no 7K samples, so the benchmark cannot score Polaris; the behavioural dataset re-scoring above is the acceptance metric. Do not add per-chart special cases from either source.
 
@@ -83,7 +106,7 @@ Fitting: additive (backfitting) joint fit on the Mania Tracker snapshot; per-tab
 
 1. Re-run the fit scripts (temp, gitignored) against a fresh Mania Tracker snapshot; regenerate knots.
 2. Re-run the group-CV check — do not accept a full-fit improvement without a held-out improvement.
-3. Update `polarisCorrection.js` constants; re-run the port test and smoke tests; regenerate the port vectors from the new knots.
+3. Update `polarisCorrection.js` constants; re-run the port test and smoke tests; regenerate the port vectors from the new knots. **Check `POLARIS_MONOTONICITY.rawViolations` is still empty**: non-empty means the new knots invert the spline and the runtime guard is silently repairing them, which is a fit defect to fix at the source, not to absorb.
 4. Re-run the golden compare (0 diffs) and, if the change can affect 4K LN rows, the Mixed benchmark harness before/after.
 
 ---
