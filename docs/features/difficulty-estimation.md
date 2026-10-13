@@ -84,6 +84,10 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 4K 且 Sunny `lnRatio` 主导的谱面在 Mixed 上的最终 numeric（来源为 Companella 或其与 Azusa 的融合）系统性低估：benchmark ln 行（102 条）bias +1.02（MAE 1.228），行为数据集 4K LN 侧 +0.2~0.5。依据「移植算法（Daniel / Companella）不直接修改、必要时在输出结果后修正」的约束，在 `applyCompanellaToMixedResult` 的三个采纳路径上对 numeric 叠加 lnRatio 门控的修正（`lnCorrection.js`：全量 +0.5、ramp 0.375 → 0.55），并重派生 RC 半段标签（numeric 与 estDiff 保持同源）；LN 半段标签不动。未触发时逐位保持原行为；`forceSunnyWindow` 的 4e65 lnRatio 哨兵不触发。详见 [ln-correction.md](ln-correction.md)。
 
+### 3.8 Companella 系统性偏移校正（companellaOffset）
+
+Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K in-table 子集（限定 `algo == "Companella"`、≥8 玩家，n=8278 chart×rate）上，`play-implied − Companella` 的均值为 **RC +0.443 / LN +0.786**，且随难度层级、倍率均无系统依赖（finer binning 无额外 CV 收益）。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上，于 LN 修正**之前**叠加按侧常数偏移（`companellaOffset.js`：`side = lnRatio ≥ 0.375 ? "LN" : "RC"`），并重派生 RC 半段标签。严格分组 CV（按 `beatmap_id % 10` 分折）：Companella-only 基线 MAE 0.9708 → 0.8813（+9.21%）；叠加 LN 修正后 0.9211 → 0.8765（+4.84%，两级互补）。**必须限定 `algo == "Companella"` 子集拟合**——若混入 Roxy/Azusa 行，偏移会被它们的残余分布污染而失准。详见 [companella-offset.md](companella-offset.md)。
+
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
 左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:795` `showNumericStarValue`；其余调用点 :1230/:1241/:1264/:1268）；归一化逻辑已迁入 `runAnalysisPipeline.js:225-229`。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：

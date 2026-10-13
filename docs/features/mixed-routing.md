@@ -107,7 +107,10 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
 | C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
-- **4K LN 后修正（lnCorrection）**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，若 `plan.lnRatio > 0.375`，对数值叠加 lnRatio 门控修正（全量 +0.5、ramp 0.375→0.55）并重派生 RC 半标签（`numeric 与 estDiff 同源`）；未触发时逐位保持原有行为。该修正属「移植算法输出之后」的修正（不改 Daniel / Companella 本体），详见 [ln-correction.md](ln-correction.md)。
+- **Companella 输出后两级修正（顺序固定）**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，统一依次应用 `applyCompanellaPostCorrections`：
+  1. **Companella 系统性偏移**（[companella-offset.md](companella-offset.md)）——按侧常数上调：`side = lnRatio ≥ 0.375 ? "LN" : "RC"`，RC `+0.443` / LN `+0.786`（侧判定与行为数据集同语义，**不是** `modeTagFromLnRatio` 的 0.15/0.90）。修正该移植算法相对玩家实际表现的整体尺度差（同难度层级、同倍率下普遍偏宽松），不做层级依赖。
+  2. **4K LN 后修正**（[ln-correction.md](ln-correction.md)）——在偏移后的数值上叠加 `lnRatio` 渐进门控修正（`lnRatio > 0.375` 起触发，全量 +0.5、ramp 0.375 → 0.55）。
+  两级都只作用于 Companella 侧数值，并为新数值重派生 RC 半标签（`numeric 与 estDiff 同源`）；LN 半仍用 `plan.lnDifficulty`。**先偏移后 LN 修正是固定的**：偏移先把 Companella 拉回自身尺度，LN 修正再叠加谱面侧的残余低估，两者互补（CV 实测叠加后 +4.84%、单独偏移 +9.21%）。任一级未触发时该级返回原值（`applied=false`），全链未触发则逐位保持原有行为。
 
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
@@ -170,7 +173,10 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | `AZUSA_RC_PREFERENCE` | 同上 | 上述两门的 8 个阈值 |
 | `isDanielTooLowDifficulty` | 同上 | Daniel 自称 `< Alpha` 时拒用 |
 | `buildLowBandCompanellaPlan` | 同上 | 低难融合计划（`fuseRc` / `onDisagree` / `rcNumeric`） |
+| `applyCompanellaPostCorrections` | 同上 | C6/C8/C9 的两级后修正包装（先偏移、后 LN；顺序固定） |
 | `applyCompanellaToMixedResult` | 同上 | C6–C9 的采用/保持/加权融合 |
+| `applyCompanellaOffset` / `COMPANELLA_OFFSET_RC` (0.443) / `COMPANELLA_OFFSET_LN` (0.786) | `js/estimator/companellaOffset.js` | 第一级：Companella 系统性偏移（按侧常数，`lnRatio ≥ 0.375` 分侧） |
+| `applyLnCorrectionToRcFields` / `LN_CORRECTION_MAGNITUDE` (0.5) | `js/estimator/lnCorrection.js` | 第二级：4K LN 后修正（`lnRatio` 渐进门控） |
 | `LOW_BAND_COMPANELLA_STAR_MAX` (9) / `RC_FUSION_LOW_BAND_MAX` (11) / `RC_AZUSA_COMPANELLA_FUSION_WEIGHT` (0.5) | 同上 | 融合阈值与权重 |
 | `shouldRunCompanella` | `js/app/analysis.js` | C1 执行门（C2 的 `lnRatio > 0.18` 跳过已于 2026-09-20 移除） |
 | `formatEstimateDifficultyCaption` | `js/app/graph.js` | 胶囊渲染（仅回退时加 `[算法]` 前缀） |
