@@ -488,9 +488,11 @@ export async function fetchBeatmapFile(reason) {
     // star-v9：4K LN 后修正（lnCorrection，Companella 输出之后）+ 新估算器 Polaris——
     //   Mixed 在 4K LN 主导图上的 numeric/estDiff 语义变化 → 旧快照必须失效
     //   （Polaris 自身在缓存键算法段，无历史快照）。
-    // star-v10：4K 的 LN 半标签改由 Polaris 的 4K LN 曲线校准（mixedEstimator 在建计划前替换
-    //   lnDifficulty）——Mixed 在 4K LN 图上的 estDiff 语义变化，旧快照会显示未校准的 LN 标签
-    //   → 必须失效。
+    // star-v10：Mixed 层接入 Polaris 的两处 + 偏移层级化 ——
+    //   (a) 4K 的 LN 半标签改用 Polaris 的 4K LN 曲线校准；
+    //   (b) 7K 的整条路线改走 Polaris（RC/LN 两半与 numeric 全校准，胶囊变 Polaris）；
+    //   (c) Companella RC 偏移由常数改为层级依赖。
+    //   Mixed 在 4K/7K 上的 estDiff 与 numeric 语义都变了，旧快照会显示旧值 → 必须失效。
     const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v10";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");

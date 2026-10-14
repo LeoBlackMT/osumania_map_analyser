@@ -4,9 +4,11 @@
 // 依据（详见 docs/features/companella-offset.md）：
 //   - Mania Tracker 行为数据集（4.84M plays）中，Mixed 路由为 Companella 的 4K 谱面
 //     （≥8 玩家，n=5621 chart×rate）系统性低估：`play-implied − Companella 数值`
-//     的均值为 +0.443，即 Companella 本体整体偏"宽松"，同一难度层级下其输出平均
-//     低于玩家实际表现。这不是某张图的问题，而是该移植算法与数据分布之间的整体
-//     尺度差，故取常数偏移，不做层级/倍率依赖（finer binning 无额外 CV 收益，见文档）。
+//     整体均值 +0.443。这不是某张图的问题，而是该移植算法与数据分布之间的整体尺度差。
+//   - **该尺度差按层级并不恒定**：level < 2.5 段只有 +0.19，level ≥ 3.5 段升到 +0.80，
+//     差一个量级。常数版严格分组 CV MAE 改善 −5.22%；两段 + 1.0 宽线性过渡做到 −10.20%。
+//   - **rate 无系统依赖**：1.0x / 1.5x / 0.75x 分别为 +0.441 / +0.404 / +0.951
+//     （1.0x 与 1.5x 几乎一致，0.75x 样本少且 HT 侧本身不稳定），故只做层级。
 //
 // 为什么只作用于 RC 侧（LN 侧偏移 = 0）：
 //   行为数据集对 LN 侧谱面的判定量是 **LN 半段**（`verdict_used = "LN half"`，
@@ -27,20 +29,31 @@
 
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 
-// RC 侧常数（numeric 单位，作用在"纯 Companella 分量"上）。正值为上调（Companella 原本低估）。
-export const COMPANELLA_OFFSET_RC = 0.443;
+// RC 侧偏移（numeric 单位，作用在"纯 Companella 分量"上；正值为上调，Companella 原本低估）。
+// 两段值 + 1.0 宽的线性过渡：硬阶梯（同一对分段值、无过渡）的 CV 与之等价（0.8166 vs 0.8178），
+// 但会在过渡点造出约 0.6 的输出跳变——同一张图换个小数位就跳半级，用户可见；斜坡把它抹平。
+export const COMPANELLA_OFFSET_RC_LOW = 0.19;
+export const COMPANELLA_OFFSET_RC_HIGH = 0.804;
+export const COMPANELLA_OFFSET_RC_RAMP_START = 2.5;
+export const COMPANELLA_OFFSET_RC_RAMP_WIDTH = 1.0;
 
 /**
- * 返回给定侧的 Companella 常数偏移量（未按权重缩放）。只有 RC 侧有值
- * （LN 侧见文件头说明），未知侧与 LN 侧一律返回 0。
+ * 返回给定侧 / 层级上的 Companella 偏移量（未按权重缩放）。只有 RC 侧有值
+ * （LN 侧见文件头说明），未知侧、LN 侧与非有限 level 一律返回 0。
  * @param {"RC"|"LN"|string} side
+ * @param {number} level 层级查找键：**Companella 自身输出的数值**（分段值就是在纯 Companella 行上按该值拟合的）
  * @returns {number}
  */
-export function computeCompanellaOffset(side) {
-    if (side === "RC") {
-        return COMPANELLA_OFFSET_RC;
+export function computeCompanellaOffset(side, level) {
+    if (side !== "RC") {
+        return 0;
     }
-    return 0;
+    const lv = Number(level);
+    if (!Number.isFinite(lv)) {
+        return 0;
+    }
+    const t = Math.max(0, Math.min(1, (lv - COMPANELLA_OFFSET_RC_RAMP_START) / COMPANELLA_OFFSET_RC_RAMP_WIDTH));
+    return COMPANELLA_OFFSET_RC_LOW + (COMPANELLA_OFFSET_RC_HIGH - COMPANELLA_OFFSET_RC_LOW) * t;
 }
 
 /**
@@ -50,14 +63,15 @@ export function computeCompanellaOffset(side) {
  * @param {number} input.numeric          当前数值（纯 Companella 或融合值）
  * @param {string} input.rcLabel          当前 RC 段标签（estDiff 的 RC 半边）
  * @param {string} input.side             谱面侧（"RC" | "LN"）
+ * @param {number} input.level            层级查找键：Companella 自身输出的数值
  * @param {number} [input.companellaWeight] 该数值中 Companella 的权重（0~1，默认 1）。
  *                                        低难 0.5/0.5 融合路径传 0.5。
  * @returns {{ numeric: number, rcLabel: string, applied: boolean, offset: number }}
  *   未修正时原样返回（applied=false，保证不受影响的行逐位不变）
  */
-export function applyCompanellaOffset({ numeric, rcLabel, side, companellaWeight = 1 }) {
+export function applyCompanellaOffset({ numeric, rcLabel, side, level, companellaWeight = 1 }) {
     const weight = Number(companellaWeight);
-    const scaled = computeCompanellaOffset(side) * (Number.isFinite(weight) ? weight : 0);
+    const scaled = computeCompanellaOffset(side, level) * (Number.isFinite(weight) ? weight : 0);
     const n = Number(numeric);
     // 仅在输入本身是有效有限数（非 null / 空串）且缩放后偏移为正时生效。
     if (numeric === null || numeric === undefined || numeric === "" || typeof numeric === "boolean") {

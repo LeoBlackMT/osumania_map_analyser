@@ -20,7 +20,7 @@
 
 | 算法 | 线程 | 入口函数 | 适用键型/场景 | 限制 |
 | --- | --- | --- | --- | --- |
-| **Mixed** | main | `mixedEstimator.js:236 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**4K 的 LN 半标签经 Polaris 的 4K LN 曲线校准**（与选 Polaris 时同一份实现，见 [mixed-routing.md](mixed-routing.md) §4；7K 不校准） | 依赖 Ett WASM 与模式分析结果，只能主线程运行；RC 仅 4K 生效，非 4K RC 直接回退 Sunny 基线（`mixedEstimator.js:242` 键数门 / `:257` 早退） |
+| **Mixed** | main | `mixedEstimator.js:236 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用），**4K 的 LN 半标签也经 Polaris 校准**（与选 Polaris 时同一份实现，见 [mixed-routing.md](mixed-routing.md) §4） | 依赖 Ett WASM 与模式分析结果，只能主线程运行；RC 仅 4K 生效，非 4K RC 直接回退 Sunny 基线（`mixedEstimator.js:242` 键数门 / `:257` 早退） |
 | **Azusa** | worker | `azusaEstimator.js:832 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |

@@ -6,7 +6,7 @@ import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 import { applyLnCorrectionToRcFields } from "./lnCorrection.js";
 import { applyCompanellaOffset } from "./companellaOffset.js";
-import { calibrateLnHalfLabel } from "./polarisEstimator.js";
+import { calibrateTableHalves } from "./polarisEstimator.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
@@ -255,25 +255,39 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    // LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰
-    // （lnCorrection 只调 numeric，即 RC 半）。**4K** 上改用 Polaris 的 4K LN 曲线校准后的
-    // 标签——4K 的 Mixed 无法用 Polaris 替代（Polaris 的 4K RC 半是 Sunny 表值，而 Mixed 的
-    // RC 半来自路由链，明显更好），所以这条校准必须在这里落地才能到达 4K 用户。
-    // 7K 不动：7K 的 Mixed 恒为 Sunny 基线，想要校准的用户直接选 Polaris 即可。
-    const lnDifficulty = columnCount === 4
-        ? calibrateLnHalfLabel({
-            columnCount,
-            star: Number(sunnyBaseline.star),
-            rate: Number(options.speedRate ?? 1.0) || 1.0,
-            lnRatio,
-        }, sunnyParts.ln)
-        : sunnyParts.ln;
+    // 表映射两半的 Polaris 校准结果（与"选 Polaris"共用同一份实现，两边不可能给出不同答案）：
+    //   - 4K：只有 LN 半边——4K RC 的最终答案来自路由链（Roxy/Azusa/Daniel/Companella），
+    //     不是表映射，没有可校准的对象；而 LN 半恒由 Sunny 的 LN 表给出。
+    //   - 7K：RC 与 LN 都有——7K 的 Mixed 恒为 Sunny 基线，Polaris 就是那个"更佳"的选项。
+    const calibratedHalves = calibrateTableHalves({
+        columnCount,
+        star: Number(sunnyBaseline.star),
+        rate: Number(options.speedRate ?? 1.0) || 1.0,
+        lnRatio,
+        extendedEstimationRange: options.extendedEstimationRange === true,
+    });
+    // LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰（lnCorrection 只调
+    // numeric，即 RC 半）。4K 的 Mixed 无法用 Polaris 替代（其 RC 半来自路由链，优于表映射），
+    // 所以这条校准必须落在 Mixed 里才能到达 4K 用户。
+    const lnDifficulty = calibratedHalves?.ln?.label ?? sunnyParts.ln;
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
+        // 非 4K 的 RC 谱面没有路由链可用（Azusa/Roxy/Daniel/Companella 全部 4K 专用）。
+        // 7K 另有一个更优选项：Polaris 的表修正（同一张区间表 + 行为数据拟合的平滑修正）。
+        if (!calibratedHalves?.rc) {
+            return {
+                ...sunnyBaseline,
+                mixedCompanellaPlan: null,
+                actualEstimatorAlgorithm: actualAlgorithm,
+            };
+        }
         return {
             ...sunnyBaseline,
+            estDiff: calibratedHalves.rc.label,
+            numericDifficulty: calibratedHalves.rc.inRange ? Number(calibratedHalves.rc.level.toFixed(2)) : null,
+            numericDifficultyHint: null,
             mixedCompanellaPlan: null,
-            actualEstimatorAlgorithm: actualAlgorithm,
+            actualEstimatorAlgorithm: "Polaris",
         };
     }
 
@@ -382,6 +396,14 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     actualAlgorithm = "Daniel";
                 }
             }
+        } else if (calibratedHalves?.rc) {
+            // L5 的 7K：不再停在未校准的 Sunny 表映射。Mixed 的定位是"自动选出最佳算法"，
+            // 7K 上没有 Azusa/Roxy/Daniel/Companella（全部 4K 专用），最佳就是 Polaris——
+            // 同一张区间表 + 行为数据拟合的平滑修正。6K/10K 无曲线，仍走 Sunny。
+            rcDifficulty = calibratedHalves.rc.label;
+            rcNumericDifficulty = calibratedHalves.rc.inRange ? Number(calibratedHalves.rc.level.toFixed(2)) : null;
+            rcNumericDifficultyHint = null;
+            actualAlgorithm = "Polaris";
         }
 
         estDiff = composeDifficultyFromRcLn(rcDifficulty, lnDifficulty, lnRatio);
@@ -404,13 +426,15 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
 }
 
 // Companella 输出后的两级修正（顺序固定）：
-//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法分量的尺度差；
+//   1) Companella 系统性偏移（按侧 + 层级，companellaOffset.js）—— 修正该移植算法分量的尺度差；
 //   2) 4K LN 后修正（lnRatio 门控，lnCorrection.js）—— 修正 LN 主导谱面的残余低估。
 // 两级都只作用于 Companella 侧数值；未触发时逐位保持原行为。
 // companellaWeight：当前数值中 Companella 的占比（纯 Companella = 1，0.5/0.5 融合 = 0.5）——
 // 偏移刻画的是 Companella 分量的尺度差，融合值只有一半来自它，必须按权重缩放。
-function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side, companellaWeight = 1 }) {
-    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side, companellaWeight });
+// companellaLevel：偏移的层级查找键，三处都取 **Companella 自身输出的数值**（分段值就是在
+// 纯 Companella 行上按该值拟合的），与 numeric 是否已被融合无关。
+function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side, companellaLevel, companellaWeight = 1 }) {
+    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side, level: companellaLevel, companellaWeight });
     return applyLnCorrectionToRcFields({
         numeric: offsetApplied.numeric,
         rcLabel: offsetApplied.rcLabel,
@@ -447,6 +471,7 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
                     rcLabel: companellaResult.estDiff,
                     lnRatio: plan.lnRatio,
                     side,
+                    companellaLevel: companellaNumeric,
                     companellaWeight: 1,
                 });
                 return {
@@ -475,6 +500,7 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
             rcLabel: numericToRcLabel(fused),
             lnRatio: plan.lnRatio,
             side,
+            companellaLevel: companellaNumeric,
             companellaWeight: 1 - weight,
         });
         return {
@@ -499,6 +525,7 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         rcLabel: companellaResult.estDiff,
         lnRatio: plan.lnRatio,
         side,
+        companellaLevel: companellaResult.numericDifficulty,
         companellaWeight: 1,
     });
     return {

@@ -144,33 +144,61 @@ function splitSunnyHalves(estDiff) {
     return { rc: parts[0] ?? "", ln: null };
 }
 
+// 单个半段的表校准：star → level →（加 Polaris 修正）→ 标签。
+// inRange 与数值输出口径一致：star 落在表范围内才给外推数值（表外沿用 `<` / `>` 边界标签语义）。
+function calibrateHalf(table, { star, rate, lnRatio, side, keyCount }) {
+    if (!table) {
+        return null;
+    }
+    const map = getLevelMap(table);
+    const base = starToLevel(map, star);
+    const level = base + computePolarisCorrection({ side, level: base, rate, lnRatio, keyCount });
+    return {
+        label: levelToLabel(map, level, star, table),
+        base,
+        level,
+        inRange: star >= table[0][0] && star <= table[table.length - 1][1],
+    };
+}
+
 /**
- * LN 半段的表校准（Polaris 与 Mixed 共用一份实现）。
+ * 某一个键数下**表映射两半**的 Polaris 校准结果（Polaris 与 Mixed 共用一份实现）。
  *
- * LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰；本函数是它唯一的
- * 校准入口。Mixed 在 4K 上直接调用它（见 mixedEstimator.js 的 lnDifficulty），Polaris 在
- * 4K/7K 两侧调用它，因此两边永远一致。
+ * 两半在混合路由里都只是"表映射产物"，因此这是它们唯一的校准入口；共用同一份实现意味着
+ * 选 Polaris 与选 Mixed 不可能对同一张图给出不同的标签（冒烟测试直接断言这一点）。
+ * 哪一半返回非 null 由曲线集决定：4K 只有 LN 曲线（RC 的最终答案来自路由链，不是表），
+ * 7K 两半都有。
  *
  * @param {object} input
- * @param {number} input.columnCount 键数（4 / 7；其余无 LN 表）
+ * @param {number} input.columnCount 键数
  * @param {number} input.star        Sunny 原始 sr
  * @param {number} input.rate        速率
  * @param {number} input.lnRatio     Sunny lnRatio（LN 项 H 的查找键）
- * @returns {{ label: string, base: number, level: number } | null} 无 LN 表或输入非有限时返回 null
+ * @param {boolean} [input.extendedEstimationRange] RC 侧是否用扩展表（与 Sunny/Polaris 同开关）
+ * @returns {{ rc: object|null, ln: object|null } | null} 无该键数的表或输入非有限时返回 null
  */
-export function calibrateLnLevel({ columnCount, star, rate, lnRatio }) {
-    const keys = DAN_INDEX[Number(columnCount)];
-    const lnTable = keys?.LN?.default ?? null;
+export function calibrateTableHalves({ columnCount, star, rate, lnRatio, extendedEstimationRange = false }) {
+    const kc = Number(columnCount);
+    const keys = DAN_INDEX[kc];
     const s = Number(star);
     const r = Number(rate);
     const lr = Number(lnRatio);
-    if (!lnTable || !Number.isFinite(s) || !Number.isFinite(r) || !Number.isFinite(lr)) {
+    if (!keys || !Number.isFinite(s) || !Number.isFinite(r) || !Number.isFinite(lr)) {
         return null;
     }
-    const map = getLevelMap(lnTable);
-    const base = starToLevel(map, s);
-    const level = base + computePolarisCorrection({ side: "LN", level: base, rate: r, lnRatio: lr, keyCount: Number(columnCount) });
-    return { label: levelToLabel(map, level, s, lnTable), base, level };
+    const pick = (which) => (extendedEstimationRange ? keys[which]?.extended : keys[which]?.default)
+        ?? keys[which]?.default ?? null;
+    return {
+        // 4K 无 RC 曲线（不加修正的"校准结果"会与表值相同，容易被误用，故显式返回 null）
+        rc: kc === 4 ? null : calibrateHalf(pick("RC"), { star: s, rate: r, lnRatio: lr, side: "RC", keyCount: kc }),
+        ln: calibrateHalf(pick("LN"), { star: s, rate: r, lnRatio: lr, side: "LN", keyCount: kc }),
+    };
+}
+
+/** LN 半段的校准结果（calibrateTableHalves 的 LN 半边）。 */
+export function calibrateLnLevel(input) {
+    const halves = calibrateTableHalves(input);
+    return halves ? halves.ln : null;
 }
 
 // 供 Mixed 直接把"Sunny 的 LN 半标签"换成校准后的标签（拿不到表或输入异常时保留原值）
@@ -204,31 +232,26 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
         return { ...sunny, actualEstimatorAlgorithm: "Sunny" };
     }
 
-    const keys = DAN_INDEX[columnCount];
-    const useExtended = options.extendedEstimationRange === true;
-
     const rate = Number(options.speedRate ?? 1.0) || 1.0;
 
-    // ── RC 半：7K 由表校准；4K 原样沿用 Sunny（4K RC 的最终答案来自路由链，不是表）──
-    let rcLabel = "";
-    let rcBase = null;
-    let rcLevel = null;
-    if (is7k) {
-        const rcTable = (useExtended ? keys.RC.extended : keys.RC.default) ?? keys.RC.default;
-        const rcMap = getLevelMap(rcTable);
-        rcBase = starToLevel(rcMap, star);
-        rcLevel = rcBase + computePolarisCorrection({ side: "RC", level: rcBase, rate, keyCount: 7 });
-        rcLabel = levelToLabel(rcMap, rcLevel, star, rcTable);
-    } else {
-        rcLabel = splitSunnyHalves(sunny.estDiff).rc;
-    }
+    // ── 两半都取自 calibrateTableHalves（与 Mixed 共用同一份实现，两边不可能给出不同答案）──
+    const halves = calibrateTableHalves({
+        columnCount,
+        star,
+        rate,
+        lnRatio,
+        extendedEstimationRange: options.extendedEstimationRange === true,
+    });
 
-    // ── LN 半：4K / 7K 都校准（LN 标签在两边的来源都是 Sunny 的 LN 表）──
-    // 与 Mixed 共用 calibrateLnLevel，保证两边对同一张图给出同一个 LN 标签。
-    const lnCalibrated = calibrateLnLevel({ columnCount, star, rate, lnRatio });
-    const lnLabel = lnCalibrated ? lnCalibrated.label : null;
-    const lnBase = lnCalibrated ? lnCalibrated.base : null;
-    const lnLevel = lnCalibrated ? lnCalibrated.level : null;
+    // RC 半：7K 由表校准；4K 原样沿用 Sunny（4K RC 的最终答案来自路由链，不是表）
+    const rcLabel = halves?.rc?.label ?? splitSunnyHalves(sunny.estDiff).rc;
+    const rcBase = halves?.rc?.base ?? null;
+    const rcLevel = halves?.rc?.level ?? null;
+
+    // LN 半：4K / 7K 都校准（LN 标签在两边的来源都是 Sunny 的 LN 表）
+    const lnLabel = halves?.ln?.label ?? null;
+    const lnBase = halves?.ln?.base ?? null;
+    const lnLevel = halves?.ln?.level ?? null;
 
     const showLnHalf = lnLabel !== null
         && !(lnRatio < 0.15 && options.enableAlwaysShowLNDifficulty !== true);
@@ -236,10 +259,8 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
 
     // numeric：7K 取修正后的 RC level（且要求 star 在 RC 表范围内）；4K 保持 Sunny 的数值
     let numericDifficulty = sunny.numericDifficulty;
-    if (is7k) {
-        const rcTable = (useExtended ? keys.RC.extended : keys.RC.default) ?? keys.RC.default;
-        const rcInRange = star >= rcTable[0][0] && star <= rcTable[rcTable.length - 1][1];
-        numericDifficulty = rcInRange ? Number(rcLevel.toFixed(2)) : null;
+    if (is7k && rcLevel !== null) {
+        numericDifficulty = halves.rc.inRange ? Number(rcLevel.toFixed(2)) : null;
     }
 
     return {
