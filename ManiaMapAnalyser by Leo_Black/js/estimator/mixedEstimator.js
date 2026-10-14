@@ -6,6 +6,7 @@ import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 import { applyLnCorrectionToRcFields } from "./lnCorrection.js";
 import { applyCompanellaOffset } from "./companellaOffset.js";
+import { calibrateLnHalfLabel } from "./polarisEstimator.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
@@ -254,7 +255,19 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    const lnDifficulty = sunnyParts.ln;
+    // LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰
+    // （lnCorrection 只调 numeric，即 RC 半）。**4K** 上改用 Polaris 的 4K LN 曲线校准后的
+    // 标签——4K 的 Mixed 无法用 Polaris 替代（Polaris 的 4K RC 半是 Sunny 表值，而 Mixed 的
+    // RC 半来自路由链，明显更好），所以这条校准必须在这里落地才能到达 4K 用户。
+    // 7K 不动：7K 的 Mixed 恒为 Sunny 基线，想要校准的用户直接选 Polaris 即可。
+    const lnDifficulty = columnCount === 4
+        ? calibrateLnHalfLabel({
+            columnCount,
+            star: Number(sunnyBaseline.star),
+            rate: Number(options.speedRate ?? 1.0) || 1.0,
+            lnRatio,
+        }, sunnyParts.ln)
+        : sunnyParts.ln;
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
         return {
@@ -391,7 +404,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
 }
 
 // Companella 输出后的两级修正（顺序固定）：
-//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法分量的整体尺度差；
+//   1) Companella 系统性偏移（按侧常数，companellaOffset.js）—— 修正该移植算法分量的尺度差；
 //   2) 4K LN 后修正（lnRatio 门控，lnCorrection.js）—— 修正 LN 主导谱面的残余低估。
 // 两级都只作用于 Companella 侧数值；未触发时逐位保持原行为。
 // companellaWeight：当前数值中 Companella 的占比（纯 Companella = 1，0.5/0.5 融合 = 0.5）——
@@ -480,7 +493,7 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
     }
 
     // Companella 输出后修正（同 fuseRc 分支；未触发时逐位保持原行为）
-    // 数值整体来自 Companella，Companella 权重 = 1。
+    // 数值整体来自 Companella，Companella 权重 = 1，层级键即该数值本身。
     const lnCorrected = applyCompanellaPostCorrections({
         numeric: companellaResult.numericDifficulty,
         rcLabel: companellaResult.estDiff,

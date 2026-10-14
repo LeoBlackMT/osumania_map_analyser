@@ -145,6 +145,41 @@ function splitSunnyHalves(estDiff) {
 }
 
 /**
+ * LN 半段的表校准（Polaris 与 Mixed 共用一份实现）。
+ *
+ * LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰；本函数是它唯一的
+ * 校准入口。Mixed 在 4K 上直接调用它（见 mixedEstimator.js 的 lnDifficulty），Polaris 在
+ * 4K/7K 两侧调用它，因此两边永远一致。
+ *
+ * @param {object} input
+ * @param {number} input.columnCount 键数（4 / 7；其余无 LN 表）
+ * @param {number} input.star        Sunny 原始 sr
+ * @param {number} input.rate        速率
+ * @param {number} input.lnRatio     Sunny lnRatio（LN 项 H 的查找键）
+ * @returns {{ label: string, base: number, level: number } | null} 无 LN 表或输入非有限时返回 null
+ */
+export function calibrateLnLevel({ columnCount, star, rate, lnRatio }) {
+    const keys = DAN_INDEX[Number(columnCount)];
+    const lnTable = keys?.LN?.default ?? null;
+    const s = Number(star);
+    const r = Number(rate);
+    const lr = Number(lnRatio);
+    if (!lnTable || !Number.isFinite(s) || !Number.isFinite(r) || !Number.isFinite(lr)) {
+        return null;
+    }
+    const map = getLevelMap(lnTable);
+    const base = starToLevel(map, s);
+    const level = base + computePolarisCorrection({ side: "LN", level: base, rate: r, lnRatio: lr, keyCount: Number(columnCount) });
+    return { label: levelToLabel(map, level, s, lnTable), base, level };
+}
+
+// 供 Mixed 直接把"Sunny 的 LN 半标签"换成校准后的标签（拿不到表或输入异常时保留原值）
+export function calibrateLnHalfLabel(input, fallback = null) {
+    const out = calibrateLnLevel(input);
+    return out ? out.label : fallback;
+}
+
+/**
  * 运行 Polaris 估计器。
  *
  * @param {string} osuText  .osu 文本
@@ -171,7 +206,6 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
 
     const keys = DAN_INDEX[columnCount];
     const useExtended = options.extendedEstimationRange === true;
-    const lnTable = keys.LN?.default ?? null;
 
     const rate = Number(options.speedRate ?? 1.0) || 1.0;
 
@@ -190,21 +224,11 @@ export function runPolarisEstimatorFromText(osuText, options = {}, parsed = null
     }
 
     // ── LN 半：4K / 7K 都校准（LN 标签在两边的来源都是 Sunny 的 LN 表）──
-    let lnLabel = null;
-    let lnBase = null;
-    let lnLevel = null;
-    if (lnTable) {
-        const lnMap = getLevelMap(lnTable);
-        lnBase = starToLevel(lnMap, star);
-        lnLevel = lnBase + computePolarisCorrection({
-            side: "LN",
-            level: lnBase,
-            rate,
-            lnRatio,
-            keyCount: columnCount,
-        });
-        lnLabel = levelToLabel(lnMap, lnLevel, star, lnTable);
-    }
+    // 与 Mixed 共用 calibrateLnLevel，保证两边对同一张图给出同一个 LN 标签。
+    const lnCalibrated = calibrateLnLevel({ columnCount, star, rate, lnRatio });
+    const lnLabel = lnCalibrated ? lnCalibrated.label : null;
+    const lnBase = lnCalibrated ? lnCalibrated.base : null;
+    const lnLevel = lnCalibrated ? lnCalibrated.level : null;
 
     const showLnHalf = lnLabel !== null
         && !(lnRatio < 0.15 && options.enableAlwaysShowLNDifficulty !== true);

@@ -27,7 +27,7 @@
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-即 `star-v9|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v9 起因：4K LN 后修正 + 新估算器 Polaris，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
+即 `star-v10|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v9 起因：4K LN 后修正 + 新估算器 Polaris；v10 起因：4K LN 半标签校准接入 Mixed，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
 键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表 + 命中重派生。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 
@@ -231,7 +231,7 @@ const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(v
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-版本前缀 + 三段：缓存语义版本（`star-v9`，沿革见 result-cache.md §5）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:229-238）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+版本前缀 + 三段：缓存语义版本（`star-v10`，沿革见 result-cache.md §5）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:229-238）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
 
 ### 10.6 needComputed 推导与随快照保存（`analysis.js:1121`、:322-340、:348-355）
 

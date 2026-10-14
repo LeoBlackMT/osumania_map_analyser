@@ -37,7 +37,10 @@ Rationale: the `js/estimator/intervals/*` tables are a direct `Sunny star → da
 | `cvtFlag` contains `IN` / `HO` (chart-converting mods) | Fall back to Sunny — no fitted evidence for converted charts |
 | non-finite `star` / `lnRatio` | Fall back to Sunny |
 
-Scope note: Polaris calibrates the label surface the user reads. It does **not** reach `Mixed`'s routing chain, so a user who keeps `Mixed` selected does not receive the 4K LN calibration — that would be a separate decision about wiring a calibration into `Mixed`'s LN-half composition.
+Scope note: Polaris calibrates the label surface the user reads. Two consequences worth stating:
+
+- **The 4K LN half is calibrated in `Mixed` as well**, not only when Polaris is selected: `mixedEstimator` calls the same `calibrateLnLevel` helper, so a user on the default `Mixed` algorithm gets the calibrated 4K LN label too, and the two paths can never disagree. This is deliberate — on 4K, Polaris is not a substitute for `Mixed` (Polaris's RC half is Sunny's table value, while `Mixed`'s RC half comes from the routing chain, which is better), so the LN calibration had to reach the `Mixed` path to be useful at all.
+- **The LN half on 7K is not calibrated in `Mixed`.** 7K's `Mixed` is the Sunny baseline verbatim, so a 7K user who wants the calibration selects Polaris; silently changing `Mixed`'s 7K output would turn it into a third thing. `Mixed`'s 7K RC half is likewise left alone.
 
 The result object is the full Sunny result (`star`, `lnRatio`, `columnCount`, `graph`, …) with `estDiff` / `numericDifficulty` replaced. **`star` is Sunny's raw sr by construction, so Polaris is not part of `NORMALIZATION_ALGORITHMS`** in `runAnalysisPipeline`.
 

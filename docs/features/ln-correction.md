@@ -42,7 +42,7 @@ corr = 0.5 × clamp((lnRatio − 0.375) / (0.55 − 0.375), 0, 1)   # 且 lnRati
 - 修正语义：`numeric = round2(numeric + corr)`；RC 半段标签 = `numericToRcLabel(修正值)`；LN 半段（`plan.lnDifficulty`，来自 Sunny 的 4K LN 表）不动。
 - **本修正与 LN 半标签的分工**：它只调 numeric（RC 半），**从不碰 LN 半标签**——LN 半是 Sunny LN 表的映射产物，其系统偏差由 Polaris 的 4K LN 曲线承担（仅当用户选择 Polaris 时生效），见 [../polaris_algorithm.md](../polaris_algorithm.md) §4。两条修正作用在不同的显示面上，互不替代。
 - 胶囊：`companellaCapsule` 不因修正改变（数值来源未变）。
-- 缓存：语义变化由 `star-v8 → star-v9` 覆盖（见 [../pipeline/result-cache.md](../pipeline/result-cache.md) §5）。
+- 缓存：本修正的语义变化由 `star-v8 → star-v9` 覆盖（当前前缀已到 `star-v10`，沿革见 [../pipeline/result-cache.md](../pipeline/result-cache.md) §5）。
 - 基准 runner：`benchmark-runner.mjs runMixedFlow → applyCompanellaToMixedResult` 走同一函数，benchmark 结果自动反映修正（"插件等价调用"口径已覆盖）。
 
 ## 5. 行为保证
