@@ -40,6 +40,7 @@ corr = 0.5 × clamp((lnRatio − 0.375) / (0.55 − 0.375), 0, 1)   # 且 lnRati
 - `js/estimator/mixedEstimator.js applyCompanellaToMixedResult`：三个"采纳 Companella（或融合）数值"的返回路径（C6 / C8 / C9，见 [mixed-routing.md](mixed-routing.md) §5）统一包裹。未触发时 `applied=false` **原样返回**（非 LN 行与非 4K 流程逐位不变）。
 - **与 Companella 系统性偏移的顺序（固定）**：本修正不是该合并点上的唯一后处理。包装函数 `applyCompanellaPostCorrections` 先应用 [companella-offset.md](companella-offset.md) 的 Companella 偏移（**仅 RC 侧** +0.443，并按 Companella 权重缩放），**再**应用本 LN 修正。顺序不可交换：偏移把 Companella 分量拉回自身尺度（算法级、来源侧的尺度差），本修正再叠加谱面侧的 LN 残余低估（谱面级）。两级**作用域不重叠**：偏移只在 `lnRatio < 0.375`（RC 侧）生效，本修正只在 `lnRatio > 0.375` 生效——因此对任一具体谱面，实际只有一级在动。
 - 修正语义：`numeric = round2(numeric + corr)`；RC 半段标签 = `numericToRcLabel(修正值)`；LN 半段（`plan.lnDifficulty`，来自 Sunny 的 4K LN 表）不动。
+- **本修正与 LN 半标签的分工**：它只调 numeric（RC 半），**从不碰 LN 半标签**——LN 半是 Sunny LN 表的映射产物，其系统偏差由 Polaris 的 4K LN 曲线承担（仅当用户选择 Polaris 时生效），见 [../polaris_algorithm.md](../polaris_algorithm.md) §4。两条修正作用在不同的显示面上，互不替代。
 - 胶囊：`companellaCapsule` 不因修正改变（数值来源未变）。
 - 缓存：语义变化由 `star-v8 → star-v9` 覆盖（见 [../pipeline/result-cache.md](../pipeline/result-cache.md) §5）。
 - 基准 runner：`benchmark-runner.mjs runMixedFlow → applyCompanellaToMixedResult` 走同一函数，benchmark 结果自动反映修正（"插件等价调用"口径已覆盖）。

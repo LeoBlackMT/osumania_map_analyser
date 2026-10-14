@@ -23,7 +23,7 @@
   - `version` 防污染守卫：仅正式 SemVer 版本（`^v?[0-9]+\.[0-9]+(?:\.[0-9]+)?$`）允许激活遥测；任何带 `-dev`, `-test`, `debug`, `dirty`, `local` 等后缀的非正式版本客户端一律不发送遥测，服务端若收到也静默丢弃（204），防止本地开发与魔改数据污染大盘。
   - `durationMs` 异常防污染：上限阈值设为 30000ms（30 秒）。超过 30 秒（例如断点调试或休眠恢复）的分析耗时直接整项丢弃，不截断、不上报、不参与耗时与极值统计，避免产生假峰或极值失真。
   - `star` 星数保持真实：不设置星数极值过滤，完整记录真实星数。
-  - `numericDifficulty` 语义：标准数值化难度（Reform 段位体系，**.0 = mid**）。Azusa/Roxy/Polaris（含 Mixed 路由到 Azusa/Roxy）用原生连续值（Polaris 为修正后的 RC 侧值，表外范围不发送）；其余算法（Sunny/Companella/Daniel）用 `rcLabelToNumeric(estDiff)` 从估计难度字符串**反向换算**——Daniel 原生值是 DP 尺度（比标准约高 0.5），故 Daniel 一律走反解。边界标签（`< Alpha Low`、`> Emik Zeta high`、`Unknown` 等）反解为 null → **不发送该字段**。
+  - `numericDifficulty` 语义：标准数值化难度（Reform 段位体系，**.0 = mid**）。Azusa/Roxy/Polaris（含 Mixed 路由到 Azusa/Roxy）用原生连续值（Polaris：7K 为修正后的 RC 侧值、4K 为 Sunny 的数值（RC 半未修）；表外范围不发送）；其余算法（Sunny/Companella/Daniel）用 `rcLabelToNumeric(estDiff)` 从估计难度字符串**反向换算**——Daniel 原生值是 DP 尺度（比标准约高 0.5），故 Daniel 一律走反解。边界标签（`< Alpha Low`、`> Emik Zeta high`、`Unknown` 等）反解为 null → **不发送该字段**。
   - **已知限制（本轮不扩维）**：Malody 4 源的等效 OD 由"判定档 × 速率"决定，而遥测只有 `speedRate`、没有判定档，故**无法从遥测还原该源实际使用的 OD**（判定档不进任何帧之外的字段，页面也不上报它）。本轮明确**不为遥测扩维**，此限制如实记录于此。
 - **开关**：设置项 `enableTelemetry`（Network 分组，默认开），用户可关；endpoint 为空时完全不发送（默认开启但未配置 = no-op）。
 

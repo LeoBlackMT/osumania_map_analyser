@@ -165,7 +165,7 @@ worker 端处理（compute.worker.js:21-37）：
 
 决策表证据：task-11 实测记录 §2。
 
-**Polaris（7K 表修正）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；非 7K/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
+**Polaris（表修正：7K 的 RC+LN、4K 的 LN）不在归一化集合**：其 star 恒为 Sunny sr（4/7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 
 ## 5. 共享解析（parse-once）
 
