@@ -8,7 +8,7 @@
 
 在 Mixed 合并 Companella 结果之后，对 4K 且**采纳了 Companella 分量**的输出，在 **RC 侧**施加一个常数上调偏移 **+0.443**，并按该数值中 **Companella 的权重**缩放（纯 Companella 数值 ×1，0.5/0.5 Azusa⊕Companella 融合值 ×0.5），最后由修正值重派生 RC 半段标签（numeric 与 estDiff 保持同源硬约束）。修正恒定应用（无设置开关）。
 
-这不是"某张图偏了"，而是 Companella 该移植算法与真实游玩分布之间的**整体尺度差**：在受控同一难度层级下，Companella 的输出平均低于玩家实际表现。
+这不是"某张图偏了"，而是 Companella 该移植算法与真实游玩分布之间的**整体尺度差**。
 
 **作用域**（三条采纳路径，与 [mixed-routing.md](mixed-routing.md) §5 的 C6/C8/C9 对应）：
 
@@ -18,9 +18,11 @@
 | C8（低难 0.5/0.5 融合） | `0.5·Azusa + 0.5·Companella` | 0.5 | +0.2215 |
 | LN 侧（任何路径） | — | — | **0（不施加）**，见 §2.3 |
 
+> **层级依赖：已调研，未采用。** 该尺度差按层级并不恒定（低段约 +0.19、中高段约 +0.80），在行为数据集上层级版把严格分组 CV 的 MAE 改善从 −5.22% 提到 **−10.20%**；但 benchmark 侧给出反向证据。两个裁判方向相反、量级相当，故**按本项目"不发布未解决冲突"的一贯原则，仍发布常数版**。完整数据见 §2.4。
+
 ## 2. 依据
 
-### 2.1 RC 侧：有效样本，偏移成立
+### 2.1 RC 侧：有效样本，常数偏移成立
 
 在 Mania Tracker 行为数据集（4K，`side == "RC"` 且 `algo == "Companella"`，in-table 且 ≥8 玩家）上，`delta = play-implied − 判定` 的均值即 Companella 分量的残余低估：
 
@@ -38,13 +40,12 @@
 
 数据侧同样否定全额：RC 侧 Mix 带（`0.15 ≤ lnRatio < 0.375`，该带内的 Azusa 行必然携带融合计划）n = 1645，
 
-| 方案 | bias | \|bias\| | MAE |
-|---|---|---|---|
-| 不修正 | +0.226 | 0.226 | 0.5946 |
-| **权重 ×0.5（本设计）** | **+0.004** | **0.004** | 0.5996 |
-| 全额 +0.443 | −0.217 | 0.217 | 0.6700 |
-
-细分（按采纳门槛 `RC_FUSION_LOW_BAND_MAX = 11`）：C8 融合子群 n=1540 基线 bias **+0.202**（本设计 +0.2215 ⇒ 残差 ≈ −0.02）；C6 采用子群 n=105 基线 bias +0.578（本设计 +0.443 ⇒ 残差 +0.135，样本少、方向一致）。
+| 方案 | bias | MAE |
+|---|---|---|
+| 不修正 | +0.226 | 0.5946 |
+| **常数 ×0.5（本设计）** | **+0.004** | 0.5996 |
+| 层级 ×0.5（未采用，见 §2.4） | −0.018 | 0.5709 |
+| 全额（×1） | −0.217 | 0.6700 |
 
 > 注意 MAE 在这里几乎不动（0.5946 → 0.5996，反而略升）：组内 sd 约 1.07，远大于待检偏置 0.23，**MAE 对均值漂移不敏感**。判据应是带符号 bias 的消除（0.226 → 0.004）。该陷阱见 [../learnings/difficulty-estimation.md](../learnings/difficulty-estimation.md) §5.1。
 
@@ -57,15 +58,40 @@
 
 **两者不同量纲**，因此 `play-implied − companella_numeric` 是跨量纲之差，不能当作 Companella 的偏移。同一人群上，同量纲的残余是 `delta` = **+0.191**——而它描述的是 **LN 半段（Sunny LN 表）**的残余，与 Companella 无关。
 
-LN 侧唯一处在数值量纲上的证据只有 benchmark 的 102 行 ln 样本；按项目"不为小样本单源段做针对性修复"的判据（[ln-correction.md](ln-correction.md) §2 已用同一判据否决过 benchmark 最优幅度 0.8），不足以支撑一条常数。故 **LN 侧偏移 = 0**，LN 侧现有修正仍由 `lnCorrection.js` 承担。
+LN 半段自身的表偏差后来由 Polaris 的 4K LN 曲线承担，且 Mixed 在 4K 上也接入了同一份校准（见 [polaris_algorithm.md](../polaris_algorithm.md) §1）。LN 侧现有修正仍由 `lnCorrection.js` 承担。
 
-> 该量纲陷阱同时也是 [learnings](../learnings/difficulty-estimation.md) 中"base-identity 混淆"的同类：**在按算法分层拟合时必须先确认被比较的两个量是同一个量**，否则一切 CV 都只是自洽。
+> 该量纲陷阱是 [learnings](../learnings/difficulty-estimation.md) 中"base-identity 混淆"的同类：**在按算法分层拟合时必须先确认被比较的两个量是同一个量**，否则一切 CV 都只是自洽。
+
+### 2.4 层级依赖：已验证但未采用（两个裁判冲突）
+
+**行为数据集的证据（支持层级版）**——按 level 分箱的平均残余并不恒定：低段（level < 2.5）只有 **+0.19**，中高段（level ≥ 3.5）升到 **+0.80**，差一个量级。严格分组 CV：
+
+| 方案 | 纯路径 CV MAE（n=5621） | 融合路径（n=1645） |
+|---|---|---|
+| 不修正 | 0.9107 | bias +0.226 / MAE 0.5946 |
+| **常数 +0.443（已发布）** | 0.8631（−5.22%） | bias +0.004 / MAE 0.5996 |
+| 层级（两段 + 斜坡，未采用） | **0.8166（−10.34%）** | bias −0.018 / MAE **0.5709** |
+
+层级版的切点扫描为 2.5 / 3.0 / 3.5 → 0.8144 / 0.8166 / 0.8383（2.5–3.0 是平台）；因硬阶梯会在 level ≈ 3 处造出约 0.61 的输出跳变（同一张图换个小数位跳半级），改用 1.0 宽线性过渡，CV 代价 0.8166 → 0.8178（噪声级）。
+
+**benchmark 的反向证据（否定层级版）**——同一改动在官方 benchmark 上回退：
+
+| 指标 | 常数版 | 层级版 |
+|---|---|---|
+| 全量 776 行 MAE | **0.3895** | 0.4008 |
+| 全量 − ln course（713 行）MAE | **0.3216** | 0.3341（+3.89%） |
+| tech / jack / stamina / course 的 \|bias\| | 0.045 / 0.065 / 0.068 / 0.569 | 0.069 / 0.085 / 0.089 / 0.635（四者皆变差） |
+| speed 的 \|bias\| | 0.030 | 0.005（改善） |
+
+受影响的是 127 行非 LN 样本，其修正量被压低到平均 +0.13（常数版 +0.22）；由此可知这些行的 Companella 层级落在 2.5–3.5 的斜坡带，即**冲突集中在低段**——行为数据集说低段该少修，benchmark 说该多修。
+
+**结论与后续**：两个裁判方向相反、量级相当（行为数据集 MAE 改善 ~0.03–0.05，benchmark 退化 ~0.0125），故不发布。要解决需先解释低段分歧——可行路径：(a) 在 level 匹配下比较两个来源的样本构成（benchmark 是精选谱面，行为数据集是全网分布）；(b) 用 benchmark 的低段行单独检验斜坡形状；(c) 把该段拆成更多层级结点后分别验证。在分歧解释清楚之前，常数是更低容量、两个裁判都不反对的选择。
 
 ## 3. 参数与公式
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| `COMPANELLA_OFFSET_RC` | 0.443 | RC 侧常数偏移（numeric 单位，正值上调） |
+| `COMPANELLA_OFFSET_RC` | 0.443 | RC 侧常数偏移（numeric 单位，正值上调，作用在"纯 Companella 分量"上） |
 | （LN 侧） | 0 | 不施加，理由见 §2.3 |
 | `companellaWeight` | 1 / 0.5 | 纯 Companella / 0.5/0.5 融合 |
 
@@ -74,27 +100,25 @@ offset(side, w) = (side == "RC" ? 0.443 : 0) × w      # w = 数值中 Companell
 numeric'        = round2(numeric + offset(side, w))
 ```
 
-**为什么是常数、不做 level / rate 依赖**：
+**为什么不做 rate 依赖**：按 rate 分档时 RC 在 1.0x / 1.5x / 0.75x 下分别为 +0.441 / +0.404 / +0.951——1.0x 与 1.5x 几乎一致，0.75x 样本少且 HT 侧本来就不稳定，无系统性 rate 趋势。
 
-- 按 rate 分档：RC 在 1.0x / 1.5x / 0.75x 下分别为 +0.441 / +0.404 / +0.951（1.0x 与 1.5x 几乎一致；0.75x 样本少且 HT 侧本来就不稳定）——无系统性 rate 趋势。
-- 按 level 分档：非单调且噪声大（lvl≤4 +0.337、lvl≤6 +1.078、lvl≤10 +0.316…）。
-- 严格分组 CV 下，**细化分箱没有额外收益**——表明显式 level 依赖是过拟合，常数是正确的最低容量选择。
+**为什么暂不做 level 依赖**：见 §2.4——行为数据集的层级版在两倍改善的同时被 benchmark 反向否定，冲突未解决。
 
 ## 4. 应用顺序与接入点
 
 Companella 输出后共**两级**修正，顺序固定：
 
-1. **Companella 系统性偏移**（本模块，`companellaOffset.js`）——修正移植算法分量的整体尺度差；
+1. **Companella 系统性偏移**（本模块，`companellaOffset.js`）——修正移植算法分量的尺度差；
 2. **4K LN 后修正**（`lnCorrection.js`）——修正 LN 主导谱面的残余低估（lnRatio 门控）。
 
 两级作用域**不重叠**：偏移只在 RC 侧（`lnRatio < 0.375`）生效，LN 修正只在 `lnRatio > 0.375` 生效。逐位不变性由各自的 `applied=false` 原样返回保证。
 
-- `js/estimator/companellaOffset.js`：纯函数模块（`computeCompanellaOffset` / `applyCompanellaOffset`，后者接受 `companellaWeight`），共享 DOM-free 约束。
+- `js/estimator/companellaOffset.js`：纯函数模块（`computeCompanellaOffset(side)` / `applyCompanellaOffset`，后者接受 `companellaWeight`），共享 DOM-free 约束。
 - `js/estimator/mixedEstimator.js`：私有助手 `applyCompanellaPostCorrections({numeric, rcLabel, lnRatio, side, companellaWeight})` 把两级按序串联；在 `applyCompanellaToMixedResult` 的三个"采纳 Companella（或融合）数值"返回路径统一包裹，C6/C9 传 `companellaWeight: 1`、C8 传 `1 − RC_AZUSA_COMPANELLA_FUSION_WEIGHT`（即 0.5）。
 - `side` 由 `plan.lnRatio ≥ 0.375` 直接判定（**注意不能复用 `modeTagFromLnRatio`**，其阈值为 0.15 / 0.9，与数据集分侧不同）。
-- 修正语义：`numeric = round2(numeric + offset)`；RC 半段标签 = `numericToRcLabel(修正值)`；LN 半段（`plan.lnDifficulty`）不动。
+- 修正语义：`numeric = round2(numeric + offset)`；RC 半段标签 = `numericToRcLabel(修正值)`；LN 半段（`plan.lnDifficulty`）不动——4K 下它已由 Polaris 的 4K LN 曲线校准（见 [mixed-routing.md](mixed-routing.md) §4）。
 - 胶囊：`companellaCapsule` 不因修正改变（数值来源未变）。
-- 缓存：与 LN 修正共用 `star-v9` 语义版本（同一次改动引入）。
+- 缓存：与 LN 修正共用 `star-v10` 语义版本（v10 = 4K LN 校准接入 Mixed；见 [../pipeline/result-cache.md](../pipeline/result-cache.md) §5）。
 
 ## 5. 行为保证
 
@@ -115,26 +139,17 @@ Companella 输出后共**两级**修正，顺序固定：
   | 逐折带符号均值 | — | +0.41 / +0.44 / +0.48 / +0.49 / +0.41 / +0.45 / +0.44 / +0.44 / +0.45 / +0.41（**10/10 折同号**） |
 
   10 折全部为正且幅度集中，说明该偏移是可复现的尺度差，而非某一子群的偶然。
-
-- **对照（同人群）**：固定 +0.443 → bias 0.000 / MAE 0.8631；错误幅度 +0.786 → bias −0.343 / MAE 0.9245（比不修正更差）；符号反转 −0.443 → MAE 1.0944。
-- **融合路径**：见 §2.2 表（全额施加会过修正 0.217）。
-- **Benchmark（102 行 ln 样本，全部 Companella 路由；用官方 `results/Mixed.csv` + 逐行 Sunny `lnRatio` 复算）**——注意 **101/102 行为 LN 侧**，本偏移只触及其中 1 行：
-
-  | 方案 | bias | MAE | Exact | Close |
-  |---|---|---|---|---|
-  | 官方基线（无任何修正） | +1.015 | 1.228 | 25.5% | 48.0% |
-  | 仅 lnCorrection（既有行为） | +0.554 | 0.948 | 39.2% | 57.8% |
-  | **本设计（RC-only 偏移）** | **+0.550** | **0.953** | 39.2% | 57.8% |
-  | ~~旧设计（LN 侧全额 +0.786）~~ 已撤回 | −0.229 | 0.915 | 30.4% | 65.7% |
-
-  一条需要如实记录的张力：在被撤回的旧设计下，benchmark ln 行的 bias 与 Close 更好，但 **Exact 更差**（30.4% vs 39.2%）——把 LN 数值整体上推会换来更多"接近但不再精确"的行。旧设计在 LN 侧的总修正量为 0.786 + ramp(≤0.5) ≈ 1.286，远超本设计。
-
-  **若认为 LN 侧需要更大修正量，正确做法是调 `lnCorrection` 的幅度**（它会同时接受 benchmark 与行为数据集两套判据、并受 §2 的"不为小样本单源段做针对性修复"约束），而不是在 Companella 偏移里塞一个 LN 常数：后者的名义语义是"修正 Companella 分量的尺度差"，而 LN 侧对该尺度差**没有任何同量纲的测量**。
-- **Golden 全量回归**（778 样本）：**0 diffs**（harness 的 `mixed` 输出不经过 `applyCompanellaToMixedResult`，天然不受影响；作为回归门执行）。
-- **冒烟**：`temp/polaris/smoke/smoke.mjs` 的偏移/融合/侧判定用例全通过（30/30）。
+- **全量人群上应用后**：纯 Companella n=5621 的 bias +0.443 → **+0.000**、MAE 0.9107 → **0.8631**；融合带 n=1645 的 bias +0.226 → **+0.004**。
+- **对照（同人群）**：错误幅度 +0.786 → bias −0.343 / MAE 0.9245（比不修正更差）；符号反转 −0.443 → MAE 1.0944。
+- **Benchmark（官方 `results/Mixed.csv`，776 行）**：本设计 MAE 0.3895 / bias +0.019（官方基线 0.4141 / +0.115）。ln 段 101/102 行为 LN 侧，本偏移只触及其中 1 行。
+- **层级依赖的 benchmark 反证与完整对比表**：见 §2.4（本模块唯一一项"已验证但未采用"的方案）。
+- **Golden 全量回归**（778 样本）：本模块不在此回归的覆盖范围内（harness 的 `mixed` 输出不经过 `applyCompanellaToMixedResult`）。
+- **冒烟**：`temp/polaris/smoke/smoke.mjs` 的偏移/融合/侧判定用例全通过（47/47）。
 
 ## 7. 维护
 
-- 调参（常数与作用域）必须三步齐全：① 离线严格分组 CV 选值（务必限定 `algo == "Companella"` 子集，**并先校验量纲一致**）；② 对 benchmark 与行为数据集双口径确认改善；③ golden 全量 0 diff。
+- 调参（常数与作用域）必须三步齐全：① 离线严格分组 CV 选值（务必限定 `algo == "Companella"` 子集，**并先校验量纲一致**）；② 对两条路径（纯 / 融合×权重）**与官方 benchmark 双向确认改善**；③ golden 全量 0 diff。
 - 数据集快照更新后可重估常数；同步更新 §2、参数表与 `companellaOffset.js` 的常量注释。
+- **任何"分层化"提案（level / rate / 密度）都必须同时通过 benchmark**：§2.4 的层级版在行为数据集上把 CV 改善翻倍，却在 benchmark 上回退 3.89%（clean subset），因此未发布。分层越多，越容易只在单一来源上成立。
 - **重估前的强制检查**：改动分侧口径前，先确认 `leo_numeric`/`leo_continuous` 在该侧对应的**判定半段**（`verdict_used`）与 Companella 数值是否同量纲——这是 §2.3 那次误算的根因。
+- **不要把判据退回 MAE 总体口径**：MAE 对均值漂移不敏感（§2.2 的注），分层判断必须条件化地看 bias。
