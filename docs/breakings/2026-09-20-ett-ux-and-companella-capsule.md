@@ -29,7 +29,7 @@
 
 ### 验证方式（Verification）
 
-- `temp/ett-capsule/tests.mjs`：**14/14 通过**（合成谱，不读样本数据）。
+- 临时冒烟脚本（一次性、不入库，合成谱、不读样本数据）：**14/14 通过**。
   - abort 复现形态（18K、≈37nps、偶发满宽 18 键和弦、3% 长条）抛出 `code = "minacalc-aborted"`、文案不含 `ASSERTIONS`，原始文本在 `cause`；abort 之后同版本 4K 频谱面仍可正常分析（模块缓存回收生效）。
   - 极端密度 4K 谱（每行 4 键、6.6ms 间隔）`junkFile === true` 且技能值全 0；普通 4K 谱 `junkFile === false`（不误判）。
   - `applyCompanellaToMixedResult` 四条路径的胶囊标记与数值：采用 → `Companella` + Companella 数值；混合 → `Azusa+Companella` + 0.5/0.5；保留 → 无标记且数值不变；无计划 → 原样返回。
@@ -65,7 +65,7 @@
 
 ### Verification
 
-- `temp/ett-capsule/tests.mjs`: **14/14 pass** (synthetic charts, no sample data).
+- Throwaway smoke script (one-off, not committed; synthetic charts, no sample data): **14/14 pass**.
   - The abort shape (18K, ~37 nps, occasional full-width 18-key chords, 3% holds) throws `code = "minacalc-aborted"` with no `ASSERTIONS` text in the message and the raw text in `cause`; a normal 4K chart still analyses afterwards (the module cache is recycled).
   - An extreme-density 4K chart (4 keys per row every 6.6 ms) reports `junkFile === true` with all-zero values, while a normal 4K chart reports `false` (no false positives).
   - All four `applyCompanellaToMixedResult` routes are asserted for both the capsule marker and the number: adopt -> `Companella`; blend -> `Azusa+Companella` with the 0.5/0.5 value; gated-out keep -> no marker, number unchanged; no plan -> returned as-is.

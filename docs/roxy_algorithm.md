@@ -366,7 +366,7 @@ For reference, the wider set of five degenerate dimensions affects 66 charts (0.
 
 **Benchmark impact.** On the osu! subset none of the already-reported values change — every one of those rows keeps exactly the same error. The only row that moves is `I Love It(lynessa)` (`jack / high chordjack`, expected `10.5`), which the `lowCj` term had pinned below the scope floor and which now reports `11.65`; that this term was suppressing a *high* chordjack chart is a direct illustration of the mis-firing, and the single newly-valid row is what takes MAE from `0.2414` to `0.2432`. Mixed reaches Roxy through its low-difficulty fallback, so the same chart moves there too (`11.54 -> 11.65`, Mixed MAE `0.4219 -> 0.4221`); no other Mixed row changes. `results/Roxy.csv` also moved on 26 further rows when regenerated, but those come from other plugin commits landed since that file was last produced on 2026-08-30, not from this change.
 
-If the meta head is ever retrained, the proper fix is a variance floor at training time; the inference-side clamp exists because the training script (`temp/retrain_upper.py`) is not in the repository.
+If the meta head is ever retrained, the proper fix is a variance floor at training time; the inference-side clamp exists because the script that produced this model is not part of the repository.
 
 Cache prefix bumped `star-v7` → `star-v8` because Roxy `numeric`/`estDiff` change semantics (`star-v7` was taken by the Etterna junk-file bump landed on main in the meantime).
 

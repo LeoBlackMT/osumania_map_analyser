@@ -43,8 +43,8 @@
 
 - **插件离线断言**：`bridges/malody/bepinex/plugin/tests/`（206 条，本地不入库，含 11 字段键名、读取链三级、降级两组、日志文本）。
 - **构建**：`pwsh -File bridges/malody/bepinex/plugin/build.ps1 -BepInExDir <…> -GameInteropDir <…>`，要求 0 error / 0 warning，并把产物复制到 `plugin/MMAMalodySelection.dll`（安装器读这一份）。
-- **壳**：`cd desktop; cargo test`（169 passed / 0 failed）；真壳端到端 `temp/t3-build/acs-live.mjs`（51/51）。
-- **OD 换算表可复算**：`python tools/malody-v-od-check/verify.py --check-js`（自检残差 ≤ 0.05 ms、Pro 恒高于非 Pro、同倍率 TURBO 恒高于 DASH；**改错页面表里任一个值即以非 0 退出**）。端到端方向判据见 `.omo/evidence/malody-v-selection-bridge-fork/t7b-od-end-to-end.txt`。
+- **壳**：`cd desktop; cargo test`（169 passed / 0 failed）；真壳端到端 临时端到端脚本（一次性、不入库）（51/51）。
+- **OD 换算表可复算**：`python tools/malody-v-od-check/verify.py --check-js`（自检残差 ≤ 0.05 ms、Pro 恒高于非 Pro、同倍率 TURBO 恒高于 DASH；**改错页面表里任一个值即以非 0 退出**）。端到端方向判据的逐项核对记录（本地，不入库）见下表。
 - **冒烟**：`smoke-malody-bridge.mjs`（82/82）、`smoke-bridge.mjs`（20/20）、`smoke-etterna.mjs`（11/11）。
 - **安装器**：fake root 上的安装/卸载/篡改/上游共存四条路径。
 - **实机**：`BepInEx\LogOutput.log` 出现 `Selection bridge ready`，且不打开任何面板时日志即有 `pro_judge=… tier=play-record`。
