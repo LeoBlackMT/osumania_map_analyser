@@ -111,7 +111,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
 - **Companella 输出后两级修正（顺序固定）**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，统一依次应用 `applyCompanellaPostCorrections`：
-  1. **Companella 系统性偏移**（[companella-offset.md](companella-offset.md)）—— **仅 RC 侧**（`side = plan.lnRatio ≥ 0.375 ? "LN" : "RC"`，侧判定与行为数据集同语义，**不是** `modeTagFromLnRatio` 的 0.15/0.90）：按该数值中 Companella 的**权重**缩放，并**按层级**取值（`level < 2.5 → +0.19`、`≥ 3.5 → +0.804`，中间 1.0 宽线性过渡；层级键恒取 `companellaResult.numericDifficulty`，即 Companella 自身输出）——C6/C9 权重 1；C8 的 0.5/0.5 融合值权重 0.5。benchmark 对该层级版有反向证据、仍采用，理由与受影响谱面见 [companella-offset.md](companella-offset.md) §2.4。**LN 侧不施加**（0）：数据集的 LN 侧判定量是 LN 半段、与 Companella 的 RC 半段不同量纲，无有效证据。
+  1. **Companella 系统性偏移**（`companellaOffset.js`）—— 路由侧只需知道三件事：**仅 RC 侧**（`side = plan.lnRatio ≥ 0.375 ? "LN" : "RC"`，侧判定与行为数据集同语义，**不是** `modeTagFromLnRatio` 的 0.15/0.90）；按该数值中 Companella 的**权重**缩放（C6/C9 权重 1、C8 的 0.5/0.5 融合值权重 0.5）；**按层级**取值，层级键恒取 `companellaResult.numericDifficulty`（即 Companella 自身输出）。具体分段值、拟合与验证，以及对 benchmark 反向证据的处置，全部见 [companella-offset.md](companella-offset.md)（单一来源，本文不重复）。**LN 侧不施加**（0）：数据集的 LN 侧判定量是 LN 半段、与 Companella 的 RC 半段不同量纲，无有效证据。
   2. **4K LN 后修正**（[ln-correction.md](ln-correction.md)）——在偏移后的数值上叠加 `lnRatio` 渐进门控修正（`lnRatio > 0.375` 起触发，全量 +0.5、ramp 0.375 → 0.55）。
   两级作用域**不重叠**（偏移只在 `lnRatio < 0.375` 生效，LN 修正只在 `lnRatio > 0.375` 生效），且都只作用于 Companella 侧数值，并为新数值重派生 RC 半标签（`numeric 与 estDiff 同源`）；LN 半仍用 `plan.lnDifficulty`（4K 下已是校准值）。任一级未触发时该级返回原值（`applied=false`），全链未触发则逐位保持原有行为。
 
