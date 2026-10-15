@@ -24,7 +24,7 @@
 
 ## 2. 依据
 
-### 2.1 RC 侧：有效样本，常数偏移成立
+### 2.1 RC 侧：有效样本，偏移成立
 
 在 Mania Tracker 行为数据集（4K，`side == "RC"` 且 `algo == "Companella"`，in-table 且 ≥8 玩家）上，`delta = play-implied − 判定` 的均值即 Companella 分量的残余低估：
 
