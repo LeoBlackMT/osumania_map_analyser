@@ -1,5 +1,5 @@
 // js/estimator/polarisCorrection.js
-// Polaris 修正模型（7K）—— 共享 DOM-free 纯函数模块。
+// Polaris 修正模型（7K 专用）—— 共享 DOM-free 纯函数模块。
 //
 // 模型：corr(side, level, rate, lnRatio) = B_side(level) + R_side(level)·f(rate) + H(lnRatio)
 //   - B：速率 1.0x 下的层级基线（表映射 star→level 的系统偏差）
@@ -49,44 +49,6 @@ const H_LN = Object.freeze([
     [0.85, 0.136],
     [0.935, 0.429],
     [0.99, 1.001],
-]);
-
-// ── 4K LN 曲线（同一模型，独立系数）────────────────────────────────────────
-// 4K 上只有 **LN 半**需要表校准：RC 半的最终答案来自 Mixed 的路由链
-// （Roxy/Azusa/Daniel/Companella），不是表映射，故 4K 的 RC 侧不做修正
-// （computePolarisCorrection 在 keyCount===4 且 side==="RC" 时返回 0）。
-//
-// 为什么 LN 半必须校准：LN 侧谱面在 Mixed 里 98.7% 落到 L2 → **纯 Companella**
-// （Azusa 自带 lnRatio > 0.18 的 UnsupportedLN 门，把 LN/Mix 树的 L1 融合分支压到
-// [0.15, 0.18] 这 0.03 宽的窗口里），而 LN 半标签恒由 Sunny 的 LN 表给出 —— 也就是说
-// 显示的 LN 标签此前从未被任何修正触碰过。
-//
-// 拟合人群：Mania Tracker 4K LN 侧（in-table & ≥8 玩家，Companella 路由，n=2657；
-// level 范围 5.00~16.60）。R 在拟合期即施加 R ≥ 0 约束（保证 ∂level/∂rate ≥ 0 是
-// 拟合结果的性质，而不是靠运行时守护去钳）。
-// 严格分组 CV（beatmap_id % 5）：MAE 0.7285 → 0.6854（**−5.91%**），bias +0.191 → −0.013，
-// 改善行占比 57.2%；同人群的常数对照只做到 −3.21%。
-const B_LN4_FIT = Object.freeze([
-    0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-    0.000, -0.160, -0.254, -0.280, -0.129, 0.030, 0.128, 0.219, 0.218,
-    0.215, 0.158, 0.119, 0.108, 0.121, 0.104, 0.033, 0.025, 0.098,
-    0.237, 0.379,
-]);
-
-const R_LN4_FIT = Object.freeze([
-    0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-    0.000, 0.032, 0.122, 0.122, 0.090, 0.070, 0.123, 0.172, 0.302,
-    0.400, 0.419, 0.301, 0.206, 0.207, 0.215, 0.294, 0.296, 0.306,
-    0.176, 0.016,
-]);
-
-const H_LN4 = Object.freeze([
-    [0.4375, 0.025],
-    [0.575, 0.029],
-    [0.725, 0.032],
-    [0.85, 0.063],
-    [0.935, 0.177],
-    [0.99, 0.416],
 ]);
 
 // ── 单调性不变量（Monotonicity Invariant）──────────────────────────────────
@@ -140,32 +102,24 @@ function repairPolarisCurve(side, fitB, fitR) {
 const REPAIRED = {
     "7K:RC": repairPolarisCurve("RC", B_RC_FIT, R_RC_FIT),
     "7K:LN": repairPolarisCurve("LN", B_LN_FIT, R_LN_FIT),
-    "4K:LN": repairPolarisCurve("LN", B_LN4_FIT, R_LN4_FIT),
 };
 
 /** 按 (键数, 侧) 取生效曲线；null = 该组合不做修正。
  *
- * 只有两套曲线，对应两组拟合人群：**7K 的 RC/LN 两半**与 **4K 的 LN 半**。
- * 其余组合一律 null——曲线是按各自键数的行为数据拟合的，套到别的键数上没有依据：
- *   - 4K RC：最终答案来自 Mixed 的路由链（Roxy/Azusa/Daniel/Companella），不是表映射；
+ * **Polaris 是 7K 专用**：只有 7K 的 RC/LN 两套曲线（对应 7K 的拟合人群）。
+ * 其余键数一律 null——曲线是按 7K 行为数据拟合的，套到别的键数上没有依据：
+ *   - 4K：曾有 LN 曲线，实机测试后随 4K 侧全部回退（曲线集已删，见文档 §2.6）；
  *   - 6K / 10K：没有拟合数据（DAN_INDEX 里有它们的区间表，但**没有**对应曲线）。
- * 注意不能写成"非 4K 即 7K 曲线"：那样 6K 会被 7K 曲线静默校准。
+ * 注意不能写成"非 X 即 7K 曲线"：那样其他键数会被 7K 曲线静默校准。
  */
 function curveFor(keyCount, side) {
-    const kc = Number(keyCount);
-    if (kc === 4) {
-        return side === "LN" ? REPAIRED["4K:LN"] : null;
+    if (Number(keyCount) !== 7) {
+        return null;
     }
-    if (kc === 7) {
-        return side === "LN" ? REPAIRED["7K:LN"] : REPAIRED["7K:RC"];
-    }
-    return null;
+    return side === "LN" ? REPAIRED["7K:LN"] : REPAIRED["7K:RC"];
 }
 
-/** LN 侧的 lnRatio 项（4K / 7K 各一套）。 */
-function lnRatioTermFor(keyCount) {
-    return Number(keyCount) === 4 ? H_LN4 : H_LN;
-}
+
 
 /** 该 (键数, 侧) 是否存在生效曲线。消费方以此判断"这一半是否被校准过"。 */
 export function hasPolarisCurve(keyCount, side) {
@@ -257,10 +211,10 @@ function interpKnots(pairs, x) {
  *
  * @param {object} input
  * @param {"RC"|"LN"} input.side  谱面侧（与 Mixed/数据集的 0.375 lnRatio 切分同语义）
- * @param {number} input.level    表映射得到的连续 level（starToLevel 输出；4K LN 侧对应数据集 leo_numeric）
+ * @param {number} input.level    表映射得到的连续 level（starToLevel 输出；对应数据集 leo_numeric）
  * @param {number} input.rate     速率（speedRate；1.0 = NM，1.5 = DT）
  * @param {number} [input.lnRatio]  LN 侧使用；RC 侧忽略
- * @param {number} [input.keyCount] 键数（4 / 7）；其余键数与 4K 的 RC 侧无曲线，返回 0
+ * @param {number} [input.keyCount] 键数（仅 7 生效；其余键数无曲线，返回 0）
  * @returns {number} 修正量（可为负）；rate < 1.0 或无曲线时返回 0
  */
 export function computePolarisCorrection({ side, level, rate, lnRatio = 0, keyCount = 7 }) {
@@ -278,7 +232,7 @@ export function computePolarisCorrection({ side, level, rate, lnRatio = 0, keyCo
         corr += interpCurve(curve.R, lv) * Math.min(1.0, (r - 1.0) / 0.5);
     }
     if (side === "LN") {
-        corr += interpKnots(lnRatioTermFor(keyCount), Number(lnRatio));
+        corr += interpKnots(H_LN, Number(lnRatio));
     }
     return corr;
 }

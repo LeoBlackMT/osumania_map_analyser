@@ -27,7 +27,7 @@
 const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
 ```
 
-即 `star-v11|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v9 起因：4K LN 后修正 + 新估算器 Polaris；v10 起因：4K LN 半标签校准接入 Mixed，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
+即 `star-v12|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v9 起因：4K LN 后修正 + 新估算器 Polaris；v10 起因：4K LN 半标签校准接入 Mixed，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
 键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表 + 命中重派生。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 

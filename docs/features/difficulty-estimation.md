@@ -20,11 +20,11 @@
 
 | 算法 | 线程 | 入口函数 | 适用键型/场景 | 限制 |
 | --- | --- | --- | --- | --- |
-| **Mixed** | main | `mixedEstimator.js:236 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用），**4K 的 LN 半标签也经 Polaris 校准**（与选 Polaris 时同一份实现，见 [mixed-routing.md](mixed-routing.md) §4） | 依赖 Ett WASM 与模式分析结果，只能主线程运行；RC 仅 4K 生效，非 4K RC 直接回退 Sunny 基线（`mixedEstimator.js:242` 键数门 / `:257` 早退） |
+| **Mixed** | main | `mixedEstimator.js:236 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用）。4K 无任何表校准/偏移（曾有 LN 半校准，实机复测后回退；见 §3.7/§3.8） |
 | **Azusa** | worker | `azusaEstimator.js:832 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
-| **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，两张表各修各自需要修的那一半：**7K** 修 RC+LN 两侧（7K 的 Mixed 恒为 Sunny 基线）；**4K** 只修 LN 半（4K RC 的最终答案来自 Mixed 路由链，不是表映射）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 4/7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；4K 下 `numericDifficulty` 保持 Sunny 值（RC 半未修）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
+| **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，**7K 专用**：RC + LN 两半都校准（7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`；4K 曲线集已随实机否决删除）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`） |
@@ -84,16 +84,10 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 > 本节描述的功能曾在 `feat/polaris-estimator` 分支实装（+0.5、lnRatio 0.375→0.55 渐进门控），**实机测试后被整体移除**：与 Companella 偏移的高段一起把实机难度过分拉高。其证据（benchmark ln 行 bias +1.02、行为数据 4K LN 侧 +0.2~0.5）与量纲结论仍然有效，记录于 [../learnings/difficulty-estimation.md](../learnings/difficulty-estimation.md) §5.2；若将来重新评估，以那里的数字为起点并**必须包含实机复测**。
 
-### 3.8 Companella 系统性偏移校正（companellaOffset）
+### 3.8 Companella 系统性偏移校正（companellaOffset）—— **已移除**
 
-Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K RC 侧子集（限定 `side == "RC"` 且 `algo == "Companella"`、≥8 玩家，n=5621 chart×rate）上，`play-implied − Companella 数值` 的均值为 **+0.443**，且随难度层级、倍率均无系统依赖。该子集上 `leo_numeric` 与 `companella_numeric` **逐位相等**，故两者同量纲、可直接拟合。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上施加偏移（`companellaOffset.js`），并重派生 RC 半段标签。**实装范围（实机测试后收敛）：只保留低段 level < 2.5 → +0.19**，斜坡与高段移除；详见 [companella-offset.md](companella-offset.md) §2.5。
+> 本节描述的功能曾在 `feat/polaris-estimator` 分支实装（先常数 +0.443、后层级依赖、最后收敛为低段 +0.19），**实机复测仍见高段受影响后被整体回退**（连同 4K LN 表校准一起，4K 侧回到无修正状态）。数据集证据（n=5621 纯路径 bias +0.443、层级分箱）与全部被否决变体的数字保留在 git 历史与 [../learnings/difficulty-estimation.md](../learnings/difficulty-estimation.md)；若将来重启该方向，**三个裁判（数据集 / benchmark / 实机）缺一不可**。
 
-两条作用域约束：
-
-- **按 Companella 权重缩放**：C6/C9（数值整体来自 Companella）权重 1 ⇒ +0.443；C8（低难 0.5/0.5 Azusa⊕Companella 融合）权重 0.5 ⇒ +0.2215。数据侧确认全额施加到融合值会过修正（Mix 带 n=1645：基线 bias +0.226，本设计 +0.004，全额 ⇒ −0.217）。
-- **LN 侧不施加**（偏移 0）：行为数据集对 LN 侧取用的判定量是 **LN 半段**（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值**不同量纲**，故 `play-implied − companella_numeric`（LN 侧 +0.786）不能作为偏移；LN 侧同量纲残余是 +0.191，但它描述的是 LN 半段（Sunny LN 表），与 Companella 无关。LN 侧唯一同量纲证据只有 benchmark 的 102 行 ln 样本，按项目判据不足以支撑常数。LN 侧修正（原 §3.7）已随实机测试移除；LN 半段的表偏差由 Polaris 的 4K LN 曲线承担（§3.6）。
-
-严格分组 CV（RC 侧纯 Companella，按 `beatmap_id % 10` 分折）：带符号 bias +0.443 → **+0.077**，MAE 0.9107 → **0.8611（−5.44%）**，10/10 折同号（+0.41…+0.49）。详见 [companella-offset.md](companella-offset.md)。
 
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
@@ -178,7 +172,7 @@ export const DAN_INDEX = {
 
 - **Azusa** → [docs/azusa_algorithm.md](../azusa_algorithm.md)（英文）
 - **Roxy** → [docs/roxy_algorithm.md](../roxy_algorithm.md)（英文）
-- **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，表修正估算器：7K 的 RC+LN、4K 的 LN）
+- **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，表修正估算器：**7K 专用** RC+LN）
 - **Sunny / Etterna / Daniel / Companella / Interlude** → [README.md 参考内容区](../../README.md#参考内容)（原文链接：Sunny Rework、Etterna、Daniel、Companella、Interlude 仓库）
 
 ## 9. 注意事项

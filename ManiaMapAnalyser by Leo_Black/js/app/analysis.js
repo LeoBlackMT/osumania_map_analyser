@@ -497,7 +497,12 @@ export async function fetchBeatmapFile(reason) {
     //   (a) 偏移只在 level < 2.5 施加 +0.19（斜坡与高段 +0.804 移除，实机测试否决）；
     //   (b) 4K LN 后修正（lnCorrection，+0.5 门控）整体移除。
     //   4K Companella 路由谱面的 numeric/estDiff 语义变化 → 旧快照会显示偏高的旧值 → 必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v11";
+    // star-v12：4K 算法侧全部回退，Polaris 收敛为 7K 专用 ——
+    //   (a) Companella 偏移整体移除（低段 +0.19 也撤销，实机复测仍见高段受影响）；
+    //   (b) Polaris 的 4K LN 曲线删除，4K 选 Polaris 回退 Sunny、Mixed 的 4K LN 半回到
+    //       Sunny 表原值。
+    //   4K 的 numeric/estDiff 语义再次变化 → 旧快照必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v12";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
