@@ -485,7 +485,24 @@ export async function fetchBeatmapFile(reason) {
     // star-v8：Roxy meta 头对退化修正项 corr_lowCj 改用「特征关闭状态取值」截断——该系数
     //   是在特征恒为常数处拟合的，遇到正常触发值即外推出极端离群项（实测压低 4.34 分），
     //   Roxy 的 numeric/estDiff 语义变化 → 旧快照必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v8";
+    // star-v9：4K LN 后修正（lnCorrection，Companella 输出之后）+ 新估算器 Polaris——
+    //   Mixed 在 4K LN 主导图上的 numeric/estDiff 语义变化 → 旧快照必须失效
+    //   （Polaris 自身在缓存键算法段，无历史快照）。
+    // star-v10：Mixed 层接入 Polaris 的两处 + 偏移层级化 ——
+    //   (a) 4K 的 LN 半标签改用 Polaris 的 4K LN 曲线校准；
+    //   (b) 7K 的整条路线改走 Polaris（RC/LN 两半与 numeric 全校准，胶囊变 Polaris）；
+    //   (c) Companella RC 偏移由常数改为层级依赖。
+    //   Mixed 在 4K/7K 上的 estDiff 与 numeric 语义都变了，旧快照会显示旧值 → 必须失效。
+    // star-v11：Companella 后修正收敛为低段Only ——
+    //   (a) 偏移只在 level < 2.5 施加 +0.19（斜坡与高段 +0.804 移除，实机测试否决）；
+    //   (b) 4K LN 后修正（lnCorrection，+0.5 门控）整体移除。
+    //   4K Companella 路由谱面的 numeric/estDiff 语义变化 → 旧快照会显示偏高的旧值 → 必须失效。
+    // star-v12：4K 算法侧全部回退，Polaris 收敛为 7K 专用 ——
+    //   (a) Companella 偏移整体移除（低段 +0.19 也撤销，实机复测仍见高段受影响）；
+    //   (b) Polaris 的 4K LN 曲线删除，4K 选 Polaris 回退 Sunny、Mixed 的 4K LN 半回到
+    //       Sunny 表原值。
+    //   4K 的 numeric/estDiff 语义再次变化 → 旧快照必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v12";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
@@ -1312,11 +1329,13 @@ export async function fetchBeatmapFile(reason) {
         }
 
         if (rework && metadataErrors.length === 0 && !isStaleRequest()) {
-            // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy 的原生值已是
+            // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy/Polaris 的原生值已是
             // 标准尺度，直接用；其余算法（Sunny/Companella/Daniel——Daniel 的
             // 原生值是其 DP 尺度，比标准约高 0.5）用 estDiff 标签反向换算。
             // 边界标签（< Alpha Low 等）反解为 null → 不上报该字段。
-            const rcNative = state.actualEstimatorAlgorithm === "Azusa" || state.actualEstimatorAlgorithm === "Roxy";
+            const rcNative = state.actualEstimatorAlgorithm === "Azusa"
+                || state.actualEstimatorAlgorithm === "Roxy"
+                || state.actualEstimatorAlgorithm === "Polaris";
             const numericDifficulty = rcNative
                 && typeof resolvedNumericDifficulty === "number"
                 && Number.isFinite(resolvedNumericDifficulty)

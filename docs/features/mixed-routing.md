@@ -30,7 +30,7 @@
 
 ## 3. RC 树（`mixedModeTag === "RC"`，含 `HO` 强制）
 
-**进入本树前还有一个早退**：`mixedModeTag === "RC" && columnCount !== 4` → 直接返回 Sunny 基线（6K/7K 的 RC 图不用 Roxy/Azusa/Daniel）。
+**进入本树前还有一个早退**：`mixedModeTag === "RC" && columnCount !== 4` → 6K/10K 返回 Sunny 基线（RC 图不用 Roxy/Azusa/Daniel）；**7K 改走 Polaris**（表修正的 RC 半 + 数值；Mixed 的定位是自动选出最佳算法，7K 上 4K 专用算法全不可用，最佳即 Polaris）。
 
 ### 3.1 判定顺序（4K RC）
 
@@ -81,9 +81,12 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L2 | `columnCount === 4` 且 `star < 9` 且 Azusa **不可用** | （交给 Companella） | Sunny 的 LN 半 | `"Companella"` | `{ lnRatio, lnDifficulty }`（**无 `fuseRc`** → 主线程直接采用 Companella 的 RC 半与数值） |
 | L3 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 可用 | **Daniel** | Sunny 的 LN 半 | `"Daniel"` | 无 |
 | L4 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 不可用（或过低） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
-| L5 | `columnCount !== 4`（6K/7K） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
+| L5 | `columnCount === 7` | **Polaris**（表修正：RC + LN 两半都校准） | 校准后的 LN 半 | `"Polaris"` | 无 |
+| L5 | 其余非 4K（6K/10K…） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
 
 - Azusa 在 L1/L2 的调用参数：`forceSunnyReferenceHo: false` + `precomputedSunnyResult: sunnyBaseline`（星数口径与缓存复用）。
+- **L1 实际上只在 `lnRatio ∈ [0.15, 0.18]` 这一窄带内可能触发**：Azusa 自带 `UnsupportedLN` 入口门（`lnRatio > 0.18` 直接返回无效结果），而 L1 要求 `canUseRcResult(azusa)`。行为数据集完全印证：4K RC 侧 `algo == "Azusa"` 的 19,839 行 `lnRatio` **最大值为 0.180，>0.18 的行数为 0**；LN 侧谱面（`lnRatio ≥ 0.375`）98.7% 落在 L2。⇒ **对真正的 LN 谱面，本树恒为 L2 的纯 Companella**，L1 的融合计划（`onDisagree = "companella"`）对它们不可达；带融合计划的 C8 路径实际来自 RC 树的 R4'（`onDisagree = "azusa"`）与这一窄带。
+- 由此推出的一条推论：**LN 半标签在任何路径下都由 Sunny 的 LN 表给出，且此前不被任何后修正触碰**（历史上曾有的 `lnCorrection` 只修 numericDifficulty，即 RC 半，且已移除）。该半段**曾有**一版由 Mixed 自己做的表校准（与 Polaris 共用 `calibrateTableHalves`），**实机复测仍见高段受影响后随 4K 侧全部回退**——4K 的 LN 半现在回到 Sunny 表原值。
 - 最终标签 `estDiff = composeDifficultyFromRcLn(rc, ln, lnRatio)`：`lnRatio ≥ 0.15` 才有 `"RC || LN"`，否则只有 RC 段（`LN` 树必然 ≥ 0.90，`Mix` 树在 0.15–0.90 之间，故两者都会显示 LN 半）。
 - `numericDifficulty` / `numericDifficultyHint` 恒取 **RC 半**的数值（LN 估计不产出数值——与"数值难度只覆盖 RC 算法"的既有约定一致）。
 - `lnRatio` 会按 HO 归零：`hoEnabled ? 0 : 归一化后的 lnRatio`。
@@ -118,7 +121,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | 命中路径 | 胶囊 |
 | --- | --- |
 | P2 键数门（非 4/6/7K） | `Sunny` |
-| RC 树早退（RC 且非 4K） | `Sunny` |
+| RC 树早退（RC 且非 4K） | 7K ⇒ `Polaris`；其余 ⇒ `Sunny` |
 | R1/R3 Roxy 胜 | `Roxy` |
 | R2/R4/R4' Azusa 胜 | `Azusa` |
 | R5 Daniel 兜底 | `Daniel` |
@@ -139,10 +142,11 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 1. **"LN 主体图为什么（曾经）永远不用 Companella？"** → 那是已移除的 C2：2026-09-01 `48256a0` 加的 `lnRatio > 0.18` 跳过。现在 LN 主体谱也会执行 Companella 推理；仍受 LN·Mix 树自身的 `star < 9` 条件与 L2 路径限制。
 2. **"数值里有 Companella 但胶囊写着 Azusa？"** → 已在 C10 修复：融合采用（C6/C9）后胶囊显示 `Companella`，0.5/0.5 混合（C8）显示 `Azusa+Companella`；只有门控未通过、数值未被改变时（C7）才保持 `Azusa`。
-3. **"选了 Mixed 却显示 `[Sunny]`？"** → 非 4/6/7K、RC 且非 4K、`star ≥ 9` 且 Daniel 不可用、或 R6/R7 都会落到 Sunny 基线，属设计行为。
+3. **"选了 Mixed 却显示 `[Sunny]`？"** → 非 4/6/7K、RC 且非 4K 且非 7K、`star ≥ 9` 且 Daniel 不可用、或 R6/R7 都会落到 Sunny 基线，属设计行为。
 4. **"同一张 LN 图开 HO 后换了算法？"** → P4：`HO` 强制走 RC 树。
-5. **"6K/7K 为什么没有 Mixed 的效果？"** → P2 允许 6/7K，但 RC 树早退、LN·Mix 树的 L1–L4 都要求 4K，因此 6/7K 实际恒为 Sunny 基线。
-6. **"低难 4K 的 RC 值为什么和 Azusa 不同？"** → R4'/L1 的低难融合（C8 的 0.5/0.5 加权）会改变 RC 数值与标签。
+5. **“6K/7K 为什么没有 Mixed 的效果？”** → RC 树早退、LN·Mix 树的 L1–L4 都要求 4K，故 6K 恒为 Sunny 基线、**7K 恒为 Polaris**（L5 与 RC 早退都指向它，胶囊显示 `Polaris`）。
+6. **"低难 4K 的 RC 值为什么和 Azusa 不同？"** → R4'/L1 的低难融合（C8 的 0.5/0.5 加权）会改变 RC 数值与标签；随后 Companella 系统性偏移**按权重 0.5** 施加（+0.2215），不是全额 +0.443。
+7. **"LN 主体图为什么没有 Companella 偏移？"** → Companella 偏移已整体移除（实机复测仍见高段受影响）；即便重启，它也只作用于 RC 侧——行为数据集对 LN 侧谱面取用的判定量是 LN 半段（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值不同量纲，无法据以拟合；LN 侧现有修正由 lnCorrection 承担（见 [companella-offset.md](companella-offset.md) §2.3）。
 
 ---
 
@@ -150,8 +154,8 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 - **SunnyWindow**（`forceSunnyWindow`）：在管道之后由 `analysis.js` 用 SunnyWindow 的 LN 段覆盖最终标签的 LN 半，并把新值写回 `pendingMixedCompanellaContext.lnDifficulty`（同时把 `lnRatio` 置 4e65 以强制显示 LN 段）→ 融合仍使用被覆盖后的 LN 半。
 - **马拉松时长修正**：pipeline 在 `durationS > 300 && 4K && 算法 ∈ {Azusa, Roxy, Mixed}` 时前置一次 Ett，并把 `marathonCorrection` 注入估算器；修正发生在 Mixed 路由**之前**，会改变 Roxy/Azusa 的数值，因此也可能改变 R1–R5 的胜负（详见 [marathon-correction.md](marathon-correction.md)）。
-- **aleju03 低段 LN 接管**（分支 `feat/aleju03-ln-estimator`）：`Sunny` 的 `estDiff` 含 LN 半且该半以 `<` 开头（表下限，如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；否则保持表值。该接管只影响 LN 半，RC 半与胶囊语义不变。临时测试分支 `temp/mixed-ln-aleju03` 则对非 RC 模式一律接管（用于对比测试）。
-- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v8|算法|beatmapIdentity|modSignature`（`analysis.js:489`），**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
+- **aleju03 低段 LN 接管**（分支 `feat/aleju03-ln-estimator`）：`Sunny` 的 `estDiff` 含 LN 半且该半以 `<` 开头（表下限，如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；否则保持表值。该接管只影响 LN 半，RC 半与胶囊语义不变。另一个仅用于对比测试的临时分支则对非 RC 模式一律接管。
+- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v10|算法|beatmapIdentity|modSignature`（`analysis.js:489`），**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
 
 ---
 

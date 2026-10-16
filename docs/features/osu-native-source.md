@@ -4,7 +4,7 @@
 
 ## 1. 定位
 
-`osu native` **不是第五个数据源**（`temp/osu-native-memory/DECISIONS.md` 的 REJ-03 明确否决"新增第五来源 `osu-native`"）：它是 **osu 源的第二套传输**——壳（`desktop/`）在进程内只读读取 osu!stable / osu!lazer 的内存，并在 `127.0.0.1:24062` 上提供一个 **tosu 兼容子集 origin**；页面的 osu 数据面（WS、`.osu`、背景图）原样指向它，页面代码与算法层零改动（DEC-01）。
+`osu native` **不是第五个数据源**（评审记录 REJ-03 已明确否决"新增第五来源 `osu-native`"）：它是 **osu 源的第二套传输**——壳（`desktop/`）在进程内只读读取 osu!stable / osu!lazer 的内存，并在 `127.0.0.1:24062` 上提供一个 **tosu 兼容子集 origin**；页面的 osu 数据面（WS、`.osu`、背景图）原样指向它，页面代码与算法层零改动（DEC-01）。
 
 三条边界（DEC-08 / DEC-03 / DEC-04）：
 
@@ -108,7 +108,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 | `GET /files/beatmap/background` | 同上，`Content-Type` 由扩展名推定；没有背景字段时 404 |
 | 其它路径 | 404 |
 
-- **Host 门禁**：`http::is_local_host(head, 24062)`——只放行 `127.0.0.1:24062` / `localhost:24062` / `[::1]:24062` / 无 Host 头，其余 **403**（`osu_compat.rs:169-172`、`osu_compat.rs:554-556`；raw-socket 实测 `Host: evil.example` ⇒ 403，见 `temp/osu-native-memory/evidence/B1-replay/host-gate-probe.txt`）。
+- **Host 门禁**：`http::is_local_host(head, 24062)`——只放行 `127.0.0.1:24062` / `localhost:24062` / `[::1]:24062` / 无 Host 头，其余 **403**（`osu_compat.rs:169-172`、`osu_compat.rs:554-556`；raw-socket 实测 `Host: evil.example` ⇒ 403，见 本机证据集（不入库）/B1-replay/host-gate-probe.txt`）。
 - **ACAO 是硬要求**：**所有**响应（含 403/404/405/500）统一出口带 `Access-Control-Allow-Origin: *`（`osu_compat.rs:188-202`）——页面在 24061 上跨源取封面并 `getImageData`，缺它封面取色静默失效（A10）。
 - **WS 的 Origin 校验**：loopback Origin 或**无 Origin**放行，其它 **403**（`osu_compat.rs:464-486`，与 24061 的 `ws.rs` 同一份判定；非 loopback Origin 实测 403）。
 - **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:80-82`，`replay_enabled()`）；**缺省是实时载荷**。
@@ -158,14 +158,14 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13）。
 
-- **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（`temp/osu-native-memory/evidence/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
+- **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（本机证据集（不入库）/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
 - **`firstObject`/`lastObject` 由我们解析 `.osu`**，口径见 DEC-22：首个对象的 `startTime` / **文件顺序最后一个对象的 `endTime`**（不是 `max(endTime)`），都不做 rate 缩放；回退与不变量在 `osu/beatmap_file.rs` + `osu/invariants.rs`。
 
 ### 6.2 lazer（64 位）
 
 今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}`；**并逐条上报缺来源的字段**（见 §6.3）。
 
-- 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。证据 `.omo/evidence/osu-native-memory-transport/task-10f-build.txt`、`temp/osu-native-memory/evidence/D-contract-v6/D-notes.md` §17–§19。
+- 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。逐项核对（本地记录不入库）：contract-v6/D-notes.md` §17–§19。
 - **状态映射只对已对拍的态负责**：`selectPlay`（活机对拍）与 `menu`（dump 结构见证）已证；`edit` / `selectEdit` / `play` / `resultScreen` 的类型名在表里、映射规则已写，但**未与 tosu 活机对拍**（D-notes §19.5 末段）。
 
 ### 6.3 lazer 已知缺口（7 条 `degradedFields`，机制原因逐条记档）
@@ -271,7 +271,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 2. **拿 reason 里的 key 去台账对号**：`desktop/src/osu/patterns.rs` 的 `ANCHORS`（stable，7 枚）或 `tools/lazer-offsets-gen/spec.rs` 的锚点/跳序（lazer）。台账每枚都写了 `derivation`（为什么这串字节能定位该全局量）与 `evidence`（当时怎么证实的），**按推导重新推导一次**比重扫更重要——签名失配通常意味着这次更新动了那段代码。
 3. **区分"签名没命中"与"签名命中但语义漂了"**：前者是 `signature-miss:<key>` + 日志里 `0 hit(s)`；后者表现为命中 1 次却反复被候选自证拒（`reject=slot/object/ruleset/vtable`），或以 `invariant-failed:<field>` 冻结——这正是 L1/L2 存在的理由。
 4. **lazer 先查表**：`lazer-offsets-missing:<ver>` ⇒ 走 §10 重建表；日志里 `[osu] lazer offsets: FALLBACK TABLE …` 说明在走就近回落（表键与目标版本不同），而**没有**这一行 = 精确命中。
-5. **用破坏性签名测试确认"停帧而不是发假数据"**（验收口径，C2 现场）：变体 A（改锚点模式的一个字节）⇒ `[osu] scan statusPtr -> 0 hit(s)`、门报 `signature-miss:statusPtr`、**0 帧伪造值**；变体 B（把状态索引 `+100`，模拟"读到垃圾"）⇒ 先 `action=FreezeStateOnly transition reason=invariant-failed:state.name`（冻结帧仍带 `state.name`），再到 `action=Stop` + `unhealthy`；解除锚点到 `unhealthy` 约 **1.4 s**。逐字日志：`temp/osu-native-memory/evidence/C2-stable-full/corruption-test.txt`（另有 `corruption-A.jsonl` / `corruption-B.jsonl`）。
+5. **用破坏性签名测试确认"停帧而不是发假数据"**（验收口径，C2 现场）：变体 A（改锚点模式的一个字节）⇒ `[osu] scan statusPtr -> 0 hit(s)`、门报 `signature-miss:statusPtr`、**0 帧伪造值**；变体 B（把状态索引 `+100`，模拟"读到垃圾"）⇒ 先 `action=FreezeStateOnly transition reason=invariant-failed:state.name`（冻结帧仍带 `state.name`），再到 `action=Stop` + `unhealthy`；解除锚点到 `unhealthy` 约 **1.4 s**。逐字日志：本机证据集（不入库）/C2-stable-full/corruption-test.txt`（另有 `corruption-A.jsonl` / `corruption-B.jsonl`）。
 6. **修复后的判据**：日志出现 `[osu] anchors resolved in …ms: statusPtr=… baseAddr=… …`（stable）或 `[osu] lazer: L1 proof passed (structural) — gameBase=… anchors=1 scan_ms=…`，随后 `phase=healthy`，且 `sources.osu` 回到 `{alive:true, mode:"native"}`，`degradedFields` 里不再有该字段。
 
 ## 10. 操作手册 B：如何重建 lazer 偏移表
@@ -280,25 +280,25 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ```powershell
 # 0) 构建（仓库根目录；裸 rustc、零依赖、--edition 2021 必需）
-rustc --edition 2021 -O -A dead_code -o temp/lazer-offsets-gen.exe tools/lazer-offsets-gen/main.rs
+rustc --edition 2021 -O -A dead_code -o %TEMP%\lazer-offsets-gen.exe tools/lazer-offsets-gen/main.rs
 
 # 1) 先看清要执行的命令（不碰游戏）
-temp/lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1 --dry-run
+%TEMP%\lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1 --dry-run
 
 # 2) 采 dump（~70 s 游戏挂起、~3 GB；见下面的代价与同意要求）
-temp/lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1
+%TEMP%\lazer-offsets-gen.exe collect --out %TEMP%\lazer-offsets-gen\run1
 
 # 3) 离线提取：扫锚点 → 站点 → 多跳解出 GameBase → dumpobj 逐级解引用 + dump 字节解引用自证
 #    （已有表时可加 --table <表.json> / --expect-vtable <hex> / $MMA_LAZER_OFFSETS 一起验候选）
-temp/lazer-offsets-gen.exe extract --dump %TEMP%\lazer-offsets-gen\run1\lazer-<ts>.dmp --out %TEMP%\lazer-offsets-gen\run1
+%TEMP%\lazer-offsets-gen.exe extract --dump %TEMP%\lazer-offsets-gen\run1\lazer-<ts>.dmp --out %TEMP%\lazer-offsets-gen\run1
 
 # 4) IL 结构清单（读 lazer 安装目录的托管程序集；--diff 与上一次清单比较字段增删改）
-temp/lazer-offsets-gen.exe il --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv --out %TEMP%\lazer-offsets-gen\run1 --diff <上一次的 il-inventory.tsv>
+%TEMP%\lazer-offsets-gen.exe il --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv --out %TEMP%\lazer-offsets-gen\run1 --diff <上一次的 il-inventory.tsv>
 
 # 5) 双见证校验 + 出表，并直接部署到壳 exe 旁
 #    ⚠ 自包含发布的 osu!.dll/osu!.exe 文件版本是占位 0.0.0.0 ⇒ 这个构建上 emit 会先拒一次，
 #      按提示加 --allow-version-mismatch（不一致会写进表里的 evidence）
-temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv `
+%TEMP%\lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermediate-<ts>.tsv `
                                 --il  %TEMP%\lazer-offsets-gen\run1\il-inventory-<ts>.tsv `
                                 --deploy "<放着 mma-shell.exe 的目录>" --allow-version-mismatch
 ```
@@ -308,7 +308,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。
 - **版本键**：表按 **`(lazer 版本, runtime 版本, 架构)`** 建键，文件名 `<lazer>__<runtime>__<arch>.json`（本机 = `2026.921.0.0__10.0.12__x64.json`）。runtime 版本变了 ⇒ **新表另存一份**，旧表保留（回落梯子靠它）；`arch` 不同 ⇒ **永不回落**（`offsets.rs` 的架构不匹配不回落）。
 - **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与签名 `manifest.json`，用户亦可通过设置页活体生成或检查远端更新。
-- **自测**：`temp/lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work temp/lazer-offsets-gen-selftest`（不需要 lazer / dump / 分析器；当前 **35/35**），跑的是真实代码路径（合成 minidump → 锚点扫描 → 链走法 → dump 字节自证 → SOS 中间件装配 → emit 双见证）。
+- **自测**：`%TEMP%\lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work %TEMP%\lazer-offsets-gen-selftest`（不需要 lazer / dump / 分析器；当前 **35/35**），跑的是真实代码路径（合成 minidump → 锚点扫描 → 链走法 → dump 字节自证 → SOS 中间件装配 → emit 双见证）。
 - **刷新前先看差分**：`il --diff <上一版清单>` 的 `ADDED/REMOVED/CHANGED` 段就是"这次更新到底变了什么"，再对照 `emit-report` 的 `omitted` 清单。要发布新字段时改 `spec.rs::WANTED` 后**只重跑 `emit`**（中间件里存了每个被 dump 对象的全部字段行，不必重采 dump）。
 
 ## 11. 自检清单（维护者按顺序跑）
@@ -316,7 +316,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 | # | 检查 | 命令 | 判据 |
 |---|---|---|---|
 | 1 | 壳构建 | `cd desktop; cargo build` | 0 warning |
-| 2 | 壳单测 + 基线比对 | `cd desktop; cargo test` | 通过数只能增加；**失败名集合**与 `temp/osu-native-memory/evidence/B1-replay/cargo-test-BASELINE-stashed.txt` **逐名相同**（36 项，全部是沙箱 `temp_dir` `PermissionDenied` 的既有环境失败；新增失败 = 本步引入）。提取名字比对：`Select-String -Path <日志> -Pattern '^test (.+) \.\.\. FAILED'` 取两侧集合作对称差，应为空 |
+| 2 | 壳单测 + 基线比对 | `cd desktop; cargo test` | 通过数只能增加；**失败名集合**与 本机证据集（不入库）/B1-replay/cargo-test-BASELINE-stashed.txt` **逐名相同**（36 项，全部是沙箱 `temp_dir` `PermissionDenied` 的既有环境失败；新增失败 = 本步引入）。提取名字比对：`Select-String -Path <日志> -Pattern '^test (.+) \.\.\. FAILED'` 取两侧集合作对称差，应为空 |
 | 3 | osu 家族单测 + 全量读数 | `cd desktop; cargo test osu::`；`cd desktop; cargo test` | osu 家族全绿；全量 = **382 passed / 36 failed / 1 ignored**（2026-09-30 复跑的实测值；failed 全部是上面那 36 项） |
 | 4 | 影子对拍（tosu 在线） | `cd desktop; $env:MMA_OSU_COMPARE="1"; $env:MMA_OSU_COMPARE_INTERVAL_MS="100"; $env:MMA_OSU_COMPARE_OUT="$env:TEMP\samples.jsonl"; cargo run --release` | `samples.jsonl` 每行有 `cmp`；第一断言 = `cmp.identity` / `cmp.mod_signature` / `cmp.state_name` 逐字节相等；不等/跳过只在 `diff` 里列；`"skipped:<why>"` **不是** `false`。关整套装置用 `MMA_OSU_COMPARE=0`；`MMA_OSU_TOSU` 换 tosu 端点；`MMA_OSU_COMPARE_FULL=1` 恢复整包落盘 |
 | 5 | 端点探针（HTTP） | `Invoke-WebRequest http://127.0.0.1:24062/files/beatmap/file -UseBasicParsing` | 200 + `Access-Control-Allow-Origin: *`；body = 当前谱面 `.osu`（`text/plain; charset=utf-8`） |
@@ -326,7 +326,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
 | 9 | 破坏性签名测试 | 按 §9 第 5 条复制源码到工作区外打补丁、编译、跑 | 变体 A ⇒ `signature-miss:statusPtr` + 0 伪造帧；变体 B ⇒ 冻结帧（带 `state.name`、无 `beatmap`）→ `unhealthy` 停帧，解除锚点到 unhealthy ≈1.4 s |
 | 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\offsets\lazer\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
 | 11 | 零写入审计 | `grep -rn "WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx" desktop/src/osu` | 0 命中 |
-| 12 | 页面语法 | `Get-Content -Raw -Encoding utf8 <file> \| node --input-type=module --check` | exit=0（⚠ 必须用 `--input-type=module --check` 走 stdin：Node 24 的 `node --check <file>.js` 在模块语法推断路径上会**假绿**，见 `.omo/evidence/osu-native-memory-transport/task-9-build.txt` §4） |
+| 12 | 页面语法 | `Get-Content -Raw -Encoding utf8 <file> \| node --input-type=module --check` | exit=0（⚠ 必须用 `--input-type=module --check` 走 stdin：Node 24 的 `node --check <file>.js` 在模块语法推断路径上会**假绿**，为本机实测结论，本地记录不入库） |
 | 13 | 版本同步 | `grep`：`ManiaMapAnalyser by Leo_Black/index.js` 的 `_VERSION` 与 `metadata.txt` 的 `Version` | 两者**逐字相同**（当前 `2.1.0`）；`cargo test` 与页面语法检查同时通过 |
 
 ## 12. 已知限制与未完成（如实标注）

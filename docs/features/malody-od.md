@@ -16,7 +16,7 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 
 ## 2. PC 端窗口值及其来源
 
-窗口值来自 Malody 4.3.7 **PC 端** `malody.exe` 的反汇编材料（用户自行解包/反汇编：PE32 MSVC RTTI → `_TypeDescriptor` → COL → vtable → 构造函数立即数 `0x535b80`；等级函数 `0x5359c0`；自动 MISS 常量在 `0x7cc370`），核对记录见本仓库计划 `.omo/plans/malody4-native-source.md` §2 #23/#24。窗口数值**只出现在 `tools/malody4-od-check/verify.py` 一个地方**，JS 侧不复制，避免两处表：
+窗口值来自 Malody 4.3.7 **PC 端** `malody.exe` 的反汇编材料（用户自行解包/反汇编：PE32 MSVC RTTI → `_TypeDescriptor` → COL → vtable → 构造函数立即数 `0x535b80`；等级函数 `0x5359c0`；自动 MISS 常量在 `0x7cc370`），核对结论已并入下方数值表。窗口数值**只出现在 `tools/malody4-od-check/verify.py` 一个地方**，JS 侧不复制，避免两处表：
 
 | 项 | 值 |
 | --- | --- |
@@ -118,7 +118,7 @@ Because equality is defined by precision, the table legitimately contains negati
 
 ## 2. PC window values and their source
 
-The window values come from disassembly material of the **PC** `malody.exe` 4.3.7 (user-unpacked: PE32 MSVC RTTI → `_TypeDescriptor` → COL → vtable → constructor immediates at `0x535b80`; level function `0x5359c0`; auto-MISS constant at `0x7cc370`), cross-checked in `.omo/plans/malody4-native-source.md` §2 #23/#24. The numbers live in **exactly one place**, `tools/malody4-od-check/verify.py`, and are never copied into the JS side:
+The window values come from disassembly material of the **PC** `malody.exe` 4.3.7 (user-unpacked: PE32 MSVC RTTI → `_TypeDescriptor` → COL → vtable → constructor immediates at `0x535b80`; level function `0x5359c0`; auto-MISS constant at `0x7cc370`); the check results are folded into the value table below. The numbers live in **exactly one place**, `tools/malody4-od-check/verify.py`, and are never copied into the JS side:
 
 | Item | Value |
 | --- | --- |

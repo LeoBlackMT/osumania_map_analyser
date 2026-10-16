@@ -83,6 +83,7 @@
 ## 算法说明
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准，使结果更贴近段位判定。如有需要，请前往[此处](docs/roxy_algorithm.md)(英文)查看算法文档。
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看算法文档。
+- Polaris 是一个表修正估算器。以 Sunny 为基线，用真实游玩数据修正“星数 → 段位”映射的系统性偏差（变速响应、长条谱面、层级形状）。覆盖 7K 的 RC 与 LN 两侧，以及 4K 的长条（LN）标签；其他键数自动回退 Sunny。如有需要，请前往[此处](docs/polaris_algorithm.md)(英文)查看算法文档。
 
 ## 贡献指南
 详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -103,6 +104,7 @@
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
 - [未来lk](https://space.bilibili.com/419035379): 赞助了300M Token。
 - [Entitley](https://space.bilibili.com/3546767926758173)于[Malody V小卡片](https://www.bilibili.com/video/BV1S6et6EEND/)视频下方发表的[评论](https://www.bilibili.com/video/BV1S6et6EEND/#reply314476062705)：提供了灵感来源和 BepInEx 插件的部分源码。
+- [aleju03](https://github.com/aleju03)：通过其项目 [mania-hub](https://github.com/aleju03/mania-hub) 免费提供了大规模真实游玩行为数据集（4.84M plays，4K/7K），用于难度判定与玩家实际成绩的对照分析，是 Polaris 与 4K LN 后修正的数据基础。
 
 ---------
 本页自2026/6/21起累计访问量，感谢大家的支持！
