@@ -20,7 +20,7 @@
 
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { DAN_INDEX } from "./intervals/index.js";
-import { computePolarisCorrection } from "./polarisCorrection.js";
+import { computePolarisCorrection, hasPolarisCurve } from "./polarisCorrection.js";
 
 const TIER_OFFSETS = Object.freeze({
     "low": -0.4,
@@ -145,9 +145,11 @@ function splitSunnyHalves(estDiff) {
 }
 
 // 单个半段的表校准：star → level →（加 Polaris 修正）→ 标签。
+// 无表、或该 (键数, 侧) 没有曲线时返回 null —— 没有曲线的"校准结果"与表值逐位相同，
+// 返回非 null 会让消费方误以为"这一半被校准过"（Mixed 的 6K 曾因此被标成 Polaris）。
 // inRange 与数值输出口径一致：star 落在表范围内才给外推数值（表外沿用 `<` / `>` 边界标签语义）。
 function calibrateHalf(table, { star, rate, lnRatio, side, keyCount }) {
-    if (!table) {
+    if (!table || !hasPolarisCurve(keyCount, side)) {
         return null;
     }
     const map = getLevelMap(table);
@@ -166,8 +168,9 @@ function calibrateHalf(table, { star, rate, lnRatio, side, keyCount }) {
  *
  * 两半在混合路由里都只是"表映射产物"，因此这是它们唯一的校准入口；共用同一份实现意味着
  * 选 Polaris 与选 Mixed 不可能对同一张图给出不同的标签（冒烟测试直接断言这一点）。
- * 哪一半返回非 null 由曲线集决定：4K 只有 LN 曲线（RC 的最终答案来自路由链，不是表），
- * 7K 两半都有。
+ * 哪一半返回非 null 由**曲线集**决定（`hasPolarisCurve`）：4K 只有 LN 半边（RC 的最终答案
+ * 来自路由链，不是表），7K 两半都有，**6K/10K 都没有**——它们有区间表但没有拟合曲线，
+ * 因此两半都返回 null，消费方据此保持原表映射（Mixed 的 6K 即走 Sunny）。
  *
  * @param {object} input
  * @param {number} input.columnCount 键数
@@ -189,8 +192,7 @@ export function calibrateTableHalves({ columnCount, star, rate, lnRatio, extende
     const pick = (which) => (extendedEstimationRange ? keys[which]?.extended : keys[which]?.default)
         ?? keys[which]?.default ?? null;
     return {
-        // 4K 无 RC 曲线（不加修正的"校准结果"会与表值相同，容易被误用，故显式返回 null）
-        rc: kc === 4 ? null : calibrateHalf(pick("RC"), { star: s, rate: r, lnRatio: lr, side: "RC", keyCount: kc }),
+        rc: calibrateHalf(pick("RC"), { star: s, rate: r, lnRatio: lr, side: "RC", keyCount: kc }),
         ln: calibrateHalf(pick("LN"), { star: s, rate: r, lnRatio: lr, side: "LN", keyCount: kc }),
     };
 }

@@ -143,17 +143,33 @@ const REPAIRED = {
     "4K:LN": repairPolarisCurve("LN", B_LN4_FIT, R_LN4_FIT),
 };
 
-/** 按 (键数, 侧) 取生效曲线；null = 该组合不做修正（4K RC）。 */
+/** 按 (键数, 侧) 取生效曲线；null = 该组合不做修正。
+ *
+ * 只有两套曲线，对应两组拟合人群：**7K 的 RC/LN 两半**与 **4K 的 LN 半**。
+ * 其余组合一律 null——曲线是按各自键数的行为数据拟合的，套到别的键数上没有依据：
+ *   - 4K RC：最终答案来自 Mixed 的路由链（Roxy/Azusa/Daniel/Companella），不是表映射；
+ *   - 6K / 10K：没有拟合数据（DAN_INDEX 里有它们的区间表，但**没有**对应曲线）。
+ * 注意不能写成"非 4K 即 7K 曲线"：那样 6K 会被 7K 曲线静默校准。
+ */
 function curveFor(keyCount, side) {
-    if (Number(keyCount) === 4) {
+    const kc = Number(keyCount);
+    if (kc === 4) {
         return side === "LN" ? REPAIRED["4K:LN"] : null;
     }
-    return side === "LN" ? REPAIRED["7K:LN"] : REPAIRED["7K:RC"];
+    if (kc === 7) {
+        return side === "LN" ? REPAIRED["7K:LN"] : REPAIRED["7K:RC"];
+    }
+    return null;
 }
 
 /** LN 侧的 lnRatio 项（4K / 7K 各一套）。 */
 function lnRatioTermFor(keyCount) {
     return Number(keyCount) === 4 ? H_LN4 : H_LN;
+}
+
+/** 该 (键数, 侧) 是否存在生效曲线。消费方以此判断"这一半是否被校准过"。 */
+export function hasPolarisCurve(keyCount, side) {
+    return curveFor(keyCount, side) !== null;
 }
 
 /**
@@ -244,7 +260,7 @@ function interpKnots(pairs, x) {
  * @param {number} input.level    表映射得到的连续 level（starToLevel 输出；4K LN 侧对应数据集 leo_numeric）
  * @param {number} input.rate     速率（speedRate；1.0 = NM，1.5 = DT）
  * @param {number} [input.lnRatio]  LN 侧使用；RC 侧忽略
- * @param {number} [input.keyCount] 键数（4 / 7）；4K 只对 LN 侧有曲线，RC 侧返回 0
+ * @param {number} [input.keyCount] 键数（4 / 7）；其余键数与 4K 的 RC 侧无曲线，返回 0
  * @returns {number} 修正量（可为负）；rate < 1.0 或无曲线时返回 0
  */
 export function computePolarisCorrection({ side, level, rate, lnRatio = 0, keyCount = 7 }) {
