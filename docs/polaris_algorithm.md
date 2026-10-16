@@ -132,4 +132,4 @@ Runtime repair changes numbers only when the **fitted coefficients are themselve
 
 ---
 
-*Polaris v1 (2026-10). Fitted against the Mania Tracker behavioural dataset snapshot; see also `docs/features/difficulty-estimation.md` and `docs/features/ln-correction.md`.*
+*Polaris v1 (2026-10). Fitted against the Mania Tracker behavioural dataset snapshot; see also `docs/features/difficulty-estimation.md` (the 4K LN post-correction that doc once described was removed after real-machine testing).*

@@ -26,7 +26,7 @@
 
 - 估算器缺省行为逐位兼容（golden/基准回归不传参即可验证）；`marathonCorrection` 为纯增量可选参数。
 - 前置 Ett 仅作为段 9 的**复用优先**路径：`withEtterna=true` 时输出与独立计算逐位一致（smoke 验证 ettResult 复用一致）；失败时复用错误状态，不重复尝试。
-- 结果缓存键（当时为 `star-v2|算法|identity|modSignature`；后续经多次变更已升到 `star-v10`，见 `js/app/analysis.js` 与 [pipeline/result-cache.md](../pipeline/result-cache.md) §5）不含修正参数——修正恒定应用（无开关），键语义稳定。
+- 结果缓存键（当时为 `star-v2|算法|identity|modSignature`；后续经多次变更已升到 `star-v11`，见 `js/app/analysis.js` 与 [pipeline/result-cache.md](../pipeline/result-cache.md) §5）不含修正参数——修正恒定应用（无开关），键语义稳定。
 
 ## 验证方式（Verification）
 

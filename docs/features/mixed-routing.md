@@ -86,7 +86,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 - Azusa 在 L1/L2 的调用参数：`forceSunnyReferenceHo: false` + `precomputedSunnyResult: sunnyBaseline`（星数口径与缓存复用）。
 - **L1 实际上只在 `lnRatio ∈ [0.15, 0.18]` 这一窄带内可能触发**：Azusa 自带 `UnsupportedLN` 入口门（`lnRatio > 0.18` 直接返回无效结果），而 L1 要求 `canUseRcResult(azusa)`。行为数据集完全印证：4K RC 侧 `algo == "Azusa"` 的 19,839 行 `lnRatio` **最大值为 0.180，>0.18 的行数为 0**；LN 侧谱面（`lnRatio ≥ 0.375`）98.7% 落在 L2。⇒ **对真正的 LN 谱面，本树恒为 L2 的纯 Companella**，L1 的融合计划（`onDisagree = "companella"`）对它们不可达；带融合计划的 C8 路径实际来自 RC 树的 R4'（`onDisagree = "azusa"`）与这一窄带。
-- 由此推出的一条推论：**LN 半标签在任何路径下都由 Sunny 的 LN 表给出，且此前不被任何后修正触碰**（`lnCorrection` 只修 numericDifficulty，即 RC 半）。**该半段现由 Mixed 自己校准**——`lnDifficulty` 在建计划前经两半校准助手 `calibrateTableHalves`（与 Polaris 共用同一份实现，见 [../polaris_algorithm.md](../polaris_algorithm.md) §1）替换为校准后的标签，因此 `estDiff` 与计划里的 LN 半都是校准值。
+- 由此推出的一条推论：**LN 半标签在任何路径下都由 Sunny 的 LN 表给出，且此前不被任何后修正触碰**（历史上曾有的 `lnCorrection` 只修 numericDifficulty，即 RC 半，且已移除）。**该半段现由 Mixed 自己校准**——`lnDifficulty` 在建计划前经两半校准助手 `calibrateTableHalves`（与 Polaris 共用同一份实现，见 [../polaris_algorithm.md](../polaris_algorithm.md) §1）替换为校准后的标签，因此 `estDiff` 与计划里的 LN 半都是校准值。
 - 最终标签 `estDiff = composeDifficultyFromRcLn(rc, ln, lnRatio)`：`lnRatio ≥ 0.15` 才有 `"RC || LN"`，否则只有 RC 段（`LN` 树必然 ≥ 0.90，`Mix` 树在 0.15–0.90 之间，故两者都会显示 LN 半）。
 - `numericDifficulty` / `numericDifficultyHint` 恒取 **RC 半**的数值（LN 估计不产出数值——与"数值难度只覆盖 RC 算法"的既有约定一致）。
 - `lnRatio` 会按 HO 归零：`hoEnabled ? 0 : 归一化后的 lnRatio`。
@@ -110,10 +110,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
 | C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
-- **Companella 输出后两级修正（顺序固定）**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，统一依次应用 `applyCompanellaPostCorrections`：
-  1. **Companella 系统性偏移**（`companellaOffset.js`）—— 路由侧只需知道三件事：**仅 RC 侧**（`side = plan.lnRatio ≥ 0.375 ? "LN" : "RC"`，侧判定与行为数据集同语义，**不是** `modeTagFromLnRatio` 的 0.15/0.90）；按该数值中 Companella 的**权重**缩放（C6/C9 权重 1、C8 的 0.5/0.5 融合值权重 0.5）；**按层级**取值，层级键恒取 `companellaResult.numericDifficulty`（即 Companella 自身输出）。具体分段值、拟合与验证，以及对 benchmark 反向证据的处置，全部见 [companella-offset.md](companella-offset.md)（单一来源，本文不重复）。**LN 侧不施加**（0）：数据集的 LN 侧判定量是 LN 半段、与 Companella 的 RC 半段不同量纲，无有效证据。
-  2. **4K LN 后修正**（[ln-correction.md](ln-correction.md)）——在偏移后的数值上叠加 `lnRatio` 渐进门控修正（`lnRatio > 0.375` 起触发，全量 +0.5、ramp 0.375 → 0.55）。
-  两级作用域**不重叠**（偏移只在 `lnRatio < 0.375` 生效，LN 修正只在 `lnRatio > 0.375` 生效），且都只作用于 Companella 侧数值，并为新数值重派生 RC 半标签（`numeric 与 estDiff 同源`）；LN 半仍用 `plan.lnDifficulty`（4K 下已是校准值）。任一级未触发时该级返回原值（`applied=false`），全链未触发则逐位保持原有行为。
+- **Companella 输出后修正**：C6 / C8 / C9 三条「采纳或融合 Companella 数值」的路径上，统一应用 `applyCompanellaPostCorrection`（`companellaOffset.js`）——路由侧只需知道四件事：**仅 RC 侧**（`side = plan.lnRatio ≥ 0.375 ? "LN" : "RC"`，侧判定与行为数据集同语义，**不是** `modeTagFromLnRatio` 的 0.15/0.90）；**仅低段**（`level < 2.5 → +0.19`，其余 0）；按该数值中 Companella 的**权重**缩放（C6/C9 权重 1、C8 的 0.5/0.5 融合值权重 0.5）；层级键恒取 `companellaResult.numericDifficulty`（即 Companella 自身输出）。具体取值依据、历史层级版的实机否决，全部见 [companella-offset.md](companella-offset.md)（单一来源，本文不重复）。**LN 侧不施加**（0）：数据集的 LN 侧判定量是 LN 半段、与 Companella 的 RC 半段不同量纲，无有效证据。修正后为新数值重派生 RC 半标签（`numeric 与 estDiff 同源`）；LN 半仍用 `plan.lnDifficulty`（4K 下已是校准值）。未触发时原样返回（`applied=false`），逐位保持原有行为。
 
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
@@ -177,10 +174,9 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | `AZUSA_RC_PREFERENCE` | 同上 | 上述两门的 8 个阈值 |
 | `isDanielTooLowDifficulty` | 同上 | Daniel 自称 `< Alpha` 时拒用 |
 | `buildLowBandCompanellaPlan` | 同上 | 低难融合计划（`fuseRc` / `onDisagree` / `rcNumeric`） |
-| `applyCompanellaPostCorrections` | 同上 | C6/C8/C9 的两级后修正包装（先偏移、后 LN；顺序固定） |
+| `applyCompanellaPostCorrection` | 同上 | C6/C8/C9 的后修正包装（低段偏移） |
 | `applyCompanellaToMixedResult` | 同上 | C6–C9 的采用/保持/加权融合 |
-| `applyCompanellaOffset` / `computeCompanellaOffset` / `COMPANELLA_OFFSET_RC_{LOW,HIGH}` (0.19…0.804) | `js/estimator/companellaOffset.js` | 第一级：Companella 系统性偏移（**仅 RC 侧**、按层级；再按 Companella 权重缩放，融合值 ×0.5） |
-| `applyLnCorrectionToRcFields` / `LN_CORRECTION_MAGNITUDE` (0.5) | `js/estimator/lnCorrection.js` | 第二级：4K LN 后修正（`lnRatio` 渐进门控） |
+| `applyCompanellaOffset` / `computeCompanellaOffset` / `COMPANELLA_OFFSET_RC_LOW` (0.19) | `js/estimator/companellaOffset.js` | Companella 系统性偏移（**仅 RC 侧、仅低段** level<2.5；再按 Companella 权重缩放，融合值 ×0.5）。高段与斜坡在实机测试后移除 |
 | `LOW_BAND_COMPANELLA_STAR_MAX` (9) / `RC_FUSION_LOW_BAND_MAX` (11) / `RC_AZUSA_COMPANELLA_FUSION_WEIGHT` (0.5) | 同上 | 融合阈值与权重 |
 | `shouldRunCompanella` | `js/app/analysis.js` | C1 执行门（C2 的 `lnRatio > 0.18` 跳过已于 2026-09-20 移除） |
 | `formatEstimateDifficultyCaption` | `js/app/graph.js` | 胶囊渲染（仅回退时加 `[算法]` 前缀） |

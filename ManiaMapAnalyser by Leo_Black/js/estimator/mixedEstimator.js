@@ -4,7 +4,6 @@ import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
-import { applyLnCorrectionToRcFields } from "./lnCorrection.js";
 import { applyCompanellaOffset } from "./companellaOffset.js";
 import { calibrateTableHalves } from "./polarisEstimator.js";
 
@@ -266,8 +265,8 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
         lnRatio,
         extendedEstimationRange: options.extendedEstimationRange === true,
     });
-    // LN 半标签在任何路径下都来自 Sunny 的 LN 表，此前不被任何后修正触碰（lnCorrection 只调
-    // numeric，即 RC 半）。4K 的 Mixed 无法用 Polaris 替代（其 RC 半来自路由链，优于表映射），
+    // LN 半标签在任何路径下都来自 Sunny 的 LN 表，表校准（下方）是它唯一被触碰的地方。
+    // 4K 的 Mixed 无法用 Polaris 替代（其 RC 半来自路由链，优于表映射），
     // 所以这条校准必须落在 Mixed 里才能到达 4K 用户。
     const lnDifficulty = calibratedHalves?.ln?.label ?? sunnyParts.ln;
 
@@ -425,21 +424,15 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     };
 }
 
-// Companella 输出后的两级修正（顺序固定）：
-//   1) Companella 系统性偏移（按侧 + 层级，companellaOffset.js）—— 修正该移植算法分量的尺度差；
-//   2) 4K LN 后修正（lnRatio 门控，lnCorrection.js）—— 修正 LN 主导谱面的残余低估。
-// 两级都只作用于 Companella 侧数值；未触发时逐位保持原行为。
+// Companella 输出后修正（companellaOffset.js）—— 修正该移植算法分量的尺度差。
+// 只在 RC 侧低段（level < 2.5 → +0.19）施加；曾与之并列的 4K LN 后修正（lnCorrection，+0.5 门控）
+// 与高段一起在实机测试后被移除（把实机难度过分拉高），依据与移除原因见文档。
 // companellaWeight：当前数值中 Companella 的占比（纯 Companella = 1，0.5/0.5 融合 = 0.5）——
 // 偏移刻画的是 Companella 分量的尺度差，融合值只有一半来自它，必须按权重缩放。
 // companellaLevel：偏移的层级查找键，三处都取 **Companella 自身输出的数值**（分段值就是在
 // 纯 Companella 行上按该值拟合的），与 numeric 是否已被融合无关。
-function applyCompanellaPostCorrections({ numeric, rcLabel, lnRatio, side, companellaLevel, companellaWeight = 1 }) {
-    const offsetApplied = applyCompanellaOffset({ numeric, rcLabel, side, level: companellaLevel, companellaWeight });
-    return applyLnCorrectionToRcFields({
-        numeric: offsetApplied.numeric,
-        rcLabel: offsetApplied.rcLabel,
-        lnRatio,
-    });
+function applyCompanellaPostCorrection({ numeric, rcLabel, side, companellaLevel, companellaWeight = 1 }) {
+    return applyCompanellaOffset({ numeric, rcLabel, side, level: companellaLevel, companellaWeight });
 }
 
 export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
@@ -464,12 +457,11 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         if (rcNumeric >= RC_FUSION_LOW_BAND_MAX) {
             if (plan.onDisagree === "companella") {
-                // Companella 输出后修正（系统性偏移 + LN；见 companellaOffset.js / lnCorrection.js）
+                // Companella 输出后修正（系统性偏移，见 companellaOffset.js）。
                 // 数值整体来自 Companella，Companella 权重 = 1。
-                const lnCorrected = applyCompanellaPostCorrections({
+                const corrected = applyCompanellaPostCorrection({
                     numeric: companellaResult.numericDifficulty,
                     rcLabel: companellaResult.estDiff,
-                    lnRatio: plan.lnRatio,
                     side,
                     companellaLevel: companellaNumeric,
                     companellaWeight: 1,
@@ -477,11 +469,11 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
                 return {
                     ...mixedResult,
                     estDiff: composeDifficultyFromRcLn(
-                        lnCorrected.rcLabel,
+                        corrected.rcLabel,
                         plan.lnDifficulty,
                         plan.lnRatio,
                     ),
-                    numericDifficulty: lnCorrected.numeric,
+                    numericDifficulty: corrected.numeric,
                     numericDifficultyHint: companellaResult.numericDifficultyHint,
                     mixedCompanellaPlan: null,
                     // 胶囊来源：数值确实换成了 Companella 的结果。
@@ -495,10 +487,9 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         // Companella 输出后修正（同上；未触发时逐位保持原行为）。
         // 融合值里 Companella 只占 (1 − weight)——0.5/0.5 融合下按 0.5 缩放偏移，
         // 否则会把只占一半的 Companella 尺度差全额计入融合结果。
-        const lnCorrected = applyCompanellaPostCorrections({
+        const corrected = applyCompanellaPostCorrection({
             numeric: fused,
             rcLabel: numericToRcLabel(fused),
-            lnRatio: plan.lnRatio,
             side,
             companellaLevel: companellaNumeric,
             companellaWeight: 1 - weight,
@@ -506,11 +497,11 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         return {
             ...mixedResult,
             estDiff: composeDifficultyFromRcLn(
-                lnCorrected.rcLabel,
+                corrected.rcLabel,
                 plan.lnDifficulty,
                 plan.lnRatio,
             ),
-            numericDifficulty: lnCorrected.numeric,
+            numericDifficulty: corrected.numeric,
             numericDifficultyHint: null,
             mixedCompanellaPlan: null,
             // 胶囊来源：低难段的 0.5/0.5 融合——数值由 Azusa 与 Companella 共同决定。
@@ -520,10 +511,9 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
 
     // Companella 输出后修正（同 fuseRc 分支；未触发时逐位保持原行为）
     // 数值整体来自 Companella，Companella 权重 = 1，层级键即该数值本身。
-    const lnCorrected = applyCompanellaPostCorrections({
+    const corrected = applyCompanellaPostCorrection({
         numeric: companellaResult.numericDifficulty,
         rcLabel: companellaResult.estDiff,
-        lnRatio: plan.lnRatio,
         side,
         companellaLevel: companellaResult.numericDifficulty,
         companellaWeight: 1,
@@ -531,11 +521,11 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
     return {
         ...mixedResult,
         estDiff: composeDifficultyFromRcLn(
-            lnCorrected.rcLabel,
+            corrected.rcLabel,
             plan.lnDifficulty,
             plan.lnRatio,
         ),
-        numericDifficulty: lnCorrected.numeric,
+        numericDifficulty: corrected.numeric,
         numericDifficultyHint: companellaResult.numericDifficultyHint,
         mixedCompanellaPlan: null,
         // 胶囊来源：无 fuseRc 计划（Azusa 不可用）时整体采用 Companella。

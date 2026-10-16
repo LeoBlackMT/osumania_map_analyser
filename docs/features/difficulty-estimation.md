@@ -80,18 +80,18 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - **效果**（benchmark harness，main 基线 → 融合，746 行全量）：RC <11 Exact 20.3% → 21.9%、MAE 0.734 → 0.715；RC ALL Exact 50.5% → 50.9%、MAE 0.302 → 0.294；ALL Exact 44.9% → 45.3%、MAE 0.428 → 0.422；11~17 微升（MAE 0.318 → 0.316），≥17 / LN 与基线逐位一致（无回归）。改动行净效应 −4.89 MAE 点（73 行改善 / 52 行回退）。
 - 只改星数密度，**不影响** v2Acc/PP 公式与 Azusa/Roxy/Daniel 等非 Sunny 主算法的自身口径（Azusa/Roxy 内部参考 Sunny 调用同参透传）。
 
-### 3.7 4K LN 数值后修正（lnCorrection）
+### 3.7 4K LN 数值后修正（lnCorrection）—— **已移除**
 
-4K 且 Sunny `lnRatio` 主导的谱面在 Mixed 上的最终 numeric（来源为 Companella 或其与 Azusa 的融合）系统性低估：benchmark ln 行（102 条）bias +1.02（MAE 1.228），行为数据集 4K LN 侧 +0.2~0.5。依据「移植算法（Daniel / Companella）不直接修改、必要时在输出结果后修正」的约束，在 `applyCompanellaToMixedResult` 的三个采纳路径上对 numeric 叠加 lnRatio 门控的修正（`lnCorrection.js`：全量 +0.5、ramp 0.375 → 0.55），并重派生 RC 半段标签（numeric 与 estDiff 保持同源）；LN 半段标签不动。未触发时逐位保持原行为；`forceSunnyWindow` 的 4e65 lnRatio 哨兵不触发。详见 [ln-correction.md](ln-correction.md)。
+> 本节描述的功能曾在 `feat/polaris-estimator` 分支实装（+0.5、lnRatio 0.375→0.55 渐进门控），**实机测试后被整体移除**：与 Companella 偏移的高段一起把实机难度过分拉高。其证据（benchmark ln 行 bias +1.02、行为数据 4K LN 侧 +0.2~0.5）与量纲结论仍然有效，记录于 [../learnings/difficulty-estimation.md](../learnings/difficulty-estimation.md) §5.2；若将来重新评估，以那里的数字为起点并**必须包含实机复测**。
 
 ### 3.8 Companella 系统性偏移校正（companellaOffset）
 
-Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K RC 侧子集（限定 `side == "RC"` 且 `algo == "Companella"`、≥8 玩家，n=5621 chart×rate）上，`play-implied − Companella 数值` 的均值为 **+0.443**，且随难度层级、倍率均无系统依赖。该子集上 `leo_numeric` 与 `companella_numeric` **逐位相等**，故两者同量纲、可直接拟合。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上，于 LN 修正**之前**施加偏移（`companellaOffset.js`），并重派生 RC 半段标签。
+Companella 作为移植算法，其输出相对玩家实际表现存在**整体尺度差**（不是逐图误差）：在行为数据集的 4K RC 侧子集（限定 `side == "RC"` 且 `algo == "Companella"`、≥8 玩家，n=5621 chart×rate）上，`play-implied − Companella 数值` 的均值为 **+0.443**，且随难度层级、倍率均无系统依赖。该子集上 `leo_numeric` 与 `companella_numeric` **逐位相等**，故两者同量纲、可直接拟合。据此在 `applyCompanellaToMixedResult` 的三个采纳路径上施加偏移（`companellaOffset.js`），并重派生 RC 半段标签。**实装范围（实机测试后收敛）：只保留低段 level < 2.5 → +0.19**，斜坡与高段移除；详见 [companella-offset.md](companella-offset.md) §2.5。
 
 两条作用域约束：
 
 - **按 Companella 权重缩放**：C6/C9（数值整体来自 Companella）权重 1 ⇒ +0.443；C8（低难 0.5/0.5 Azusa⊕Companella 融合）权重 0.5 ⇒ +0.2215。数据侧确认全额施加到融合值会过修正（Mix 带 n=1645：基线 bias +0.226，本设计 +0.004，全额 ⇒ −0.217）。
-- **LN 侧不施加**（偏移 0）：行为数据集对 LN 侧取用的判定量是 **LN 半段**（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值**不同量纲**，故 `play-implied − companella_numeric`（LN 侧 +0.786）不能作为偏移；LN 侧同量纲残余是 +0.191，但它描述的是 LN 半段（Sunny LN 表），与 Companella 无关。LN 侧唯一同量纲证据只有 benchmark 的 102 行 ln 样本，按项目判据不足以支撑常数。LN 侧修正仍由 §3.7 承担。
+- **LN 侧不施加**（偏移 0）：行为数据集对 LN 侧取用的判定量是 **LN 半段**（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值**不同量纲**，故 `play-implied − companella_numeric`（LN 侧 +0.786）不能作为偏移；LN 侧同量纲残余是 +0.191，但它描述的是 LN 半段（Sunny LN 表），与 Companella 无关。LN 侧唯一同量纲证据只有 benchmark 的 102 行 ln 样本，按项目判据不足以支撑常数。LN 侧修正（原 §3.7）已随实机测试移除；LN 半段的表偏差由 Polaris 的 4K LN 曲线承担（§3.6）。
 
 严格分组 CV（RC 侧纯 Companella，按 `beatmap_id % 10` 分折）：带符号 bias +0.443 → **+0.077**，MAE 0.9107 → **0.8611（−5.44%）**，10/10 折同号（+0.41…+0.49）。详见 [companella-offset.md](companella-offset.md)。
 

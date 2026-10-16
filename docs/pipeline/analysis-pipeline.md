@@ -138,7 +138,7 @@ state.pendingChangeKind = changeKind;   // :298
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:273-277 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:290-295`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:64 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:176-177）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:489` 缓存键 = `star-v10|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v10` 是缓存语义版本前缀；构成见 modData.js:234-239，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:489` 缓存键 = `star-v11|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v10` 是缓存语义版本前缀；构成见 modData.js:234-239，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
