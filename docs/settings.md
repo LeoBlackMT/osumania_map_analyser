@@ -14,7 +14,7 @@
     - 按需填写需要使用的游戏目录，用于寻找谱面进行分析。
     - 留空令程序自动探测。推荐使用`bridges/install-bridge.ps1`脚本自动写入。
   - **Always on Top**：保持窗口置顶。默认快捷键Ctrl+Shift+T。
-  - **Click-Through**：点击穿透。默认快捷键Ctrl+Shift+S。
+  - **Click-Through**：点击穿透。默认快捷键Ctrl+Shift+C。
   - **Hotkeys**：用于调整上述功能的快捷键。重启以生效。支持 Ctrl/Shift/Alt/Win + 单个字母键 A–Z。
   - **Log level**：日志等级。
     - 如果你不清楚这个是做什么的，请不要随意修改。

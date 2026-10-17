@@ -78,7 +78,7 @@ tosu 下发设置 → settings.js 命令监听回调（settings.js:807）
 
 ### 边界案例
 
-- **enableNumericDifficulty（显示类，不加失效）**：解析在 `settings.js:632`，只挂在 `changed` 链（`settings.js:859`），不在 `recomputeNeeded`（`settings.js:860-862`），也不在失效列表。原因：数值难度总随 rework 一并计算并存进快照（`analysis.js:1100-1101` `resolvedNumericDifficulty*`），该设置只决定字幕是否渲染它（且只在 `diffText=Difficulty` 时可见）。渲染时读 state 即可，快照内容不受影响 → 归显示类（settings.js:865-869 注释 "Caption-only changes ... are applied immediately"）。
+- **enableNumericDifficulty（显示类，不加失效）**：解析在 `settings.js:634`（`applyEnableNumericDifficultySetting`），只挂在 `changed` 链（`settings.js:870`），不在 `recomputeNeeded`（`settings.js:871-873`），也不在失效列表（两个集合定义见 `settings.js:787-801`）。原因：数值难度总随 rework 一并计算并存进快照（`analysis.js:1100-1101` `resolvedNumericDifficulty*`），该设置只决定字幕是否渲染它（且只在 `diffText=Difficulty` 时可见）。渲染时读 state 即可，快照内容不受影响 → 归显示类（与 2.2.0 新增的 `enableDifficultyFeedback` 同类：apply 只有视觉副作用，无缓存语义）。
 - **vibroDetection（名义检测，但必须失效）**：看起来像"检测开关"，但 `isVibroMap` 是**逐谱面分析结果**，被固化进快照（`analysis.js:1112` `isVibroMap`），渲染段读的是快照值。关掉开关后快照里仍是旧 `isVibroMap=true` → 必须失效重算。教训：**"开关"不等于"显示类"——看产物是否进快照，不看名字**。
 
 ## 4. 覆盖检查如何兜住显示类差异
