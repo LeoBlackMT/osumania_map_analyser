@@ -76,6 +76,8 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 2. 壳从 native 快照重算 `bid/checksum/rate/mods/hits/weight/passed`，用 Ed25519 签名后把信封交给页面（壳不发 HTTPS）；
 3. 后端验签（`FEEDBACK_PUBLIC_KEYS`）、校验 `timestamp ±300s`、`(key_id, nonce)` 一次性、osu! API 的 `bid → checksum/mode/convert`，任一失败**直接丢弃**，只增当天拒绝计数。
 
+**签名与密钥**：Ed25519，签名串是以 `v1|` 开头的固定字段串（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
+
 **去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
 
 **存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建。私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）提供总览、拒绝原因、每图 N/加权中位数/IQR、特征残差与 CSV 导出；公开 dashboard 不含 per-map 数据。

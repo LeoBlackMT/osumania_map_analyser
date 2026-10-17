@@ -56,6 +56,24 @@ cargo run --release
 - Windows：运行根目录下的 `release.ps1`。
 - Linux：运行 `desktop/build-linux.sh`。
 
+两个发布脚本都要求 RC 反馈签名 seed（缺失会直接失败，避免发出 dev 签名包）：
+
+```bash
+# Windows PowerShell
+$env:MMA_FEEDBACK_SIGNING_SEED = "<64 hex>"
+$env:MMA_FEEDBACK_KEY_ID = "release-2026-10"
+.\release.ps1
+
+# Linux
+export MMA_FEEDBACK_SIGNING_SEED="<64 hex>"
+export MMA_FEEDBACK_KEY_ID="release-2026-10"
+desktop/build-linux.sh
+```
+
+- 只检查签名配置：`release.ps1 -SigningCheckOnly` / `build-linux.sh --check-signing`。
+- 本地测试构建：`release.ps1 -AllowDevSigning` / `MMA_FEEDBACK_ALLOW_DEV=1 build-linux.sh`（服务端需 `FEEDBACK_ALLOW_DEV_KEY=true`）。
+- seed 绝不入库；公钥填服务端 `FEEDBACK_PUBLIC_KEYS`。详见 `backend/docs/deployment.md` §14。
+
 常用开发环境变量：
 - `MMA_PLUGIN_DIR`：覆盖插件静态资源目录路径。
 - `MMA_SKIP_TOSU_PROBE=1`：跳过 tosu 探测，强制运行在离线模式。
@@ -122,6 +140,24 @@ cargo run --release
 Build release packages:
 - Windows: Run `release.ps1` from the repository root.
 - Linux: Run `desktop/build-linux.sh`.
+
+Both release scripts require the RC feedback signing seed and fail without it, so a dev-signed build cannot be shipped by accident:
+
+```bash
+# Windows PowerShell
+$env:MMA_FEEDBACK_SIGNING_SEED = "<64 hex>"
+$env:MMA_FEEDBACK_KEY_ID = "release-2026-10"
+.\release.ps1
+
+# Linux
+export MMA_FEEDBACK_SIGNING_SEED="<64 hex>"
+export MMA_FEEDBACK_KEY_ID="release-2026-10"
+desktop/build-linux.sh
+```
+
+- Signing check only: `release.ps1 -SigningCheckOnly` / `build-linux.sh --check-signing`.
+- Local test build: `release.ps1 -AllowDevSigning` / `MMA_FEEDBACK_ALLOW_DEV=1 build-linux.sh` (the server needs `FEEDBACK_ALLOW_DEV_KEY=true`).
+- Never commit the seed; put the public key in the server's `FEEDBACK_PUBLIC_KEYS`. See `backend/docs/deployment.md` §14.
 
 Common development environment variables:
 - `MMA_PLUGIN_DIR`: Overrides the static asset directory path.

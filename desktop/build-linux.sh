@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # ManiaMapAnalyser desktop shell — Linux 打包（Windows 侧用 release.ps1）。
-# 用法：desktop/build-linux.sh
+# 用法：desktop/build-linux.sh [--check-signing]
 # 依赖：Tauri Linux 系统库（与 CI shell-build.yml 的 build-linux 一致）：
 #   sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
 #     libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 # 产物：cargo build --release → release/ 下插件 tar.gz
 #       （含 mma-shell（保留执行位）、插件目录与 bridges 安装素材；开发产物与插件源码不入包）。
+#
+# 反馈签名（必填）：MMA_FEEDBACK_SIGNING_SEED（64 hex）+ MMA_FEEDBACK_KEY_ID，
+# 或 MMA_FEEDBACK_SEED_FILE 指向只含 seed 的本地文件（gitignore）。
+# 本地测试可设 MMA_FEEDBACK_ALLOW_DEV=1 使用内置 dev seed（服务端需 FEEDBACK_ALLOW_DEV_KEY=true）。
 
 set -euo pipefail
 
@@ -13,6 +17,53 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$script_dir")"
 plugin_dir="$root/ManiaMapAnalyser by Leo_Black"
 out_dir="$root/release"
+
+# --- 反馈签名 seed：只从环境变量或本地 seed 文件读取，绝不写进仓库/日志 ---
+seed="${MMA_FEEDBACK_SIGNING_SEED:-}"
+if [ -z "$seed" ] && [ -n "${MMA_FEEDBACK_SEED_FILE:-}" ]; then
+    if [ ! -f "$MMA_FEEDBACK_SEED_FILE" ]; then
+        echo "MMA_FEEDBACK_SEED_FILE not found: $MMA_FEEDBACK_SEED_FILE" >&2
+        exit 1
+    fi
+    seed="$(tr -d '[:space:]' < "$MMA_FEEDBACK_SEED_FILE")"
+fi
+seed="$(printf '%s' "$seed" | tr -d '[:space:]')"
+
+if [ -n "$seed" ]; then
+    if ! printf '%s' "$seed" | grep -Eq '^[0-9a-fA-F]{64}$'; then
+        echo "MMA_FEEDBACK_SIGNING_SEED must be 64 hex chars (32 bytes); got ${#seed} chars" >&2
+        exit 1
+    fi
+    export MMA_FEEDBACK_SIGNING_SEED="$(printf '%s' "$seed" | tr 'A-F' 'a-f')"
+    export MMA_FEEDBACK_KEY_ID="${MMA_FEEDBACK_KEY_ID:-release}"
+    if ! printf '%s' "$MMA_FEEDBACK_KEY_ID" | grep -Eq '^[A-Za-z0-9_-]{1,32}$'; then
+        echo "MMA_FEEDBACK_KEY_ID must be 1-32 chars of [A-Za-z0-9_-]" >&2
+        exit 1
+    fi
+    echo "feedback signing: key_id=$MMA_FEEDBACK_KEY_ID"
+    if command -v go >/dev/null 2>&1 && [ -f "$root/backend/cmd/feedback-keygen/main.go" ]; then
+        pub="$(cd "$root/backend" && go run ./cmd/feedback-keygen -derive -public-only 2>/dev/null | tail -n 1 || true)"
+        if [ -n "$pub" ]; then
+            echo "feedback public key: $pub"
+            echo "  -> server FEEDBACK_PUBLIC_KEYS must contain: ${MMA_FEEDBACK_KEY_ID}:${pub}"
+        else
+            echo "warning: could not derive the public key" >&2
+        fi
+    else
+        echo "warning: go not found; derive the public key with: cd backend && go run ./cmd/feedback-keygen -derive -public-only" >&2
+    fi
+elif [ "${MMA_FEEDBACK_ALLOW_DEV:-0}" = "1" ]; then
+    unset MMA_FEEDBACK_SIGNING_SEED MMA_FEEDBACK_KEY_ID
+    echo "warning: feedback signing uses the dev seed (key_id=dev)" >&2
+else
+    echo "error: set MMA_FEEDBACK_SIGNING_SEED (64 hex) or MMA_FEEDBACK_SEED_FILE; use MMA_FEEDBACK_ALLOW_DEV=1 for a local test build" >&2
+    exit 1
+fi
+
+if [ "${1:-}" = "--check-signing" ]; then
+    echo "signing check passed"
+    exit 0
+fi
 
 # 版本号以插件 metadata.txt 为唯一来源（与 release.ps1 同源，避免漂移）。
 version="$(sed -n 's/^Version:[[:space:]]*//p' "$plugin_dir/metadata.txt" | head -n 1 | tr -d '\r')"

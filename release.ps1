@@ -4,15 +4,84 @@
 #       包含：
 #       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
 #       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
+#
+# 反馈签名（必填）：先设置 MMA_FEEDBACK_SIGNING_SEED（64 hex）与 MMA_FEEDBACK_KEY_ID，
+# 或设置 MMA_FEEDBACK_SEED_FILE 指向一个只含 seed 的本地文件（gitignore）。
+# 本地测试可加 -AllowDevSigning 使用内置 dev seed（服务端需 FEEDBACK_ALLOW_DEV_KEY=true）。
+# 只检查签名配置不打包：.\release.ps1 -SigningCheckOnly
 
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$AllowDevSigning,
+    [switch]$SigningCheckOnly
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
+
+# 反馈签名 seed 只从环境变量或本地 seed 文件读取；绝不写进仓库或日志。
+function Resolve-FeedbackSigning {
+    param([switch]$AllowDevSigning)
+
+    $seed = $env:MMA_FEEDBACK_SIGNING_SEED
+    if (-not $seed -and $env:MMA_FEEDBACK_SEED_FILE) {
+        $seedPath = $env:MMA_FEEDBACK_SEED_FILE
+        if (-not (Test-Path -LiteralPath $seedPath -PathType Leaf)) {
+            throw "MMA_FEEDBACK_SEED_FILE not found: $seedPath"
+        }
+        $seed = Get-Content -LiteralPath $seedPath -Raw
+    }
+    $seed = ("$seed").Trim()
+
+    if ($seed) {
+        if ($seed -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "MMA_FEEDBACK_SIGNING_SEED must be 64 hex chars (32 bytes); got $($seed.Length) chars"
+        }
+        $keyId = ("$($env:MMA_FEEDBACK_KEY_ID)").Trim()
+        if (-not $keyId) { $keyId = "release" }
+        if ($keyId -notmatch '^[A-Za-z0-9_-]{1,32}$') {
+            throw "MMA_FEEDBACK_KEY_ID must be 1-32 chars of [A-Za-z0-9_-]"
+        }
+        $env:MMA_FEEDBACK_SIGNING_SEED = $seed.ToLowerInvariant()
+        $env:MMA_FEEDBACK_KEY_ID = $keyId
+        Write-Host "Feedback signing: key_id=$keyId"
+
+        $keygenDir = Join-Path $root "backend"
+        $go = Get-Command go -ErrorAction SilentlyContinue
+        if ($go -and (Test-Path -LiteralPath (Join-Path $keygenDir "cmd\feedback-keygen\main.go"))) {
+            Push-Location $keygenDir
+            try {
+                $pub = (& go run ./cmd/feedback-keygen -derive -public-only 2>$null | Select-Object -Last 1)
+                $goOk = ($LASTEXITCODE -eq 0)
+            } finally {
+                Pop-Location
+            }
+            if ($goOk -and $pub) {
+                $pub = $pub.Trim()
+                Write-Host "Feedback public key: $pub"
+                Write-Host "  -> server FEEDBACK_PUBLIC_KEYS must contain: ${keyId}:${pub}"
+            } else {
+                Write-Warning "Could not derive the public key (go run failed). Verify it manually."
+            }
+        } else {
+            Write-Warning "Go not found; derive the public key with: cd backend; go run ./cmd/feedback-keygen -derive -public-only"
+        }
+    } elseif ($AllowDevSigning) {
+        Remove-Item Env:MMA_FEEDBACK_SIGNING_SEED -ErrorAction SilentlyContinue
+        Remove-Item Env:MMA_FEEDBACK_KEY_ID -ErrorAction SilentlyContinue
+        Write-Warning "Feedback signing: DEV SEED (key_id=dev). The server accepts it only with FEEDBACK_ALLOW_DEV_KEY=true."
+    } else {
+        throw "Feedback signing seed missing. Set MMA_FEEDBACK_SIGNING_SEED (64 hex) or MMA_FEEDBACK_SEED_FILE, or pass -AllowDevSigning for a local test build."
+    }
+}
+
+Resolve-FeedbackSigning -AllowDevSigning:$AllowDevSigning
+if ($SigningCheckOnly) {
+    Write-Host "Signing check passed."
+    exit 0
+}
 
 # 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
 $metadataPath = Join-Path $pluginDir "metadata.txt"

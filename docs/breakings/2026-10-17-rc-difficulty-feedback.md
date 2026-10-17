@@ -12,6 +12,7 @@
 - 壳新增 `src/feedback/mod.rs` 与 `POST /feedback`（本机 24061，CORS 仅允许 24050/24061 页面）；`build.rs` 注入签名 seed；`startup_url()` 追加 `#mma-shell` 标记；`packet.rs` 增发 `beatmap.stats.objects.total`。
 - 后端新增独立 `feedback.db`、`/api/v1/feedback`、osu! API 校验（50/min 全局预算、singleflight、正/负缓存）、聚合表、私有 admin 页/CSV、`cmd/feedback-keygen`；OBS 备份改为成对对象 + manifest。
 - **mod 码表扩容**：`config.js` 的 `knownCodes/bitFlags` 与 `desktop/src/osu/keys.rs` 的 `KNOWN_MOD_CODES/MOD_BIT_FLAGS` 从 12 码/6 位扩到完整 mania 码表（含 RD/FL/NF/HD/AT/CN/`nK` 等）。
+- **发布流程**：`release.ps1` 与 `desktop/build-linux.sh` 在编译前强制读取 `MMA_FEEDBACK_SIGNING_SEED`（或 `MMA_FEEDBACK_SEED_FILE`），缺失即失败；新增 `-SigningCheckOnly` / `--check-signing` 与 dev 开关。`cmd/feedback-keygen` 支持 `-derive`、`-public-only`、`-verify-envelope`。
 
 ### 2. 修改原因（Why）
 
@@ -52,6 +53,7 @@
 - Shell: `src/feedback/mod.rs` and `POST /feedback` (loopback 24061, CORS limited to the 24050/24061 pages); `build.rs` injects the signing seed; `startup_url()` appends a `#mma-shell` marker; `packet.rs` publishes `beatmap.stats.objects.total`.
 - Backend: separate `feedback.db`, `/api/v1/feedback`, osu! API validation (50/min global budget, singleflight, positive/negative caches), aggregate tables, a private admin page/CSV, `cmd/feedback-keygen`; OBS backup now uploads paired objects plus a manifest.
 - **Mod table expanded** from 12 codes / 6 bits to the full mania set in `config.js` and `desktop/src/osu/keys.rs` (RD/FL/NF/HD/AT/CN/`nK`, ...).
+- **Release flow**: `release.ps1` and `desktop/build-linux.sh` now require `MMA_FEEDBACK_SIGNING_SEED` (or `MMA_FEEDBACK_SEED_FILE`) before building and fail without it; added `-SigningCheckOnly` / `--check-signing` and a dev override. `cmd/feedback-keygen` gained `-derive`, `-public-only`, and `-verify-envelope`.
 
 ## 2. Why
 
