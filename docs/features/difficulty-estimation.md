@@ -172,3 +172,12 @@ export const DAN_INDEX = {
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
 6. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed 的 star 仅是内部口径，不作为显示值。
 7. **Etterna MSD 上限突破**：MinaCalc 内置 SSR 技能值上限 40.0 已通过 wasm 二进制等长替换（`f32.const 40.0` → `f32.const 100.0`）提升至 100.0（工具见 `tools/patch-minaclac-msd-cap.mjs`，`tools/README.md`）；显示刻度 `config.js:52 etterna.maxSkillValue = 45.0`（技能条宽度与 MSD 胶囊颜色映射按 45 标定）。浏览器加载 wasm 带 `?v=` cache-bust（`js/ett/constants.js WASM_ASSET_VERSION`，bump 时机：wasm 字节变更）。实测效果：技能值低于饱和区（Overall ≲ 37）的谱面输出逐位不变；处于饱和区（~37–40）的谱面数值随上限平滑上升；触顶谱面（技能值被钳在 40.000）突破 40/42 上限。`minaclac-68.0-unofficial.wasm` 未 patch（其 40.0 常量非技能上限，patch 会改变普通谱面输出）；0.70.0 的 Stream 技能值存在旧版独立的饱和行为（不在本 patch 常量内），其 Overall 与其余技能值正常突破。
+
+## 10. 反馈信号（研究用，RC-only，不自动应用）
+
+- **定位**：`js/app/feedback/` 收集玩家对**当前显示难度**的五档评分（`-1 / -0.5 / 0 / +0.5 / +1`），只写入自建后端，用于发现估算器的系统性残差、筛选候选谱面交给专家复标。**不参与任何在线校准**：不修改 `numericDifficulty` / `estDiff`，不生成 per-map 查表，不影响缓存键。
+- **上下文来源**：`analysis.js` 在写显示值的同时写 `state.feedbackContext`（`numericDifficulty`、`estDiff`、`slotCount`、`actualAlgorithm`、`selectedAlgorithm`、`modeTag`、`pattern`、`lnRatio`、`keyCount`、`od`、`settingsHash`）。`slotCount != 1`（Mixed 双槽位 `RC || LN`）直接不触发。
+- **准度口径**：不使用 `resultsScreen.accuracy`，而是用 `resultsScreen.hits` 重算 **ScoreV1**（`300×(geki+300)+200×katu+100×100+50×50`），抹平 stable V1 / lazer V2 的计分差异；准度只决定 `weight`（中心 96.5、σ 2.0、下限 0.35，夹到 `[0.40, 1.00]`），不上传原始准度。
+- **信任链**：页面只提交评分与显示值；桌面壳从 native 快照重算 `bid/checksum/rate/mods/hits/weight` 并用 Ed25519 签名；后端再验签、校验 osu! API 谱面身份与全部规则，任一失败直接丢弃。
+- **与 benchmark 的关系**：反馈 target **不是** benchmark 标签。候选谱面必须经 3–5 名专家盲评后才能进入 `VSRG-DanEstimation-Benchmark`；不得把反馈值写成 per-map 修正表，也不得读取 benchmark 的 `samples/` 来构造对照表。
+- **文档**：字段/隐私/去重/存储见 [telemetry.md §7](telemetry.md)；实现计划见 `.omo/plans/rc-difficulty-feedback.md`（本地）。

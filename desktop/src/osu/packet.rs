@@ -248,6 +248,19 @@ fn insert_beatmap(root: &mut Map<String, Value>, snapshot: &Snapshot) {
                 beatmap.insert(key.to_string(), json!(text));
             }
         }
+        // `stats.objects.total`：tosu v2 同名字段；页面用它算完成率（反馈 gate）。
+        // 解析器没读到 `.osu` 时不发，页面按"不可用"处理（不展示反馈条）。
+        if let Some(objects) = snapshot
+            .beatmap_file
+            .as_ref()
+            .map(|file| file.first_last.object_count)
+            .filter(|count| *count > 0)
+        {
+            beatmap.insert(
+                "stats".to_string(),
+                json!({ "objects": { "total": objects } }),
+            );
+        }
         if !beatmap.is_empty() {
             root.insert("beatmap".to_string(), Value::Object(beatmap));
         }

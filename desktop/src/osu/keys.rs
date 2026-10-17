@@ -16,19 +16,53 @@
 use crate::osu::model::{Client, DerivedKeys, Snapshot};
 use serde_json::{json, Value};
 
-/// `config.js:122` 的 knownCodes（顺序即页面 `Array.prototype.sort()` 之后的字典序）。
+/// `config.js:122` 的 knownCodes（顺序即页面 `[...].sort((a, b) => b.length - a.length)`
+/// 之后的顺序：长度降序，同长保持声明顺序）。
 pub const KNOWN_MOD_CODES: &[&str] = &[
-    "CL", "DA", "DC", "DT", "EZ", "HO", "HR", "IN", "MR", "NC", "SV2",
+    // 3 字符（页面排序把它们排在前面）
+    "SV2", "10K",
+    // 2 字符
+    "NF", "EZ", "TD", "HD", "HR", "SD", "DT", "RX", "HT", "NC", "FL", "AT", "SO", "AP", "PF",
+    "FI", "RD", "CN", "TG", "MR", "DA", "CL", "IN", "HO", "DC", "NR", "CS", "BL", "CO", "ST",
+    "AC", "TC", "BR", "DF", "AD", "MU", "NS", "MG", "RP", "FR", "BU", "SY", "DP", "BM", "AL",
+    "SG", "SW", "GR", "WG", "SI", "TR", "DS", "WU", "WD", "AS",
+    // 键数
+    "4K", "5K", "6K", "7K", "8K", "9K", "1K", "2K", "3K",
 ];
 
-/// `config.js:123-130` 的 bitFlags（stable 位掩码 → 代码）。
+/// `config.js:123-130` 的 bitFlags（stable 位掩码 → 代码），已覆盖完整 mania 位表。
 pub const MOD_BIT_FLAGS: &[(u32, &str)] = &[
-    (1 << 1, "EZ"),   // 2
-    (1 << 4, "HR"),   // 16
-    (1 << 6, "DT"),   // 64
-    (1 << 8, "HT"),   // 256
-    (1 << 9, "NC"),   // 512
-    (1 << 29, "SV2"), // 536870912
+    (1 << 0, "NF"),
+    (1 << 1, "EZ"),
+    (1 << 2, "TD"),
+    (1 << 3, "HD"),
+    (1 << 4, "HR"),
+    (1 << 5, "SD"),
+    (1 << 6, "DT"),
+    (1 << 7, "RX"),
+    (1 << 8, "HT"),
+    (1 << 9, "NC"),
+    (1 << 10, "FL"),
+    (1 << 11, "AT"),
+    (1 << 12, "SO"),
+    (1 << 13, "AP"),
+    (1 << 14, "PF"),
+    (1 << 15, "4K"),
+    (1 << 16, "5K"),
+    (1 << 17, "6K"),
+    (1 << 18, "7K"),
+    (1 << 19, "8K"),
+    (1 << 20, "FI"),
+    (1 << 21, "RD"),
+    (1 << 22, "CN"),
+    (1 << 23, "TG"),
+    (1 << 24, "9K"),
+    (1 << 25, "10K"),
+    (1 << 26, "1K"),
+    (1 << 27, "2K"),
+    (1 << 28, "3K"),
+    (1 << 29, "SV2"),
+    (1 << 30, "MR"),
 ];
 
 /// `socketHandlers.js:217` 的路径规范化与 `:202` 的 `String(value)` 组合：
@@ -513,7 +547,7 @@ pub fn menu_mod_codes(mask: u32) -> Vec<&'static str> {
 
 /// 稳定版 mod 位值表（tosu `utils/osuMods.types.ts` 的 `bitValues`，为"名字生成"服务）。
 ///
-/// 与 `MOD_BIT_FLAGS` 的分工：`MOD_BIT_FLAGS` 是**页面**的已知代码白名单（只 6 位），
+/// 与 `MOD_BIT_FLAGS` 的分工：`MOD_BIT_FLAGS` 是**页面**的已知代码白名单（与页面同表），
 /// 这张表是**载荷名字**的编码表（bit 值 → 短名），后者决定 `menu.mods.name` 长什么样。
 /// 只读研究参照实现的这一张常量表，不抄任何代码。
 const MOD_BIT_NAMES: &[(u32, &str)] = &[

@@ -9,58 +9,58 @@
 
 | 来源 | 性质 | 位置 | 说明 |
 | --- | --- | --- | --- |
-| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 50 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身**。同时也是设置窗口（`settings.html`）表单的 schema 来源，见 §1 末 |
-| `ManiaMapAnalyser by Leo_Black/config.js` `APP_CONFIG.defaults` | JS 内部默认值 | config.js:79-119 | 解析器无值可读时的回退；`APP_CONFIG.options`（config.js:5-17）提供枚举白名单 |
+| `ManiaMapAnalyser by Leo_Black/settings.json` | tosu 设置定义（基线） | 全文 51 个 uniqueID | 暴露给 tosu 设置界面的定义文件，含默认值。**这不是设置文件本身**。同时也是设置窗口（`settings.html`）表单的 schema 来源，见 §1 末 |
+| `ManiaMapAnalyser by Leo_Black/config.js` `APP_CONFIG.defaults` | JS 内部默认值 | config.js:79-120 | 解析器无值可读时的回退；`APP_CONFIG.options`（config.js:5-17）提供枚举白名单 |
 | 桌面壳本机面（无 tosu 时） | 用户实际设置（离线权威） | 壳 `24061` 的 `/settings`（GET/POST）+ exe 旁 `mma-settings.json` | 壳的权威链只有一个判据——**tosu 是否在线**：在线 = tosu 设置文件（只读，`config::resolve_plugin_settings` 第 1 级），离线 = `mma-settings.json`（第 2 级；缺则按插件 `settings.json` 的 `value` 生成骨架并落盘，第 3 级）。离线**绝不**读 tosu 设置文件（即使它存在）。端点与状态码见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c |
 
-**settings.json 的 50 个 uniqueID 构成**：7 header + 6 button + 37 实际设置。
+**settings.json 的 50 个 uniqueID 构成**：7 header + 6 button + 38 实际设置。
 
-- **Links（header `hLinks` settings.json:3）**：6 个 button —— `GuideButton` settings.json:11、`PresetGuideButton` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35、`PresetButton` settings.json:75、`DebugButton` settings.json:444（后两个指向 tosu 自己提供的页面，壳内**不渲染**，见 §1 末）
-- **Presets（header `hPresets` settings.json:43）**：`preset` settings.json:51（预设选择，归预设区，设置页表单刻意排除，见 §1 末）、`presetStorage` settings.json:476（预设库存储，文本条目）
+- **Links（header `hLinks` settings.json:3）**：6 个 button —— `GuideButton` settings.json:11、`PresetGuideButton` settings.json:19、`IssueButton` settings.json:27、`BenchmarkButton` settings.json:35、`PresetButton` settings.json:75、`DebugButton` settings.json:452（后两个指向 tosu 自己提供的页面，壳内**不渲染**，见 §1 末）
+- **Presets（header `hPresets` settings.json:43）**：`preset` settings.json:51（预设选择，归预设区，设置页表单刻意排除，见 §1 末）、`presetStorage` settings.json:484（预设库存储，文本条目）
 - **Modules Customization（header `hModules` settings.json:83）**：`contentBar` settings.json:91、`srText` settings.json:107、`diffText` settings.json:122、`showModeTagCapsule` settings.json:138
 - **Theme & Effects（header `hTheme` settings.json:146）**：`enableOsuTheme` settings.json:154、`useOsuFont` settings.json:162、`enableFloatingTriangles` settings.json:170、`enableCoverArt` settings.json:178、`customBackgroundColor` settings.json:186、`enableEtternaRainbowBars` settings.json:194、`enableStatusMarquee` settings.json:202、`enableNumericDifficulty` settings.json:210、`enableLNDifficulty` settings.json:218、`reverseCardExtendDirection` settings.json:226、`cardVisibility` settings.json:234、`cardOpacity` settings.json:246、`cardBgBlur` settings.json:260、`cardRadius` settings.json:275
 - **Functionality Options（header `hFunctions` settings.json:287）**：`enableUpdateCheck` settings.json:295、`enableResultCache` settings.json:303、`enablePauseDetection` settings.json:311、`VibroDetection` settings.json:319（注意大写 V，见 §9）、`useSvDetection` settings.json:327、`display6kLevel` settings.json:335、`extendedEstimationRange` settings.json:343、`forceSunnyWindow` settings.json:351、`enableAnalyzeLN` settings.json:359、`estimatorAlgorithm` settings.json:367、`etternaVersion` settings.json:382、`companellaEtternaVersion` settings.json:397
-- **Network Configuration（header `hNetwork` settings.json:412）**：`wsEndpoint` settings.json:420、`enableTelemetry` settings.json:428
-- **Debug Options（header `hDebug` settings.json:436）**：`debugUseAmount` settings.json:452、`azusaSunnyReferenceHo` settings.json:460、`enableAlwaysShowLNDifficulty` settings.json:468
+- **Network Configuration（header `hNetwork` settings.json:412）**：`wsEndpoint` settings.json:420、`enableTelemetry` settings.json:428、`enableDifficultyFeedback` settings.json:436（显示类，见 §9）
+- **Debug Options（header `hDebug` settings.json:444）**：`debugUseAmount` settings.json:460、`azusaSunnyReferenceHo` settings.json:468、`enableAlwaysShowLNDifficulty` settings.json:476
 
-config.js 的 `APP_CONFIG.defaults`（config.js:79-119）与 settings.json 字段一一对应，默认值需保持同步（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:250-262）。
+config.js 的 `APP_CONFIG.defaults`（config.js:79-120）与 settings.json 字段一一对应，默认值需保持同步（见 §7）。`APP_CONFIG.options`（config.js:5-17）是各 options 型设置的枚举白名单，`createSettingsParsers` 用它构造 `createSet` 校验解析结果（settingsParser.js:250-262）。
 **设置窗口（`settings.html`）用的就是这套 schema**：表单由 `js/app/settingsPage/settingsForm.js` 在运行时按 `settings.json` 的 `entries` 渲染——`header` → 分组标题，`checkbox`/`options`/`text`/`color` → 对应控件，默认值取条目 `value`；只渲染 `loadSettingsSchema`（`presets/schema.js`）找得到 `apply{Key}Setting` applier 的键，`preset`/`presetStorage` 刻意排除（预设库归预设区），`button` 条目归页面顶部的 **Links** 行（`settings.html` 的 `#settings-links-root`，在状态栏下方、导航栏上方；由 `js/app/settingsPage/settingsLinks.js` 渲染，其 `EXCLUDED_LINK_IDS` 排除 `PresetButton`/`DebugButton` 这两个壳内不存在的 tosu 页面地址——`settings.json` 不动，tosu 设置界面照旧 6 个；`PresetButton` 的主机端口改写仍由 `settingsPage/index.js buttonUrl()` 供 tosu 在线时的只读提示使用）。**因此新增设置不需要改设置页**：`settings.json`（UI 定义 + 默认值）+ `config.js` `defaults` + 解析/应用函数同步即可（完整清单见 [../guides/adding-a-setting.md](../guides/adding-a-setting.md)），设置页自动多出一行；页面的导航顺序与表单段标题（**Shell → Card Settings → Presets**）不受设置增删影响。
 
 **页面侧 tosu 数据面（`state.tosuDataSeen`）**：壳离线页（24061）的初始抓取门控不再只看壳的 `tosuOnline` 探测位——页面自己的 tosu socket 收到过载荷（`socketHandlers.js:305 applyBeatmapState` 置位）就同样放行（`analysis.js` 两处），并把 1.2s 的延迟初始重算改为立即执行（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，`scheduleRecompute` 会清掉它、200ms 内计算）。这决定了设置窗口写出的配置能否立刻看到分析结果：以前"tosu 在跑但壳找不到 `tosu.env`"的机器会停在 `Waiting for a data source (Etterna/Malody or tosu)...`。
 
 ## 2. 启动流程
 
-入口 `settings.js:907 loadSettings()`（async），时序如下：
+入口 `settings.js:918 loadSettings()`（async），时序如下：
 
-1. **fetch settings.json 作基线**：`settings.js:912` `fetch("./settings.json", { cache: "no-store" })`，成功则 `fileSettings = await response.json()`，失败（无文件/网络错误）则 `fileSettings = null`（settings.js:910-921）。
-2. **applySettingsFrom(fileSettings)**：settings.js:963。`applySettingsFrom`（settings.js:923-959）对 35 个设置逐个 `applyXxxSetting(parseXxxValue(source))`。此阶段**无 hasKey 守卫**——settings.json 文件内容本身即完整定义，字段缺失时 parser 落回 config defaults。
-3. **无文件时 config defaults 回退**：settings.js:966-1002。构造一个手工拼装的 source 对象（35 个键全部来自 `APP_CONFIG.defaults`），同样走 `applySettingsFrom`。注意此处字段名用的是**命令通道键名**（如 `VibroDetection` settings.js:979、`enablePauseDetection` settings.js:976），与 uniqueID 一致。
-4. **注册运行时监听**：settings.js:1008 `setupSettingsCommandListener()`。注释明确：监听必须在文件基线之后注册，否则命令回调可能用 config defaults 覆盖文件值（settings.js:1005-1007）。
-5. **请求 tosu 实际设置**：设置监听注册时已顺带请求——`setupSettingsCommandListener`（settings.js:822-825）在 `state.settingsRequested` 首次为 false 时 `socket.sendCommand("getSettings", getCounterPathForCommand())`（settings.js:824）。`getCounterPathForCommand`（settings.js:326-333）优先用 `window.COUNTER_PATH`，回退到当前页面 pathname+search。
+1. **fetch settings.json 作基线**：`settings.js:923` `fetch("./settings.json", { cache: "no-store" })`，成功则 `fileSettings = await response.json()`，失败（无文件/网络错误）则 `fileSettings = null`（settings.js:921-932）。
+2. **applySettingsFrom(fileSettings)**：settings.js:975。`applySettingsFrom`（settings.js:934-971）对 36 个设置逐个 `applyXxxSetting(parseXxxValue(source))`。此阶段**无 hasKey 守卫**——settings.json 文件内容本身即完整定义，字段缺失时 parser 落回 config defaults。
+3. **无文件时 config defaults 回退**：settings.js:978-1014。构造一个手工拼装的 source 对象（36 个键全部来自 `APP_CONFIG.defaults`），同样走 `applySettingsFrom`。注意此处字段名用的是**命令通道键名**（如 `VibroDetection` settings.js:989、`enablePauseDetection` settings.js:986），与 uniqueID 一致。
+4. **注册运行时监听**：settings.js:1020 `setupSettingsCommandListener()`。注释明确：监听必须在文件基线之后注册，否则命令回调可能用 config defaults 覆盖文件值（settings.js:1017-1019）。
+5. **请求 tosu 实际设置**：设置监听注册时已顺带请求——`setupSettingsCommandListener`（settings.js:833-836）在 `state.settingsRequested` 首次为 false 时 `socket.sendCommand("getSettings", getCounterPathForCommand())`（settings.js:835）。`getCounterPathForCommand`（settings.js:328-335）优先用 `window.COUNTER_PATH`，回退到当前页面 pathname+search。
 
-命令响应路径上的等待机制 `waitForInitialSettingsFromCommand`（settings.js:887-905）——若 `state.settingsReceivedFromCommand` 已为 true 直接 resolve，否则挂起并设置 `state.initialSettingsResolver`（settings.js:900-903），由命令回调在收到首个 payload 后触发（settings.js:876-880）；超时（默认 1500ms，见 §9）则 reject。
+命令响应路径上的等待机制 `waitForInitialSettingsFromCommand`（settings.js:898-916）——若 `state.settingsReceivedFromCommand` 已为 true 直接 resolve，否则挂起并设置 `state.initialSettingsResolver`（settings.js:911-914），由命令回调在收到首个 payload 后触发（settings.js:887-891）；超时（默认 1500ms，见 §9）则 reject。
 
 ## 3. 解析约定
 
-- **`parse{uniqueID}Value(payload)` 命名约定**：每个设置一个 parser，由 `settingsParser.js:250 createSettingsParsers(appConfig)` 工厂批量创建并返回。当前共返回 **37 个 parser**（settingsParser.js:582-621 返回表）：35 个对应实际设置 + 2 个遗留 parser（`parseAutoModeValue` settingsParser.js:324、`parseEnablePatternValue` settingsParser.js:263，均无对应 uniqueID，见 §6）。
+- **`parse{uniqueID}Value(payload)` 命名约定**：每个设置一个 parser，由 `settingsParser.js:250 createSettingsParsers(appConfig)` 工厂批量创建并返回。当前共返回 **38 个 parser**（settingsParser.js:587-626 返回表）：36 个对应实际设置 + 2 个遗留 parser（`parseAutoModeValue` settingsParser.js:324、`parseEnablePatternValue` settingsParser.js:263，均无对应 uniqueID，见 §6）。
 - **payload 形状自适应**：`settingsParser.js:228 extractSettingValue` 兼容三种形状——数组（`[{uniqueID, value}]`，settings.json 文件格式与 tosu 命令格式）、对象键值（`{key: value}`）、嵌套对象（`{settings: {...}}`）。所有 parser 内部都通过它取值。
 - **回退链**：取到值 → normalize → 校验是否在 `createSet` 白名单内（options 型，如 `parseContentBarValue` settingsParser.js:285-294）→ 不通过/缺失则落回 `appConfig.defaults`。
-- **hasKey 守卫（命令通道专用）**：`applySettingsPayload`（settings.js:832）内部的 `settings.js:837-842 hasKey` 检查键是否真实存在于命令 payload（数组按 `uniqueID` 查找，对象用 `hasOwnProperty`）。`applyIf`（settings.js:843-844）= `hasKey(key) ? applyFn(parseResult) : false`。**作用**：tosu 命令可能不发全部设置（例如用户从未碰过的分组），若直接 apply，parser 内部落回的 config defaults 会覆盖 settings.json 基线——守卫让未发送的键保持文件基线不动。loadSettings 的文件基线阶段不走此守卫（§2 第 2 步）。
+- **hasKey 守卫（命令通道专用）**：`applySettingsPayload`（settings.js:843）内部的 `settings.js:848-853 hasKey` 检查键是否真实存在于命令 payload（数组按 `uniqueID` 查找，对象用 `hasOwnProperty`）。`applyIf`（settings.js:854-855）= `hasKey(key) ? applyFn(parseResult) : false`。**作用**：tosu 命令可能不发全部设置（例如用户从未碰过的分组），若直接 apply，parser 内部落回的 config defaults 会覆盖 settings.json 基线——守卫让未发送的键保持文件基线不动。loadSettings 的文件基线阶段不走此守卫（§2 第 2 步）。
 
 ## 4. 双层 state（重点）
 
-`appContext.js:149-254 state` 是全部设置的运行时持有者。其中显示相关设置存在**用户意图层与解析值层**的分层：
+`appContext.js:149-260 state` 是全部设置的运行时持有者。其中显示相关设置存在**用户意图层与解析值层**的分层：
 
 | 层 | 字段 | 语义 |
 | --- | --- | --- |
 | 用户意图层 | `state.userContentBar` / `state.userSrText` / `state.userDiffText`（appContext.js:170-172） | 用户实际选择，`contentBar`/`srText` 可为 `"Auto"` |
 | 解析值层 | `state.contentBar` / `state.srText` / `state.diffText`（appContext.js:167、:169、:178） | 运行时实际使用的具体值，永不为 `"Auto"` |
-| 谱面级覆盖 | `state.effectiveContentBar`（appContext.js:168） | 按谱面覆盖 contentBar，由 `settings.js:449 setEffectiveContentBarForMap(contentBarOrNull)` 写入（null 表示无覆盖） |
+| 谱面级覆盖 | `state.effectiveContentBar`（appContext.js:168） | 按谱面覆盖 contentBar，由 `settings.js:451 setEffectiveContentBarForMap(contentBarOrNull)` 写入（null 表示无覆盖） |
 
-**规则：写 `user*` 字段、读解析值字段。** 例如 `applyContentBarSetting`（settings.js:506-519）：写 `state.userContentBar`，若为 `"Auto"` 则 `refreshAutoDisplayProfile()` 解析出具体值，否则 `setRuntimeContentBar(state.userContentBar)` 写入解析值层。
+**规则：写 `user*` 字段、读解析值字段。** 例如 `applyContentBarSetting`（settings.js:508-521）：写 `state.userContentBar`，若为 `"Auto"` 则 `refreshAutoDisplayProfile()` 解析出具体值，否则 `setRuntimeContentBar(state.userContentBar)` 写入解析值层。
 
-- **Auto 解析**：`settings.js:84 isAutoDisplayEnabled()`（`userSrText === "Auto" || userContentBar === "Auto"`）→ `settings.js:88 resolveRuntimeDisplayProfile(modeTag)` 调 `resolveAutoDisplayProfile`（modeLogic.js）得出 `{contentBar, srText}` 映射，再经 `setRuntimeDisplayProfile`（settings.js:494-503）→ `setRuntimeContentBar`（settings.js:413）/`setRuntimeSrText`（settings.js:475）/`setRuntimeDiffText`（settings.js:486）写入解析值层。`diffText` 无 Auto 选项，直接透传。
-- **读取约定**：展示代码一律读解析值层；`state.contentBar` 之上还有谱面级覆盖，正确读法是 `appContext.js:331 getActiveContentBar()`（`state.effectiveContentBar || state.contentBar`）与 `appContext.js:335 contentBarShows(section)`（active === section 或 Full）。
+- **Auto 解析**：`settings.js:86 isAutoDisplayEnabled()`（`userSrText === "Auto" || userContentBar === "Auto"`）→ `settings.js:90 resolveRuntimeDisplayProfile(modeTag)` 调 `resolveAutoDisplayProfile`（modeLogic.js）得出 `{contentBar, srText}` 映射，再经 `setRuntimeDisplayProfile`（settings.js:496-505）→ `setRuntimeContentBar`（settings.js:415）/`setRuntimeSrText`（settings.js:477）/`setRuntimeDiffText`（settings.js:488）写入解析值层。`diffText` 无 Auto 选项，直接透传。
+- **读取约定**：展示代码一律读解析值层；`state.contentBar` 之上还有谱面级覆盖，正确读法是 `appContext.js:338 getActiveContentBar()`（`state.effectiveContentBar || state.contentBar`）与 `appContext.js:342 contentBarShows(section)`（active === section 或 Full）。
 
 **估计算法层**：`state.estimatorAlgorithm`（appContext.js:179）是用户选择，`state.actualEstimatorAlgorithm`（appContext.js:180）记录实际执行的算法（如 Azusa 因 LN 比例过高回退 Sunny）。分析完成后读取后者；缓存命中时从快照恢复，不得重算（详见 [result-cache.md](result-cache.md)）。
 
@@ -68,14 +68,14 @@ config.js 的 `APP_CONFIG.defaults`（config.js:79-119）与 settings.json 字�
 
 用户修改 → tosu 推送 `getSettings` 命令 → 回调链：
 
-1. **监听注册**：`settings.js:807 setupSettingsCommandListener()`（幂等，`state.settingsCommandSubscribed` 守卫 settings.js:808-810）→ `socket.commands((packet) => {...})` settings.js:814。
-2. **解包**：`settings.js:795 extractSettingsPayloadFromCommandPacket(packet)`——数组直接返回；`{command: "getSettings", message}` 取 `message`；其余返回 null 丢弃。
-3. **逐个应用（数据表驱动，共用 `applySettingsPayload`）**：`settings.js:736 SETTING_HANDLERS`——**36 行** `{ key, parse, apply }` 表（settings.js:736-773，尾项为 `gameClient`），`applySettingsPayload`（settings.js:832）循环遍历（settings.js:848-850）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，每个键产生一个 `changedMap[key]` 布尔。全部走 hasKey 守卫（`applyIf` settings.js:843-844）+ `applyXxxSetting(parseXxxValue(payload))`。该函数同时是壳 settings 帧与离线 `/settings` GET 的入口（tosu 命令 / 壳帧 / 离线读三路共用）。
-4. **遗留 autoMode 检查**：settings.js:852-857，见 §6。
-5. **聚合**：`changed`（settings.js:859，`SETTING_HANDLERS.some(changedMap[key])`）与 `recomputeNeeded`（settings.js:860-862，按 `SETTING_RECOMPUTE_KEYS` 集合过滤）。区别：纯显示类（不在 `SETTING_RECOMPUTE_KEYS`，如 `cardOpacity`、`cardBgBlur`）只在 `changed` 中，不触发重算。
-6. **缓存失效**：settings.js:870-874——`clearResultCache()` 仅当 `SETTING_CACHE_KEYS` 集合内键变化时触发（estimator/azusaSunnyReferenceHo/etternaVersion/companellaEtternaVersion/sv/vibro/wsEndpoint/forceSunnyWindow/enableLNDifficulty/enableAnalyzeLN/enableAlwaysShowLNDifficulty/extendedEstimationRange/gameClient 共 13 项）。`wsEndpoint` 只在 `changed` 不在 `recomputeNeeded`，故在 `SETTING_CACHE_KEYS` 中显式列出（settings.js:864-869 注释）。完整写门与失效语义见 [result-cache.md](result-cache.md)。
-7. **首包解析**：settings.js:876-880 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
-8. **重算调度**：settings.js:882-884 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
+1. **监听注册**：`settings.js:818 setupSettingsCommandListener()`（幂等，`state.settingsCommandSubscribed` 守卫 settings.js:819-823）→ `socket.commands((packet) => {...})` settings.js:825。
+2. **解包**：`settings.js:806 extractSettingsPayloadFromCommandPacket(packet)`——数组直接返回；`{command: "getSettings", message}` 取 `message`；其余返回 null 丢弃。
+3. **逐个应用（数据表驱动，共用 `applySettingsPayload`）**：`settings.js:746 SETTING_HANDLERS`——**37 行** `{ key, parse, apply }` 表（settings.js:746-782，尾项为 `gameClient`），`applySettingsPayload`（settings.js:843）循环遍历（settings.js:859-861）：`changedMap[key] = applyIf(key, handler.apply, handler.parse(payload))`，每个键产生一个 `changedMap[key]` 布尔。全部走 hasKey 守卫（`applyIf` settings.js:843-844）+ `applyXxxSetting(parseXxxValue(payload))`。该函数同时是壳 settings 帧与离线 `/settings` GET 的入口（tosu 命令 / 壳帧 / 离线读三路共用）。
+4. **遗留 autoMode 检查**：settings.js:863-868，见 §6。
+5. **聚合**：`changed`（settings.js:870，`SETTING_HANDLERS.some(changedMap[key])`）与 `recomputeNeeded`（settings.js:871-873，按 `SETTING_RECOMPUTE_KEYS` 集合过滤）。区别：纯显示类（不在 `SETTING_RECOMPUTE_KEYS`，如 `cardOpacity`、`cardBgBlur`）只在 `changed` 中，不触发重算。
+6. **缓存失效**：settings.js:881-885——`clearResultCache()` 仅当 `SETTING_CACHE_KEYS` 集合内键变化时触发（estimator/azusaSunnyReferenceHo/etternaVersion/companellaEtternaVersion/sv/vibro/wsEndpoint/forceSunnyWindow/enableLNDifficulty/enableAnalyzeLN/enableAlwaysShowLNDifficulty/extendedEstimationRange/gameClient 共 13 项）。`wsEndpoint` 只在 `changed` 不在 `recomputeNeeded`，故在 `SETTING_CACHE_KEYS` 中显式列出（settings.js:875-880 注释）。完整写门与失效语义见 [result-cache.md](result-cache.md)。
+7. **首包解析**：settings.js:887-891 消费 `state.initialSettingsResolver`（§2 第 5 步挂起的等待者）。
+8. **重算调度**：settings.js:893-895 `recomputeNeeded` 时 `scheduleRecompute("settings changed", true)`（scheduler.js，防抖）；仅 `changed` 时立即应用视觉变更（如数字难度开关），不重算。
 
 **壳离线写回与广播路径**（桌面壳设置窗口，无 tosu 时）：
 
@@ -104,26 +104,27 @@ config.js 的 `APP_CONFIG.defaults`（config.js:79-119）与 settings.json 字�
 
 ## 7. settings↔config 默认值同步（已知注意事项）
 
-config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史上存在两处方向相反的不匹配，已修复（2026-08）：`forceSunnyWindow` 均为 `true`（settings.json:351 / config.js:113）、`enableAlwaysShowLNDifficulty` 均为 `false`（settings.json:468 / config.js:116）。正常运行时基线来自 settings.json 或命令通道，config defaults 仅在**首次启动且 settings.json 拉取失败**时生效（settings.js:966-1002）——若不同步，该场景下行为会偏离预期。
+config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史上存在两处方向相反的不匹配，已修复（2026-08）：`forceSunnyWindow` 均为 `true`（settings.json:351 / config.js:113）、`enableAlwaysShowLNDifficulty` 均为 `false`（settings.json:476 / config.js:117）。正常运行时基线来自 settings.json 或命令通道，config defaults 仅在**首次启动且 settings.json 拉取失败**时生效（settings.js:966-1002）——若不同步，该场景下行为会偏离预期。
 
 修改任何一处默认值时，必须同步另一处，否则上述差异会被重新引入。
 
 ## 8. applyEnableResultCacheSetting
 
-`settings.js:693 applyEnableResultCacheSetting(value)`：
+`settings.js:695 applyEnableResultCacheSetting(value)`：
 1. `normalizeBooleanSetting(value, APP_CONFIG.defaults.enableResultCache)` 归一化；
 2. 比较 `state.enableResultCache` 得 `changed`，记录旧值 `wasEnabled`；
 3. mutate `state.enableResultCache`；
-4. **副作用**：`changed && wasEnabled && !next`（即从开启 → 关闭）时调用 `clearResultCache()`（settings.js:699-701）——关闭缓存时立即清空已缓存快照，防止残留；
+4. **副作用**：`changed && wasEnabled && !next`（即从开启 → 关闭）时调用 `clearResultCache()`（settings.js:701-703）——关闭缓存时立即清空已缓存快照，防止残留；
 5. 返回 `changed`。
 
 ## 9. 注意事项
 
 - **applyXxxSetting 统一模式**：`parse→compare(与 state 现值比较)→mutate state→side effects(视觉刷新/缓存清理等)→return changed`。所有 apply 函数返回 changed 布尔，供 §5 第 5 步聚合。新增设置必须遵循此模式（见 [guides/adding-a-setting.md](../guides/adding-a-setting.md)）。
-- **VibroDetection 大小写**：settings.json 的 uniqueID 是 `VibroDetection`（大写 V，settings.json:319），命令通道键名与之相同（settings.js:749、settings.js:979 回退对象）；state 字段是小写 `state.vibroDetection`（appContext.js:201）。按 uniqueID 查找/新增时必须精确匹配 PascalCase。
-- **settingsCommandTimeoutMs = 1500**：定义于 `config.js:75 APP_CONFIG.timing.settingsCommandTimeoutMs`，经 `appContext.js:278 SETTINGS_COMMAND_TIMEOUT_MS` 导出，由 `waitForInitialSettingsFromCommand`（settings.js:887-905）用作超时（超时 reject "getSettings timeout"）。
-- **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:923-959，启动基线，手工逐行）与 `SETTING_HANDLERS` 表（settings.js:736-773，运行时，数据驱动）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。注意：**只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
-- **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:870-874，`SETTING_CACHE_KEYS`）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
+- **VibroDetection 大小写**：settings.json 的 uniqueID 是 `VibroDetection`（大写 V，settings.json:319），命令通道键名与之相同（settings.js:759、settings.js:989 回退对象）；state 字段是小写 `state.vibroDetection`（appContext.js:201）。按 uniqueID 查找/新增时必须精确匹配 PascalCase。
+- **settingsCommandTimeoutMs = 1500**：定义于 `config.js:75 APP_CONFIG.timing.settingsCommandTimeoutMs`，经 `appContext.js:284 SETTINGS_COMMAND_TIMEOUT_MS` 导出，由 `waitForInitialSettingsFromCommand`（settings.js:898-916）用作超时（超时 reject "getSettings timeout"）。
+- **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:934-971，启动基线，手工逐行）与 `SETTING_HANDLERS` 表（settings.js:746-782，运行时，数据驱动）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。注意：**只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
+- **`enableDifficultyFeedback`（2.2.0 新增，显示类）**：checkbox 在 Network 分组（settings.json:436），`applyEnableDifficultyFeedbackSetting`（settings.js:716）除比较/写入外仅有 `syncFeedbackVisibility()` 副作用（收起反馈条）；不在 `SETTING_RECOMPUTE_KEYS`/`SETTING_CACHE_KEYS`，不进任何缓存键。
+- **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:881-885，`SETTING_CACHE_KEYS`）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
 ## 多数据源（外部源）补充
 
 设置管线在多源场景下涉及的键（见 [../features/multi-source.md](../features/multi-source.md)）：

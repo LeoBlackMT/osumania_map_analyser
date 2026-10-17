@@ -204,6 +204,12 @@ export const state = {
     enableAnalyzeLN: APP_CONFIG.defaults.enableAnalyzeLN,
     enableAlwaysShowLNDifficulty: APP_CONFIG.defaults.enableAlwaysShowLNDifficulty,
     enableTelemetry: APP_CONFIG.defaults.enableTelemetry,
+    enableDifficultyFeedback: APP_CONFIG.defaults.enableDifficultyFeedback,
+    // 本次结算帧的谱面身份（resultScreen 帧可能不带 beatmap，需保留上一帧值）。
+    currentBeatmapId: 0,
+    currentBeatmapChecksum: "",
+    // 当前谱面最近一次分析产出的反馈上下文；换图/清卡时置 null。
+    feedbackContext: null,
     numericDifficulty: null,
     numericDifficultyHint: null,
     lnStar: 0,
@@ -325,6 +331,7 @@ export const {
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
     parseEnableTelemetryValue,
+    parseEnableDifficultyFeedbackValue,
     parseGameClientValue,
 } = createSettingsParsers(APP_CONFIG);
 

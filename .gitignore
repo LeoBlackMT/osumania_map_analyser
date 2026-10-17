@@ -33,3 +33,8 @@ bridges/malody/bepinex/plugin/tests/
 desktop/offsets/gen.exe
 desktop/offsets/gen
 /.workbuddy
+
+# RC feedback signing key. The seed is the private key: env var or a local file,
+# never committed. The public key is configured on the server only.
+.secrets/
+*.feedback-seed
