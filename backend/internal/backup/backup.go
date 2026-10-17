@@ -1,9 +1,17 @@
-// Package backup snapshots the SQLite database to Huawei Cloud OBS: a daily
-// backup (kept 30) plus a monthly archive (kept 12). It is entirely optional —
-// when any OBS credential is empty the manager is a no-op and failures only log.
+// Package backup snapshots SQLite databases to Huawei Cloud OBS.
+//
+// A pass uploads a matched set — `telemetry-*.db`, `feedback-*.db` (when the
+// feedback store exists), then `manifest-*.json` last. The manifest is the
+// commit marker: without it the pair is incomplete. Pruning is per prefix so
+// adding the second database does not halve the retention window.
 package backup
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"sort"
@@ -16,20 +24,22 @@ import (
 )
 
 type Manager struct {
-	cfg    config.Config
-	store  *store.Store
-	client *obs.ObsClient
+	cfg      config.Config
+	store    *store.Store
+	feedback *store.FeedbackStore
+	version  string
+	client   *obs.ObsClient
 }
 
-func New(cfg config.Config, st *store.Store) (*Manager, error) {
+func New(cfg config.Config, st *store.Store, fb *store.FeedbackStore, version string) (*Manager, error) {
 	if !cfg.BackupEnabled() {
-		return &Manager{cfg: cfg, store: st}, nil
+		return &Manager{cfg: cfg, store: st, feedback: fb, version: version}, nil
 	}
 	client, err := obs.New(cfg.OBSAccessKey, cfg.OBSSecretKey, cfg.OBSEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{cfg: cfg, store: st, client: client}, nil
+	return &Manager{cfg: cfg, store: st, feedback: fb, version: version, client: client}, nil
 }
 
 func (m *Manager) Enabled() bool { return m.client != nil }
@@ -48,41 +58,136 @@ func (m *Manager) Run() {
 
 func (m *Manager) pass() {
 	now := time.Now().UTC()
+	m.backupSet("daily", now.Format("20060102"), m.cfg.DailyKeep)
+	if now.Day() == 1 {
+		m.backupSet("monthly", now.Format("2006-01"), m.cfg.MonthlyKeep)
+	}
+}
 
-	if err := m.backupTo("daily/telemetry-" + now.Format("20060102") + ".db"); err != nil {
-		log.Printf("backup: daily snapshot failed: %v", err)
-	} else if err := m.prune("daily/", m.cfg.DailyKeep); err != nil {
-		log.Printf("backup: prune daily failed: %v", err)
+type manifestEntry struct {
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+type manifest struct {
+	CreatedAt time.Time      `json:"created_at"`
+	Version   string         `json:"version"`
+	Telemetry *manifestEntry `json:"telemetry"`
+	Feedback  *manifestEntry `json:"feedback,omitempty"`
+}
+
+// backupSet uploads one matched set. Any failure before the manifest aborts
+// the set and skips pruning, so the previous complete set stays intact.
+func (m *Manager) backupSet(prefix, stamp string, keep int) {
+	telemetry, err := snapshot(m.store.SnapshotTo)
+	if err != nil {
+		log.Printf("backup: telemetry snapshot failed: %v", err)
+		return
+	}
+	defer os.Remove(telemetry.path)
+	if err := m.put(prefix+"/telemetry-"+stamp+".db", telemetry.path); err != nil {
+		log.Printf("backup: telemetry upload failed: %v", err)
+		return
 	}
 
-	if now.Day() == 1 {
-		if err := m.backupTo("monthly/telemetry-" + now.Format("2006-01") + ".db"); err != nil {
-			log.Printf("backup: monthly snapshot failed: %v", err)
-		} else if err := m.prune("monthly/", m.cfg.MonthlyKeep); err != nil {
-			log.Printf("backup: prune monthly failed: %v", err)
+	doc := manifest{CreatedAt: time.Now().UTC(), Version: m.version, Telemetry: telemetry.entry}
+
+	if m.feedback != nil {
+		fb, err := snapshot(m.feedback.SnapshotTo)
+		if err != nil {
+			log.Printf("backup: feedback snapshot failed: %v", err)
+			return
+		}
+		defer os.Remove(fb.path)
+		if err := m.put(prefix+"/feedback-"+stamp+".db", fb.path); err != nil {
+			log.Printf("backup: feedback upload failed: %v", err)
+			return
+		}
+		doc.Feedback = fb.entry
+	}
+
+	body, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		log.Printf("backup: manifest encode failed: %v", err)
+		return
+	}
+	if err := m.putBytes(prefix+"/manifest-"+stamp+".json", body); err != nil {
+		log.Printf("backup: manifest upload failed: %v", err)
+		return
+	}
+
+	for _, item := range []struct {
+		prefix string
+		keep   int
+	}{
+		{prefix + "/telemetry-", keep},
+		{prefix + "/feedback-", keep},
+		{prefix + "/manifest-", keep},
+	} {
+		if err := m.prune(item.prefix, item.keep); err != nil {
+			log.Printf("backup: prune %s failed: %v", item.prefix, err)
 		}
 	}
 }
 
-func (m *Manager) backupTo(key string) error {
-	tmp, err := os.CreateTemp("", "telemetry-backup-*.db")
+type snapshotFile struct {
+	path  string
+	entry *manifestEntry
+}
+
+func snapshot(take func(string) error) (snapshotFile, error) {
+	tmp, err := os.CreateTemp("", "mma-backup-*.db")
 	if err != nil {
-		return err
+		return snapshotFile{}, err
 	}
-	tmpPath := tmp.Name()
+	path := tmp.Name()
 	tmp.Close()
-	os.Remove(tmpPath) // VACUUM INTO must create the target itself.
+	os.Remove(path) // VACUUM INTO must create the target itself.
 
-	if err := m.store.SnapshotTo(tmpPath); err != nil {
-		return err
+	if err := take(path); err != nil {
+		os.Remove(path)
+		return snapshotFile{}, err
 	}
-	defer os.Remove(tmpPath)
+	info, err := os.Stat(path)
+	if err != nil {
+		os.Remove(path)
+		return snapshotFile{}, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		os.Remove(path)
+		return snapshotFile{}, err
+	}
+	defer file.Close()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		os.Remove(path)
+		return snapshotFile{}, err
+	}
+	return snapshotFile{
+		path: path,
+		entry: &manifestEntry{
+			SHA256: hex.EncodeToString(hasher.Sum(nil)),
+			Size:   info.Size(),
+		},
+	}, nil
+}
 
+func (m *Manager) put(key, path string) error {
 	input := &obs.PutFileInput{}
 	input.Bucket = m.cfg.OBSBucket
 	input.Key = key
-	input.SourceFile = tmpPath
-	_, err = m.client.PutFile(input)
+	input.SourceFile = path
+	_, err := m.client.PutFile(input)
+	return err
+}
+
+func (m *Manager) putBytes(key string, body []byte) error {
+	input := &obs.PutObjectInput{}
+	input.Bucket = m.cfg.OBSBucket
+	input.Key = key
+	input.Body = bytes.NewReader(body)
+	_, err := m.client.PutObject(input)
 	return err
 }
 

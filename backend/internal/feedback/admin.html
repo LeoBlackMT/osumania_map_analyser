@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RC Difficulty Feedback — Admin</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 24px;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0f1524; color: #e8eefc;
+  }
+  h1 { font-size: 18px; margin: 0 0 16px; }
+  h2 { font-size: 14px; margin: 24px 0 8px; color: #9fb6da; text-transform: uppercase; letter-spacing: .04em; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  input[type="password"] {
+    background: #1a2235; border: 1px solid #2c3a55; color: inherit;
+    border-radius: 6px; padding: 6px 8px; min-width: 260px;
+  }
+  button {
+    background: #23314d; border: 1px solid #35486b; color: inherit;
+    border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  }
+  button:hover { background: #2d3f62; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+  .card {
+    background: #161e30; border: 1px solid #24304a; border-radius: 8px;
+    padding: 10px 14px; min-width: 130px;
+  }
+  .card .value { font-size: 20px; font-weight: 600; }
+  .card .label { color: #8ba2c6; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border-bottom: 1px solid #22304a; padding: 5px 8px; text-align: left; }
+  th { color: #9fb6da; font-weight: 500; position: sticky; top: 0; background: #0f1524; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { max-height: 420px; overflow: auto; border: 1px solid #22304a; border-radius: 8px; }
+  .muted { color: #7f93b3; }
+  .err { color: #ff9a9a; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>RC Difficulty Feedback — Admin</h1>
+
+<div class="bar">
+  <input id="token" type="password" placeholder="FEEDBACK_ADMIN_TOKEN" autocomplete="off" />
+  <button id="load">Load</button>
+  <button id="refresh">Rebuild aggregates</button>
+  <a id="csv" href="#" download><button>Export CSV</button></a>
+  <span id="status" class="muted"></span>
+</div>
+
+<div id="content" class="hidden">
+  <h2>Overview</h2>
+  <div class="cards" id="totals"></div>
+
+  <h2>osu! API budget</h2>
+  <div class="cards" id="api"></div>
+
+  <h2>Candidates (consensus differs from displayed value)</h2>
+  <div class="scroll"><table id="candidates"></table></div>
+
+  <h2>Per map (N ≥ threshold)</h2>
+  <div class="scroll"><table id="maps"></table></div>
+
+  <h2>Rejections</h2>
+  <div class="scroll"><table id="rejects"></table></div>
+
+  <h2>Feature residuals</h2>
+  <div class="scroll"><table id="features"></table></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const tokenInput = $("token");
+tokenInput.value = sessionStorage.getItem("mma.feedback.admin") || "";
+
+function headers() {
+  return { "Authorization": "Bearer " + tokenInput.value.trim() };
+}
+
+function fmt(value, digits = 2) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "-";
+}
+
+function table(el, columns, rows, rowMapper) {
+  const head = "<thead><tr>" + columns.map((c) =>
+    `<th class="${c.num ? "num" : ""}">${c.label}</th>`).join("") + "</tr></thead>";
+  const body = rows.length
+    ? rows.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
+        `<td class="${columns[index].num ? "num" : ""}">${cell ?? ""}</td>`).join("") + "</tr>").join("")
+    : `<tr><td colspan="${columns.length}" class="muted">No rows</td></tr>`;
+  el.innerHTML = head + "<tbody>" + body + "</tbody>";
+}
+
+function renderCards(el, entries) {
+  el.innerHTML = entries.map(([label, value]) =>
+    `<div class="card"><div class="value">${value}</div><div class="label">${label}</div></div>`).join("");
+}
+
+function render(data) {
+  renderCards($("totals"), [
+    ["Accepted votes", data.totals.events],
+    ["Maps", data.totals.maps],
+    ["Days with votes", data.totals.distinct_days],
+    ["Agg rows", data.totals.agg_rows],
+    ["Candidates", data.totals.candidate_rows],
+    ["Rejected", data.totals.rejects],
+  ]);
+  renderCards($("api"), Object.entries(data.api || {}).map(([k, v]) => [k, v]));
+
+  table($("candidates"), [
+    { label: "bid", num: true }, { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN" }, { label: "N", num: true },
+    { label: "distinct", num: true }, { label: "median", num: true },
+    { label: "IQR", num: true }, { label: "mods" },
+  ], data.candidates, (r) => [
+    r.bid, r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket, r.n,
+    r.distinct_installs, fmt(r.target_median), fmt(r.iqr), r.mods,
+  ]);
+
+  table($("maps"), [
+    { label: "bid", num: true }, { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN" }, { label: "N", num: true },
+    { label: "weight", num: true }, { label: "distinct", num: true },
+    { label: "median", num: true }, { label: "Q25", num: true },
+    { label: "Q75", num: true }, { label: "IQR", num: true },
+  ], data.maps, (r) => [
+    r.bid, r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket, r.n,
+    fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
+    fmt(r.target_q25), fmt(r.target_q75), fmt(r.iqr),
+  ]);
+
+  table($("rejects"), [
+    { label: "day", num: true }, { label: "reason" }, { label: "count", num: true },
+  ], data.rejects, (r) => [
+    new Date(r.day).toISOString().slice(0, 10), r.reason, r.count,
+  ]);
+
+  table($("features"), [
+    { label: "day", num: true }, { label: "pattern" }, { label: "keys", num: true },
+    { label: "LN" }, { label: "OD" }, { label: "algo" }, { label: "N", num: true },
+    { label: "mean target", num: true }, { label: "vote sum", num: true },
+  ], data.features, (r) => [
+    new Date(r.day).toISOString().slice(0, 10), r.pattern, r.key_count, r.ln_bucket,
+    r.od_bucket, r.actual_algorithm, r.n,
+    fmt(r.target_weighted_sum / (r.weight_sum || 1)), fmt(r.vote_sum),
+  ]);
+}
+
+async function load() {
+  const token = tokenInput.value.trim();
+  if (!token) { $("status").textContent = "Enter the admin token."; return; }
+  sessionStorage.setItem("mma.feedback.admin", token);
+  $("status").textContent = "Loading…";
+  try {
+    const response = await fetch("/api/v1/feedback/stats?days=30", { headers: headers(), cache: "no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    render(data);
+    $("content").classList.remove("hidden");
+    $("status").textContent = "Updated " + new Date().toLocaleTimeString();
+    $("csv").href = "/api/v1/feedback/export.csv";
+  } catch (error) {
+    $("status").textContent = "Failed: " + error.message + " (wrong token or endpoint disabled)";
+  }
+}
+
+$("load").addEventListener("click", load);
+$("refresh").addEventListener("click", async () => {
+  $("status").textContent = "Rebuilding…";
+  try {
+    const response = await fetch("/api/v1/feedback/refresh", { method: "POST", headers: headers() });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    await load();
+  } catch (error) {
+    $("status").textContent = "Rebuild failed: " + error.message;
+  }
+});
+$("csv").addEventListener("click", async (event) => {
+  event.preventDefault();
+  const response = await fetch("/api/v1/feedback/export.csv", { headers: headers() });
+  if (!response.ok) { $("status").textContent = "CSV failed: HTTP " + response.status; return; }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "feedback-map-agg.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { rcLabelToNumeric } from "../estimator/rcDifficultyFormat.js";
 import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 import { analyzePatternFromText } from "../patterns/service.js";
+import { settingsHash, slotCount } from "./feedback/feedbackMath.js";
 import { OsuFileParser } from "../parser/osuFileParser.js";
 import { runInWorker } from "./worker/manager.js";
 import {
@@ -283,6 +284,7 @@ function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar
 export function resetReworkDisplay() {
     state.actualEstimatorAlgorithm = state.estimatorAlgorithm;
     state.ppMetrics = null;
+    state.feedbackContext = null;
     clearReworkPpBody();
     resetLivePp();
     setNumericDifficultyValue(null);
@@ -681,6 +683,8 @@ export async function fetchBeatmapFile(reason) {
         let rework = null;
         let patternResult = null;
         let patternReport = null;
+        // 反馈用的键型标签：在 `SV` 重写 Category 之前捕获（SV 是谱面特征，不是键型）。
+        let feedbackPattern = "unknown";
         let mergedClusters = null;
         let ettResult = null;
         let interludeStar = Number.NaN;
@@ -858,6 +862,7 @@ export async function fetchBeatmapFile(reason) {
             const applyPatternData = (result) => {
                 patternResult = result;
                 patternReport = result?.report || null;
+                feedbackPattern = String(patternReport?.Category || "unknown");
                 const allClusters = result?.report?.Clusters || result?.topFiveClusters || [];
                 mergedClusters = mergeDuplicateClusters(allClusters);
                 applyDebugUseAmountPostProcess(mergedClusters, patternReport);
@@ -865,6 +870,7 @@ export async function fetchBeatmapFile(reason) {
             if (cached) {
                 patternResult = cached.patternReport ? { report: cached.patternReport } : null;
                 patternReport = cached.patternReport;
+                feedbackPattern = String(patternReport?.Category || "unknown");
                 // 命中重派生：缓存存的是写时刻的 mergedClusters（debugUseAmount 可能已变，
                 // 已移出失效清单）——从缓存 report.Clusters 重放 merge + 后处理，与 miss 同路径。
                 mergedClusters = mergeDuplicateClusters(
@@ -1165,6 +1171,24 @@ export async function fetchBeatmapFile(reason) {
                 : resolvedNumericDifficulty;
             const cappedHint = cappedDiff === null ? "N/A" : resolvedNumericDifficultyHint;
             setNumericDifficultyValue(cappedDiff, cappedHint);
+
+            // 反馈上下文：只在这里（分析完成、显示值已定）写入；换图/清卡时置 null。
+            state.feedbackContext = {
+                beatmapKey: state.lastBeatmapKey,
+                numericDifficulty: Number.isFinite(state.numericDifficulty) ? state.numericDifficulty : null,
+                estDiff: typeof resolvedEstDiff === "string" ? resolvedEstDiff : "",
+                slotCount: slotCount(resolvedEstDiff),
+                actualAlgorithm: state.actualEstimatorAlgorithm,
+                selectedAlgorithm: state.estimatorAlgorithm,
+                modeTag: resolvedModeTag,
+                pattern: feedbackPattern,
+                lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
+                keyCount: Number(rework.columnCount),
+                od: Number.isFinite(Number(parsedInfo.od)) && Number(parsedInfo.od) >= 0
+                    ? Number(parsedInfo.od)
+                    : null,
+                settingsHash: settingsHash(state),
+            };
         }
 
         setForceHideNumericDifficulty(isVibroMap);
