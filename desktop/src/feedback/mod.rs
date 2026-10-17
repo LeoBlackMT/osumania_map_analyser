@@ -172,7 +172,7 @@ pub fn build_sign_string(payload: &FeedbackPayload) -> String {
 pub fn sign(payload: &FeedbackPayload) -> Option<SignedEnvelope> {
     let keypair = keypair()?;
     let message = build_sign_string(payload);
-    let signature = keypair.sk.sign(message.as_bytes());
+    let signature = keypair.sk.sign(message.as_bytes(), None);
     Some(SignedEnvelope {
         payload: payload.clone(),
         auth: FeedbackAuth {
@@ -213,7 +213,7 @@ fn is_hex32(value: &str) -> bool {
 fn sanitize_text(value: &str, max_len: usize) -> String {
     value
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '_' || *c == '-' || *c == '+')
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '_' || *c == '-' || *c == '+' || *c == '/')
         .take(max_len)
         .collect::<String>()
         .trim()
@@ -255,7 +255,9 @@ pub fn build_payload(
         return Err("no_checksum");
     }
 
-    let Some(mask) = snapshot.result_mods_mask else {
+    // 用 `mask_for_state` 的结算槽：它已经做了"状态 = resultScreen ∧ 结算链可信"的门控，
+    // 直接读 raw mask 会把结算动画期间的残留指针当成 mod。
+    let Some(mask) = crate::osu::invariants::mask_for_state(snapshot).2 else {
         return Err("no_mods");
     };
     let mods = crate::osu::keys::menu_mod_codes(mask);
@@ -416,10 +418,10 @@ fn new_install_id() -> String {
     hasher.update(nanos.to_le_bytes());
     hasher.update(std::process::id().to_le_bytes());
     hasher.update(count.to_le_bytes());
-    hash_with_process_salt(&mut hasher)
+    hash_with_process_salt(hasher)
 }
 
-fn hash_with_process_salt(hasher: &mut Sha256) -> String {
+fn hash_with_process_salt(mut hasher: Sha256) -> String {
     // 同一进程内多一次不可预测输入（栈地址），避免纯时间戳被枚举。
     let local = 0u8;
     hasher.update((&local as *const u8 as usize).to_le_bytes());

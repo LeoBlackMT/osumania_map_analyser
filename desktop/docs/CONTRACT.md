@@ -271,7 +271,7 @@
 
 > **`CONTRACT_VERSION` 由 v6 起为 6**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v6 的升级来自 `/ws` 上的新字段（§14），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,6]`（§11.8）。
 
-Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。
+Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。**唯一例外**是 `/feedback`：tosu 在线时页面由 tosu（24050）提供，跨源 POST 需要预检，故该端点显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
 | 端点 | 方法 | 状态码与语义 |
 | --- | --- | --- |
@@ -280,6 +280,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`；**400** 配置不可读 |
 | `/shell-config` | POST | 200 = 合并后全量壳配置（+ `clear_detect_caches()` + 广播 settings 帧）；**400** body 非 JSON / 非对象 / base 不可读 / 写盘失败（不写盘） |
 | `/open-settings` | POST | 200 `{}`（异步发起建窗/聚焦，不等窗口建成）；**503** 无 app 句柄（无窗口模式） |
+| `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/mods/rate/total_hits/completion/miss_rate/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403/405** 来源或方法不允许。OPTIONS 返回 204 + CORS 预检头 |
 | `/cover/...` | GET | 200 白名单内的具体文件（`Access-Control-Allow-Origin: *`）；404 未列入白名单或读取失败 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 200 插件目录静态文件（防穿越，`Cache-Control: no-store`）；405 其他方法；404 穿越/不存在 |
 | `/ws` | WS | 帧通道（§0–§12 的八型 + diag） |

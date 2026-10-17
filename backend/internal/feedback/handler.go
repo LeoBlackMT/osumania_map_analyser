@@ -42,11 +42,15 @@ type Handler struct {
 
 // NewHandler builds the ingest handler.
 func NewHandler(cfg config.Config, st *store.FeedbackStore, osu *OSUAPI) *Handler {
+	keys := ParsePublicKeys(cfg.FeedbackPublicKeys)
+	if !cfg.FeedbackAllowDevKey {
+		delete(keys, "dev")
+	}
 	return &Handler{
 		cfg:      cfg,
 		store:    st,
 		osu:      osu,
-		keys:     ParsePublicKeys(cfg.FeedbackPublicKeys),
+		keys:     keys,
 		dedupKey: []byte(cfg.FeedbackDedupSecret),
 		ipLimit:  newWindowLimiter(time.Hour, cfg.FeedbackRateLimitPerHour),
 		mapLimit: newWindowLimiter(24*time.Hour, cfg.FeedbackMapDailyCap),

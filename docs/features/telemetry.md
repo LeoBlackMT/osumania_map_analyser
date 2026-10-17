@@ -48,8 +48,36 @@
 
 ## 5. 与 CLAUDE.md 的关系
 
-CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数据/计算」。本项目作者已明确授权**豁免这一条**用于遥测：插件向自建后端上报匿名统计是唯一允许的 tosu 之外数据去向。已同步在 CLAUDE.md 记录该豁免。
+CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数据/计算」。本项目作者已明确授权**豁免这一条**用于两类数据去向：① 遥测（本文档）；② RC 难度反馈（§7，独立 opt-in）。两者均已同步在 CLAUDE.md 记录。
 
 ## 6. 设置项
 
 唯一新增设置 `enableTelemetry`（checkbox，Network 分组，默认 `true`）。它是**纯遥测开关**：不进 `recomputeNeeded`，不进 `clearResultCache()` 失效列表，只进 `changed` 聚合（与 `enableNumericDifficulty` 同类「立即应用、不重算」）。
+
+## 7. RC 难度反馈（独立数据类别，非遥测）
+
+> 与上文遥测**完全独立**：不同设置、不同端点、不同数据库、不同保留期。关闭 `enableTelemetry` 不影响反馈；关闭 `enableDifficultyFeedback` 不影响遥测。
+
+**用途**：收集玩家对“当前显示难度”的五档评价（`-1 / -0.5 / 0 / +0.5 / +1`，步长 0.5 个段位），用于发现估算器的系统性偏差、筛选高共识争议谱面交给专家复标。**不参与任何在线校准**：后端不生成 per-map 查表，页面永远只显示算法自身的计算结果。
+
+**采集边界（硬约束）**：
+
+- 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
+- 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
+- 仅 `rate = 1.0`；mod 白名单 `NM, MR, SD, PF, SV2, TD, CS`，其余（含 `nK`、`HO`、`IN`、`RD`、`FL`、`HD`、`NF`、`AT/AU`、全部变速与改 OD mod）一律拒绝。
+- 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、miss 率 ≤0.05、ScoreV1 准度 92–99。
+- 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
+
+**字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
+
+**信任链**：
+
+1. 页面只提交 `vote` 与显示值等报告字段；
+2. 壳从 native 快照重算 `bid/checksum/rate/mods/hits/weight/passed`，用 Ed25519 签名后把信封交给页面（壳不发 HTTPS）；
+3. 后端验签（`FEEDBACK_PUBLIC_KEYS`）、校验 `timestamp ±300s`、`(key_id, nonce)` 一次性、osu! API 的 `bid → checksum/mode/convert`，任一失败**直接丢弃**，只增当天拒绝计数。
+
+**去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
+
+**存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建。私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）提供总览、拒绝原因、每图 N/加权中位数/IQR、特征残差与 CSV 导出；公开 dashboard 不含 per-map 数据。
+
+**开关**：`enableDifficultyFeedback`（checkbox，Network 分组，默认 `false`）。不进 `recomputeNeeded`、不进缓存失效列表；关闭时页面不显示、不请求、不写本地去重。

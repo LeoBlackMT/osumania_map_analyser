@@ -5,7 +5,7 @@
 // 后端还会再校验一次，因此页面侧宁可严格。
 
 import { extractCounts } from "../livePpCounts.js";
-import { ALLOWED_MOD_CODES, ACC_MAX, ACC_MIN, DEDUP_KEY_PREFIX } from "./feedbackSpec.js";
+import { ALLOWED_MOD_CODES, ACC_MAX, ACC_MIN, DEDUP_KEY_PREFIX, DEDUP_TTL_MS } from "./feedbackSpec.js";
 import { evaluatePlayStats, isRcChart, slotCount } from "./feedbackMath.js";
 
 function normalizedStateName(state) {
@@ -28,7 +28,7 @@ export function isLocallyDeduped(context, now, storage) {
         const store = storage || (typeof localStorage !== "undefined" ? localStorage : null);
         if (!store) return false;
         const previous = Number(store.getItem(dedupKey(context)) || 0);
-        return previous > 0 && now - previous < 30 * 24 * 60 * 60 * 1000;
+        return previous > 0 && now - previous < DEDUP_TTL_MS;
     } catch {
         return false;
     }

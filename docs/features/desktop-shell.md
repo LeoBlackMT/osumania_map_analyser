@@ -72,7 +72,7 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 
 ## 3c. 本机 HTTP 端点（`127.0.0.1:24061`）
 
-Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头的裸 HTTP/1.0 客户端放行），其余 403（DNS rebinding 防护）；设置页与端点同源，故无需 CORS。
+Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头的裸 HTTP/1.0 客户端放行），其余 403（DNS rebinding 防护）；设置页与端点同源，故无需 CORS。唯一例外是 `/feedback`：tosu 在线时页面由 24050 提供，该端点显式允许 24050/24061 两个来源（不带 `*`）。
 
 | 端点 | 方法 | 状态码与语义 |
 | --- | --- | --- |
@@ -81,6 +81,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`）；**400 `shell config unreadable`**（配置不可读） |
 | `/shell-config` | POST | 200 + 合并后的全量壳配置（请求键优先，未知键保留）；**400**（body 非 JSON / 非对象 / base 不可读或写盘失败——这几种情况**什么都不写**，不生成骨架）。成功 → 更新缓存 + `clear_detect_caches()`（根目录探测缓存失效）+ 广播 settings 帧 |
 | `/open-settings` | POST | 200 `{}`（**异步**发起建窗/聚焦，不等窗口真的建出来）；**503 `no app handle`**（无窗口模式：app 句柄未注入） |
+| `/feedback` | POST/OPTIONS | 200 + `{payload, auth}`：从 native 快照重算 `bid/checksum/rate/mods/hits/weight`，Ed25519 签名后交页面转发（壳不发 HTTPS）；**422** gate 失败（见 `src/feedback/mod.rs` 的原因码）；**409** 无读取器/快照；**413** body >4KB；OPTIONS 返回 204 预检头 |
 | `/cover/...` | GET | 白名单内的具体文件 200（`Access-Control-Allow-Origin: *`）；未列入白名单 404 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 插件目录静态文件（`canonicalize` 防穿越，`Cache-Control: no-store`）；其他方法 405，目录穿越/不存在 404 |
 | `/ws` | WS | 帧通道（§3 的八型 + diag 旁路），Origin 仅 loopback |

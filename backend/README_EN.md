@@ -30,12 +30,15 @@ No user accounts, no login, no personally identifiable information. The plugin s
 - Optionally snapshots the database to Huawei Cloud OBS (daily ×30 + monthly ×12).
 - One-shot rebuild command: `telemetry-server -migrate` (run with the service stopped; rebuilds every aggregate from raw events, idempotent).
 - One-shot cleanup command: `telemetry-server -clean` (run with the service stopped; purges historical contaminated algorithms, debug duration spikes, and unofficial versions).
+- Optional: **RC difficulty feedback** (only when `FEEDBACK_ENABLED=true`) — a separate `feedback.db` accepts shell-signed five-point ratings, validates them through the osu! API and strict rules, and exposes aggregate tables, a private admin page (`/feedback`), and CSV. Disabled by default.
 
 ## Privacy
 
 **Collected** (per `analyze` event): anonymous install id, event kind, server-side UTC timestamp, plugin version, selected/actual estimator algorithm, key count (4/6/7K), mods and speed rate, mode tag (HB/RC/LN/Mix/SV), estimated star rating, LN ratio, key-type breakdown, and analysis duration.
 
 **Never collected or stored**: usernames, player ids, scores/acc, beatmap md5/title, IP addresses (not even a hash), user agent, OS, or timezone. The ingest handler applies a server-side whitelist and drops anything else.
+
+**RC difficulty feedback** is a second, opt-in category (off by default): it sends the beatmap ID/checksum, the displayed estimate, a five-point rating, a coarse weight, and features (key count, LN ratio, pattern) — never accuracy, score, username, or session. The `install_id` is only used inside a server-side HMAC and is never stored. See [docs/features/telemetry.md §7](../docs/features/telemetry.md) and [docs/security.md](docs/security.md) §5.
 
 The dashboard and `/api/v1/stats` expose **aggregates only** — never an individual install id, event, or IP.
 
@@ -96,6 +99,8 @@ Configuration is read from a `.env` file (and can be overridden by real environm
 | `MMA_TELEMETRY_RATE_LIMIT_PER_MIN` | `120` | Ingest requests/min/IP (0 disables) |
 | `MMA_TELEMETRY_STATS_CACHE_SECONDS` | `60` | `/api/v1/stats` aggregate cache |
 | `MMA_BACKUP_OBS_*` | empty | Huawei OBS backup credentials (empty = disabled) |
+| `FEEDBACK_ENABLED` | `false` | Enable the RC feedback endpoint (also needs public keys, dedup secret, and osu! client credentials) |
+| `MMA_FEEDBACK_DB` | `feedback.db` | Feedback database path (separate from telemetry) |
 
 ## HTTP API
 
