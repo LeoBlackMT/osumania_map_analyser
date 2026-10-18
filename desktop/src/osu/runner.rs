@@ -1044,6 +1044,21 @@ pub fn read_frame(
                 if result.result_base.is_none() {
                     degraded.push("resultsScreen.mods".to_string());
                 }
+                // stable 的回放判定（lazer 靠屏幕类型名，stable 是闭源进程）：结算屏上
+                // 结算对象的 player_name 是"被观看者"，与本机账号名（`osu!<name>.cfg`
+                // 文件名，磁盘事实）全部不匹配 ⇒ 这一局来自回放。候选为空/名字缺失/
+                // 看自己的回放 ⇒ 不标记（宁可漏判不可误判，见 `stable::replay_from_player_name`）。
+                if snapshot.is_result_state() && !snapshot.replay {
+                    if let (Some(folder), Some(name)) = (
+                        snapshot.game_folder.as_deref(),
+                        result.player_name.as_deref(),
+                    ) {
+                        let local_names = stable::local_player_names_cached(folder);
+                        if stable::replay_from_player_name(Some(name), &local_names) {
+                            snapshot.replay = true;
+                        }
+                    }
+                }
                 result_read = Some(result);
             }
             Err(reason) => {
