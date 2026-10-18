@@ -32,8 +32,8 @@ func basePayload() Payload {
 		SelectedAlgorithm: "Mixed",
 		DisplayedVal:      12.2,
 		Vote:              0.5,
-		Weight:            0.714,
-		WeightVersion:     2,
+		Weight:            0.995,
+		WeightVersion:     3,
 		Passed:            true,
 		Client:            "stable",
 		Classic:           true,
@@ -49,7 +49,7 @@ func TestCanonicalSignStringMatchesShell(t *testing.T) {
 	payload := basePayload()
 	payload.Timestamp = 1760000000
 	got := CanonicalSignString(payload)
-	want := "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.714|2|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
+	want := "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.995|3|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
 	if got != want {
 		t.Fatalf("sign string mismatch:\n got %q\nwant %q", got, want)
 	}

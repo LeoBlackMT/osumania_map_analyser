@@ -9,15 +9,16 @@
 # 或设置 MMA_FEEDBACK_SEED_FILE 指向一个只含 seed 的本地文件（gitignore）。
 # 本地测试可加 -AllowDevSigning 使用内置 dev seed（服务端需 FEEDBACK_ALLOW_DEV_KEY=true）。
 # 只检查签名配置不打包：.\release.ps1 -SigningCheckOnly
-# 只构建 Linux 包（Docker）：.\release.ps1 -Linux
-# 同时构建 Windows + Linux：.\release.ps1 -All
+# 默认构建 Windows + Linux（Docker）；只要 Windows：-SkipLinux；只要 Linux：-Linux
+# 签名 seed 默认从 .secrets\feedback-seed.txt 读取（可用 env 覆盖）
 
 param(
     [switch]$SkipBuild,
     [switch]$AllowDevSigning,
     [switch]$SigningCheckOnly,
     [switch]$Linux,
-    [switch]$All
+    [switch]$All,
+    [switch]$SkipLinux
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,13 +30,19 @@ $desktop = Join-Path $root "desktop"
 function Resolve-FeedbackSigning {
     param([switch]$AllowDevSigning)
 
+    # 默认直接读仓库内的相对路径 .secrets\feedback-seed.txt（不入库）；env 仍可覆盖。
     $seed = $env:MMA_FEEDBACK_SIGNING_SEED
-    if (-not $seed -and $env:MMA_FEEDBACK_SEED_FILE) {
-        $seedPath = $env:MMA_FEEDBACK_SEED_FILE
-        if (-not (Test-Path -LiteralPath $seedPath -PathType Leaf)) {
-            throw "MMA_FEEDBACK_SEED_FILE not found: $seedPath"
+    if (-not $seed) {
+        $defaultSeed = Join-Path $root ".secrets\feedback-seed.txt"
+        if (Test-Path -LiteralPath $defaultSeed -PathType Leaf) {
+            $seed = Get-Content -LiteralPath $defaultSeed -Raw
+        } elseif ($env:MMA_FEEDBACK_SEED_FILE) {
+            $seedPath = $env:MMA_FEEDBACK_SEED_FILE
+            if (-not (Test-Path -LiteralPath $seedPath -PathType Leaf)) {
+                throw "MMA_FEEDBACK_SEED_FILE not found: $seedPath"
+            }
+            $seed = Get-Content -LiteralPath $seedPath -Raw
         }
-        $seed = Get-Content -LiteralPath $seedPath -Raw
     }
     $seed = ("$seed").Trim()
 
@@ -44,6 +51,13 @@ function Resolve-FeedbackSigning {
             throw "MMA_FEEDBACK_SIGNING_SEED must be 64 hex chars (32 bytes); got $($seed.Length) chars"
         }
         $keyId = ("$($env:MMA_FEEDBACK_KEY_ID)").Trim()
+        if (-not $keyId) {
+            $pubFile = Join-Path $root ".secrets\feedback-public.txt"
+            if (Test-Path -LiteralPath $pubFile) {
+                $match = Select-String -LiteralPath $pubFile -Pattern '^key_id=(.+)$' | Select-Object -First 1
+                if ($match) { $keyId = $match.Matches[0].Groups[1].Value.Trim() }
+            }
+        }
         if (-not $keyId) { $keyId = "release" }
         if ($keyId -notmatch '^[A-Za-z0-9_-]{1,32}$') {
             throw "MMA_FEEDBACK_KEY_ID must be 1-32 chars of [A-Za-z0-9_-]"
@@ -252,3 +266,8 @@ Remove-Item -Recurse -Force $pluginStage
 
 $pluginMb = [math]::Round((Get-Item $pluginOnlyZip).Length / 1MB, 1)
 Write-Host "released (plugin only): $pluginOnlyZip ($pluginMb MB)"
+
+if (-not $SkipLinux) {
+    Write-Host "Building Linux package (set -SkipLinux to skip)..."
+    Build-LinuxShell
+}

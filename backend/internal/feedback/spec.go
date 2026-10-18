@@ -25,7 +25,7 @@ const (
 	RCLnMax       = 0.15
 	WeightMin     = 0.40
 	WeightMax     = 1.00
-	WeightVersion = 2
+	WeightVersion = 3
 	DisplayedMin  = -3.0
 	DisplayedMax  = 25.0
 )

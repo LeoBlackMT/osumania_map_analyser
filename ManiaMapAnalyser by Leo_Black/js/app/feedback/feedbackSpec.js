@@ -18,12 +18,15 @@ export const ACC_MAX = 100;
 export const TOTAL_HITS_MIN = 200;
 export const COMPLETION_MIN = 0.85;
 
-/** weight 曲线（v2）：w = 0.40 + 0.60 * ((acc-90)/10)^1.5，acc∈[90,100]。
- *  单调递增且上凸：低 acc 扣得更狠，高 acc 涨得更快（左右不对称）。 */
-export const WEIGHT_VERSION = 2;
-export const WEIGHT_BASE = 0.4;
-export const WEIGHT_SPAN = 0.6;
-export const WEIGHT_EXP = 1.5;
+/** weight 曲线（v3）：峰值在 acc=96，左右不对称的高斯。
+ *  w = 0.30 + 0.70 * exp(-0.5*((acc-96)/σ)^2)，σ = 3.2（acc≤96）/ 4.0（acc>96）。
+ *  低 acc 快速下降（90% ≈ 0.42），96% = 1.0，100% 回落到 ≈0.73。 */
+export const WEIGHT_VERSION = 3;
+export const WEIGHT_BASE = 0.3;
+export const WEIGHT_SPAN = 0.7;
+export const WEIGHT_PEAK = 96;
+export const WEIGHT_SIGMA_LEFT = 3.2;
+export const WEIGHT_SIGMA_RIGHT = 4.0;
 export const WEIGHT_MIN = 0.4;
 export const WEIGHT_MAX = 1.0;
 

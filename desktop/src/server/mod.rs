@@ -550,11 +550,6 @@ pub fn spawn_timers(shared: Arc<Shared>) {
 // ---- 入口 ----
 
 pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
-    // 结算 hits 的兜底观察器（lazer 原生读取缺字段时用 tosu 的 v2 数据）。
-    match tosu.as_ref() {
-        Some(info) => crate::tosu_watch::start(&info.ip, info.port),
-        None => crate::tosu_watch::start("127.0.0.1", 24050),
-    }
     let shared = new_shared(plugin_dir, tosu);
     {
         let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);

@@ -24,12 +24,14 @@ pub const ACC_MIN: f64 = 90.0;
 pub const ACC_MAX: f64 = 100.0;
 pub const TOTAL_HITS_MIN: u32 = 200;
 pub const COMPLETION_MIN: f64 = 0.85;
-pub const WEIGHT_BASE: f64 = 0.40;
-pub const WEIGHT_SPAN: f64 = 0.60;
-pub const WEIGHT_EXP: f64 = 1.5;
+pub const WEIGHT_BASE: f64 = 0.30;
+pub const WEIGHT_SPAN: f64 = 0.70;
+pub const WEIGHT_PEAK: f64 = 96.0;
+pub const WEIGHT_SIGMA_LEFT: f64 = 3.2;
+pub const WEIGHT_SIGMA_RIGHT: f64 = 4.0;
 pub const WEIGHT_MIN: f64 = 0.40;
 pub const WEIGHT_MAX: f64 = 1.0;
-pub const WEIGHT_VERSION: u32 = 2;
+pub const WEIGHT_VERSION: u32 = 3;
 
 /// 允许的倍速：NM/MR 类 1.0，DT/NC 1.5，HT/DC 0.75。
 pub const ALLOWED_RATES: &[f64] = &[0.75, 1.0, 1.5];
@@ -206,9 +208,11 @@ pub fn total_hits(hits: &Hits) -> u32 {
 }
 
 pub fn weight_for_acc(acc: f64) -> f64 {
-    // w = 0.40 + 0.60 * ((acc-90)/10)^1.5：单调递增且上凸（低 acc 扣得更狠）。
-    let t = ((acc - 90.0) / 10.0).clamp(0.0, 1.0);
-    (WEIGHT_BASE + WEIGHT_SPAN * t.powf(WEIGHT_EXP)).clamp(WEIGHT_MIN, WEIGHT_MAX)
+    // 峰值 96 的左右不对称高斯：低 acc 掉得快，96 之后缓慢回落。
+    let value = acc.clamp(90.0, 100.0);
+    let sigma = if value <= WEIGHT_PEAK { WEIGHT_SIGMA_LEFT } else { WEIGHT_SIGMA_RIGHT };
+    let z = (value - WEIGHT_PEAK) / sigma;
+    (WEIGHT_BASE + WEIGHT_SPAN * (-0.5 * z * z).exp()).clamp(WEIGHT_MIN, WEIGHT_MAX)
 }
 
 fn is_hex32(value: &str) -> bool {
@@ -249,13 +253,7 @@ pub fn build_payload(
     if snapshot.state_name.as_deref() != Some("resultScreen") {
         return Err("not_result_screen");
     }
-    // lazer 原生没有结算 hits：回落到 tosu 观察器缓存的结算屏数据。
-    let fallback_hits = if snapshot.result_hits.is_none() {
-        crate::tosu_watch::native_hits()
-    } else {
-        None
-    };
-    let Some(hits) = snapshot.result_hits.as_ref().or(fallback_hits.as_ref()) else {
+    let Some(hits) = snapshot.result_hits.as_ref() else {
         return Err("no_hits");
     };
     let Some(bid) = snapshot.map_id.filter(|id| *id > 0) else {
@@ -461,8 +459,8 @@ mod tests {
             selected_algorithm: "Mixed".to_string(),
             displayed_val: 12.2,
             vote: 0.5,
-            weight: 0.714,
-            weight_version: 2,
+            weight: 0.995,
+            weight_version: 3,
             passed: true,
             client: "stable".to_string(),
             classic: true,
@@ -479,7 +477,7 @@ mod tests {
         let text = build_sign_string(&sample());
         assert_eq!(
             text,
-            "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.714|2|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
+            "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.995|3|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
         );
     }
 
@@ -518,12 +516,13 @@ mod tests {
 
     #[test]
     fn weight_curve_matches_table() {
-        assert!((weight_for_acc(90.0) - 0.400).abs() < 1e-9);
-        assert!((weight_for_acc(92.0) - 0.4536).abs() < 0.001);
-        assert!((weight_for_acc(96.5) - 0.7144).abs() < 0.001);
-        assert!((weight_for_acc(99.0) - 0.9123).abs() < 0.001);
-        assert!((weight_for_acc(100.0) - 1.0).abs() < 1e-9);
-        assert!((weight_for_acc(80.0) - WEIGHT_MIN).abs() < 1e-9);
+        assert!((weight_for_acc(90.0) - 0.4207).abs() < 0.001);
+        assert!((weight_for_acc(92.0) - 0.6205).abs() < 0.001);
+        assert!((weight_for_acc(94.0) - 0.8758).abs() < 0.001);
+        assert!((weight_for_acc(96.0) - 1.0).abs() < 1e-9);
+        assert!((weight_for_acc(98.0) - 0.9177).abs() < 0.001);
+        assert!((weight_for_acc(100.0) - 0.7246).abs() < 0.001);
+        assert!((weight_for_acc(80.0) - 0.4207).abs() < 0.001);
     }
 
     #[test]

@@ -56,7 +56,9 @@ cargo run --release
 - Windows：运行根目录下的 `release.ps1`。
 - Linux：运行 `desktop/build-linux.sh`。
 
-两个发布脚本都要求 RC 反馈签名 seed（缺失会直接失败，避免发出 dev 签名包）：
+完整构建说明（seed 存放、Docker、CI、验证）见 [BUILD.md](BUILD.md)。
+
+两个发布脚本都要求 RC 反馈签名 seed（缺失会直接失败，避免发出 dev 签名包）；默认从仓库内 `.secrets\feedback-seed.txt` 读取，不需要环境变量：
 
 ```bash
 # Windows PowerShell
@@ -147,7 +149,9 @@ Build release packages:
 - Windows: Run `release.ps1` from the repository root.
 - Linux: Run `desktop/build-linux.sh`.
 
-Both release scripts require the RC feedback signing seed and fail without it, so a dev-signed build cannot be shipped by accident:
+See [BUILD.md](BUILD.md) for the full build guide (seed location, Docker, CI, verification).
+
+Both release scripts require the RC feedback signing seed and fail without it, so a dev-signed build cannot be shipped by accident; the seed is read from `.secrets\feedback-seed.txt` by default:
 
 ```bash
 # Windows PowerShell

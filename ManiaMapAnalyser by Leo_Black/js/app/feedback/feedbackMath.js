@@ -10,9 +10,11 @@ import {
     RC_LN_MAX,
     TOTAL_HITS_MIN,
     WEIGHT_BASE,
-    WEIGHT_EXP,
     WEIGHT_MAX,
     WEIGHT_MIN,
+    WEIGHT_PEAK,
+    WEIGHT_SIGMA_LEFT,
+    WEIGHT_SIGMA_RIGHT,
     WEIGHT_SPAN,
 } from "./feedbackSpec.js";
 
@@ -44,11 +46,13 @@ export function scoreV1(counts) {
     return (100 * weighted) / (300 * total);
 }
 
-/** weight 曲线 v2：w = 0.40 + 0.60*((acc-90)/10)^1.5（acc 夹到 [90,100]）。 */
+/** weight 曲线 v3：峰值 96、左右不对称高斯（acc 夹到 [90,100]）。 */
 export function weightForAcc(acc) {
     if (!Number.isFinite(acc)) return WEIGHT_MIN;
-    const t = Math.min(1, Math.max(0, (acc - 90) / 10));
-    const raw = WEIGHT_BASE + WEIGHT_SPAN * (t ** WEIGHT_EXP);
+    const value = Math.min(100, Math.max(90, acc));
+    const sigma = value <= WEIGHT_PEAK ? WEIGHT_SIGMA_LEFT : WEIGHT_SIGMA_RIGHT;
+    const z = (value - WEIGHT_PEAK) / sigma;
+    const raw = WEIGHT_BASE + WEIGHT_SPAN * Math.exp(-0.5 * z * z);
     return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, raw));
 }
 
