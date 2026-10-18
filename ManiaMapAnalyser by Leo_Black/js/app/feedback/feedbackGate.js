@@ -50,15 +50,18 @@ export function markLocallyDeduped(context, now, storage) {
  * @param {object} input.data 当前 api_v2 原始帧
  * @param {number} input.now Date.now()
  * @param {boolean} input.shellClickThrough 壳窗口是否鼠标穿透
+ * @param {boolean} input.shellReplay 壳侧说"这一局来自回放"（`/shell-config` 的 feedback.replay）
  * @param {boolean} input.deduped 本地是否已问过
  * @returns {{show: boolean, reason: string, stats?: object, context?: object}}
  */
-export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, deduped }) {
+export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, shellReplay, deduped }) {
     if (!state || !state.enableDifficultyFeedback) return { show: false, reason: "disabled" };
     if (normalizedStateName(state) !== "resultscreen") return { show: false, reason: "not_result_screen" };
     if (String(state.activeSource || "") !== "osu") return { show: false, reason: "not_osu" };
-    // 回放（lazer ReplayPlayer）不代表真实游玩，不允许评分。
-    if (data?.replay === true) return { show: false, reason: "replay" };
+    // 回放（lazer ReplayPlayer）不代表真实游玩，不允许评分。两个来源都要看：
+    // `data.replay` 是原生载荷里的位；`shellReplay` 是壳快照里的同一事实——后者在页面
+    // 数据面还没切到原生端点（吃 tosu 帧）时也能挡住回放结果。
+    if (data?.replay === true || shellReplay === true) return { show: false, reason: "replay" };
 
     const context = state.feedbackContext;
     if (!context || context.beatmapKey !== state.lastBeatmapKey) {

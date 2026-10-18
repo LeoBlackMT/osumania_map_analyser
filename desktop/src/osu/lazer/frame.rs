@@ -8,6 +8,7 @@ use super::screen::{read_eetype, read_screen_state, runtime_probe, ScreenOutcome
 use super::table::*;
 use super::source::*;
 use super::types::*;
+use super::results;
 use std::path::PathBuf;
 
 /// 降级标记：`<载荷字段>:<原因>`。
@@ -283,6 +284,29 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             gaps.push(gap("state.number", &reason));
         }
     }
+
+    // ⑥b 结算屏判定数：`ResultsScreen.Score` → `ScoreInfo.<StatisticsJson>`。
+    //     lazer 没有 stable 那种"候选槽"，判定数只能从表里的 `results` 段读
+    //     （`live` 生成器在结算屏上活体验证后写入）。读不到 ⇒ 不发布（gap 逐字记录），
+    //     绝不 0 占位、也绝不沿用上一帧。
+    //     回放判定：结算屏的 `<player>` 是 `ReplayPlayer` ⇒ 这一局来自回放（从回放进入的
+    //     结算屏，栈顶是 ResultsScreen，光看屏幕类型识别不出来），不能收作真实游玩。
+    if snapshot.is_result_state() {
+        let read = results::read_results(
+            source,
+            table,
+            chain.screen_top.unwrap_or(0),
+            layout,
+            modules,
+        );
+        if read.replay {
+            snapshot.replay = true;
+        }
+        if let Some(hits) = read.hits {
+            snapshot.result_hits = Some(hits);
+        }
+        gaps.extend(read.gaps);
+    }
     match resolved.selected_mods.clone() {
         Ok(offset) => {
             chain.selected_mods = read_ptr_field(source, game_base, offset);
@@ -310,7 +334,10 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     // ⑦ 播放时钟
     snapshot.play_time = read_live_time(source, game_base, &resolved, &mut chain, &mut gaps);
     gaps.push(GAP_PLAY_HITS.to_string());
-    gaps.push(GAP_RESULTS_HITS.to_string());
+    // 结算态由 ⑥b 负责：读到了就不该再报"offsets-missing"；读不到时它已经写了逐字的 gap。
+    if !snapshot.is_result_state() {
+        gaps.push(GAP_RESULTS_HITS.to_string());
+    }
     gaps.push(GAP_BACKGROUND.to_string());
     gaps.push(GAP_AUDIO.to_string());
 
@@ -547,6 +574,17 @@ pub fn attach(
         }
     };
     let loaded = load_table(&files, env_path.as_deref(), &table_dir, &info, &prove)?;
+    // 诊断：实际加载的是哪张表、有没有结算屏判定数（`results` 段）。页面只能看到
+    // `degradedFields`，这一行让现场日志能区分"表没这一段"与"读失败"。
+    crate::server::log::log_at(
+        "info",
+        &format!(
+            "osu: lazer table {} (origin {}) results_section={}",
+            loaded.table.key(),
+            loaded.origin.as_str(),
+            loaded.table.results().is_some()
+        ),
+    );
     let Some(candidate) = resolution.accepted() else {
         eprintln!(
             "[osu] lazer: L1 resolution failed — no GameBase candidate for {} anchor(s); \

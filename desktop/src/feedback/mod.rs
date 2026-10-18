@@ -243,6 +243,25 @@ fn is_allowed_selected(value: &str) -> bool {
     )
 }
 
+/// lazer 的 mods/rate：来自原生 `SelectedMods`（`lazer_mods`，`{acronym, speed_change}`）。
+///
+/// 与 stable 的位掩码是两条独立来源：lazer 没有 stable 的 mod 位表，自定义倍速（DA/CL）
+/// 也只能从 `speed_change` 读出来。`None` = 原生没读到 ⇒ 调用方按 `no_mods` 拒绝。
+fn lazer_mods_and_rate(snapshot: &Snapshot) -> Option<(Vec<String>, f64)> {
+    let lazer_mods = snapshot.lazer_mods.as_ref()?;
+    let mods: Vec<String> = lazer_mods
+        .iter()
+        .map(|entry| entry.acronym.trim().to_uppercase())
+        .filter(|code| !code.is_empty())
+        .collect();
+    let rate = lazer_mods
+        .iter()
+        .filter_map(|entry| entry.speed_change)
+        .find(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(1.0);
+    Some((mods, rate))
+}
+
 /// 从 native 快照 + 页面报告字段构造待签名 payload；任一 gate 失败返回原因码。
 pub fn build_payload(
     snapshot: &Snapshot,
@@ -267,20 +286,36 @@ pub fn build_payload(
         return Err("no_checksum");
     }
 
-    // 用 `mask_for_state` 的结算槽：它已经做了"状态 = resultScreen ∧ 结算链可信"的门控，
-    // 直接读 raw mask 会把结算动画期间的残留指针当成 mod。
-    let Some(mask) = crate::osu::invariants::mask_for_state(snapshot).2 else {
-        return Err("no_mods");
+    // mods / rate 的来源按客户端分：
+    // - stable：`mask_for_state` 的结算槽（它已做了"状态 = resultScreen ∧ 结算链可信"的门控，
+    //   直接读 raw mask 会把结算动画期间的残留指针当成 mod）；
+    // - lazer：没有 stable 的位掩码，用原生读到的 `SelectedMods` 列表（`lazer_mods`：
+    //   acronym + speed_change）。它与页面 `resultsScreen.mods` 同源，自定义倍速也在这里。
+    let (mods, rate) = match snapshot.client {
+        Some(Client::Lazer) => {
+            let Some(lazer) = lazer_mods_and_rate(snapshot) else {
+                return Err("no_mods");
+            };
+            lazer
+        }
+        _ => {
+            let Some(mask) = crate::osu::invariants::mask_for_state(snapshot).2 else {
+                return Err("no_mods");
+            };
+            let mods: Vec<String> = crate::osu::keys::menu_mod_codes(mask)
+                .iter()
+                .map(|code| (*code).to_string())
+                .collect();
+            let rate = crate::osu::keys::menu_mods_value(mask)
+                .get("rate")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0);
+            (mods, rate)
+        }
     };
-    let mods = crate::osu::keys::menu_mod_codes(mask);
-    let mods: Vec<String> = mods.iter().map(|code| (*code).to_string()).collect();
     if mods.iter().any(|code| !ALLOWED_MODS.contains(&code.as_str())) {
         return Err("mods");
     }
-    let rate = crate::osu::keys::menu_mods_value(mask)
-        .get("rate")
-        .and_then(Value::as_f64)
-        .unwrap_or(1.0);
     if !ALLOWED_RATES.iter().any(|allowed| (rate - allowed).abs() < 1e-9) {
         return Err("rate");
     }
@@ -532,6 +567,42 @@ mod tests {
     fn score_v1_all_max_is_100() {
         let hits = Hits { n300: 500, n100: 0, n50: 0, geki: 0, katu: 0, miss: 0 };
         assert!((score_v1(&hits) - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn lazer_mods_and_rate_come_from_selected_mods() {
+        let mut snapshot = Snapshot {
+            client: Some(Client::Lazer),
+            ..Snapshot::default()
+        };
+        snapshot.lazer_mods = Some(vec![
+            crate::osu::model::LazerMod {
+                acronym: "DT".to_string(),
+                speed_change: Some(1.5),
+                overall_difficulty: None,
+            },
+            crate::osu::model::LazerMod {
+                acronym: "MR".to_string(),
+                speed_change: None,
+                overall_difficulty: None,
+            },
+        ]);
+        let (mods, rate) = lazer_mods_and_rate(&snapshot).expect("lazer mods");
+        assert_eq!(mods, vec!["DT".to_string(), "MR".to_string()]);
+        assert!((rate - 1.5).abs() < 1e-9);
+
+        // 自定义倍速（CL 0.75）也走同一个来源；没有速度 mod 时 rate = 1.0。
+        snapshot.lazer_mods = Some(vec![crate::osu::model::LazerMod {
+            acronym: "cl".to_string(),
+            speed_change: Some(0.75),
+            overall_difficulty: None,
+        }]);
+        assert_eq!(
+            lazer_mods_and_rate(&snapshot),
+            Some((vec!["CL".to_string()], 0.75))
+        );
+        snapshot.lazer_mods = None;
+        assert!(lazer_mods_and_rate(&snapshot).is_none(), "原生读不到就不猜");
     }
 
     #[test]

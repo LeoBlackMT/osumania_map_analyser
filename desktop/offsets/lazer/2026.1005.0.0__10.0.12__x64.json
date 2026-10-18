@@ -2424,6 +2424,21 @@
     },
     "witness": "runtime offsets witnessed on the same dump (2 probe(s) per offset; SOS prints vs dump bytes): eetype.token=+0x8(shift 8), eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10(stride 8); typedefs: 2284 name(s) over 3 module(s), 5 of them observed by dumpmt (IL metadata rows corroborate every observed RID)"
   },
-  "verified_build": "osu!lazer 2026.1005.0.0 / .NET 10.0.12 / x64 / C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current\\osu!.exe hash unavailable / game_base vtable 00007ffd28038970",
-  "evidence": "SOS offsets from dump `C:\\Users\\LEO_BL~1\\AppData\\Local\\Temp\\lazer-offsets-gen\\run-20261007\\lazer-20261007-205356.dmp` (pid 49444, x64, anchor 1 hit(s) at 0xBF35A01C, game_base 0xBF359920), transcript `sos-L0-game-candidates-n1.txt; sos-L0-game-candidates-n6.txt; sos-L0-game-candidates-n5.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n1.txt`, analyzer `C:\\Users\\Leo_BlackLT\\.dotnet\\tools\\dotnet-dump.exe (dotnet-dump 10.0.745401+cef304c50763bf24f99566cb31d55540842e7ae9)`; SOS offsets proven against the dump bytes (560 checked / 560 ok / 0 mismatch — the same dump proves the object-address base convention); IL structure from assemblies under `C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current` (259 managed); IL corroborates field existence, instance-ness and type; metadata-derived offsets are never published; generator tools/lazer-offsets-gen (DEC-23). Emitted 46 field(s) of 48 wanted; omitted 2 (see the emit report). Warnings: version mismatch for osu!.dll: dump=0.0.0.0 il=2026.1005.0.0 (allowed by --allow-version-mismatch). Runtime structure section (state.name): 5 offset(s) derived from the same dump (`dumpmt`/`dumpmodule`/`dumparray` prints vs dump bytes, >= 2 agreeing probe(s) each: eetype.token=+0x8, eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10), 2284 TypeDef RID→name row(s) over 3 module(s) from the IL metadata (5 corroborated by dumpmt; IL-derived values are not offsets)."
+  "results": {
+    "score_offset": 928,
+    "statistics_offset": 88,
+    "player_offset": 952,
+    "statistics_dict_offset": 128,
+    "dict_entries_offset": 16,
+    "hit_result_values": {
+      "good": 4,
+      "great": 5,
+      "meh": 2,
+      "miss": 1,
+      "ok": 3,
+      "perfect": 6
+    },
+    "witness": "live RPM 2026-10-18, SoloResultsScreen (player=ReplayPlayer): Score->ScoreInfo at score_offset; hits: StatisticsJson (realm scores: miss=23 meh=1 ok=9 good=118 great=633 perfect=1399) or statistics dictionary (fresh plays; Entry 16B, hash==key; enum keys per IL HitResult order miss=1 meh=2 ok=3 good=4 great=5 perfect=6); IL adjacencies corroborate the locating rules"
+  },  "verified_build": "osu!lazer 2026.1005.0.0 / .NET 10.0.12 / x64 / C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current\\osu!.exe hash unavailable / game_base vtable 00007ffd28038970",
+  "evidence": "SOS offsets from dump `C:\\Users\\LEO_BL~1\\AppData\\Local\\Temp\\lazer-offsets-gen\\run-20261007\\lazer-20261007-205356.dmp` (pid 49444, x64, anchor 1 hit(s) at 0xBF35A01C, game_base 0xBF359920), transcript `sos-L0-game-candidates-n1.txt; sos-L0-game-candidates-n6.txt; sos-L0-game-candidates-n5.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n3.txt; sos-L0-game-candidates-n1.txt`, analyzer `C:\\Users\\Leo_BlackLT\\.dotnet\\tools\\dotnet-dump.exe (dotnet-dump 10.0.745401+cef304c50763bf24f99566cb31d55540842e7ae9)`; SOS offsets proven against the dump bytes (560 checked / 560 ok / 0 mismatch — the same dump proves the object-address base convention); IL structure from assemblies under `C:\\Users\\Leo_BlackLT\\AppData\\Local\\osulazer\\current` (259 managed); IL corroborates field existence, instance-ness and type; metadata-derived offsets are never published; generator tools/lazer-offsets-gen (DEC-23). Emitted 46 field(s) of 48 wanted; omitted 2 (see the emit report). Warnings: version mismatch for osu!.dll: dump=0.0.0.0 il=2026.1005.0.0 (allowed by --allow-version-mismatch). Runtime structure section (state.name): 5 offset(s) derived from the same dump (`dumpmt`/`dumpmodule`/`dumparray` prints vs dump bytes, >= 2 agreeing probe(s) each: eetype.token=+0x8, eetype.loader_module=+0x18, module.image_base=+0xc8, screen_array.length=+0x8, screen_array.elements=+0x10), 2284 TypeDef RID→name row(s) over 3 module(s) from the IL metadata (5 corroborated by dumpmt; IL-derived values are not offsets). Results-screen section (results.*): live RPM probe 2026-10-18 at the result screen — the dump-based extract/emit path does not derive this section yet (see tools/lazer-offsets-gen README)."
 }

@@ -82,6 +82,9 @@ let infoShownFor = "";
 
 // 鼠标穿透状态：结果屏出现时向壳查一次（`GET /shell-config` → window.clickThrough）。
 let clickThrough = false;
+// 壳侧"这一局来自回放"（`GET /shell-config` → feedback.replay）：页面数据面在切换到原生
+// 端点之前可能还是 tosu（tosu 不识别回放），这个位让回放结果从一开始就不弹成"可评分"。
+let shellReplay = false;
 let clickThroughFetched = false;
 let clickThroughPending = false;
 let clickPollTimer = 0;
@@ -111,6 +114,7 @@ async function refreshClickThrough(data) {
         if (response.ok) {
             const payload = await response.json();
             clickThrough = Boolean(payload?.window?.clickThrough);
+            shellReplay = payload?.feedback?.replay === true;
         }
     } catch {
         clickThrough = false;
@@ -505,30 +509,34 @@ export function noteFeedbackFrame(data) {
         data,
         now,
         shellClickThrough: clickThrough,
+        shellReplay,
         deduped,
     });
 
     if (!result.show) {
         rememberGate(result);
-        // lazer 原生读取没有结算数据（result_hits 仅 stable 提供）：给出明确提示而不是静默。
         if (result.reason === "replay") {
             showInfoStrip("Replays can't be rated — feedback is only collected from a real play.");
-            return;
-        }
-        if (result.reason === "no_hits" && String(state.client || "") === "lazer") {
-            showInfoStrip("lazer native reading has no result data yet — RC feedback needs osu!stable (or a future lazer offset table).");
             return;
         }
         // 结算帧的 hits/分析结果可能晚到：在 2s 窗口内重试，不重复弹条。
         const retryable = ["no_hits", "no_context", "no_numeric"].includes(result.reason);
         if (retryable) {
             if (!retryDeadline) retryDeadline = now + RETRY_WINDOW_MS;
-            if (now < retryDeadline && !retryTimer) {
-                retryTimer = setTimeout(() => {
-                    retryTimer = 0;
-                    noteFeedbackFrame(data);
-                }, RETRY_INTERVAL_MS);
+            if (now < retryDeadline) {
+                if (!retryTimer) {
+                    retryTimer = setTimeout(() => {
+                        retryTimer = 0;
+                        noteFeedbackFrame(data);
+                    }, RETRY_INTERVAL_MS);
+                }
+                return;
             }
+        }
+        // lazer 的结算判定数来自偏移表的 `results` 段（生成器在结算屏上验证后写入）。
+        // 只有**重试窗口过了**还没读到才提示，避免把"晚到一帧"误报成"这个构建不支持"。
+        if (result.reason === "no_hits" && String(state.client || "") === "lazer") {
+            showInfoStrip("lazer result data isn't readable on this build yet — RC feedback will come back once the offset table covers the result screen.");
         }
         return;
     }

@@ -440,6 +440,12 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             return;
         }
         let win = config::read_window_state();
+        // 结算屏的"这一局来自回放"位：页面在进入结算屏时本来就要取一次本端点（穿透状态），
+        // 顺手带上它——回放结果就不会在数据面切换的窗口里先弹成"可评分"。
+        let replay = crate::osu::instance()
+            .and_then(|reader| reader.snapshot())
+            .map(|snapshot| snapshot.is_result_state() && snapshot.replay)
+            .unwrap_or(false);
         let body = serde_json::json!({
             "config": cfg,
             "resolved": {
@@ -450,6 +456,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             "window": {
                 "topmost": win.topmost,
                 "clickThrough": win.click_through
+            },
+            "feedback": {
+                "replay": replay
             }
         });
         respond_json(&mut stream, 200, &body.to_string());

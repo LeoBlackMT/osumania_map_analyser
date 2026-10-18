@@ -411,6 +411,7 @@ pub fn run(reader: Reader) {
                         }),
                         None,
                     );
+                    log_results_diagnostic(&frame.snapshot, &frame.gaps);
                     FrameRead {
                         snapshot: frame.snapshot,
                         probe: None,
@@ -1103,8 +1104,38 @@ pub fn read_songs_cfg_value(_target: &win::Target, _addr: u32) -> Option<String>
     None
 }
 
-pub fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>) {
-    let previous_bg = snapshot.background.clone();
+/// 结算屏判定数结论的日志：**只在结论变化时写一行**（250 ms 一帧，不能每帧写）。
+///
+/// 为什么需要它：`resultsScreen.hits` 是"表里有没有 `results` 段 + 活体读得到吗"两件事的
+/// 合成结果，页面只能看到 `no_hits`；把失败时的那条 gap 写进壳日志，现场才可诊断。
+fn log_results_diagnostic(snapshot: &Snapshot, gaps: &[String]) {
+    if !snapshot.is_result_state() {
+        return;
+    }
+    static LAST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    let reasons: Vec<&str> = gaps
+        .iter()
+        .filter(|gap| gap.starts_with("resultsScreen.hits:"))
+        .map(String::as_str)
+        .collect();
+    let message = match snapshot.result_hits {
+        Some(hits) => format!(
+            "resultScreen hits published ({}) replay={}",
+            hits.canonical(),
+            snapshot.replay
+        ),
+        None => format!("resultScreen hits NOT published ({reasons:?})"),
+    };
+    let mut last = LAST.lock().unwrap_or_else(|error| error.into_inner());
+    if last.as_deref() == Some(message.as_str()) {
+        return;
+    }
+    *last = Some(message.clone());
+    let level = if snapshot.result_hits.is_some() { "info" } else { "warn" };
+    crate::server::log::log_at(level, &format!("osu: lazer {message}"));
+}
+
+pub fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>) {    let previous_bg = snapshot.background.clone();
     snapshot.beatmap_file = None;
     snapshot.beatmap_file_error = None;
     snapshot.beatmap_file_md5 = None;

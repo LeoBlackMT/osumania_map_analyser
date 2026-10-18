@@ -2594,6 +2594,10 @@ pub(crate) const INVALID_HANDLE_VALUE: Handle = -1isize;
 #[cfg(windows)]
 pub(crate) const TH32CS_SNAPPROCESS: u32 = 0x2;
 #[cfg(windows)]
+pub(crate) const TH32CS_SNAPMODULE: u32 = 0x0000_0008;
+#[cfg(windows)]
+pub(crate) const TH32CS_SNAPMODULE32: u32 = 0x0000_0010;
+#[cfg(windows)]
 pub(crate) const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 #[cfg(windows)]
 pub(crate) const PROCESS_VM_READ: u32 = 0x0010;
@@ -2650,6 +2654,32 @@ const _PROCESSENTRY32W_LAYOUT_IS_X64: () = assert!(
     "PROCESSENTRY32W must use the x64 layout (568 bytes)"
 );
 
+/// `MODULEENTRY32W`（MSVC x64 布局，align 8，`size_of == 1080`）。
+///
+/// `live` 的 `results` 发现需要它：EEType 的 `loader module → 映像基址` 只有对上
+/// "映像基址 → 模块文件名"才能在 IL 清单里查到 `RID → 类型名`。
+#[cfg(windows)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub(crate) struct MODULEENTRY32W {
+    pub(crate) dwSize: u32,
+    pub(crate) th32ModuleID: u32,
+    pub(crate) th32ProcessID: u32,
+    pub(crate) GlblcntUsage: u32,
+    pub(crate) ProccntUsage: u32,
+    pub(crate) modBaseAddr: *mut u8,
+    pub(crate) modBaseSize: u32,
+    pub(crate) hModule: *mut std::ffi::c_void,
+    pub(crate) szModule: [u16; 256],
+    pub(crate) szExePath: [u16; 260],
+}
+
+#[cfg(windows)]
+const _MODULEENTRY32W_LAYOUT_IS_X64: () = assert!(
+    std::mem::size_of::<MODULEENTRY32W>() == 1080,
+    "MODULEENTRY32W must use the x64 layout (1080 bytes)"
+);
+
 /// `SYSTEMTIME`（`GetLocalTime` 用）。
 #[cfg(windows)]
 #[repr(C)]
@@ -2671,6 +2701,8 @@ extern "system" {
     pub(crate) fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> Handle;
     pub(crate) fn Process32FirstW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
     pub(crate) fn Process32NextW(hSnapshot: Handle, lppe: *mut PROCESSENTRY32W) -> i32;
+    pub(crate) fn Module32FirstW(hSnapshot: Handle, lpme: *mut MODULEENTRY32W) -> i32;
+    pub(crate) fn Module32NextW(hSnapshot: Handle, lpme: *mut MODULEENTRY32W) -> i32;
     pub(crate) fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> Handle;
     pub(crate) fn CloseHandle(hObject: Handle) -> i32;
     pub(crate) fn QueryFullProcessImageNameW(
