@@ -3,99 +3,171 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>RC Difficulty Feedback — Admin</title>
+<title>ManiaMapAnalyser — RC Feedback Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- 与公共统计页同一套设计系统（同源 /dashboard.css，go:embed 同一后端进程）。 -->
+<link rel="stylesheet" href="/dashboard.css">
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #0b1020;
-    --panel: #131a2c;
-    --border: #1f2a40;
-    --border-strong: #2c3a55;
-    --fg: #e5e7eb;
-    --muted: #7a8499;
-    --accent: #7c75ff;
-    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* ── admin 专属补充：token 行、表格、pager（dashboard.css 不含表格样式） ── */
+  .controls input[type="password"] {
+    height: 38px; padding: 0 12px; min-width: 240px;
+    background: var(--panel); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 8px;
+    font: 500 13px var(--font-sans);
+    box-shadow: var(--shadow);
   }
-  body {
-    margin: 0; padding: 24px;
-    font: 13px/1.5 var(--font-sans);
-    background: var(--bg); color: var(--fg);
+  .controls input[type="password"]:focus {
+    outline: none; border-color: var(--accent);
   }
-  h1 { font-size: 18px; margin: 0 0 16px; }
-  h2 { font-size: 14px; margin: 24px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-  input[type="password"] {
-    background: var(--panel); border: 1px solid var(--border-strong); color: inherit;
-    border-radius: 6px; padding: 6px 8px; min-width: 260px;
+  .controls .btn {
+    height: 38px; padding: 0 16px;
+    background: var(--panel); color: var(--fg-dim);
+    border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; font: 500 13px var(--font-sans);
+    box-shadow: var(--shadow);
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
   }
-  button {
-    background: var(--panel); border: 1px solid var(--border-strong); color: inherit;
-    border-radius: 6px; padding: 6px 12px; cursor: pointer;
-  }
-  button:hover { background: var(--border); }
-  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 14px; min-width: 130px;
-  }
-  .card .value { font-size: 20px; font-weight: 600; }
-  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; }
-  th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .scroll { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
-  .muted { color: var(--muted); }
-  .err { color: #ff9a9a; }
-  .hidden { display: none; }
+  .controls .btn:hover { color: var(--fg); border-color: var(--border-strong); }
+  .controls .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .controls .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .meta .status { font-weight: 500; }
+  .meta .status.err { color: var(--danger); }
 
-  .pager {
-    display: flex; align-items: center; gap: 8px;
-    margin: 6px 2px 16px; font-size: 12px; color: var(--muted);
+  table {
+    border-collapse: collapse; width: 100%;
+    font-size: 12.5px; font-variant-numeric: tabular-nums;
   }
-  .pager button { padding: 3px 10px; font-size: 12px; }
+  th, td { border-bottom: 1px solid var(--border); padding: 6px 10px; text-align: left; white-space: nowrap; }
+  th {
+    color: var(--muted); font-weight: 600; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .04em;
+    position: sticky; top: 0; background: var(--panel); z-index: 1;
+  }
+  td.num, th.num { text-align: right; }
+  td { color: var(--fg); }
+  tbody tr:hover td { background: var(--accent-soft); }
+  .scroll {
+    max-height: 460px; overflow: auto;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel);
+  }
+  .muted { color: var(--muted); }
+  .pager {
+    display: flex; align-items: center; gap: 10px;
+    margin: 8px 2px 4px; font-size: 12px; color: var(--muted);
+  }
+  .pager button {
+    height: 26px; padding: 0 12px; font-size: 12px;
+    background: var(--panel); color: var(--fg-dim);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }
   .pager button:disabled { opacity: .45; cursor: default; }
 </style>
 </head>
 <body>
-<h1>RC Difficulty Feedback — Admin</h1>
+<header>
+  <div class="top">
+    <div>
+      <h1>ManiaMapAnalyser <span class="dim">· RC Feedback Admin</span></h1>
+      <p class="sub">Private calibration view of the difficulty-feedback votes. Token required; every write is audit-free and local.</p>
+    </div>
+    <div class="controls">
+      <input id="token" type="password" placeholder="FEEDBACK_ADMIN_TOKEN" autocomplete="off" />
+      <button id="load" class="btn primary" type="button">Load</button>
+      <button id="refresh" class="btn" type="button">Rebuild aggregates</button>
+      <a id="csv" href="#" download><button id="csvBtn" class="btn" type="button">Export CSV</button></a>
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <p class="meta">
+    <span class="live">admin</span>
+    <span id="status" class="status">enter the admin token and press Load</span>
+    <span class="sep">·</span>
+    <span>window <strong id="windowLabel">30d</strong></span>
+    <span class="sep">·</span>
+    <span>stats window <strong>days=30</strong></span>
+  </p>
+</header>
+<main>
+  <section id="content" hidden>
+    <section id="totals" class="cards"></section>
 
-<div class="bar">
-  <input id="token" type="password" placeholder="FEEDBACK_ADMIN_TOKEN" autocomplete="off" />
-  <button id="load">Load</button>
-  <button id="refresh">Rebuild aggregates</button>
-  <a id="csv" href="#" download><button>Export CSV</button></a>
-  <span id="status" class="muted"></span>
-</div>
+    <section class="panel full">
+      <h2>osu! API budget <small>daily calls</small></h2>
+      <div class="body"><div id="api" class="cards" style="margin-bottom:0"></div></div>
+    </section>
 
-<div id="content" class="hidden">
-  <h2>Overview</h2>
-  <div class="cards" id="totals"></div>
+    <section class="panel full">
+      <h2>Candidates <small>consensus differs from displayed value</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="candidates"></table></div>
+        <div class="pager" id="candidates-pager"></div>
+      </div>
+    </section>
 
-  <h2>osu! API budget</h2>
-  <div class="cards" id="api"></div>
+    <section class="panel full">
+      <h2>Per map <small>N ≥ threshold</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="maps"></table></div>
+        <div class="pager" id="maps-pager"></div>
+      </div>
+    </section>
 
-  <h2>Candidates (consensus differs from displayed value)</h2>
-  <div class="scroll"><table id="candidates"></table></div>
-  <div class="pager" id="candidates-pager"></div>
+    <section class="panel full">
+      <h2>Rejections <small>per day · per reason</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="rejects"></table></div>
+        <div class="pager" id="rejects-pager"></div>
+      </div>
+    </section>
 
-  <h2>Per map (N ≥ threshold)</h2>
-  <div class="scroll"><table id="maps"></table></div>
-  <div class="pager" id="maps-pager"></div>
-
-  <h2>Rejections</h2>
-  <div class="scroll"><table id="rejects"></table></div>
-  <div class="pager" id="rejects-pager"></div>
-
-  <h2>Feature residuals</h2>
-  <div class="scroll"><table id="features"></table></div>
-  <div class="pager" id="features-pager"></div>
-</div>
+    <section class="panel full" style="margin-bottom:14px">
+      <h2>Feature residuals <small>weighted mean target per bucket</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="features"></table></div>
+        <div class="pager" id="features-pager"></div>
+      </div>
+    </section>
+  </section>
+</main>
+<footer>
+  <span>private admin surface</span>
+  <span class="sep">·</span>
+  <span>same design system as the public dashboard</span>
+</footer>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const tokenInput = $("token");
 tokenInput.value = sessionStorage.getItem("mma.feedback.admin") || "";
+
+/* ── 主题切换（与统计页同一存档键与规则） ── */
+function applyTheme() {
+  const stored = localStorage.getItem("mma.dashboard.theme");
+  const dark = stored
+    ? stored === "dark"
+    : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (dark) document.documentElement.dataset.theme = "dark";
+  else delete document.documentElement.dataset.theme;
+}
+applyTheme();
+$("themeBtn").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  localStorage.setItem("mma.dashboard.theme", dark ? "light" : "dark");
+  applyTheme();
+});
 
 function headers() {
   return { "Authorization": "Bearer " + tokenInput.value.trim() };
@@ -140,9 +212,10 @@ function table(el, columns, rows, rowMapper) {
   });
 }
 
+/* 卡片复用统计页的 `.card > .v + .k` 结构。 */
 function renderCards(el, entries) {
   el.innerHTML = entries.map(([label, value]) =>
-    `<div class="card"><div class="value">${value}</div><div class="label">${label}</div></div>`).join("");
+    `<div class="card"><div class="v">${value}</div><div class="k">${label}</div></div>`).join("");
 }
 
 function render(data) {
@@ -196,39 +269,47 @@ function render(data) {
   ]);
 }
 
+function setStatus(text, isError = false) {
+  const el = $("status");
+  el.textContent = text;
+  el.classList.toggle("err", isError);
+}
+
 async function load() {
   const token = tokenInput.value.trim();
-  if (!token) { $("status").textContent = "Enter the admin token."; return; }
+  if (!token) { setStatus("Enter the admin token.", true); return; }
   sessionStorage.setItem("mma.feedback.admin", token);
-  $("status").textContent = "Loading…";
+  setStatus("Loading…");
   try {
     const response = await fetch("/api/v1/feedback/stats?days=30", { headers: headers(), cache: "no-store" });
     if (!response.ok) throw new Error("HTTP " + response.status);
     const data = await response.json();
     render(data);
-    $("content").classList.remove("hidden");
-    $("status").textContent = "Updated " + new Date().toLocaleTimeString();
+    $("content").hidden = false;
+    setStatus("Updated " + new Date().toLocaleTimeString());
     $("csv").href = "/api/v1/feedback/export.csv";
   } catch (error) {
-    $("status").textContent = "Failed: " + error.message + " (wrong token or endpoint disabled)";
+    setStatus("Failed: " + error.message + " (wrong token or endpoint disabled)", true);
   }
 }
 
 $("load").addEventListener("click", load);
+tokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") load();
+});
 $("refresh").addEventListener("click", async () => {
-  $("status").textContent = "Rebuilding…";
+  setStatus("Rebuilding…");
   try {
     const response = await fetch("/api/v1/feedback/refresh", { method: "POST", headers: headers() });
     if (!response.ok) throw new Error("HTTP " + response.status);
     await load();
   } catch (error) {
-    $("status").textContent = "Rebuild failed: " + error.message;
+    setStatus("Rebuild failed: " + error.message, true);
   }
 });
-$("csv").addEventListener("click", async (event) => {
-  event.preventDefault();
+$("csvBtn").addEventListener("click", async () => {
   const response = await fetch("/api/v1/feedback/export.csv", { headers: headers() });
-  if (!response.ok) { $("status").textContent = "CSV failed: HTTP " + response.status; return; }
+  if (!response.ok) { setStatus("CSV failed: HTTP " + response.status, true); return; }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
