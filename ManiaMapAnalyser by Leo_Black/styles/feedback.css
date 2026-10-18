@@ -152,9 +152,18 @@
     border-color: rgba(190, 220, 255, 0.85);
 }
 
+/* 穿透提示：按卡片 overlay 的告警风格做（不再是 11px 灰字）。 */
 .feedback-hint {
-    opacity: 0.75;
-    font-size: 11px;
+    display: block;
+    margin-top: 2px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 176, 32, 0.12);
+    border: 1px solid rgba(255, 176, 32, 0.42);
+    color: #ffd58a;
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
 }
 
 .feedback-hint[hidden] {

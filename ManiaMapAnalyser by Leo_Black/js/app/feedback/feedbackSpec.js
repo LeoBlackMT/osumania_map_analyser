@@ -13,22 +13,28 @@ export const RC_LN_MAX = 0.15;
 export const NON_RC_MODE_TAGS = Object.freeze(["LN", "Mix", "HB"]);
 
 /** 结算门槛。 */
-export const ACC_MIN = 92;
-export const ACC_MAX = 99;
+export const ACC_MIN = 90;
+export const ACC_MAX = 100;
 export const TOTAL_HITS_MIN = 200;
 export const COMPLETION_MIN = 0.85;
-export const MISS_RATE_MAX = 0.05;
 
-/** weight 曲线：w = floor + (1-floor) * exp(-(acc-center)^2 / (2 sigma^2))。 */
-export const WEIGHT_VERSION = 1;
-export const WEIGHT_CENTER = 96.5;
-export const WEIGHT_SIGMA = 2.0;
-export const WEIGHT_FLOOR = 0.35;
+/** weight 曲线（v2）：w = 0.40 + 0.60 * ((acc-90)/10)^1.5，acc∈[90,100]。
+ *  单调递增且上凸：低 acc 扣得更狠，高 acc 涨得更快（左右不对称）。 */
+export const WEIGHT_VERSION = 2;
+export const WEIGHT_BASE = 0.4;
+export const WEIGHT_SPAN = 0.6;
+export const WEIGHT_EXP = 1.5;
 export const WEIGHT_MIN = 0.4;
 export const WEIGHT_MAX = 1.0;
 
 /** mod 白名单（NM 用空集合表示）。其余全部视为不允许。 */
-export const ALLOWED_MOD_CODES = Object.freeze(["MR", "SD", "PF", "SV2", "TD", "CS"]);
+export const ALLOWED_MOD_CODES = Object.freeze([
+    "HD", "FI", "FL", "DT", "NC", "HT", "DC",
+    "MR", "SD", "PF", "SV2", "TD", "CS",
+]);
+
+/** 允许的倍速：NM/MR 类 1.0，DT/NC 1.5，HT/DC 0.75。 */
+export const ALLOWED_RATES = Object.freeze([0.75, 1.0, 1.5]);
 
 /** 本地去重：同一谱面同一倍速 30 天只问一次。 */
 export const DEDUP_KEY_PREFIX = "mma.feedback.v1.";

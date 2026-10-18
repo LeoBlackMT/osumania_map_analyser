@@ -5,7 +5,7 @@
 // 后端还会再校验一次，因此页面侧宁可严格。
 
 import { extractCounts } from "../livePpCounts.js";
-import { ALLOWED_MOD_CODES, ACC_MAX, ACC_MIN, DEDUP_KEY_PREFIX, DEDUP_TTL_MS } from "./feedbackSpec.js";
+import { ALLOWED_MOD_CODES, ALLOWED_RATES, ACC_MAX, ACC_MIN, DEDUP_KEY_PREFIX, DEDUP_TTL_MS } from "./feedbackSpec.js";
 import { evaluatePlayStats, isRcChart, slotCount } from "./feedbackMath.js";
 
 function normalizedStateName(state) {
@@ -78,7 +78,7 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
         return { show: false, reason: "not_rc" };
     }
 
-    if (Number(state.speedRate) !== 1) return { show: false, reason: "rate" };
+    if (!ALLOWED_RATES.includes(Number(state.speedRate))) return { show: false, reason: "rate" };
     if (!modsAllowed(state.modCodes)) return { show: false, reason: "mods" };
 
     // 谱面身份：resultScreen 帧可能不带 beatmap，用上一帧缓存值。

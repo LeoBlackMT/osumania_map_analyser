@@ -10,5 +10,6 @@ pub mod malodyv;
 pub mod malody4;
 pub mod osu;
 pub mod server;
+pub mod tosu_watch;
 pub mod settings_window;
 pub mod sys;

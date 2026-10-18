@@ -582,7 +582,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 
     // POST /offsets/update：检查并更新远端签名内存表（P2 Topic 10，静默离线回落）
     if method == "POST" && path == "/offsets/update" {
-        let manifest_url = "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
+        let manifest_url = REMOTE_OFFSETS_MANIFEST;
         let update_outcome = check_and_apply_remote_offsets(manifest_url);
         respond_json(&mut stream, 200, &update_outcome.to_string());
         return;
@@ -698,7 +698,11 @@ fn create_curl_command() -> std::process::Command {
     cmd
 }
 
-fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+/// 远端偏移表清单地址（手动按钮与每日自动检查共用）。
+pub const REMOTE_OFFSETS_MANIFEST: &str =
+    "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
+
+pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     let mut cmd = create_curl_command();
     cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
     let output = match cmd.output() {

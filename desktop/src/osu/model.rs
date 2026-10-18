@@ -324,7 +324,10 @@ impl Snapshot {
     /// 载荷形态的 JSON（`{client, state:{number,name}, beatmap:{…}, files:{…}, …}`）——
     /// §3.3 的完整字段表，见 `packet.rs`。
     pub fn to_packet(&self) -> Value {
-        crate::osu::packet::packet_from_snapshot(self)
+        let mut packet = crate::osu::packet::packet_from_snapshot(self);
+        // lazer 原生没有结算 hits 时，用 tosu 的结算屏补齐（仅这一条兜底路径）。
+        crate::tosu_watch::merge_into_packet(&mut packet, self);
+        packet
     }
 
     /// **字段级冻结**用的载荷（§3.4）：只发 `client` + `state`，**省略 `beatmap`**。

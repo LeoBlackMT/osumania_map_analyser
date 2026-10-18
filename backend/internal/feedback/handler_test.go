@@ -32,8 +32,8 @@ func basePayload() Payload {
 		SelectedAlgorithm: "Mixed",
 		DisplayedVal:      12.2,
 		Vote:              0.5,
-		Weight:            0.921,
-		WeightVersion:     1,
+		Weight:            0.714,
+		WeightVersion:     2,
 		Passed:            true,
 		Client:            "stable",
 		Classic:           true,
@@ -49,7 +49,7 @@ func TestCanonicalSignStringMatchesShell(t *testing.T) {
 	payload := basePayload()
 	payload.Timestamp = 1760000000
 	got := CanonicalSignString(payload)
-	want := "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.921|1|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
+	want := "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.714|2|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
 	if got != want {
 		t.Fatalf("sign string mismatch:\n got %q\nwant %q", got, want)
 	}
@@ -65,7 +65,7 @@ func TestValidateStatic(t *testing.T) {
 		{"bad bid", func(p *Payload) { p.Bid = 0 }, ReasonBadBid},
 		{"bad checksum", func(p *Payload) { p.Checksum = "xyz" }, ReasonChecksumInvalid},
 		{"bad rate", func(p *Payload) { p.Rate = 1.1 }, ReasonBadRate},
-		{"banned mod", func(p *Payload) { p.Mods = []string{"DT"} }, ReasonUnknownMod},
+		{"banned mod", func(p *Payload) { p.Mods = []string{"CL"} }, ReasonUnknownMod},
 		{"keymod", func(p *Payload) { p.Mods = []string{"7K"} }, ReasonKeyMod},
 		{"not rc", func(p *Payload) { p.ModeTag = "LN" }, ReasonNotRC},
 		{"ln ratio", func(p *Payload) { p.LnRatio = 0.2 }, ReasonNotRC},
@@ -193,13 +193,13 @@ func TestHandlerRejects(t *testing.T) {
 	}
 
 	mod := basePayload()
-	mod.Mods = []string{"DT"}
+	mod.Mods = []string{"CL"}
 	if rec := env.post(t, mod, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("banned mod status = %d", rec.Code)
 	}
 
 	rate := basePayload()
-	rate.Rate = 1.5
+	rate.Rate = 1.25
 	if rec := env.post(t, rate, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("rate status = %d", rec.Code)
 	}

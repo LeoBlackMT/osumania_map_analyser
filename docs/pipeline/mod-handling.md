@@ -42,7 +42,7 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 | `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：无 SV2 且 lazer 带 CL → classic=true |
 | `SV2` | ScoreV2（计分方式） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；**只要存在 SV2（无论 client）→ classic=false，优先级最高** |
 
-- `APP_CONFIG.mods.knownCodes`（config.js:126-134）共 **67** 个代码（2.2.0 起覆盖完整 mania 码表：全部 stable bit 代码 + `nK` + lazer 专属代码）；`APP_CONFIG.mods.bitFlags`（config.js:135-166）共 **32** 项，与 osu stable 位标志一一对应（`NF:1 … MR:1073741824`）。`DA/DC/IN/HO/CL` 无 bitflag（lazer 专属代码，走字符串路径；`CL` 在字符串/acronym 路径被收集），`SV2` 在 stable 走 bitflag 路径、lazer 下也可能以 acronym 出现。扩表只扩大"可识别"范围——除 §2 表列出的计算相关代码外，其余（`NF/HD/FL/RD/CN/AT/nK` 等）仅用于识别、`hasModInfo` 与 RC 反馈 gate，不参与计算。
+- `APP_CONFIG.mods.knownCodes`（config.js:126-134）共 **67** 个代码（本轮起覆盖完整 mania 码表：全部 stable bit 代码 + `nK` + lazer 专属代码）；`APP_CONFIG.mods.bitFlags`（config.js:135-166）共 **32** 项，与 osu stable 位标志一一对应（`NF:1 … MR:1073741824`）。`DA/DC/IN/HO/CL` 无 bitflag（lazer 专属代码，走字符串路径；`CL` 在字符串/acronym 路径被收集），`SV2` 在 stable 走 bitflag 路径、lazer 下也可能以 acronym 出现。扩表只扩大"可识别"范围——除 §2 表列出的计算相关代码外，其余（`NF/HD/FL/RD/CN/AT/nK` 等）仅用于识别、`hasModInfo` 与 RC 反馈 gate，不参与计算。
 - **派生导出**（`js/app/appContext.js:292-295`）：
   - `SORTED_KNOWN_MOD_CODES`（appContext.js:294）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。`SV2` 含数字，normalization 保留数字（modData.js:28 `addCodesFromString` 注释）。
   - `MOD_BIT_FLAG_ENTRIES`（appContext.js:295）= `Object.entries(bitFlags)`，供 `addCodesFromNumber` 遍历。

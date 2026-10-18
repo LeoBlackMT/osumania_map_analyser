@@ -22,39 +22,41 @@ import { settingsHash } from "./feedbackMath.js";
 
 const SHELL_FEEDBACK_URL = "http://127.0.0.1:24061/feedback";
 const SHELL_SETTINGS_URL = "http://127.0.0.1:24061/settings";
+const SHELL_CONFIG_URL = "http://127.0.0.1:24061/shell-config";
+const CLICK_POLL_MS = 1000;
 const RETRY_WINDOW_MS = 2000;
 const RETRY_INTERVAL_MS = 500;
 const REQUEST_TIMEOUT_MS = 6000;
 const LEAVE_ANIMATION_MS = 150;
 const OPTOUT_KEY = "mma.feedback.optout.v1";
 
-// 文本用"段位差"而不是模糊的 easier/harder：1 段 = numeric difficulty 1.0
-// （Reform 2 → Reform 3），半段即 0.5。tooltip 给出具体例子。
+// 文本用"段位差"而不是模糊的 easier/harder：1 dan = numeric difficulty 1.0
+// （Reform 2 → Reform 3），0.5 dan 即半段。tooltip 给出具体例子。
 const VOTE_LABELS = [
     {
         vote: -1,
-        text: "−1 tier",
-        title: "A full tier easier than shown (e.g. shown Reform 3, felt like Reform 2)",
+        text: "−1 dan",
+        title: "A full dan easier than shown (e.g. shown Reform 3, felt like Reform 2)",
     },
     {
         vote: -0.5,
-        text: "−½ tier",
-        title: "Half a tier easier than shown (e.g. shown Reform 2 high, felt like Reform 2 mid)",
+        text: "−0.5 dan",
+        title: "Half a dan easier than shown (e.g. shown Reform 2 high, felt like Reform 2 mid)",
     },
     {
         vote: 0,
-        text: "Accurate",
-        title: "Matches the shown estimate (within half a tier)",
+        text: "About right",
+        title: "Matches the shown estimate (within half a dan)",
     },
     {
         vote: 0.5,
-        text: "+½ tier",
-        title: "Half a tier harder than shown (e.g. shown Reform 2 mid, felt like Reform 2 high)",
+        text: "+0.5 dan",
+        title: "Half a dan harder than shown (e.g. shown Reform 2 mid, felt like Reform 2 high)",
     },
     {
         vote: 1,
-        text: "+1 tier",
-        title: "A full tier harder than shown (e.g. shown Reform 2, felt like Reform 3)",
+        text: "+1 dan",
+        title: "A full dan harder than shown (e.g. shown Reform 2, felt like Reform 3)",
     },
 ];
 
@@ -82,6 +84,7 @@ let infoShownFor = "";
 let clickThrough = false;
 let clickThroughFetched = false;
 let clickThroughPending = false;
+let clickPollTimer = 0;
 let lastFrame = null;
 
 function isOptedOut() {
@@ -104,7 +107,7 @@ async function refreshClickThrough(data) {
     if (clickThroughPending) return;
     clickThroughPending = true;
     try {
-        const response = await fetch("http://127.0.0.1:24061/shell-config", { cache: "no-store" });
+        const response = await fetch(SHELL_CONFIG_URL, { cache: "no-store" });
         if (response.ok) {
             const payload = await response.json();
             clickThrough = Boolean(payload?.window?.clickThrough);
@@ -118,6 +121,34 @@ async function refreshClickThrough(data) {
     }
 }
 
+/** 提示显示期间轮询穿透状态：用户按 Ctrl+Shift+C 后按钮立刻启用/禁用。 */
+async function syncClickThroughLive() {
+    try {
+        const response = await fetch(SHELL_CONFIG_URL, { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const next = Boolean(payload?.window?.clickThrough);
+        if (next === clickThrough) return;
+        clickThrough = next;
+        if (activeContext) activeContext.clickThrough = next;
+        setButtonsEnabled(!next && !submitting);
+        if (hintEl) hintEl.hidden = !next;
+    } catch {
+        // 壳不可达：保持现状。
+    }
+}
+
+function startClickPolling() {
+    if (clickPollTimer) return;
+    clickPollTimer = setInterval(syncClickThroughLive, CLICK_POLL_MS);
+}
+
+function stopClickPolling() {
+    if (!clickPollTimer) return;
+    clearInterval(clickPollTimer);
+    clickPollTimer = 0;
+}
+
 function tokenFor(context, stats) {
     return `${context.beatmapId}|${context.rate}|${stats.total}|${Number(stats.miss || 0).toFixed(0)}`;
 }
@@ -127,6 +158,7 @@ function clearTimers() {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
     if (leavingTimer) { clearTimeout(leavingTimer); leavingTimer = 0; }
+    stopClickPolling();
     hideDeadline = 0;
     hideRemaining = 0;
     if (stripEl) stripEl.classList.remove("is-paused");
@@ -201,7 +233,6 @@ function startCountdown(ms) {
     if (!stripEl || !countdownEl) return;
     stripEl.style.setProperty("--feedback-ms", `${ms}ms`);
     stripEl.classList.remove("is-counting");
-    countdownEl.style.animation = "none";
     countdownEl.style.transition = "none";
     countdownEl.style.transform = "scaleX(1)";
     void countdownEl.offsetWidth;
@@ -238,14 +269,17 @@ function showStrip(context, stats) {
     if (!stripEl || !questionEl || !buttonsEl || !hintEl) return;
     activeContext = context;
     activeStats = stats;
-    const label = `${context.selectedAlgorithm || "Estimate"} ${Number(context.numericDifficulty).toFixed(2)}`;
-    questionEl.textContent = `${label} — how did this feel?`;
+    const estimate = String(context.estDiff || "").trim()
+        || `Reform ${Number(context.numericDifficulty).toFixed(2)}`;
+    const algorithm = String(context.actualAlgorithm || "").trim() || "the estimator";
+    questionEl.textContent = `${estimate} (${algorithm}) — was this about right?`;
     buttonsEl.hidden = false;
     setButtonsEnabled(!context.clickThrough);
     hintEl.hidden = !context.clickThrough;
     hintEl.textContent = "Disable click-through (Ctrl+Shift+C) to rate.";
     presentStrip();
     startCountdown(STRIP_TIMEOUT_MS);
+    startClickPolling();
     scheduleHide(STRIP_TIMEOUT_MS);
 }
 
@@ -400,14 +434,19 @@ async function submitVote(vote, button) {
     };
 
     let stage = "shell";
+    let failure = "";
     try {
         const signed = await postJson(SHELL_FEEDBACK_URL, payload);
         if (!signed.ok || !signed.json?.payload || !signed.json?.auth) {
-            throw new Error(`shell rejected (${signed.status})`);
+            failure = String(signed.json?.error || `HTTP ${signed.status}`);
+            throw new Error(`shell rejected (${failure})`);
         }
         stage = "server";
         const sent = await postJson(feedbackEndpoint(), signed.json);
-        if (!sent.ok) throw new Error(`server rejected (${sent.status})`);
+        if (!sent.ok) {
+            failure = String(sent.json?.error || `HTTP ${sent.status}`);
+            throw new Error(`server rejected (${failure})`);
+        }
 
         markLocallyDeduped({
             beatmapId: context.beatmapId,
@@ -423,7 +462,8 @@ async function submitVote(vote, button) {
         console.warn(`mma feedback: ${error.message}`);
         finishCountdown();
         // 壳拒绝 = 从未上传（Not submitted）；后端拒绝 = 已上传但未记录（Not recorded）。
-        questionEl.textContent = stage === "shell" ? "Not submitted." : "Not recorded.";
+        const prefix = stage === "shell" ? "Not submitted" : "Not recorded";
+        questionEl.textContent = failure ? `${prefix} (${failure}).` : `${prefix}.`;
         buttonsEl.hidden = true;
         hintEl.hidden = true;
         submitting = false;

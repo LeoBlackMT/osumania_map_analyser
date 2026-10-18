@@ -468,6 +468,19 @@ fn spawn_osu_source_watcher(shared: Arc<Shared>) {
 }
 
 pub fn spawn_timers(shared: Arc<Shared>) {
+    // 偏移表每日检查（与 app 的 GitHub 更新检查同节奏）：启动 60s 后首次，之后每 24h。
+    // 独立线程，避免阻塞 30s 的在线探测循环；失败只记日志。
+    thread::spawn(|| {
+        thread::sleep(Duration::from_secs(60));
+        loop {
+            let outcome = http::check_and_apply_remote_offsets(http::REMOTE_OFFSETS_MANIFEST);
+            let updated = outcome.get("updated").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            if updated > 0 {
+                log::log_at("info", &format!("offsets: daily check updated {updated} table(s)"));
+            }
+            thread::sleep(Duration::from_secs(24 * 60 * 60));
+        }
+    });
     thread::spawn(move || {
         loop {
             thread::sleep(PING_INTERVAL);
@@ -537,6 +550,11 @@ pub fn spawn_timers(shared: Arc<Shared>) {
 // ---- 入口 ----
 
 pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
+    // 结算 hits 的兜底观察器（lazer 原生读取缺字段时用 tosu 的 v2 数据）。
+    match tosu.as_ref() {
+        Some(info) => crate::tosu_watch::start(&info.ip, info.port),
+        None => crate::tosu_watch::start("127.0.0.1", 24050),
+    }
     let shared = new_shared(plugin_dir, tosu);
     {
         let online = shared.tosu.as_ref().map(config::tosu_online).unwrap_or(false);

@@ -25,19 +25,39 @@ const (
 	RCLnMax       = 0.15
 	WeightMin     = 0.40
 	WeightMax     = 1.00
-	WeightVersion = 1
+	WeightVersion = 2
 	DisplayedMin  = -3.0
 	DisplayedMax  = 25.0
 )
 
 // AllowedMods is the RC feedback whitelist. NM is the empty set.
 var AllowedMods = map[string]bool{
+	"HD":  true,
+	"FI":  true,
+	"FL":  true,
+	"DT":  true,
+	"NC":  true,
+	"HT":  true,
+	"DC":  true,
 	"MR":  true,
 	"SD":  true,
 	"PF":  true,
 	"SV2": true,
 	"TD":  true,
 	"CS":  true,
+}
+
+// AllowedRates are the speed multipliers accepted by the pipeline
+// (NM/MR 1.0, DT/NC 1.5, HT/DC 0.75).
+var AllowedRates = []float64{0.75, 1.0, 1.5}
+
+func rateAllowed(rate float64) bool {
+	for _, allowed := range AllowedRates {
+		if rate == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 var keyModPattern = regexp.MustCompile(`^[0-9]+K$`)
@@ -175,7 +195,7 @@ func ValidateStatic(p Payload) string {
 	if !checksumPattern.MatchString(strings.ToLower(p.Checksum)) {
 		return ReasonChecksumInvalid
 	}
-	if p.Rate != 1.0 {
+	if !rateAllowed(p.Rate) {
 		return ReasonBadRate
 	}
 	if len(p.Mods) > 8 {

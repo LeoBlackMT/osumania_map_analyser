@@ -65,14 +65,17 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
 - **lazer（原生读取）当前不可用**：结算 hits 只有 stable 原生读取提供，lazer 原生包没有 `resultsScreen.hits` —— 页面 gate 停在 `no_hits`，反馈条会显示一条非交互提示（"lazer native reading has no result data yet…"）而不是静默；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
 - 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
-- 仅 `rate = 1.0`；mod 白名单 `NM, MR, SD, PF, SV2, TD, CS`，其余（含 `nK`、`HO`、`IN`、`RD`、`FL`、`HD`、`NF`、`AT/AU`、全部变速与改 OD mod）一律拒绝。
-- 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、miss 率 ≤0.05、ScoreV1 准度 92–99。
+- 倍速只允许 `1.0 / 1.5 / 0.75`（对应 NM/MR、DT/NC、HT/DC）；其余倍速拒绝。
+- mod 白名单 `NM, MR, SD, PF, SV2, TD, CS, HD, FI, FL, DT, NC, HT, DC`；其余（`nK`、`HO`、`IN`、`RD`、`NF`、`AT/AU`、改 OD mod 等）一律拒绝。变速 mod 的记录按实际 rate 入库，导出训练数据时按 mod 重建 `.osu`。
+- 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、ScoreV1 准度 **90–100**（**不设 miss 上限**）。
 - 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
 - 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
 
 **字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
 
 `od` 是**必填客观字段**：由页面从本地 `.osu` 解析（`parsedSummary.od` → snapshot → `feedbackContext`），壳与后端都会校验 0–10，后端再用 osu! API 的 OD 比对（±0.01）。**服务端不用 API 的值回填**——缺失即拒绝（`bad_od`），否则 OD 校验形同虚设。
+
+**weight 曲线（v2）**：`w = 0.40 + 0.60*((acc-90)/10)^1.5`，`acc∈[90,100]`；单调递增且上凸——低 acc 权重掉得更快，高 acc 权重升得更快（左右不对称），`weight_version=2`。
 
 **信任链**：
 

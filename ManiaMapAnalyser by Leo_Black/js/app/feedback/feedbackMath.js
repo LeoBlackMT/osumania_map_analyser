@@ -6,15 +6,14 @@ import {
     ACC_MAX,
     ACC_MIN,
     COMPLETION_MIN,
-    MISS_RATE_MAX,
     NON_RC_MODE_TAGS,
     RC_LN_MAX,
     TOTAL_HITS_MIN,
-    WEIGHT_CENTER,
-    WEIGHT_FLOOR,
+    WEIGHT_BASE,
+    WEIGHT_EXP,
     WEIGHT_MAX,
     WEIGHT_MIN,
-    WEIGHT_SIGMA,
+    WEIGHT_SPAN,
 } from "./feedbackSpec.js";
 
 /** 六键计数 → 总 note 数（与 livePpCounts.totalCount 同义，但不依赖其导出顺序）。 */
@@ -45,11 +44,11 @@ export function scoreV1(counts) {
     return (100 * weighted) / (300 * total);
 }
 
-/** weight 曲线：中心 96.5、σ 2.0、底 0.35，再夹到 [0.40, 1.00]（gate 已限制 acc 范围）。 */
+/** weight 曲线 v2：w = 0.40 + 0.60*((acc-90)/10)^1.5（acc 夹到 [90,100]）。 */
 export function weightForAcc(acc) {
     if (!Number.isFinite(acc)) return WEIGHT_MIN;
-    const raw = WEIGHT_FLOOR
-        + (1 - WEIGHT_FLOOR) * Math.exp(-((acc - WEIGHT_CENTER) ** 2) / (2 * WEIGHT_SIGMA * WEIGHT_SIGMA));
+    const t = Math.min(1, Math.max(0, (acc - 90) / 10));
+    const raw = WEIGHT_BASE + WEIGHT_SPAN * (t ** WEIGHT_EXP);
     return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, raw));
 }
 
@@ -81,7 +80,6 @@ export function evaluatePlayStats({ counts, objectsTotal }) {
     const completion = completionRatio(total, objectsTotal);
     if (completion < COMPLETION_MIN) return { ok: false, reason: "completion", total, completion };
     const miss = missRate(counts);
-    if (miss > MISS_RATE_MAX) return { ok: false, reason: "miss_rate", total, miss };
     const acc = scoreV1(counts);
     if (!Number.isFinite(acc) || acc < ACC_MIN || acc > ACC_MAX) {
         return { ok: false, reason: "accuracy", total, acc };

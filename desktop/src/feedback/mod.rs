@@ -20,20 +20,25 @@ pub const SIGNING_SEED_HEX: &str = env!("MMA_FEEDBACK_SIGNING_SEED");
 pub const KEY_ID: &str = env!("MMA_FEEDBACK_KEY_ID");
 
 pub const RC_LN_MAX: f64 = 0.15;
-pub const ACC_MIN: f64 = 92.0;
-pub const ACC_MAX: f64 = 99.0;
+pub const ACC_MIN: f64 = 90.0;
+pub const ACC_MAX: f64 = 100.0;
 pub const TOTAL_HITS_MIN: u32 = 200;
 pub const COMPLETION_MIN: f64 = 0.85;
-pub const MISS_RATE_MAX: f64 = 0.05;
-pub const WEIGHT_CENTER: f64 = 96.5;
-pub const WEIGHT_SIGMA: f64 = 2.0;
-pub const WEIGHT_FLOOR: f64 = 0.35;
+pub const WEIGHT_BASE: f64 = 0.40;
+pub const WEIGHT_SPAN: f64 = 0.60;
+pub const WEIGHT_EXP: f64 = 1.5;
 pub const WEIGHT_MIN: f64 = 0.40;
 pub const WEIGHT_MAX: f64 = 1.0;
-pub const WEIGHT_VERSION: u32 = 1;
+pub const WEIGHT_VERSION: u32 = 2;
+
+/// 允许的倍速：NM/MR 类 1.0，DT/NC 1.5，HT/DC 0.75。
+pub const ALLOWED_RATES: &[f64] = &[0.75, 1.0, 1.5];
 
 /// mod 白名单（NM 用空集合表示）。
-pub const ALLOWED_MODS: &[&str] = &["MR", "SD", "PF", "SV2", "TD", "CS"];
+pub const ALLOWED_MODS: &[&str] = &[
+    "HD", "FI", "FL", "DT", "NC", "HT", "DC",
+    "MR", "SD", "PF", "SV2", "TD", "CS",
+];
 
 /// 旧版独立文件（其内容已合并进 `mma-shell-state.json`，仅用于一次性迁移）。
 pub const INSTALL_ID_FILE: &str = "mma-shell-feedback.json";
@@ -201,10 +206,9 @@ pub fn total_hits(hits: &Hits) -> u32 {
 }
 
 pub fn weight_for_acc(acc: f64) -> f64 {
-    let raw = WEIGHT_FLOOR
-        + (1.0 - WEIGHT_FLOOR)
-            * (-((acc - WEIGHT_CENTER).powi(2)) / (2.0 * WEIGHT_SIGMA * WEIGHT_SIGMA)).exp();
-    raw.clamp(WEIGHT_MIN, WEIGHT_MAX)
+    // w = 0.40 + 0.60 * ((acc-90)/10)^1.5：单调递增且上凸（低 acc 扣得更狠）。
+    let t = ((acc - 90.0) / 10.0).clamp(0.0, 1.0);
+    (WEIGHT_BASE + WEIGHT_SPAN * t.powf(WEIGHT_EXP)).clamp(WEIGHT_MIN, WEIGHT_MAX)
 }
 
 fn is_hex32(value: &str) -> bool {
@@ -245,7 +249,13 @@ pub fn build_payload(
     if snapshot.state_name.as_deref() != Some("resultScreen") {
         return Err("not_result_screen");
     }
-    let Some(hits) = snapshot.result_hits.as_ref() else {
+    // lazer 原生没有结算 hits：回落到 tosu 观察器缓存的结算屏数据。
+    let fallback_hits = if snapshot.result_hits.is_none() {
+        crate::tosu_watch::native_hits()
+    } else {
+        None
+    };
+    let Some(hits) = snapshot.result_hits.as_ref().or(fallback_hits.as_ref()) else {
         return Err("no_hits");
     };
     let Some(bid) = snapshot.map_id.filter(|id| *id > 0) else {
@@ -270,7 +280,7 @@ pub fn build_payload(
         .get("rate")
         .and_then(Value::as_f64)
         .unwrap_or(1.0);
-    if (rate - 1.0).abs() > f64::EPSILON {
+    if !ALLOWED_RATES.iter().any(|allowed| (rate - allowed).abs() < 1e-9) {
         return Err("rate");
     }
 
@@ -285,9 +295,6 @@ pub fn build_payload(
         .unwrap_or(0);
     if objects == 0 || (total as f64) / (objects as f64) < COMPLETION_MIN {
         return Err("completion");
-    }
-    if hits.miss as f64 / total as f64 > MISS_RATE_MAX {
-        return Err("miss_rate");
     }
     let acc = score_v1(hits);
     if !(ACC_MIN..=ACC_MAX).contains(&acc) {
@@ -335,7 +342,7 @@ pub fn build_payload(
     Ok(FeedbackPayload {
         bid: bid as i64,
         checksum,
-        rate: 1.0,
+        rate,
         mods,
         key_count: page.key_count,
         ln_ratio: page.ln_ratio,
@@ -454,8 +461,8 @@ mod tests {
             selected_algorithm: "Mixed".to_string(),
             displayed_val: 12.2,
             vote: 0.5,
-            weight: 0.921,
-            weight_version: 1,
+            weight: 0.714,
+            weight_version: 2,
             passed: true,
             client: "stable".to_string(),
             classic: true,
@@ -472,7 +479,7 @@ mod tests {
         let text = build_sign_string(&sample());
         assert_eq!(
             text,
-            "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.921|1|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
+            "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.714|2|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
         );
     }
 
@@ -511,9 +518,11 @@ mod tests {
 
     #[test]
     fn weight_curve_matches_table() {
-        assert!((weight_for_acc(92.0) - 0.402).abs() < 0.001);
-        assert!((weight_for_acc(96.5) - 1.0).abs() < 1e-9);
-        assert!((weight_for_acc(99.0) - 0.648).abs() < 0.001);
+        assert!((weight_for_acc(90.0) - 0.400).abs() < 1e-9);
+        assert!((weight_for_acc(92.0) - 0.4536).abs() < 0.001);
+        assert!((weight_for_acc(96.5) - 0.7144).abs() < 0.001);
+        assert!((weight_for_acc(99.0) - 0.9123).abs() < 0.001);
+        assert!((weight_for_acc(100.0) - 1.0).abs() < 1e-9);
         assert!((weight_for_acc(80.0) - WEIGHT_MIN).abs() < 1e-9);
     }
 

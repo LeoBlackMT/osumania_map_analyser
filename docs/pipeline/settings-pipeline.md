@@ -123,7 +123,7 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 - **VibroDetection 大小写**：settings.json 的 uniqueID 是 `VibroDetection`（大写 V，settings.json:319），命令通道键名与之相同（settings.js:759、settings.js:989 回退对象）；state 字段是小写 `state.vibroDetection`（appContext.js:201）。按 uniqueID 查找/新增时必须精确匹配 PascalCase。
 - **settingsCommandTimeoutMs = 1500**：定义于 `config.js:75 APP_CONFIG.timing.settingsCommandTimeoutMs`，经 `appContext.js:284 SETTINGS_COMMAND_TIMEOUT_MS` 导出，由 `waitForInitialSettingsFromCommand`（settings.js:898-916）用作超时（超时 reject "getSettings timeout"）。
 - **命令通道 ≠ 文件基线**：命令 payload 可能缺键（hasKey 守卫兜底），文件基线不缺键（settings.json 结构完整）。给 settings.json 加新设置时，`applySettingsFrom`（settings.js:934-971，启动基线，手工逐行）与 `SETTING_HANDLERS` 表（settings.js:746-782，运行时，数据驱动）两处都必须同步添加，否则新设置在启动/运行时有一条路径不生效。注意：**只有运行时路径已数据化，启动基线仍是手工列表**——两处不对称是有意的（启动基线无 hasKey 需求）。
-- **`enableDifficultyFeedback`（2.2.0 新增，显示类）**：checkbox 在 Network 分组（settings.json:436），`applyEnableDifficultyFeedbackSetting`（settings.js:716）除比较/写入外仅有 `syncFeedbackVisibility()` 副作用（收起反馈条）；不在 `SETTING_RECOMPUTE_KEYS`/`SETTING_CACHE_KEYS`，不进任何缓存键。
+- **`enableDifficultyFeedback`（本轮新增，显示类）**：checkbox 在 Network 分组（settings.json:436），`applyEnableDifficultyFeedbackSetting`（settings.js:716）除比较/写入外仅有 `syncFeedbackVisibility()` 副作用（收起反馈条）；不在 `SETTING_RECOMPUTE_KEYS`/`SETTING_CACHE_KEYS`，不进任何缓存键。
 - **新增计算相关设置必须加入缓存失效**：§5 第 6 步的失效列表（settings.js:881-885，`SETTING_CACHE_KEYS`）之外的新设置不会自动失效缓存——缓存键不含该设置（见 [result-cache.md](result-cache.md)），漏加会静默提供过期结果。纯显示设置则**不得**加入失效列表（覆盖检查会处理）。
 ## 多数据源（外部源）补充
 
