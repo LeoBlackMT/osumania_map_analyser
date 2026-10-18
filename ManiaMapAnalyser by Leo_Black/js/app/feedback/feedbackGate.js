@@ -57,6 +57,8 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
     if (!state || !state.enableDifficultyFeedback) return { show: false, reason: "disabled" };
     if (normalizedStateName(state) !== "resultscreen") return { show: false, reason: "not_result_screen" };
     if (String(state.activeSource || "") !== "osu") return { show: false, reason: "not_osu" };
+    // 回放（lazer ReplayPlayer）不代表真实游玩，不允许评分。
+    if (data?.replay === true) return { show: false, reason: "replay" };
 
     const context = state.feedbackContext;
     if (!context || context.beatmapKey !== state.lastBeatmapKey) {

@@ -35,6 +35,9 @@ pub fn packet_from_snapshot(snapshot: &Snapshot) -> Value {
     if let Some(client) = snapshot.client {
         root.insert("client".to_string(), json!(client.as_str()));
     }
+    if snapshot.replay {
+        root.insert("replay".to_string(), json!(true));
+    }
 
     match (snapshot.state_number, snapshot.state_name.clone()) {
         (Some(number), Some(name)) => {

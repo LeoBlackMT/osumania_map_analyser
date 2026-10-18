@@ -265,6 +265,8 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         ScreenOutcome::Mapped(state) => {
             snapshot.state_number = Some(state.number);
             snapshot.state_name = Some(state.name.clone());
+            // 回放：当前屏幕是 ReplayPlayer（状态名同为 play，只能靠类型名区分）。
+            snapshot.replay = state.type_name.contains("ReplayPlayer");
         }
         ScreenOutcome::Unmapped(type_name) => {
             snapshot.state_name = Some(String::new());

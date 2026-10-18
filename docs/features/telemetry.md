@@ -68,6 +68,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - 倍速只允许 `1.0 / 1.5 / 0.75`（对应 NM/MR、DT/NC、HT/DC）；其余倍速拒绝。
 - mod 白名单 `NM, MR, SD, PF, SV2, TD, CS, HD, FI, FL, DT, NC, HT, DC`；其余（`nK`、`HO`、`IN`、`RD`、`NF`、`AT/AU`、改 OD mod 等）一律拒绝。变速 mod 的记录按实际 rate 入库，导出训练数据时按 mod 重建 `.osu`。
 - 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、ScoreV1 准度 **90–100**（**不设 miss 上限**）。
+- **回放不算**：lazer 的 `ReplayPlayer` 会在载荷里带 `replay: true`，页面与壳都拒绝（壳返回 `replay`）。
 - 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
 - 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
 

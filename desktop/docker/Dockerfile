@@ -21,4 +21,9 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+# crates.io 在国内经常超时：换 rsproxy 镜像（仅构建镜像内生效）。
+RUN mkdir -p /usr/local/cargo \
+    && printf '[source.crates-io]\nreplace-with = "rsproxy"\n\n[source.rsproxy]\nregistry = "sparse+https://rsproxy.cn/index/"\n\n[registries.rsproxy]\nindex = "sparse+https://rsproxy.cn/index/"\n\n[net]\nretry = 5\n' \
+        > /usr/local/cargo/config.toml
+
 WORKDIR /src

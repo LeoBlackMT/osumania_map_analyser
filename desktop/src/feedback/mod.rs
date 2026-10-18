@@ -253,6 +253,9 @@ pub fn build_payload(
     if snapshot.state_name.as_deref() != Some("resultScreen") {
         return Err("not_result_screen");
     }
+    if snapshot.replay {
+        return Err("replay");
+    }
     let Some(hits) = snapshot.result_hits.as_ref() else {
         return Err("no_hits");
     };

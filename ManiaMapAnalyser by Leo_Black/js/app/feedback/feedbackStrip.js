@@ -511,6 +511,10 @@ export function noteFeedbackFrame(data) {
     if (!result.show) {
         rememberGate(result);
         // lazer 原生读取没有结算数据（result_hits 仅 stable 提供）：给出明确提示而不是静默。
+        if (result.reason === "replay") {
+            showInfoStrip("Replays can't be rated — feedback is only collected from a real play.");
+            return;
+        }
         if (result.reason === "no_hits" && String(state.client || "") === "lazer") {
             showInfoStrip("lazer native reading has no result data yet — RC feedback needs osu!stable (or a future lazer offset table).");
             return;

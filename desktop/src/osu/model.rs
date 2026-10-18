@@ -265,6 +265,8 @@ pub struct Snapshot {
     pub play_hits: Option<Hits>,
     /// 结算 hits（`result_base` 链的同形槽）。
     pub result_hits: Option<Hits>,
+    /// 回放判定（lazer: 当前屏幕是 ReplayPlayer；stable 暂不识别）。
+    pub replay: bool,
     /// **诊断**：8 个候选 u16 槽的原始值（`+0x88/0x8A/0x8C/0x8E/0x90/0x92/0x94` + `+0x68`），
     /// 顺序与 `stable::HITS_CANDIDATE_OFFSETS` 一致。只进对拍证据，不进载荷。
     pub hits_candidates: Vec<u16>,
