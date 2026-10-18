@@ -63,6 +63,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 **采集边界（硬约束）**：
 
 - 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
+- **lazer（原生读取）当前不可用**：结算 hits 只有 stable 原生读取提供，lazer 原生包没有 `resultsScreen.hits` —— 页面 gate 停在 `no_hits`，反馈条会显示一条非交互提示（"lazer native reading has no result data yet…"）而不是静默；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
 - 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
 - 仅 `rate = 1.0`；mod 白名单 `NM, MR, SD, PF, SV2, TD, CS`，其余（含 `nK`、`HO`、`IN`、`RD`、`FL`、`HD`、`NF`、`AT/AU`、全部变速与改 OD mod）一律拒绝。
 - 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、miss 率 ≤0.05、ScoreV1 准度 92–99。

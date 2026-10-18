@@ -41,6 +41,7 @@ let retryDeadline = 0;
 let lastPromptToken = "";
 let lastResultToken = "";
 let submitting = false;
+let infoShownFor = "";
 
 // 鼠标穿透状态：结果屏出现时向壳查一次（`GET /shell-config` → window.clickThrough）。
 // 不用 state 帧：穿透切换不会广播 state，轮询一次比改契约更轻。
@@ -103,6 +104,44 @@ function showStrip(context, stats) {
     hintEl.textContent = "Disable click-through (Ctrl+Shift+C) to rate.";
     stripEl.hidden = false;
     hideTimer = setTimeout(() => hideStrip(), STRIP_TIMEOUT_MS);
+}
+
+/** 非交互提示（lazer 原生读取没有结算数据等）：一次结果屏只显示一次。 */
+function showInfoStrip(text) {
+    if (!stripEl || !questionEl) return;
+    const key = `${state.lastBeatmapIdentity || ""}|${state.speedRate}`;
+    if (infoShownFor === key) return;
+    infoShownFor = key;
+    clearTimers();
+    retryDeadline = 0;
+    activeContext = null;
+    activeStats = null;
+    questionEl.textContent = text;
+    buttonsEl.hidden = true;
+    hintEl.hidden = true;
+    stripEl.hidden = false;
+    hideTimer = setTimeout(() => hideStrip({ resetToken: false }), STRIP_TIMEOUT_MS);
+}
+
+/** 最近一次 gate 结果暴露到 window，便于在 devtools 里排查（`__MMAFeedbackLastGate`）。 */
+function rememberGate(result) {
+    try {
+        const stats = result.stats || null;
+        window.__MMAFeedbackLastGate = {
+            at: new Date().toISOString(),
+            reason: result.reason,
+            stats: stats ? {
+                total: stats.total,
+                acc: Number(stats.acc.toFixed(2)),
+                completion: Number(stats.completion.toFixed(3)),
+            } : null,
+        };
+        if (window.__MMA_FEEDBACK_DEBUG) {
+            console.debug("[mma-feedback] gate:", result.reason, window.__MMAFeedbackLastGate);
+        }
+    } catch {
+        // 调试辅助绝不影响主流程。
+    }
 }
 
 function buildStrip() {
@@ -210,6 +249,7 @@ export function noteFeedbackFrame(data) {
     }
     if (String(state.clientStateName || "") !== "resultscreen") {
         clickThroughFetched = false;
+        infoShownFor = "";
         if (stripEl && !stripEl.hidden) hideStrip();
         return;
     }
@@ -235,6 +275,12 @@ export function noteFeedbackFrame(data) {
     });
 
     if (!result.show) {
+        rememberGate(result);
+        // lazer 原生读取没有结算数据（result_hits 仅 stable 提供）：给出明确提示而不是静默。
+        if (result.reason === "no_hits" && String(state.client || "") === "lazer") {
+            showInfoStrip("lazer native reading has no result data yet — RC feedback needs osu!stable (or a future lazer offset table).");
+            return;
+        }
         // 结算帧的 hits/分析结果可能晚到：在 2s 窗口内重试，不重复弹条。
         const retryable = ["no_hits", "no_context", "no_numeric"].includes(result.reason);
         if (retryable) {
@@ -249,6 +295,7 @@ export function noteFeedbackFrame(data) {
         return;
     }
 
+    rememberGate(result);
     retryDeadline = 0;
     const token = tokenFor(result.context, result.stats);
     lastResultToken = token;
@@ -270,6 +317,7 @@ export function resetFeedbackStrip() {
     lastResultToken = "";
     lastPromptToken = "";
     retryDeadline = 0;
+    infoShownFor = "";
     hideStrip();
 }
 
