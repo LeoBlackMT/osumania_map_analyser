@@ -237,8 +237,11 @@ function startCountdown(ms) {
     if (!stripEl || !countdownEl) return;
     stripEl.style.setProperty("--feedback-ms", `${ms}ms`);
     stripEl.classList.remove("is-counting");
-    countdownEl.style.transition = "none";
-    countdownEl.style.transform = "scaleX(1)";
+    // 清掉 finishCountdown 留下的内联收尾样式：内联 animation:none 的优先级高于
+    // `.is-counting` 的类规则，不清掉的话第二次弹条起倒计时条永远不动。
+    countdownEl.style.animation = "";
+    countdownEl.style.transition = "";
+    countdownEl.style.transform = "";
     void countdownEl.offsetWidth;
     stripEl.classList.add("is-counting");
 }
