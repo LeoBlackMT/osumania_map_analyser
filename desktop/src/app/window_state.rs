@@ -15,6 +15,7 @@ pub static WINDOW_STATE: Mutex<config::WindowState> = Mutex::new(config::WindowS
     topmost: true,
     click_through: false,
     settings: None,
+    install_id: None,
 });
 
 /// 把当前内存状态写盘（仅文件 IO，安全；任何线程可调）。

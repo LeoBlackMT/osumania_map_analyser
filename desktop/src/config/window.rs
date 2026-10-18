@@ -8,7 +8,7 @@ use super::common::exe_dir;
 pub const WINDOW_STATE_FILE: &str = "mma-shell-state.json";
 pub const LEGACY_SETTINGS_WINDOW_STATE_FILE: &str = "mma-shell-settings-window.json";
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(default)]
 pub struct WindowState {
     pub x: i32,
@@ -19,6 +19,9 @@ pub struct WindowState {
     pub click_through: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<SettingsWindowState>,
+    // 反馈用的匿名 install id（32 hex）。与窗口状态同文件，减少根目录散落文件。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_id: Option<String>,
 }
 
 impl Default for WindowState {
@@ -31,6 +34,7 @@ impl Default for WindowState {
             topmost: true,
             click_through: false,
             settings: None,
+            install_id: None,
         }
     }
 }
@@ -68,11 +72,14 @@ pub fn write_window_state(state: &WindowState) {
 
 pub fn write_window_state_in(dir: &Path, state: &WindowState) {
     let path = dir.join(WINDOW_STATE_FILE);
-    let mut to_write = *state;
-    if to_write.settings.is_none() {
+    let mut to_write = state.clone();
+    if to_write.settings.is_none() || to_write.install_id.is_none() {
         let existing = read_window_state_in(dir);
-        if existing.settings.is_some() {
+        if to_write.settings.is_none() && existing.settings.is_some() {
             to_write.settings = existing.settings;
+        }
+        if to_write.install_id.is_none() {
+            to_write.install_id = existing.install_id;
         }
     }
     let tmp = path.with_extension("state.tmp");

@@ -10,7 +10,7 @@ use ed25519_compact::{KeyPair, Seed};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,6 +35,7 @@ pub const WEIGHT_VERSION: u32 = 1;
 /// mod 白名单（NM 用空集合表示）。
 pub const ALLOWED_MODS: &[&str] = &["MR", "SD", "PF", "SV2", "TD", "CS"];
 
+/// 旧版独立文件（其内容已合并进 `mma-shell-state.json`，仅用于一次性迁移）。
 pub const INSTALL_ID_FILE: &str = "mma-shell-feedback.json";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -314,10 +315,13 @@ pub fn build_payload(
     if page.mode_tag.trim() != "RC" {
         return Err("not_rc");
     }
-    if let Some(od) = page.od {
-        if !od.is_finite() || !(0.0..=10.0).contains(&od) {
-            return Err("bad_od");
-        }
+    // OD 是签名的客观字段：页面必须给出（页面从本地 .osu 解析）；缺失即拒绝，
+    // 不用服务端 API 的值回填——否则 OD 校验失去意义。
+    let Some(od) = page.od else {
+        return Err("bad_od");
+    };
+    if !od.is_finite() || !(0.0..=10.0).contains(&od) {
+        return Err("bad_od");
     }
     let settings_hash = sanitize_text(&page.settings_hash, 16);
     if settings_hash.len() != 8 {
@@ -340,7 +344,7 @@ pub fn build_payload(
             if text.is_empty() { "unknown".to_string() } else { text }
         },
         mode_tag: "RC".to_string(),
-        od: page.od,
+        od: Some(od),
         actual_algorithm: page.actual_algorithm.trim().to_string(),
         selected_algorithm: page.selected_algorithm.trim().to_string(),
         displayed_val: page.displayed_val,
@@ -376,34 +380,37 @@ pub fn new_nonce() -> String {
     hex_encode(&hasher.finalize()[..8])
 }
 
-fn install_id_path() -> Option<PathBuf> {
-    crate::config::exe_dir().map(|dir| dir.join(INSTALL_ID_FILE))
-}
-
-/// 读/建本地匿名 install id（32 hex）。独立于遥测的 installId。
+/// 读/建本地匿名 install id（32 hex）。与窗口状态同存 `mma-shell-state.json`，
+/// 旧的 `mma-shell-feedback.json` 会被一次性迁移并删除。
 pub fn install_id() -> Option<String> {
-    let path = install_id_path()?;
-    ensure_install_id(&path)
+    let dir = crate::config::exe_dir()?;
+    install_id_in(&dir)
 }
 
-pub fn ensure_install_id(path: &Path) -> Option<String> {
-    if let Ok(text) = std::fs::read_to_string(path) {
+pub fn install_id_in(dir: &Path) -> Option<String> {
+    let mut state = crate::config::window::read_window_state_in(dir);
+    if let Some(id) = state.install_id.as_deref().filter(|id| is_hex32(id)) {
+        return Some(id.to_string());
+    }
+
+    // 迁移：旧文件存在且合法 → 写入 state 文件后删除旧文件。
+    let legacy = dir.join(INSTALL_ID_FILE);
+    if let Ok(text) = std::fs::read_to_string(&legacy) {
         if let Ok(value) = serde_json::from_str::<Value>(&text) {
             if let Some(id) = value.get("install_id").and_then(Value::as_str) {
                 if is_hex32(id) {
+                    state.install_id = Some(id.to_string());
+                    crate::config::window::write_window_state_in(dir, &state);
+                    let _ = std::fs::remove_file(&legacy);
                     return Some(id.to_string());
                 }
             }
         }
     }
+
     let id = new_install_id();
-    let body = serde_json::json!({ "install_id": id });
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if std::fs::write(path, body.to_string()).is_err() {
-        return None;
-    }
+    state.install_id = Some(id.clone());
+    crate::config::window::write_window_state_in(dir, &state);
     Some(id)
 }
 
@@ -520,9 +527,8 @@ mod tests {
     fn install_id_persists() {
         let dir = std::env::temp_dir().join(format!("mma-fb-test-{}", new_nonce()));
         std::fs::create_dir_all(&dir).expect("mkdir");
-        let path = dir.join(INSTALL_ID_FILE);
-        let first = ensure_install_id(&path).expect("first");
-        let second = ensure_install_id(&path).expect("second");
+        let first = install_id_in(&dir).expect("first");
+        let second = install_id_in(&dir).expect("second");
         assert_eq!(first, second);
         assert_eq!(first.len(), 32);
         let _ = std::fs::remove_dir_all(&dir);

@@ -43,7 +43,7 @@ ManiaMapAnalyser 桌面壳（mma-shell）基于 Tauri v2 开发，支持 Windows
 配置文件位于可执行文件同级目录下：
 - `mma-shell-config.json`：壳程序运行配置，包括数据源偏好、各游戏根目录、快捷键映射与日志等级。
 - `mma-settings.json`：卡片显示设置。仅在 tosu 离线时由桌面壳负责维护；tosu 在线时直接采用 tosu 的设置文件。
-- `mma-shell-state.json`：窗口运行状态，记忆主窗口与设置窗口的位置、大小与状态。
+- `mma-shell-state.json`：窗口运行状态（主窗口/设置窗口几何）+ 反馈用的匿名 `install_id`。旧版 `mma-shell-feedback.json` 会自动并入并删除。
 
 ## 构建与运行
 
@@ -64,11 +64,17 @@ $env:MMA_FEEDBACK_SIGNING_SEED = "<64 hex>"
 $env:MMA_FEEDBACK_KEY_ID = "release-2026-10"
 .\release.ps1
 
-# Linux
+# Linux（原生）
 export MMA_FEEDBACK_SIGNING_SEED="<64 hex>"
 export MMA_FEEDBACK_KEY_ID="release-2026-10"
 desktop/build-linux.sh
+
+# Linux（在 Windows 上用 Docker，无需本机 Linux 工具链）
+.\release.ps1 -Linux          # 只出 Linux 包
+.\release.ps1 -All            # Windows + Linux
 ```
+
+Docker 镜像由 `desktop/docker/Dockerfile` 定义（`rust:1-bookworm` + Tauri 系统库），首次运行自动构建；seed 通过 `-e` 在运行时注入，不写进镜像。
 
 - 只检查签名配置：`release.ps1 -SigningCheckOnly` / `build-linux.sh --check-signing`。
 - 本地测试构建：`release.ps1 -AllowDevSigning` / `MMA_FEEDBACK_ALLOW_DEV=1 build-linux.sh`（服务端需 `FEEDBACK_ALLOW_DEV_KEY=true`）。
@@ -128,7 +134,7 @@ For end-user operation guides, see [docs/shell-guide.md](../docs/shell-guide.md)
 Configuration files are located in the executable directory:
 - `mma-shell-config.json`: Shell runtime configuration including source preference, game roots, hotkey definitions, and log levels.
 - `mma-settings.json`: Card display settings. Managed by the shell when tosu is offline; replaced by tosu's settings file when tosu is online.
-- `mma-shell-state.json`: Window runtime state, storing positions, sizes, and toggle states for main and settings windows.
+- `mma-shell-state.json`: Window runtime state (geometry for the main/settings windows) plus the anonymous `install_id` used by feedback. The legacy `mma-shell-feedback.json` is migrated into it and removed.
 
 ## Building and Development
 
@@ -158,6 +164,7 @@ desktop/build-linux.sh
 - Signing check only: `release.ps1 -SigningCheckOnly` / `build-linux.sh --check-signing`.
 - Local test build: `release.ps1 -AllowDevSigning` / `MMA_FEEDBACK_ALLOW_DEV=1 build-linux.sh` (the server needs `FEEDBACK_ALLOW_DEV_KEY=true`).
 - Never commit the seed; put the public key in the server's `FEEDBACK_PUBLIC_KEYS`. See `backend/docs/deployment.md` §14.
+- Linux via Docker on Windows: `.\release.ps1 -Linux` (or `-All`). The image is `desktop/docker/Dockerfile` (`rust:1-bookworm` + Tauri deps) and the seed is passed at run time with `-e`, never baked into the image.
 
 Common development environment variables:
 - `MMA_PLUGIN_DIR`: Overrides the static asset directory path.

@@ -58,7 +58,7 @@ impl AppBuilder {
                 if let Some(window) = app.get_webview_window("main") {
                     server::set_main_window(&shared, window.clone());
                     let saved = config::read_window_state();
-                    *WINDOW_STATE.lock().unwrap() = saved;
+                    *WINDOW_STATE.lock().unwrap() = saved.clone();
                     if saved.x != i32::MIN {
                         let _ = window.set_position(tauri::PhysicalPosition::new(saved.x, saved.y));
                     }

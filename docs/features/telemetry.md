@@ -67,9 +67,12 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
 - 仅 `rate = 1.0`；mod 白名单 `NM, MR, SD, PF, SV2, TD, CS`，其余（含 `nK`、`HO`、`IN`、`RD`、`FL`、`HD`、`NF`、`AT/AU`、全部变速与改 OD mod）一律拒绝。
 - 仅完整通关：`passed` 为真、总击打 ≥200、完成率 ≥0.85、miss 率 ≤0.05、ScoreV1 准度 92–99。
+- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
 - 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
 
 **字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
+
+`od` 是**必填客观字段**：由页面从本地 `.osu` 解析（`parsedSummary.od` → snapshot → `feedbackContext`），壳与后端都会校验 0–10，后端再用 osu! API 的 OD 比对（±0.01）。**服务端不用 API 的值回填**——缺失即拒绝（`bad_od`），否则 OD 校验形同虚设。
 
 **信任链**：
 

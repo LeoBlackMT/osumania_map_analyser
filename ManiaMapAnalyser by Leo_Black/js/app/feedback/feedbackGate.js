@@ -66,6 +66,11 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
         return { show: false, reason: "no_numeric" };
     }
     if (!Number.isFinite(Number(context.lnRatio))) return { show: false, reason: "no_ln_ratio" };
+    // OD 是签名的客观字段：必须是本地 .osu 解析出的数字（未知时不允许提问，
+    // 否则用户点完只会被壳/后端拒绝）。
+    if (typeof context.od !== "number" || !Number.isFinite(context.od)) {
+        return { show: false, reason: "no_od" };
+    }
 
     const slots = slotCount(context.estDiff);
     if (slots !== 1) return { show: false, reason: "multi_slot" };

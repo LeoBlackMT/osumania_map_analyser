@@ -636,11 +636,12 @@ export async function fetchBeatmapFile(reason) {
                         metadata: fallbackParsed.metaData || {},
                         lnRatio: Number(fallbackParsed.lnRatio) || 0,
                         columnCount: Number(fallbackParsed.columnCount) || 0,
+                        od: Number(fallbackParsed.od),
                     };
                     applyContentBarOverride(parsedInfo.columnCount);
                 } catch (_) {
                     // 元信息解析也失败：降级为空元信息（避免下游渲染读 null；columnCount 0 → 无 override）。
-                    parsedInfo = { metadata: {}, lnRatio: 0, columnCount: 0 };
+                    parsedInfo = { metadata: {}, lnRatio: 0, columnCount: 0, od: -1 };
                 }
             }
         }
@@ -1123,6 +1124,7 @@ export async function fetchBeatmapFile(reason) {
                         metadata: parsedInfo.metadata,
                         lnRatio: parsedInfo.lnRatio,
                         columnCount: parsedInfo.columnCount,
+                        od: parsedInfo.od,
                     },
                     computed: needComputed,
                 }, { skip: isMetaDegraded });

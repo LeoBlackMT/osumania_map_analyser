@@ -9,11 +9,15 @@
 # 或设置 MMA_FEEDBACK_SEED_FILE 指向一个只含 seed 的本地文件（gitignore）。
 # 本地测试可加 -AllowDevSigning 使用内置 dev seed（服务端需 FEEDBACK_ALLOW_DEV_KEY=true）。
 # 只检查签名配置不打包：.\release.ps1 -SigningCheckOnly
+# 只构建 Linux 包（Docker）：.\release.ps1 -Linux
+# 同时构建 Windows + Linux：.\release.ps1 -All
 
 param(
     [switch]$SkipBuild,
     [switch]$AllowDevSigning,
-    [switch]$SigningCheckOnly
+    [switch]$SigningCheckOnly,
+    [switch]$Linux,
+    [switch]$All
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,6 +86,36 @@ if ($SigningCheckOnly) {
     Write-Host "Signing check passed."
     exit 0
 }
+
+# --- Linux 包（Docker）---
+function Build-LinuxShell {
+    # PS 5.1：原生命令的 stderr 重定向在 Stop 模式下会被当成异常。
+    $ErrorActionPreference = "Continue"
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        throw "Docker not found. Install Docker Desktop (it is required to build the Linux shell on Windows)."
+    }
+    $image = "mma-shell-linux-builder"
+    docker image inspect $image *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Building Docker image $image (first run only)..."
+        docker build -t $image -f (Join-Path $desktop "docker\Dockerfile") (Join-Path $desktop "docker")
+        if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
+    }
+    Write-Host "Building Linux shell in Docker..."
+    docker run --rm `
+        -v "${root}:/src" `
+        -w /src/desktop `
+        -e MMA_FEEDBACK_SIGNING_SEED `
+        -e MMA_FEEDBACK_KEY_ID `
+        -e MMA_FEEDBACK_ALLOW_DEV `
+        -e CARGO_TARGET_DIR=/src/desktop/target-linux `
+        $image bash build-linux.sh
+    if ($LASTEXITCODE -ne 0) { throw "Linux shell build failed" }
+}
+
+if ($Linux -or $All) { Build-LinuxShell }
+if ($Linux -and -not $All) { exit 0 }
 
 # 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
 $metadataPath = Join-Path $pluginDir "metadata.txt"

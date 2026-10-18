@@ -1,7 +1,12 @@
-// 结算屏五档反馈条（shell 页内固定条，不放进卡片、不弹窗、不抢焦点）。
+// 结算屏五档反馈条：停靠在 .main-card 内部底边，不弹窗、不抢焦点。
 //
 // 数据流：页面 gate → POST 127.0.0.1:24061/feedback（壳重算并签名）→ POST 后端。
 // 页面只决定"要不要问"和"用户点了哪一档"；客观字段全部由壳签名。
+//
+// 交互约定：
+// - 顶部倒计时条 = 本次提示的剩余时间；鼠标悬停时暂停（倒计时与自动收起一起暂停）。
+// - 鼠标穿透时按钮全部禁用并给出提示（穿透状态下本来也点不到）。
+// - "Don't ask again" 立即本机静默，并尽力把设置项关掉（离线壳可写；tosu 在线只读）。
 
 import { state } from "../appContext.js";
 import {
@@ -16,17 +21,41 @@ import { markLocallyDeduped, evaluateFeedbackCandidate, isLocallyDeduped } from 
 import { settingsHash } from "./feedbackMath.js";
 
 const SHELL_FEEDBACK_URL = "http://127.0.0.1:24061/feedback";
+const SHELL_SETTINGS_URL = "http://127.0.0.1:24061/settings";
 const RETRY_WINDOW_MS = 2000;
 const RETRY_INTERVAL_MS = 500;
 const REQUEST_TIMEOUT_MS = 6000;
 const LEAVE_ANIMATION_MS = 150;
+const OPTOUT_KEY = "mma.feedback.optout.v1";
 
+// 文本用"段位差"而不是模糊的 easier/harder：1 段 = numeric difficulty 1.0
+// （Reform 2 → Reform 3），半段即 0.5。tooltip 给出具体例子。
 const VOTE_LABELS = [
-    { vote: -1, text: "Much easier", title: "This map is at least one tier easier than shown" },
-    { vote: -0.5, text: "Easier", title: "This map is slightly easier than shown" },
-    { vote: 0, text: "Accurate", title: "The estimate matches how it felt" },
-    { vote: 0.5, text: "Harder", title: "This map is slightly harder than shown" },
-    { vote: 1, text: "Much harder", title: "This map is at least one tier harder than shown" },
+    {
+        vote: -1,
+        text: "−1 tier",
+        title: "A full tier easier than shown (e.g. shown Reform 3, felt like Reform 2)",
+    },
+    {
+        vote: -0.5,
+        text: "−½ tier",
+        title: "Half a tier easier than shown (e.g. shown Reform 2 high, felt like Reform 2 mid)",
+    },
+    {
+        vote: 0,
+        text: "Accurate",
+        title: "Matches the shown estimate (within half a tier)",
+    },
+    {
+        vote: 0.5,
+        text: "+½ tier",
+        title: "Half a tier harder than shown (e.g. shown Reform 2 mid, felt like Reform 2 high)",
+    },
+    {
+        vote: 1,
+        text: "+1 tier",
+        title: "A full tier harder than shown (e.g. shown Reform 2, felt like Reform 3)",
+    },
 ];
 
 let stripEl = null;
@@ -38,6 +67,9 @@ let activeContext = null;
 let activeStats = null;
 let showTimer = 0;
 let hideTimer = 0;
+let hideDeadline = 0;
+let hideRemaining = 0;
+let hideOpts = { resetToken: true };
 let retryTimer = 0;
 let retryDeadline = 0;
 let leavingTimer = 0;
@@ -47,11 +79,26 @@ let submitting = false;
 let infoShownFor = "";
 
 // 鼠标穿透状态：结果屏出现时向壳查一次（`GET /shell-config` → window.clickThrough）。
-// 不用 state 帧：穿透切换不会广播 state，轮询一次比改契约更轻。
 let clickThrough = false;
 let clickThroughFetched = false;
 let clickThroughPending = false;
 let lastFrame = null;
+
+function isOptedOut() {
+    try {
+        return localStorage.getItem(OPTOUT_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function clearOptedOut() {
+    try {
+        localStorage.removeItem(OPTOUT_KEY);
+    } catch {
+        // 隐私模式下不可写；忽略。
+    }
+}
 
 async function refreshClickThrough(data) {
     if (clickThroughPending) return;
@@ -80,6 +127,44 @@ function clearTimers() {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
     if (leavingTimer) { clearTimeout(leavingTimer); leavingTimer = 0; }
+    hideDeadline = 0;
+    hideRemaining = 0;
+    if (stripEl) stripEl.classList.remove("is-paused");
+}
+
+/** 统一的自动收起调度：支持 hover 暂停/恢复。 */
+function scheduleHide(ms, opts = { resetToken: true }) {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideOpts = opts;
+    hideDeadline = Date.now() + ms;
+    hideRemaining = 0;
+    hideTimer = setTimeout(() => {
+        hideTimer = 0;
+        hideStrip(opts);
+    }, ms);
+}
+
+function pauseHideTimer() {
+    if (!hideTimer) return;
+    clearTimeout(hideTimer);
+    hideTimer = 0;
+    hideRemaining = Math.max(0, hideDeadline - Date.now());
+    if (stripEl) stripEl.classList.add("is-paused");
+}
+
+function resumeHideTimer() {
+    if (!hideRemaining) {
+        if (stripEl) stripEl.classList.remove("is-paused");
+        return;
+    }
+    const remaining = hideRemaining;
+    hideRemaining = 0;
+    hideDeadline = Date.now() + remaining;
+    hideTimer = setTimeout(() => {
+        hideTimer = 0;
+        hideStrip(hideOpts);
+    }, remaining);
+    if (stripEl) stripEl.classList.remove("is-paused");
 }
 
 function hideStrip({ resetToken = true } = {}) {
@@ -94,34 +179,40 @@ function hideStrip({ resetToken = true } = {}) {
         });
     }
     if (stripEl && !stripEl.hidden) {
-        // 淡出动画结束后再真正隐藏；期间若被重新显示，show 路径会清掉本定时器。
+        // 淡出动画结束后再真正隐藏；期间若被重新显示，presentStrip 会清掉本定时器。
         stripEl.classList.add("is-leaving");
         leavingTimer = setTimeout(() => {
             leavingTimer = 0;
             stripEl.classList.remove("is-leaving");
             stripEl.classList.remove("is-visible");
+            stripEl.classList.remove("is-counting");
             stripEl.hidden = true;
         }, LEAVE_ANIMATION_MS);
     } else if (stripEl) {
         stripEl.classList.remove("is-leaving");
+        stripEl.classList.remove("is-counting");
         stripEl.hidden = true;
     }
     if (resetToken) lastResultToken = "";
 }
 
-/** 顶部倒计时条：从满格线性收缩到 0（时长 = 提示超时）。 */
+/** 顶部倒计时条：CSS 动画从满格线性收缩到 0（时长 = 提示超时），hover 时暂停。 */
 function startCountdown(ms) {
-    if (!countdownEl) return;
+    if (!stripEl || !countdownEl) return;
+    stripEl.style.setProperty("--feedback-ms", `${ms}ms`);
+    stripEl.classList.remove("is-counting");
+    countdownEl.style.animation = "none";
     countdownEl.style.transition = "none";
     countdownEl.style.transform = "scaleX(1)";
     void countdownEl.offsetWidth;
-    countdownEl.style.transition = `transform ${ms}ms linear`;
-    countdownEl.style.transform = "scaleX(0)";
+    stripEl.classList.add("is-counting");
 }
 
-/** 提交后冻结并收起倒计时条。 */
+/** 提交后收起倒计时条。 */
 function finishCountdown() {
-    if (!countdownEl) return;
+    if (!stripEl || !countdownEl) return;
+    stripEl.classList.remove("is-counting");
+    countdownEl.style.animation = "none";
     countdownEl.style.transition = "transform 150ms ease";
     countdownEl.style.transform = "scaleX(0)";
 }
@@ -136,18 +227,26 @@ function presentStrip() {
     stripEl.classList.add("is-visible");
 }
 
+function setButtonsEnabled(enabled) {
+    if (!buttonsEl) return;
+    buttonsEl.querySelectorAll("button").forEach((button) => {
+        button.disabled = !enabled;
+    });
+}
+
 function showStrip(context, stats) {
     if (!stripEl || !questionEl || !buttonsEl || !hintEl) return;
     activeContext = context;
     activeStats = stats;
     const label = `${context.selectedAlgorithm || "Estimate"} ${Number(context.numericDifficulty).toFixed(2)}`;
     questionEl.textContent = `${label} — how did this feel?`;
-    buttonsEl.hidden = context.clickThrough;
+    buttonsEl.hidden = false;
+    setButtonsEnabled(!context.clickThrough);
     hintEl.hidden = !context.clickThrough;
     hintEl.textContent = "Disable click-through (Ctrl+Shift+C) to rate.";
     presentStrip();
     startCountdown(STRIP_TIMEOUT_MS);
-    hideTimer = setTimeout(() => hideStrip(), STRIP_TIMEOUT_MS);
+    scheduleHide(STRIP_TIMEOUT_MS);
 }
 
 /** 非交互提示（lazer 原生读取没有结算数据等）：一次结果屏只显示一次。 */
@@ -165,7 +264,7 @@ function showInfoStrip(text) {
     hintEl.hidden = true;
     presentStrip();
     startCountdown(STRIP_TIMEOUT_MS);
-    hideTimer = setTimeout(() => hideStrip({ resetToken: false }), STRIP_TIMEOUT_MS);
+    scheduleHide(STRIP_TIMEOUT_MS, { resetToken: false });
 }
 
 /** 最近一次 gate 结果暴露到 window，便于在 devtools 里排查（`__MMAFeedbackLastGate`）。 */
@@ -207,11 +306,26 @@ function buildStrip() {
         button.title = item.title;
         buttonsEl.appendChild(button);
     }
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "feedback-vote feedback-dismiss";
+    dismiss.dataset.dismiss = "1";
+    dismiss.textContent = "Don't ask again";
+    dismiss.title = "Turn the difficulty feedback setting off";
+    buttonsEl.appendChild(dismiss);
+
     buttonsEl.addEventListener("click", (event) => {
+        if (event.target.closest("button[data-dismiss]")) {
+            optOutForGood();
+            return;
+        }
         const button = event.target.closest("button[data-vote]");
-        if (!button || submitting) return;
+        if (!button || submitting || button.disabled) return;
         submitVote(Number(button.dataset.vote), button);
     });
+
+    host.addEventListener("mouseenter", pauseHideTimer);
+    host.addEventListener("mouseleave", resumeHideTimer);
 }
 
 async function postJson(url, body) {
@@ -233,6 +347,33 @@ async function postJson(url, body) {
     }
 }
 
+/** 不再提示：本机立即静默 + 尽力关闭设置项（离线壳可写；tosu 在线只读）。 */
+async function optOutForGood() {
+    try {
+        localStorage.setItem(OPTOUT_KEY, "1");
+    } catch {
+        // 忽略隐私模式写入失败。
+    }
+    clearTimers();
+    activeContext = null;
+    activeStats = null;
+    // 离线壳：/settings 可写，设置窗口里的开关会同步变灰；tosu 在线返回 403，只保留本机静默。
+    try {
+        await fetch(SHELL_SETTINGS_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enableDifficultyFeedback: false }),
+        });
+    } catch {
+        // 壳不可达时忽略。
+    }
+    finishCountdown();
+    questionEl.textContent = "Feedback disabled. Re-enable it in settings.";
+    buttonsEl.hidden = true;
+    hintEl.hidden = true;
+    scheduleHide(STRIP_THANKS_MS, { resetToken: false });
+}
+
 async function submitVote(vote, button) {
     if (!activeContext || !activeStats || submitting) return;
     if (!FEEDBACK_VOTES.includes(vote)) return;
@@ -241,7 +382,7 @@ async function submitVote(vote, button) {
     const context = activeContext;
     const stats = activeStats;
     button.classList.add("is-picked");
-    buttonsEl.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+    setButtonsEnabled(false);
 
     const payload = {
         vote,
@@ -252,17 +393,19 @@ async function submitVote(vote, button) {
         ln_ratio: Number(context.lnRatio),
         pattern: String(context.pattern || "unknown"),
         mode_tag: String(context.modeTag || ""),
-        // 注意：context.od 为 null（未知）时必须发 null，绝不能被 Number(null)=0 吞成 0——
-        // 后端会用 osu! API 的 OD 覆盖 null，但 0 会被当成"报告值 0"而与 API 比对失败。
+        // OD 是客观字段：必须来自本地 .osu 解析；未知时 gate 已拦截，这里再兜一层
+        // （绝不能用 Number(null)=0 把它吞成 0）。
         od: typeof context.od === "number" && Number.isFinite(context.od) ? context.od : null,
         settings_hash: settingsHash(state),
     };
 
+    let stage = "shell";
     try {
         const signed = await postJson(SHELL_FEEDBACK_URL, payload);
         if (!signed.ok || !signed.json?.payload || !signed.json?.auth) {
             throw new Error(`shell rejected (${signed.status})`);
         }
+        stage = "server";
         const sent = await postJson(feedbackEndpoint(), signed.json);
         if (!sent.ok) throw new Error(`server rejected (${sent.status})`);
 
@@ -275,15 +418,16 @@ async function submitVote(vote, button) {
         buttonsEl.hidden = true;
         hintEl.hidden = true;
         submitting = false;
-        hideTimer = setTimeout(() => hideStrip(), STRIP_THANKS_MS);
+        scheduleHide(STRIP_THANKS_MS);
     } catch (error) {
         console.warn(`mma feedback: ${error.message}`);
         finishCountdown();
-        questionEl.textContent = "Not recorded.";
+        // 壳拒绝 = 从未上传（Not submitted）；后端拒绝 = 已上传但未记录（Not recorded）。
+        questionEl.textContent = stage === "shell" ? "Not submitted." : "Not recorded.";
         buttonsEl.hidden = true;
         hintEl.hidden = true;
         submitting = false;
-        hideTimer = setTimeout(() => hideStrip(), STRIP_THANKS_MS * 2);
+        scheduleHide(STRIP_THANKS_MS * 2);
     }
     lastPromptToken = tokenFor(context, stats);
 }
@@ -293,7 +437,7 @@ async function submitVote(vote, button) {
  * @param {object} data api_v2 原始帧
  */
 export function noteFeedbackFrame(data) {
-    if (!stripEl || !state.enableDifficultyFeedback) {
+    if (!stripEl || !state.enableDifficultyFeedback || isOptedOut()) {
         if (stripEl && !stripEl.hidden) hideStrip();
         return;
     }
@@ -371,10 +515,14 @@ export function resetFeedbackStrip() {
     hideStrip();
 }
 
-/** 设置开关变化时调用：关闭立即收起。 */
+/** 设置开关变化时调用：关闭立即收起；重新打开会清掉本机"不再提示"。 */
 export function syncFeedbackVisibility() {
     if (!stripEl) return;
-    if (!state.enableDifficultyFeedback) hideStrip();
+    if (!state.enableDifficultyFeedback) {
+        hideStrip();
+        return;
+    }
+    clearOptedOut();
 }
 
 export function initFeedback() {

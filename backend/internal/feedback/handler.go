@@ -146,7 +146,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.reject(w, day, ReasonBadKeyCount, http.StatusBadRequest)
 			return
 		}
-		if env.Payload.OD != nil && math.Abs(val.OD-*env.Payload.OD) > 0.01 {
+		if math.Abs(val.OD-*env.Payload.OD) > 0.01 {
 			h.reject(w, day, ReasonBadOD, http.StatusBadRequest)
 			return
 		}
@@ -179,10 +179,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	od := env.Payload.OD
 	star := math.NaN()
 	if h.cfg.FeedbackOSUValidation {
-		if od == nil {
-			value := validation.OD
-			od = &value
-		}
 		star = validation.Star
 	}
 	actual, _ := spec.NormalizeActualAlgorithm(env.Payload.ActualAlgorithm)

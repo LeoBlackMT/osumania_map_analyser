@@ -5,39 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>RC Difficulty Feedback — Admin</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --panel: #131a2c;
+    --border: #1f2a40;
+    --border-strong: #2c3a55;
+    --fg: #e5e7eb;
+    --muted: #7a8499;
+    --accent: #7c75ff;
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
   body {
     margin: 0; padding: 24px;
-    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: #0f1524; color: #e8eefc;
+    font: 13px/1.5 var(--font-sans);
+    background: var(--bg); color: var(--fg);
   }
   h1 { font-size: 18px; margin: 0 0 16px; }
-  h2 { font-size: 14px; margin: 24px 0 8px; color: #9fb6da; text-transform: uppercase; letter-spacing: .04em; }
+  h2 { font-size: 14px; margin: 24px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
   input[type="password"] {
-    background: #1a2235; border: 1px solid #2c3a55; color: inherit;
+    background: var(--panel); border: 1px solid var(--border-strong); color: inherit;
     border-radius: 6px; padding: 6px 8px; min-width: 260px;
   }
   button {
-    background: #23314d; border: 1px solid #35486b; color: inherit;
+    background: var(--panel); border: 1px solid var(--border-strong); color: inherit;
     border-radius: 6px; padding: 6px 12px; cursor: pointer;
   }
-  button:hover { background: #2d3f62; }
+  button:hover { background: var(--border); }
   .cards { display: flex; gap: 12px; flex-wrap: wrap; }
   .card {
-    background: #161e30; border: 1px solid #24304a; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: 10px 14px; min-width: 130px;
   }
   .card .value { font-size: 20px; font-weight: 600; }
-  .card .label { color: #8ba2c6; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { border-bottom: 1px solid #22304a; padding: 5px 8px; text-align: left; }
-  th { color: #9fb6da; font-weight: 500; position: sticky; top: 0; background: #0f1524; }
+  th, td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; }
+  th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .scroll { max-height: 420px; overflow: auto; border: 1px solid #22304a; border-radius: 8px; }
-  .muted { color: #7f93b3; }
+  .scroll { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .muted { color: var(--muted); }
   .err { color: #ff9a9a; }
   .hidden { display: none; }
+
+  .pager {
+    display: flex; align-items: center; gap: 8px;
+    margin: 6px 2px 16px; font-size: 12px; color: var(--muted);
+  }
+  .pager button { padding: 3px 10px; font-size: 12px; }
+  .pager button:disabled { opacity: .45; cursor: default; }
 </style>
 </head>
 <body>
@@ -60,15 +77,19 @@
 
   <h2>Candidates (consensus differs from displayed value)</h2>
   <div class="scroll"><table id="candidates"></table></div>
+  <div class="pager" id="candidates-pager"></div>
 
   <h2>Per map (N ≥ threshold)</h2>
   <div class="scroll"><table id="maps"></table></div>
+  <div class="pager" id="maps-pager"></div>
 
   <h2>Rejections</h2>
   <div class="scroll"><table id="rejects"></table></div>
+  <div class="pager" id="rejects-pager"></div>
 
   <h2>Feature residuals</h2>
   <div class="scroll"><table id="features"></table></div>
+  <div class="pager" id="features-pager"></div>
 </div>
 
 <script>
@@ -84,14 +105,39 @@ function fmt(value, digits = 2) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "-";
 }
 
+const PAGE_SIZE = 20;
+const pages = new Map();
+let lastData = null;
+
 function table(el, columns, rows, rowMapper) {
+  const key = el.id;
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  let page = Math.min(pages.get(key) || 1, pageCount);
+  pages.set(key, page);
+  const start = (page - 1) * PAGE_SIZE;
+  const slice = rows.slice(start, start + PAGE_SIZE);
+
   const head = "<thead><tr>" + columns.map((c) =>
     `<th class="${c.num ? "num" : ""}">${c.label}</th>`).join("") + "</tr></thead>";
-  const body = rows.length
-    ? rows.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
+  const body = slice.length
+    ? slice.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
         `<td class="${columns[index].num ? "num" : ""}">${cell ?? ""}</td>`).join("") + "</tr>").join("")
     : `<tr><td colspan="${columns.length}" class="muted">No rows</td></tr>`;
   el.innerHTML = head + "<tbody>" + body + "</tbody>";
+
+  const pager = document.getElementById(`${key}-pager`);
+  if (!pager) return;
+  if (!rows.length) { pager.innerHTML = ""; return; }
+  pager.innerHTML =
+    `<button data-page="prev" ${page === 1 ? "disabled" : ""}>Prev</button>` +
+    `<span>${page} / ${pageCount} · ${rows.length} rows</span>` +
+    `<button data-page="next" ${page === pageCount ? "disabled" : ""}>Next</button>`;
+  pager.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      pages.set(key, page + (button.dataset.page === "next" ? 1 : -1));
+      if (lastData) render(lastData);
+    });
+  });
 }
 
 function renderCards(el, entries) {
@@ -100,6 +146,7 @@ function renderCards(el, entries) {
 }
 
 function render(data) {
+  lastData = data;
   renderCards($("totals"), [
     ["Accepted votes", data.totals.events],
     ["Maps", data.totals.maps],

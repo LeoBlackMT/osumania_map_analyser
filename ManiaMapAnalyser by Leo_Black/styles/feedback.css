@@ -73,6 +73,34 @@
     transform: scaleX(1);
 }
 
+/* 倒计时：CSS 动画（不用 transition，才能用 animation-play-state 在 hover 时暂停）。 */
+.feedback-strip.is-counting .feedback-countdown {
+    animation: feedback-countdown var(--feedback-ms, 10000ms) linear forwards;
+}
+
+.feedback-strip.is-paused .feedback-countdown {
+    animation-play-state: paused;
+}
+
+@keyframes feedback-countdown {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+.feedback-vote.feedback-dismiss {
+    margin-left: auto;
+    background: transparent;
+    border-color: rgba(140, 170, 210, 0.22);
+    opacity: 0.72;
+    font-size: 11px;
+    padding: 3px 7px;
+}
+
+.feedback-vote.feedback-dismiss:hover:not(:disabled) {
+    opacity: 1;
+    background: rgba(64, 96, 156, 0.45);
+}
+
 .feedback-question {
     white-space: nowrap;
     overflow: hidden;

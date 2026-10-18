@@ -223,7 +223,9 @@ func ValidateStatic(p Payload) string {
 	if !isFinite(p.Vote) || p.Vote < -1 || p.Vote > 1 || math.Abs(p.Vote*2-math.Round(p.Vote*2)) > 1e-9 {
 		return ReasonBadVote
 	}
-	if p.OD != nil && (!isFinite(*p.OD) || *p.OD < 0 || *p.OD > 10) {
+	// OD 是签名的客观字段，必须由壳从本地 .osu 解析后提供；缺失即拒绝，
+	// 绝不用 osu! API 的值回填（否则 OD 校验形同虚设）。
+	if p.OD == nil || !isFinite(*p.OD) || *p.OD < 0 || *p.OD > 10 {
 		return ReasonBadOD
 	}
 	if len(p.SettingsHash) != 8 || !isHex(p.SettingsHash) {

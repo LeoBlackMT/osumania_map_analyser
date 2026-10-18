@@ -78,7 +78,7 @@ if [ ! -f "$plugin_dir/index.html" ]; then
 fi
 
 (cd "$script_dir" && cargo build --release)
-exe="$script_dir/target/release/mma-shell"
+exe="${CARGO_TARGET_DIR:-$script_dir/target}/release/mma-shell"
 if [ ! -f "$exe" ]; then
     echo "release binary missing: $exe" >&2
     exit 1
