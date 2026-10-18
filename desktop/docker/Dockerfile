@@ -5,7 +5,9 @@
 #     -e MMA_FEEDBACK_SIGNING_SEED -e MMA_FEEDBACK_KEY_ID \
 #     -e CARGO_TARGET_DIR=/src/desktop/target-linux \
 #     mma-shell-linux-builder bash build-linux.sh
-FROM rust:1-bookworm
+# 允许用本地已有的 rust 镜像（避免 registry 元数据 502）。
+ARG BASE_IMAGE=rust:latest
+FROM ${BASE_IMAGE}
 
 # 国内网络下 deb.debian.org 经常 502：换阿里云镜像并加重试。
 RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
