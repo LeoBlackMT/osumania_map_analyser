@@ -115,7 +115,7 @@ export const APP_CONFIG = {
         enableAnalyzeLN: false,
         enableAlwaysShowLNDifficulty: false,
         enableTelemetry: true,
-        enableDifficultyFeedback: false,
+        enableDifficultyFeedback: true,
         gameClient: "Auto",
     },
 

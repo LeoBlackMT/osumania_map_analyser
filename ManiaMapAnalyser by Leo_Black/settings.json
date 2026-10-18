@@ -438,7 +438,7 @@
 		"title": "Difficulty Feedback (Desktop Shell Only)",
 		"description": "After finishing a non-LN osu!mania map in the desktop shell, show a five-point rating for the estimated difficulty. Ratings and the beatmap ID are sent to the project server to find maps the estimator gets wrong. No accuracy, score, or username is sent.",
 		"options": [],
-		"value": false
+		"value": true
 	},
 	{
 		"uniqueID": "hDebug",

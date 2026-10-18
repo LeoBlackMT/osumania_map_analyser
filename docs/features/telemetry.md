@@ -89,4 +89,4 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 **存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建。私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）提供总览、拒绝原因、每图 N/加权中位数/IQR、特征残差与 CSV 导出；公开 dashboard 不含 per-map 数据。
 
-**开关**：`enableDifficultyFeedback`（checkbox，Network 分组，默认 `false`）。不进 `recomputeNeeded`、不进缓存失效列表；关闭时页面不显示、不请求、不写本地去重。
+**开关**：`enableDifficultyFeedback`（checkbox，Network 分组，**默认 `true`**）。不进 `recomputeNeeded`、不进缓存失效列表；关闭时页面不显示、不请求、不写本地去重。

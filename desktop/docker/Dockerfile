@@ -7,7 +7,11 @@
 #     mma-shell-linux-builder bash build-linux.sh
 FROM rust:1-bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 国内网络下 deb.debian.org 经常 502：换阿里云镜像并加重试。
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' \
+        /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         libwebkit2gtk-4.1-dev \
         libgtk-3-dev \
         libayatana-appindicator3-dev \

@@ -6,7 +6,7 @@
 
 ### 1. 修改内容（What changed）
 
-- 新增 **RC 难度反馈**：桌面壳结算屏底部的五档评分条 + 页面 gate + 壳侧 Ed25519 签名 + 后端严格入库，默认关闭（`enableDifficultyFeedback=false`）。
+- 新增 **RC 难度反馈**：桌面壳结算屏底部的五档评分条 + 页面 gate + 壳侧 Ed25519 签名 + 后端严格入库，默认开启（`enableDifficultyFeedback=true`）。
 - 新增页面模块 `js/app/feedback/{feedbackSpec,feedbackMath,feedbackGate,feedbackStrip}.js` 与 `styles/feedback.css`；`index.html` 增加一个 `#feedback-strip` 容器。
 - `analysis.js` 在写显示值的同时写 `state.feedbackContext`；`socketHandlers.js` 记录 `state.currentBeatmapId/Checksum` 并在谱面/ mod 变化时清空反馈上下文。
 - 壳新增 `src/feedback/mod.rs` 与 `POST /feedback`（本机 24061，CORS 仅允许 24050/24061 页面）；`build.rs` 注入签名 seed；`startup_url()` 追加 `#mma-shell` 标记；`packet.rs` 增发 `beatmap.stats.objects.total`。
@@ -29,7 +29,7 @@
 ### 4. 兼容策略（Compat）
 
 - 旧版页面在壳内运行时，`#mma-shell` 只影响 `location.hash`，不改变 `search`/`pathname`、不影响相对资源路径与 `getCounterPathForCommand()`。
-- 旧壳（无 `/feedback`）配新页面：反馈条出现但点击会得到 4xx，显示 `Not recorded`，不写本地去重；默认关闭时不会发生。
+- 旧壳（无 `/feedback`）配新页面：反馈条出现但点击会得到 4xx，显示 `Not recorded`，不写本地去重；默认开启时若旧壳未升级，会出现该提示；升级壳即可。
 - 后端返回 404 当 `FEEDBACK_ENABLED=false` 或密钥不全；已有 `/api/v1/event` 与 dashboard 不受影响。
 - `feedback.db` 可随时删除重建；OBS 旧备份（只有 `telemetry-*.db`）仍可单独恢复。
 - 公开隐私契约新增第二类 opt-in 豁免，已同步 `CLAUDE.md`、`docs/features/telemetry.md`、`docs/settings.md`。
