@@ -2,9 +2,11 @@ use crate::osu::model::{Client, LazerMod, Reason, Snapshot};
 use crate::osu::offsets::{LookupError, OffsetTable};
 use super::fields::*;
 use super::resolve::*;
+#[allow(unused_imports)]
 use super::screen::{read_eetype, read_screen_state, runtime_probe, ScreenOutcome};
-use super::source::*;
+#[allow(unused_imports)]
 use super::table::*;
+use super::source::*;
 use super::types::*;
 use std::path::PathBuf;
 

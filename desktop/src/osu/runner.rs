@@ -7,6 +7,7 @@
 // - .osu 谱面文件解析与缓存 (attach_beatmap_file)
 // - 状态发布辅助 (publish_phase / publish_outcome / publish_idle 等)
 
+#[allow(unused_imports)]
 use std::sync::Arc;
 use std::thread;
 use crate::osu::invariants::{FrameAction, Gate};

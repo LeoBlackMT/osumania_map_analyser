@@ -1,6 +1,7 @@
 // sys::windows::process - 进程枚举、Toolhelp 快照与模块基址探测
 
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use super::ffi::{self, ModuleEntry32W, ProcessEntry32W, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS};
 use super::handle::ProcessHandle;
 
@@ -17,6 +18,7 @@ pub struct ModuleItem {
     pub path: PathBuf,
 }
 
+#[allow(dead_code)]
 fn wide_to_string(wide: &[u16]) -> String {
     let len = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
     String::from_utf16_lossy(&wide[..len])
@@ -24,6 +26,7 @@ fn wide_to_string(wide: &[u16]) -> String {
 
 /// 枚举当前系统中的所有活动进程。
 pub fn list_processes() -> Vec<ProcessItem> {
+    #[allow(unused_mut)]
     let mut out = Vec::new();
     #[cfg(windows)]
     unsafe {
@@ -52,6 +55,7 @@ pub fn list_processes() -> Vec<ProcessItem> {
 
 /// 列出目标进程加载的所有模块。
 pub fn list_modules(pid: u32) -> Vec<ModuleItem> {
+    #[allow(unused_mut)]
     let mut out = Vec::new();
     #[cfg(windows)]
     unsafe {

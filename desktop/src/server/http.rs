@@ -688,6 +688,7 @@ fn create_curl_command() -> std::process::Command {
     #[cfg(windows)]
     let mut cmd = std::process::Command::new("curl.exe");
     #[cfg(not(windows))]
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new("curl");
 
     #[cfg(windows)]
