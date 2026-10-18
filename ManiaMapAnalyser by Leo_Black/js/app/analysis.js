@@ -1184,8 +1184,8 @@ export async function fetchBeatmapFile(reason) {
                 pattern: feedbackPattern,
                 lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
                 keyCount: Number(rework.columnCount),
-                od: Number.isFinite(Number(parsedInfo.od)) && Number(parsedInfo.od) >= 0
-                    ? Number(parsedInfo.od)
+                od: typeof parsedInfo.od === "number" && Number.isFinite(parsedInfo.od) && parsedInfo.od >= 0
+                    ? parsedInfo.od
                     : null,
                 settingsHash: settingsHash(state),
             };

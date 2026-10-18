@@ -1,30 +1,76 @@
-/* 结算屏反馈条：固定在窗口底部，位于 .main-card 之外，不受 cardVisibility 影响。 */
+/* 结算屏反馈条：停靠在 .main-card 内部底边（absolute 定位，不改变卡片布局高度，
+   窗口高度等于卡片高度时也可见）。外观沿用卡片的玻璃变量，属于卡片本体的一部分。
+   注意：卡片在游玩中被 .card-hidden-by-play 隐藏时，反馈条随之隐藏——这是期望行为。 */
 
 .feedback-strip {
-    position: fixed;
-    left: 50%;
-    bottom: 12px;
-    transform: translateX(-50%);
-    z-index: 40;
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 6;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     gap: 6px;
-    max-width: min(92vw, 520px);
-    padding: 8px 12px;
-    border-radius: 10px;
-    background: rgba(16, 22, 38, 0.92);
-    border: 1px solid rgba(120, 160, 220, 0.28);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    padding: 10px 12px 11px;
+    border-radius: calc(var(--card-radius, 16px) - 6px);
+    background: var(--feedback-strip-bg, rgba(9, 13, 26, 0.72));
+    border: 1px solid var(--glass-border, rgba(140, 180, 240, 0.28));
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
     color: #eaf2ff;
     font-size: 12px;
-    line-height: 1.3;
+    line-height: 1.35;
+    overflow: hidden;
     pointer-events: auto;
     user-select: none;
 }
 
 .feedback-strip[hidden] {
     display: none !important;
+}
+
+.feedback-strip.is-visible {
+    animation: feedback-strip-in 220ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+.feedback-strip.is-leaving {
+    animation: feedback-strip-out 150ms ease forwards;
+}
+
+@keyframes feedback-strip-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes feedback-strip-out {
+    from {
+        opacity: 1;
+        transform: none;
+    }
+    to {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+/* 顶部倒计时条：提交时限的可视化（scaleX 100% → 0，线性）。 */
+.feedback-countdown {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 100%;
+    background: rgba(150, 200, 255, 0.9);
+    transform-origin: left center;
+    transform: scaleX(1);
 }
 
 .feedback-question {
@@ -87,9 +133,9 @@
     display: none !important;
 }
 
-@media (max-height: 420px) {
-    .feedback-strip {
-        bottom: 6px;
-        padding: 6px 10px;
+@media (prefers-reduced-motion: reduce) {
+    .feedback-strip.is-visible,
+    .feedback-strip.is-leaving {
+        animation-duration: 1ms !important;
     }
 }

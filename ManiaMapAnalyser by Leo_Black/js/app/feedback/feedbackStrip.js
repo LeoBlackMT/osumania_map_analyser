@@ -19,6 +19,7 @@ const SHELL_FEEDBACK_URL = "http://127.0.0.1:24061/feedback";
 const RETRY_WINDOW_MS = 2000;
 const RETRY_INTERVAL_MS = 500;
 const REQUEST_TIMEOUT_MS = 6000;
+const LEAVE_ANIMATION_MS = 150;
 
 const VOTE_LABELS = [
     { vote: -1, text: "Much easier", title: "This map is at least one tier easier than shown" },
@@ -32,12 +33,14 @@ let stripEl = null;
 let questionEl = null;
 let buttonsEl = null;
 let hintEl = null;
+let countdownEl = null;
 let activeContext = null;
 let activeStats = null;
 let showTimer = 0;
 let hideTimer = 0;
 let retryTimer = 0;
 let retryDeadline = 0;
+let leavingTimer = 0;
 let lastPromptToken = "";
 let lastResultToken = "";
 let submitting = false;
@@ -76,6 +79,7 @@ function clearTimers() {
     if (showTimer) { clearTimeout(showTimer); showTimer = 0; }
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; }
+    if (leavingTimer) { clearTimeout(leavingTimer); leavingTimer = 0; }
 }
 
 function hideStrip({ resetToken = true } = {}) {
@@ -83,14 +87,53 @@ function hideStrip({ resetToken = true } = {}) {
     activeContext = null;
     activeStats = null;
     submitting = false;
-    if (stripEl) stripEl.hidden = true;
     if (buttonsEl) {
         buttonsEl.querySelectorAll("button").forEach((button) => {
             button.disabled = false;
             button.classList.remove("is-picked");
         });
     }
+    if (stripEl && !stripEl.hidden) {
+        // 淡出动画结束后再真正隐藏；期间若被重新显示，show 路径会清掉本定时器。
+        stripEl.classList.add("is-leaving");
+        leavingTimer = setTimeout(() => {
+            leavingTimer = 0;
+            stripEl.classList.remove("is-leaving");
+            stripEl.classList.remove("is-visible");
+            stripEl.hidden = true;
+        }, LEAVE_ANIMATION_MS);
+    } else if (stripEl) {
+        stripEl.classList.remove("is-leaving");
+        stripEl.hidden = true;
+    }
     if (resetToken) lastResultToken = "";
+}
+
+/** 顶部倒计时条：从满格线性收缩到 0（时长 = 提示超时）。 */
+function startCountdown(ms) {
+    if (!countdownEl) return;
+    countdownEl.style.transition = "none";
+    countdownEl.style.transform = "scaleX(1)";
+    void countdownEl.offsetWidth;
+    countdownEl.style.transition = `transform ${ms}ms linear`;
+    countdownEl.style.transform = "scaleX(0)";
+}
+
+/** 提交后冻结并收起倒计时条。 */
+function finishCountdown() {
+    if (!countdownEl) return;
+    countdownEl.style.transition = "transform 150ms ease";
+    countdownEl.style.transform = "scaleX(0)";
+}
+
+/** 出场前清掉上一次的离场动画，并重新触发入场动画。 */
+function presentStrip() {
+    if (leavingTimer) { clearTimeout(leavingTimer); leavingTimer = 0; }
+    stripEl.classList.remove("is-leaving");
+    stripEl.hidden = false;
+    stripEl.classList.remove("is-visible");
+    void stripEl.offsetWidth;
+    stripEl.classList.add("is-visible");
 }
 
 function showStrip(context, stats) {
@@ -102,7 +145,8 @@ function showStrip(context, stats) {
     buttonsEl.hidden = context.clickThrough;
     hintEl.hidden = !context.clickThrough;
     hintEl.textContent = "Disable click-through (Ctrl+Shift+C) to rate.";
-    stripEl.hidden = false;
+    presentStrip();
+    startCountdown(STRIP_TIMEOUT_MS);
     hideTimer = setTimeout(() => hideStrip(), STRIP_TIMEOUT_MS);
 }
 
@@ -119,7 +163,8 @@ function showInfoStrip(text) {
     questionEl.textContent = text;
     buttonsEl.hidden = true;
     hintEl.hidden = true;
-    stripEl.hidden = false;
+    presentStrip();
+    startCountdown(STRIP_TIMEOUT_MS);
     hideTimer = setTimeout(() => hideStrip({ resetToken: false }), STRIP_TIMEOUT_MS);
 }
 
@@ -151,6 +196,7 @@ function buildStrip() {
     questionEl = host.querySelector(".feedback-question");
     buttonsEl = host.querySelector(".feedback-actions");
     hintEl = host.querySelector(".feedback-hint");
+    countdownEl = host.querySelector(".feedback-countdown");
     buttonsEl.innerHTML = "";
     for (const item of VOTE_LABELS) {
         const button = document.createElement("button");
@@ -206,7 +252,9 @@ async function submitVote(vote, button) {
         ln_ratio: Number(context.lnRatio),
         pattern: String(context.pattern || "unknown"),
         mode_tag: String(context.modeTag || ""),
-        od: Number.isFinite(Number(context.od)) ? Number(context.od) : null,
+        // 注意：context.od 为 null（未知）时必须发 null，绝不能被 Number(null)=0 吞成 0——
+        // 后端会用 osu! API 的 OD 覆盖 null，但 0 会被当成"报告值 0"而与 API 比对失败。
+        od: typeof context.od === "number" && Number.isFinite(context.od) ? context.od : null,
         settings_hash: settingsHash(state),
     };
 
@@ -222,6 +270,7 @@ async function submitVote(vote, button) {
             beatmapId: context.beatmapId,
             rate: context.rate,
         }, Date.now());
+        finishCountdown();
         questionEl.textContent = "Thanks — recorded.";
         buttonsEl.hidden = true;
         hintEl.hidden = true;
@@ -229,6 +278,7 @@ async function submitVote(vote, button) {
         hideTimer = setTimeout(() => hideStrip(), STRIP_THANKS_MS);
     } catch (error) {
         console.warn(`mma feedback: ${error.message}`);
+        finishCountdown();
         questionEl.textContent = "Not recorded.";
         buttonsEl.hidden = true;
         hintEl.hidden = true;
