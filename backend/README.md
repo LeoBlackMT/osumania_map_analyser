@@ -30,7 +30,7 @@
 - 可选：把数据库快照备份到华为云 OBS（每日 ×30 + 每月 ×12）。
 - 一次性重建命令：`telemetry-server -migrate`（停服状态下从原始事件清空重建全部聚合，幂等）。
 - 一次性清洗命令：`telemetry-server -clean`（停服状态下清洗历史非官方算法、异常调试耗时与未知版本）。
-- 可选：**RC 难度反馈**（`FEEDBACK_ENABLED=true` 才启用）——独立 `feedback.db` 接收壳签名后的五档评分，经 osu! API 校验与严格规则后入库，提供聚合表、私有 admin 页（`/feedback`）与 CSV。默认不启用。
+- 可选：**RC 难度反馈**（服务端 `FEEDBACK_ENABLED=true` 才启用）——独立 `feedback.db` 接收壳签名后的五档评分，经 osu! API 校验与严格规则后入库，提供聚合表、私有 admin 页（`/feedback`）、公开聚合页（`/feedback-stats`，`GET /api/v1/feedback/summary`，无 per-map）与 CSV。客户端默认开启、可在插件设置里关闭；服务端未启用时相关路由 404。
 
 ## 隐私
 

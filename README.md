@@ -70,7 +70,7 @@
 - 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
 
 ## 隐私/匿名使用统计
-本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容**不含**用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。公开看板见：https://mma-stats.leoblack.top/
+本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容**不含**用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。公开看板见：https://mma-stats.leoblack.top/（顶部「Difficulty feedback」选项卡为 RC 难度反馈的匿名聚合：票数、票分布与按算法的加权残差，不含 per-map 数据）
 
 如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
 
