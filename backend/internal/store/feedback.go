@@ -348,9 +348,15 @@ ON CONFLICT(bid) DO UPDATE SET status=excluded.status, checked_at=excluded.check
 }
 
 // Prune deletes expired nonces, old raw events, and stale agg rows.
+//
+// ⚠️ `now` 是**毫秒**（与 `created_at`/`checked_at` 一致）：所有窗口都必须先换成
+// 毫秒再相减。历史实现写成 `now - days*86400`（秒），导致 180 天保留实际只有
+// 4.3 小时、nonce 去重只有 0.6 秒——线上会每天静默丢光反馈事件。
 func (s *FeedbackStore) Prune(now int64, rawRetentionDays int, nonceMinutes int) (int64, error) {
+	const dayMs = int64(24 * 60 * 60 * 1000)
+	const minuteMs = int64(60 * 1000)
 	var deleted int64
-	res, err := s.db.Exec("DELETE FROM feedback_nonces WHERE created_at < ?", now-int64(nonceMinutes)*60)
+	res, err := s.db.Exec("DELETE FROM feedback_nonces WHERE created_at < ?", now-int64(nonceMinutes)*minuteMs)
 	if err != nil {
 		return 0, err
 	}
@@ -358,19 +364,19 @@ func (s *FeedbackStore) Prune(now int64, rawRetentionDays int, nonceMinutes int)
 	deleted += n
 	if rawRetentionDays > 0 {
 		res, err = s.db.Exec("DELETE FROM feedback_events WHERE created_at < ?",
-			now-int64(rawRetentionDays)*86400)
+			now-int64(rawRetentionDays)*dayMs)
 		if err != nil {
 			return deleted, err
 		}
 		n, _ = res.RowsAffected()
 		deleted += n
-		res, err = s.db.Exec("DELETE FROM beatmap_validation WHERE checked_at < ?", now-90*86400)
+		res, err = s.db.Exec("DELETE FROM beatmap_validation WHERE checked_at < ?", now-90*dayMs)
 		if err != nil {
 			return deleted, err
 		}
 		n, _ = res.RowsAffected()
 		deleted += n
-		res, err = s.db.Exec("DELETE FROM beatmap_validation_negative WHERE checked_at < ?", now-30*86400)
+		res, err = s.db.Exec("DELETE FROM beatmap_validation_negative WHERE checked_at < ?", now-30*dayMs)
 		if err != nil {
 			return deleted, err
 		}
