@@ -4,6 +4,8 @@
 #       包含：
 #       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
 #       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
+#       3. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell-linux.tar.gz（-SkipLinux 可跳过；
+#          Linux 包也写进同一个时间戳目录，目录结构与 zip 相同）
 #
 # 反馈签名（必填）：先设置 MMA_FEEDBACK_SIGNING_SEED（64 hex）与 MMA_FEEDBACK_KEY_ID，
 # 或设置 MMA_FEEDBACK_SEED_FILE 指向一个只含 seed 的本地文件（gitignore）。
@@ -101,6 +103,21 @@ if ($SigningCheckOnly) {
     exit 0
 }
 
+# 版本号与输出目录必须先定：Windows 包与 Linux 包（Docker 内）写进**同一个**
+# 时间戳目录。历史上 Linux tar.gz 落在 release\ 根目录，就是因为 Docker 构建
+# 发生在时间戳目录创建之前（见 build-linux.sh 的 MMA_RELEASE_DIR）。
+$metadataPath = Join-Path $pluginDir "metadata.txt"
+$version = ((Get-Content -LiteralPath $metadataPath) |
+    Where-Object { $_ -like 'Version:*' } |
+    Select-Object -First 1) -replace '^Version:\s*', ''
+if (-not $version) { throw "version not found in $metadataPath" }
+
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$outDir = Join-Path $root "release\${timestamp}-${version}"
+New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+# 容器里 /src 就是仓库根；把相对路径交给 build-linux.sh，保持与 Windows 包同一目录。
+$releaseDirInContainer = "/src/release/$([System.IO.Path]::GetFileName($outDir))"
+
 # --- Linux 包（Docker）---
 function Build-LinuxShell {
     # PS 5.1：原生命令的 stderr 重定向在 Stop 模式下会被当成异常。
@@ -124,23 +141,13 @@ function Build-LinuxShell {
         -e MMA_FEEDBACK_KEY_ID `
         -e MMA_FEEDBACK_ALLOW_DEV `
         -e CARGO_TARGET_DIR=/src/desktop/target-linux `
+        -e "MMA_RELEASE_DIR=$releaseDirInContainer" `
         $image bash build-linux.sh
     if ($LASTEXITCODE -ne 0) { throw "Linux shell build failed" }
 }
 
 if ($Linux -or $All) { Build-LinuxShell }
 if ($Linux -and -not $All) { exit 0 }
-
-# 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
-$metadataPath = Join-Path $pluginDir "metadata.txt"
-$version = ((Get-Content -LiteralPath $metadataPath) |
-    Where-Object { $_ -like 'Version:*' } |
-    Select-Object -First 1) -replace '^Version:\s*', ''
-if (-not $version) { throw "version not found in $metadataPath" }
-
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$outDir = Join-Path $root "release\${timestamp}-${version}"
-New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
@@ -168,7 +175,6 @@ $exeSrc = if ($env:CARGO_TARGET_DIR -and (Test-Path (Join-Path $env:CARGO_TARGET
 }
 if (-not (Test-Path $exeSrc)) { throw "release exe missing: $exeSrc" }
 
-New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 $zip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version-with-shell.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 

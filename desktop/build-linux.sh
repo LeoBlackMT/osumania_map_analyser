@@ -6,6 +6,7 @@
 #     libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 # 产物：cargo build --release → release/ 下插件 tar.gz
 #       （含 mma-shell（保留执行位）、插件目录与 bridges 安装素材；开发产物与插件源码不入包）。
+#       release.ps1 会用 MMA_RELEASE_DIR 把 tar.gz 放进同一个 `release/{timestamp}-{version}/`。
 #
 # 反馈签名（必填）：MMA_FEEDBACK_SIGNING_SEED（64 hex）+ MMA_FEEDBACK_KEY_ID，
 # 或 MMA_FEEDBACK_SEED_FILE 指向只含 seed 的本地文件（gitignore）。
@@ -16,7 +17,16 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$script_dir")"
 plugin_dir="$root/ManiaMapAnalyser by Leo_Black"
-out_dir="$root/release"
+# 输出目录：release.ps1 用 MMA_RELEASE_DIR 指定同一个时间戳目录（相对仓库根或绝对路径）；
+# 单独运行本脚本时回落到 release/。
+if [ -n "${MMA_RELEASE_DIR:-}" ]; then
+    case "$MMA_RELEASE_DIR" in
+        /*) out_dir="$MMA_RELEASE_DIR" ;;
+        *) out_dir="$root/$MMA_RELEASE_DIR" ;;
+    esac
+else
+    out_dir="$root/release"
+fi
 
 # --- 反馈签名 seed：只从环境变量或本地 seed 文件读取，绝不写进仓库/日志 ---
 seed="${MMA_FEEDBACK_SIGNING_SEED:-}"
@@ -122,6 +132,11 @@ for rel in \
     fi
 done
 
-tar -czf "$tarball" -C "$stage" .
+# 包内目录结构与 Windows zip 保持一致：没有外层包装目录，条目直接是
+# `ManiaMapAnalyser by Leo_Black/…`、`bridges/…`、`mma-shell`、`offsets/…`。
+# （`tar -C "$stage" .` 会写成 `./…` 并附带一个 `./` 条目，部分解压工具会把它
+# 当成隐藏根目录，和 zip 不一致。）`find -printf %P` 去掉 `./` 前缀，且用 NUL
+# 分隔，路径里的空格不会把文件名拆坏。
+( cd "$stage" && find . -mindepth 1 -maxdepth 1 -printf '%P\0' | tar --null -czf "$tarball" -T - )
 
 echo "released: $tarball"
