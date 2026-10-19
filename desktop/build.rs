@@ -53,4 +53,9 @@ fn main() {
 
     println!("cargo:rustc-env=MMA_FEEDBACK_SIGNING_SEED={seed}");
     println!("cargo:rustc-env=MMA_FEEDBACK_KEY_ID={key_id}");
+    println!(
+        "cargo:warning=feedback env probe: key_id={:?} seed_set={}",
+        std::env::var("MMA_FEEDBACK_KEY_ID"),
+        std::env::var("MMA_FEEDBACK_SIGNING_SEED").is_ok()
+    );
 }
