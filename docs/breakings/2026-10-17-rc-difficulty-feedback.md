@@ -32,7 +32,7 @@
 - 旧壳（无 `/feedback`）配新页面：反馈条出现但点击会得到 4xx，显示 `Not recorded`，不写本地去重；默认开启时若旧壳未升级，会出现该提示；升级壳即可。
 - 后端返回 404 当 `FEEDBACK_ENABLED=false` 或密钥不全；已有 `/api/v1/event` 与 dashboard 不受影响。
 - `feedback.db` 可随时删除重建；OBS 旧备份（只有 `telemetry-*.db`）仍可单独恢复。
-- 公开隐私契约新增第二类 opt-in 豁免，已同步 `CLAUDE.md`、`docs/features/telemetry.md`、`docs/settings.md`。
+- 公开隐私契约新增第二类可关闭豁免（默认开启），已同步 `CLAUDE.md`、`docs/features/telemetry.md`、`docs/settings.md`。
 
 ### 5. 验证方式（Verification）
 
@@ -47,7 +47,7 @@
 
 ## 1. What changed
 
-- Added **RC difficulty feedback**: a five-point strip at the bottom of the shell result screen, page-side gates, shell-side Ed25519 signing, and a strict ingest endpoint. Disabled by default (`enableDifficultyFeedback=false`).
+- Added **RC difficulty feedback**: a five-point strip at the bottom of the shell result screen, page-side gates, shell-side Ed25519 signing, and a strict ingest endpoint. Enabled by default (`enableDifficultyFeedback=true`), opt-out in the settings.
 - New page modules `js/app/feedback/{feedbackSpec,feedbackMath,feedbackGate,feedbackStrip}.js` plus `styles/feedback.css`; `index.html` gains one `#feedback-strip` container.
 - `analysis.js` writes `state.feedbackContext` together with the displayed value; `socketHandlers.js` records `state.currentBeatmapId/Checksum` and clears the context on map/mod changes.
 - Shell: `src/feedback/mod.rs` and `POST /feedback` (loopback 24061, CORS limited to the 24050/24061 pages); `build.rs` injects the signing seed; `startup_url()` appends a `#mma-shell` marker; `packet.rs` publishes `beatmap.stats.objects.total`.
@@ -73,7 +73,7 @@
 - An old shell (no `/feedback`) with a new page shows the strip but returns 4xx on click (`Not recorded`) and does not write the local dedup marker; with the default setting off this never happens.
 - The backend returns 404 while `FEEDBACK_ENABLED=false` or keys are incomplete; `/api/v1/event` and the dashboard keep working.
 - `feedback.db` can be deleted and rebuilt; old OBS backups containing only `telemetry-*.db` remain restorable.
-- The privacy contract gains a second opt-in exemption, synced to `CLAUDE.md`, `docs/features/telemetry.md`, and `docs/settings.md`.
+- The privacy contract gains a second opt-out exemption (enabled by default), synced to `CLAUDE.md`, `docs/features/telemetry.md`, and `docs/settings.md`.
 
 ## 5. Verification
 

@@ -331,7 +331,7 @@
         - Only appears in the desktop shell and only for osu!mania RC maps; browser pages and OBS sources never show it.
         - Sends the beatmap ID, the displayed estimate, your rating, and a signed weight; it does **not** send accuracy, score, username, or the raw install ID.
         - Used to find maps the estimator systematically over- or under-rates. It never changes the difficulty shown to you or anyone else.
-        - Disabled by default; nothing is collected until you turn it on.
+        - Enabled by default; turn it off in the settings to opt out.
 - **Debug Settings**:
     - **Use Amount For Category**: Whether to enable pattern classification logic based on the beatmap's Cluster Amount.
         - When enabled, pattern classification will be based on the number of objects in the beatmap, which **may** more accurately identify certain beatmaps.

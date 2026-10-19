@@ -40,7 +40,7 @@
 
 看板与 `/api/v1/stats` 只暴露**聚合结果**——绝不暴露单个安装 ID、单条事件或 IP。
 
-**RC 难度反馈**是第二类、默认关闭的数据：只上传谱面 ID/checksum、当前显示难度、五档评分、粗粒度 weight 与特征（键数/LN 比例/键型），不传 acc、分数、用户名或 session；`install_id` 只在服务端 HMAC 内使用、不落库。详见 [docs/features/telemetry.md §7](../docs/features/telemetry.md) 与 [docs/security.md](docs/security.md) §5。
+**RC 难度反馈**是第二类、默认开启（可在设置中关闭）的数据：只上传谱面 ID/checksum、当前显示难度、五档评分、粗粒度 weight 与特征（键数/LN 比例/键型），不传 acc、分数、用户名或 session；`install_id` 只在服务端 HMAC 内使用、不落库。详见 [docs/features/telemetry.md §7](../docs/features/telemetry.md) 与 [docs/security.md](docs/security.md) §5。
 
 ## 架构
 

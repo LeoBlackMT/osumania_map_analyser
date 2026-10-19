@@ -49,7 +49,7 @@
 - 文档编写的规范和要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因，以便后续进行代码审查和测试。
 - 插件的谱面数据源共四类：osu!（经 tosu）、Etterna 与 Malody V（经桌面壳 desktop/ 与游戏桥 bridges/ 接入）、Malody 4.3.7 原生客户端（经桌面壳以**零注入只读观察**接入：进程外读锚点身份键、游戏日志与 config.json，游戏侧无需任何文件，不向游戏目录写入、不注入；架构见 [docs/features/multi-source.md](docs/features/multi-source.md)，该源细节见 [docs/features/malody4-source.md](docs/features/malody4-source.md)）。浏览器本体仍只运行在纯浏览器环境下：功能编写时请确保代码的兼容性和性能，避免使用不兼容的API和过于复杂的算法；不得要求用户启用一个如node的额外运行时环境；浏览器模式（无壳）必须保持 osu! 单源完整可用，以确保插件的独立性和可移植性。
 - 【豁免】匿名使用统计（遥测）是第一类允许的 tosu 之外数据去向：`js/app/telemetry.js` 向自建后端（`backend/`，Go + SQLite）匿名上报聚合属性（算法/键数/mod/模式/难度/耗时等）。约束：默认开启可关（`enableTelemetry` 设置，Network 分组）、endpoint 硬编码于 `index.js`、静默失败不影响插件、绝不采集用户名/玩家id/分数/谱面标识/IP。后端代码随仓库提交（`backend/`，其中 `backend/docs/`、`.env`、`telemetry.db` 为 gitignore 私有）。
-- 【豁免】RC 难度反馈是第二类、**独立 opt-in** 的 tosu 之外数据去向：仅桌面壳、仅 osu!mania 的 RC 谱面、默认关闭（`enableDifficultyFeedback`）、由壳构造客观字段并 Ed25519 签名后上报。约束：只传谱面 ID/checksum、粗粒度 weight、显示值与玩家五档评分；不传 acc/分数/用户名/session，`install_id` 只用于 HMAC 去重且不落库；后端任一校验失败直接丢弃。详见 `docs/features/telemetry.md` §7。
+- 【豁免】RC 难度反馈是第二类、**独立可关闭** 的 tosu 之外数据去向：仅桌面壳、仅 osu!mania 的 RC 谱面、默认开启（`enableDifficultyFeedback`，可在设置中关闭）、由壳构造客观字段并 Ed25519 签名后上报。约束：只传谱面 ID/checksum、粗粒度 weight、显示值与玩家五档评分；不传 acc/分数/用户名/session，`install_id` 只用于 HMAC 去重且不落库；后端任一校验失败直接丢弃。详见 `docs/features/telemetry.md` §7。
 - 在README和settings.json中，由于目标为普通用户，请使用直白的语言描述功能，不要使用过于专业，或内部使用的术语。
 - settings.json中，请全程使用英文。设置描述应当简洁直白，以确保用户能够理解设置项的作用。checkbox类应当放在options类之前；Link部分应当放在最前面。
 - 合理安排代码的结构和模块划分，确保代码的可维护性。避免过于复杂的嵌套和冗余的代码逻辑。减少代码的重复性，增加复用程度。减少代码的耦合性，确保模块之间的独立性。遵循单一职责原则，确保每个模块只负责一个功能。
