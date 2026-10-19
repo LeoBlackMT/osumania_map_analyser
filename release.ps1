@@ -190,6 +190,13 @@ Copy-Item -Recurse $pluginDir $stage
 Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
 
+# 本地联调用启动器：注入本地反馈端点后启动同目录的 exe。随包分发，便于
+# 测试版直接双击 run-local.cmd 而不需要手动 set 环境变量。
+$runLocalSrc = Join-Path $root "release\run-local.cmd"
+if (Test-Path $runLocalSrc) {
+    Copy-Item $runLocalSrc (Join-Path $stage "run-local.cmd")
+}
+
 # 拷贝统一偏移表（desktop/offsets，包含 stable 与 lazer 原生内存读取必需的纯数据表与 README）
 $offsetsSrc = Join-Path $desktop "offsets"
 if (Test-Path $offsetsSrc) {
