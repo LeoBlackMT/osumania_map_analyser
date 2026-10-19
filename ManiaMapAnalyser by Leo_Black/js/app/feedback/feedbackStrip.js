@@ -79,6 +79,9 @@ let lastPromptToken = "";
 let lastResultToken = "";
 let submitting = false;
 let infoShownFor = "";
+// 提交代际：离开结算屏/换图时 +1。慢请求（最长 6s）回来时代际已变，
+// 就不再改新结果屏的 UI，避免串台。
+let submitGeneration = 0;
 
 // 鼠标穿透状态：结果屏出现时向壳查一次（`GET /shell-config` → window.clickThrough）。
 let clickThrough = false;
@@ -115,6 +118,12 @@ async function refreshClickThrough(data) {
             const payload = await response.json();
             clickThrough = Boolean(payload?.window?.clickThrough);
             shellReplay = payload?.feedback?.replay === true;
+            // 本地联调：壳用环境变量 MMA_FEEDBACK_ENDPOINT 启动时，后端地址由壳下发，
+            // 页面不需要（也没有）开发者工具去写 window.__MMA_FEEDBACK_ENDPOINT。
+            const endpoint = payload?.feedback?.endpoint;
+            if (typeof endpoint === "string" && endpoint.trim().length > 0) {
+                window.__MMA_FEEDBACK_ENDPOINT = endpoint.trim();
+            }
         }
     } catch {
         clickThrough = false;
@@ -422,6 +431,7 @@ async function submitVote(vote, button) {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
     const context = activeContext;
     const stats = activeStats;
+    const generation = submitGeneration;
     button.classList.add("is-picked");
     setButtonsEnabled(false);
 
@@ -459,6 +469,11 @@ async function submitVote(vote, button) {
             beatmapId: context.beatmapId,
             rate: context.rate,
         }, Date.now());
+        if (generation !== submitGeneration) {
+            // 这一屏已经离开：去重记录照留（提交确实成功了），但不再改新屏的 UI。
+            submitting = false;
+            return;
+        }
         finishCountdown();
         questionEl.textContent = "Thanks — recorded.";
         buttonsEl.hidden = true;
@@ -467,6 +482,10 @@ async function submitVote(vote, button) {
         scheduleHide(STRIP_THANKS_MS);
     } catch (error) {
         console.warn(`mma feedback: ${error.message}`);
+        if (generation !== submitGeneration) {
+            submitting = false;
+            return;
+        }
         finishCountdown();
         // 壳拒绝 = 从未上传（Not submitted）；后端拒绝 = 已上传但未记录（Not recorded）。
         const prefix = stage === "shell" ? "Not submitted" : "Not recorded";
@@ -485,12 +504,19 @@ async function submitVote(vote, button) {
  */
 export function noteFeedbackFrame(data) {
     if (!stripEl || !state.enableDifficultyFeedback || isOptedOut()) {
+        clearTimers();
+        retryDeadline = 0;
         if (stripEl && !stripEl.hidden) hideStrip();
         return;
     }
     if (String(state.clientStateName || "") !== "resultscreen") {
         clickThroughFetched = false;
         infoShownFor = "";
+        // 离开结算屏：撤掉待显示/待重试的定时器（否则 1s 的 showTimer 会在选曲界面
+        // 把上一局的条弹出来），并让在途提交的响应失效。
+        clearTimers();
+        retryDeadline = 0;
+        submitGeneration += 1;
         if (stripEl && !stripEl.hidden) hideStrip();
         return;
     }
@@ -513,17 +539,17 @@ export function noteFeedbackFrame(data) {
         now,
         shellClickThrough: clickThrough,
         shellReplay,
+        freshPlay: state.resultsFromPlay === true,
         deduped,
     });
 
     if (!result.show) {
         rememberGate(result);
-        if (result.reason === "replay") {
-            showInfoStrip("Replays can't be rated — feedback is only collected from a real play.");
-            return;
-        }
-        // 结算帧的 hits/分析结果可能晚到：在 2s 窗口内重试，不重复弹条。
-        const retryable = ["no_hits", "no_context", "no_numeric"].includes(result.reason);
+        // 回放不评分：静默处理（只保留 gate 痕迹供排查），不再给用户弹提示——
+        // 结算屏本来就是看成绩的地方，反复解释"回放不能投票"只会打扰。
+        if (result.reason === "replay") return;
+        // 结算帧的 hits/分析结果/对象总数可能晚到：在 2s 窗口内重试，不重复弹条。
+        const retryable = ["no_hits", "no_context", "no_numeric", "total_hits", "completion"].includes(result.reason);
         if (retryable) {
             if (!retryDeadline) retryDeadline = now + RETRY_WINDOW_MS;
             if (now < retryDeadline) {
@@ -567,6 +593,7 @@ export function resetFeedbackStrip() {
     lastPromptToken = "";
     retryDeadline = 0;
     infoShownFor = "";
+    submitGeneration += 1;
     hideStrip();
 }
 

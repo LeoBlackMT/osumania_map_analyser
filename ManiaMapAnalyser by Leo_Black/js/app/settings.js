@@ -717,7 +717,9 @@ export function applyEnableDifficultyFeedbackSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableDifficultyFeedback);
     const changed = state.enableDifficultyFeedback !== next;
     state.enableDifficultyFeedback = next;
-    syncFeedbackVisibility();
+    // 只在**真的切换**时同步：本地 opt-out（"不再提示"）必须跨 settings 应用保留，
+    // 否则每次 settings 帧/重连都会把它清掉（tosu 在线只读时这是唯一的抑制手段）。
+    if (changed) syncFeedbackVisibility();
     return changed;
 }
 

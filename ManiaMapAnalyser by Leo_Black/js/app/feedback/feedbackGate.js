@@ -51,13 +51,17 @@ export function markLocallyDeduped(context, now, storage) {
  * @param {number} input.now Date.now()
  * @param {boolean} input.shellClickThrough 壳窗口是否鼠标穿透
  * @param {boolean} input.shellReplay 壳侧说"这一局来自回放"（`/shell-config` 的 feedback.replay）
+ * @param {boolean} input.freshPlay 进入本次结算屏时是否从 play 态过来（刚打完的一局）
  * @param {boolean} input.deduped 本地是否已问过
  * @returns {{show: boolean, reason: string, stats?: object, context?: object}}
  */
-export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, shellReplay, deduped }) {
+export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, shellReplay, freshPlay, deduped }) {
     if (!state || !state.enableDifficultyFeedback) return { show: false, reason: "disabled" };
     if (normalizedStateName(state) !== "resultscreen") return { show: false, reason: "not_result_screen" };
     if (String(state.activeSource || "") !== "osu") return { show: false, reason: "not_osu" };
+    // 只有"刚打完的一局"才提问：从选曲/本地排行榜直接打开的结算屏（查看历史成绩）
+    // 也是结算屏、也有完整判定数，但它不是玩家刚打出的成绩，不该弹反馈条。
+    if (freshPlay !== true) return { show: false, reason: "not_fresh_play" };
     // 回放（lazer ReplayPlayer）不代表真实游玩，不允许评分。两个来源都要看：
     // `data.replay` 是原生载荷里的位；`shellReplay` 是壳快照里的同一事实——后者在页面
     // 数据面还没切到原生端点（吃 tosu 帧）时也能挡住回放结果。
@@ -100,7 +104,12 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
     if (!hits) return { show: false, reason: "no_hits" };
 
     const counts = extractCounts(hits);
-    const objectsTotal = Number(data?.beatmap?.stats?.objects?.total);
+    // 结算帧通常不带 beatmap：用最近一次带谱面的帧缓存的对象总数补（否则完成率门
+    // 会把"晚到一帧"误判成数据缺失）。
+    const rawTotal = Number(data?.beatmap?.stats?.objects?.total);
+    const objectsTotal = Number.isFinite(rawTotal) && rawTotal > 0
+        ? rawTotal
+        : Number(state.currentObjectsTotal);
     const stats = evaluatePlayStats({ counts, objectsTotal });
     if (!stats.ok) return { show: false, reason: stats.reason, stats };
     if (stats.acc < ACC_MIN || stats.acc > ACC_MAX) return { show: false, reason: "accuracy", stats };
@@ -115,7 +124,9 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
             ...context,
             beatmapId: bid,
             checksum,
-            rate: 1,
+            // 本地去重键用**实际倍速**（读取侧用 state.speedRate）：写 1 会让 DT/HT
+            // 永远不命中、又被 NM 的键误伤。
+            rate: Number(state.speedRate),
             keyCount: Number(context.keyCount) || 0,
             modCodes: Array.isArray(state.modCodes) ? [...state.modCodes] : [],
             clickThrough: Boolean(shellClickThrough),
