@@ -167,13 +167,13 @@ pub fn probe_mod_object(
             .ok()
             .and_then(|info| info.type_name)
             .unwrap_or_else(|| "?".to_string());
-        let u8_value = read_u8(source, pointer + 0x20)
+        let u8_value = read_u8(source, pointer.saturating_add(0x20))
             .map(|value| value.to_string())
             .unwrap_or_else(|| "-".to_string());
-        let f32_value = read_f32(source, pointer + 0x24)
+        let f32_value = read_f32(source, pointer.saturating_add(0x24))
             .map(|value| format!("{value:?}"))
             .unwrap_or_else(|| "-".to_string());
-        let f64_value = read_f64(source, pointer + 0x20)
+        let f64_value = read_f64(source, pointer.saturating_add(0x20))
             .map(|value| format!("{value:?}"))
             .unwrap_or_else(|| "-".to_string());
         fields.push(format!(
