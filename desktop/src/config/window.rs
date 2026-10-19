@@ -70,7 +70,9 @@ pub fn write_window_state(state: &WindowState) {
     write_window_state_in(&dir, state);
 }
 
-pub fn write_window_state_in(dir: &Path, state: &WindowState) {
+/// 写窗口状态。返回是否**真正落盘**（tmp + rename 都成功）——install_id 的持久化
+/// 依赖这个结果：写失败却报告一个"已保存"的 id，会让每次请求换一个 id、服务端去重失效。
+pub fn write_window_state_in(dir: &Path, state: &WindowState) -> bool {
     let path = dir.join(WINDOW_STATE_FILE);
     let mut to_write = state.clone();
     if to_write.settings.is_none() || to_write.install_id.is_none() {
@@ -83,11 +85,13 @@ pub fn write_window_state_in(dir: &Path, state: &WindowState) {
         }
     }
     let tmp = path.with_extension("state.tmp");
+    let mut written = false;
     if let Ok(serialized) = serde_json::to_string_pretty(&to_write) {
         if fs::write(&tmp, serialized).is_ok() {
-            let _ = fs::rename(&tmp, &path);
+            written = fs::rename(&tmp, &path).is_ok();
         }
     }
+    written
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

@@ -418,6 +418,13 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json_cors(&mut stream, 405, r#"{"error":"method not allowed"}"#, origin.as_deref());
             return;
         }
+        // 浏览器 POST 必带 Origin（包含跨源页面）：来源不在白名单就直接拒绝，
+        // 与 OPTIONS 同一规则。无 Origin 只可能是本机进程直连（端点只绑回环），
+        // 见 CONTRACT.md §13。
+        if header_value(head, "origin").is_some() && origin.is_none() {
+            respond_json(&mut stream, 403, r#"{"error":"forbidden origin"}"#);
+            return;
+        }
         handle_feedback(&shared, stream, body, origin);
         return;
     }
@@ -458,7 +465,14 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "clickThrough": win.click_through
             },
             "feedback": {
-                "replay": replay
+                "replay": replay,
+                // 本地联调：用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback`
+                // 启动壳时，页面把投票发到该地址而不是生产后端（壳窗口没有控制台，
+                // 页面自己写不了 window.__MMA_FEEDBACK_ENDPOINT）。生产不设 ⇒ null。
+                "endpoint": std::env::var("MMA_FEEDBACK_ENDPOINT")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
             }
         });
         respond_json(&mut stream, 200, &body.to_string());

@@ -70,6 +70,13 @@ impl AppBuilder {
                     if let Ok(url) = url_text.parse() {
                         let _ = window.navigate(url);
                     }
+                    // 开发用：`--features devtools` 构建 + `MMA_DEVTOOLS=1` 启动时打开
+                    // WebView 控制台（壳窗口默认没有 F12/右键菜单）。普通 release 包
+                    // 不含 devtools 特性，这段代码不会编译进去。
+                    #[cfg(feature = "devtools")]
+                    if std::env::var("MMA_DEVTOOLS").map(|value| value == "1").unwrap_or(false) {
+                        window.open_devtools();
+                    }
                 }
 
                 if open_settings_on_start {

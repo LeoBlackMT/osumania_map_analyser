@@ -245,15 +245,19 @@ pub fn mp3_length_is_sane(seconds_ms: f64) -> bool {
     seconds_ms.is_finite() && seconds_ms >= 0.0 && seconds_ms <= MP3_LENGTH_MAX_MS
 }
 
-/// stable 安装目录里的**本机玩家名**候选（`osu!<name>.cfg` 的文件名）。
+/// stable 安装目录里的**本机玩家名**候选（`osu!*.cfg` 里的 `Username = …`）。
 ///
 /// 为什么需要它：stable 是闭源进程，没有 lazer 那样的"屏幕类型名"来识别回放；
 /// 唯一稳定的判别事实是——结算对象里的 `player_name`（回放结算屏显示的是**被观看者**）
-/// 与本机账号名（cfg 文件名是 osu! 自己维护的磁盘事实）是否一致。
+/// 与本机账号名（osu! 自己写进 cfg 的用户名）是否一致。
 ///
-/// 规则：`osu!.cfg`（无用户名，观看回放时 stable 会写的临时配置）与任何解析后为空的
-/// 名字一律剔除；**候选存在且唯一地"不含"结算玩家名**时调用方才判回放（见 runner）。
-/// 目录读不了 / 没有任何候选 ⇒ 返回空 ⇒ 不标记（保持现状，绝不因为证据缺失误判）。
+/// ⚠️ cfg **文件名**是 Windows 账户名（`osu!<windows-user>.cfg`），不是 osu! 用户名：
+/// 实测 `osu!.Leo_BlackLT.cfg` 里的 `Username = Shirasu-Azusa`。所以必须读文件内容，
+/// 且只认 `Username` 这一精确键（`SaveUsername` 之类不算）。
+///
+/// 规则：解析后为空的、`osu!.cfg`（无 Username 行）一律跳过；**候选存在且唯一地
+/// "不含"结算玩家名**时调用方才判回放（见 runner）。目录读不了 / 没有任何候选 ⇒
+/// 返回空 ⇒ 不标记（保持现状，绝不因为证据缺失误判）。
 pub fn local_player_names(game_folder: &str) -> Vec<String> {
     let dir = std::path::Path::new(game_folder);
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -264,19 +268,25 @@ pub fn local_player_names(game_folder: &str) -> Vec<String> {
         let Ok(file_name) = entry.file_name().into_string() else {
             continue;
         };
-        let Some(stem) = file_name.strip_prefix("osu!") else {
-            continue;
-        };
-        let Some(name) = stem.strip_suffix(".cfg") else {
-            continue;
-        };
-        // stable 的实际命名是 `osu!<name>.cfg`（用户名前还有个点：`osu!.Leo.cfg`）；
-        // 去掉这个分隔点，`osu!.cfg`（空名）在这一步自然变成空串并被剔除。
-        let name = name.trim_start_matches('.');
-        if name.is_empty() {
+        if !file_name.starts_with("osu!") || !file_name.ends_with(".cfg") {
             continue;
         }
-        names.push(name.to_string());
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for line in text.lines() {
+            let line = line.trim_start_matches('\u{feff}');
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            if key.trim() != "Username" {
+                continue;
+            }
+            let name = value.trim().trim_matches('"').trim();
+            if !name.is_empty() {
+                names.push(name.to_string());
+            }
+        }
     }
     names.sort();
     names.dedup();

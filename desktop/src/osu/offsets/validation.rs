@@ -300,6 +300,39 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
                 ));
             }
         }
+        // `usable()` 的"至少一个 hits 来源"必须在这里也成立：否则一张只有
+        // score_offset+player_offset 的表会通过校验、读侧却永远读不到 hits。
+        if !results.usable() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "results (no usable hits source)".to_string(),
+                0,
+            ));
+        }
+        // 字典路径要么两个位移都有、要么都没有（只写一半等于坏了）。
+        if results.statistics_dict_offset.is_some() != results.dict_entries_offset.is_some() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "results (statistics_dict_offset/dict_entries_offset must be paired)".to_string(),
+                0,
+            ));
+        }
+        // 有映射就必须六个判定键齐全且序号互不相同（缺键会把判定静默算成 0）。
+        if !results.hit_result_values.is_empty() {
+            let mut seen = std::collections::BTreeSet::new();
+            for key in ["perfect", "great", "good", "ok", "meh", "miss"] {
+                let Some(value) = results.hit_result_values.get(key) else {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("results.hit_result_values.{key}"),
+                        0,
+                    ));
+                };
+                if !seen.insert(*value) {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("results.hit_result_values.{key}"),
+                        *value as i64,
+                    ));
+                }
+            }
+        }
     }
 
     Ok(())

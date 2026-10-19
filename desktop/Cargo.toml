@@ -24,6 +24,12 @@ tauri-build = { version = "2", features = [] }
 name = "mma_shell"
 path = "src/lib.rs"
 
+# 仅开发用途：`cargo build --release --features devtools` 构建后，用
+# `MMA_DEVTOOLS=1` 启动即可在壳窗口里打开 WebView 控制台（F12/右键"检查"）。
+# 默认 release 构建不含该能力，最终用户拿到的包不暴露调试面。
+[features]
+devtools = ["tauri/devtools"]
+
 [[bin]]
 name = "mma-shell"
 path = "src/main.rs"

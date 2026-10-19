@@ -85,13 +85,20 @@ pub fn read_results(
     }
 
     // 回放判定先做：即使 hits 读不出来，"这是回放"也必须能判（否则回放成绩会被当成真实游玩）。
+    // 类型名读不到 ⇒ 无法排除回放，fail-closed：本轮不发布 hits（下一帧再试）。
     if let Some(player_offset) = results.player_offset {
         if let Some(player) = read_ptr_field(source, screen, player_offset) {
-            if let Ok(info) = read_eetype(source, table, player, modules) {
-                read.replay = info
-                    .type_name
-                    .as_deref()
-                    .map_or(false, |name| name.contains("ReplayPlayer"));
+            match read_eetype(source, table, player, modules) {
+                Ok(info) => {
+                    read.replay = info
+                        .type_name
+                        .as_deref()
+                        .map_or(false, |name| name.contains("ReplayPlayer"));
+                }
+                Err(_) => {
+                    read.gap("player-type-unreadable");
+                    return read;
+                }
             }
         }
     }
@@ -377,5 +384,57 @@ mod tests {
         let mut broken = results;
         broken.hit_result_values.clear();
         assert!(read_statistics_dict(&memory, score, &broken).is_none());
+    }
+
+    /// 真机的 `Dictionary` 数组是**容量**而非 count：既有已释放槽（hash=-1），
+    /// 也有从未用过的槽（全 0）。读取必须只认 hash>=0 的项。
+    #[test]
+    fn dictionary_with_free_slots_and_extra_capacity_is_still_correct() {
+        const BASE: u64 = 0x1000_0000;
+        let mut image = vec![0u8; 0x4000];
+        let score = BASE + 0x100;
+        let dict = BASE + 0x1000;
+        let entries = BASE + 0x2000;
+        put_q(&mut image, BASE, score + 0x80, dict);
+        put_q(&mut image, BASE, dict + 0x10, entries);
+        put_i(&mut image, BASE, entries + 8, 24); // capacity 24 > count 17
+        for index in 0..17u64 {
+            let entry = entries + 0x10 + index * 16;
+            put_i(&mut image, BASE, entry, index as i32);
+            put_i(&mut image, BASE, entry + 4, -1);
+            put_i(&mut image, BASE, entry + 8, index as i32);
+            let value = match index {
+                5 => 15,
+                6 => 793,
+                14 => 20,
+                _ => 0,
+            };
+            put_i(&mut image, BASE, entry + 12, value);
+        }
+        // 17..19：已释放的槽（hashCode = -1）。
+        for index in 17..20u64 {
+            let entry = entries + 0x10 + index * 16;
+            put_i(&mut image, BASE, entry, -1);
+            put_i(&mut image, BASE, entry + 8, -1);
+            put_i(&mut image, BASE, entry + 12, 0);
+        }
+        let memory = Mem { base: BASE, bytes: image };
+        let hits = read_statistics_dict(&memory, score, &dict_results()).expect("字典判定数");
+        assert_eq!(hits.geki, 793);
+        assert_eq!(hits.n300, 15);
+    }
+
+    #[test]
+    fn dictionary_with_an_absurd_capacity_is_rejected() {
+        const BASE: u64 = 0x1000_0000;
+        let mut image = vec![0u8; 0x4000];
+        let score = BASE + 0x100;
+        let dict = BASE + 0x1000;
+        let entries = BASE + 0x2000;
+        put_q(&mut image, BASE, score + 0x80, dict);
+        put_q(&mut image, BASE, dict + 0x10, entries);
+        put_i(&mut image, BASE, entries + 8, 4096); // > STATISTICS_ENTRY_MAX
+        let memory = Mem { base: BASE, bytes: image };
+        assert!(read_statistics_dict(&memory, score, &dict_results()).is_none());
     }
 }

@@ -1045,17 +1045,20 @@ pub fn read_frame(
                     degraded.push("resultsScreen.mods".to_string());
                 }
                 // stable 的回放判定（lazer 靠屏幕类型名，stable 是闭源进程）：结算屏上
-                // 结算对象的 player_name 是"被观看者"，与本机账号名（`osu!<name>.cfg`
-                // 文件名，磁盘事实）全部不匹配 ⇒ 这一局来自回放。候选为空/名字缺失/
-                // 看自己的回放 ⇒ 不标记（宁可漏判不可误判，见 `stable::replay_from_player_name`）。
+                // 结算对象的 player_name 是"被观看者"，与本机账号名（cfg 文件里的
+                // `Username = …`，不是文件名——文件名是 Windows 账户名）全部不匹配
+                // ⇒ 这一局来自回放。候选为空/名字缺失/看自己的回放 ⇒ 不标记
+                // （宁可漏判不可误判，见 `stable::replay_from_player_name`）。
+                //
+                // ⚠️ 这里不能读 `snapshot.game_folder`：它在本函数末尾才赋值（默认 None），
+                // 早读会让整段判定永远不执行（历史上就踩过）。直接从进程镜像路径取。
                 if snapshot.is_result_state() && !snapshot.replay {
-                    if let (Some(folder), Some(name)) = (
-                        snapshot.game_folder.as_deref(),
-                        result.player_name.as_deref(),
-                    ) {
-                        let local_names = stable::local_player_names_cached(folder);
-                        if stable::replay_from_player_name(Some(name), &local_names) {
-                            snapshot.replay = true;
+                    if let Some(name) = result.player_name.as_deref() {
+                        if let Some(folder) = stable::game_folder(&target.image_path) {
+                            let local_names = stable::local_player_names_cached(&folder);
+                            if stable::replay_from_player_name(Some(name), &local_names) {
+                                snapshot.replay = true;
+                            }
                         }
                     }
                 }

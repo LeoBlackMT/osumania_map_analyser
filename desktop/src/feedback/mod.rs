@@ -192,19 +192,26 @@ pub fn sign(payload: &FeedbackPayload) -> Option<SignedEnvelope> {
 
 /// ScoreV1 准度（与页面 `scoreV1` 同式）。
 pub fn score_v1(hits: &Hits) -> f64 {
-    let total = (hits.geki + hits.n300 + hits.katu + hits.n100 + hits.n50 + hits.miss) as f64;
+    let total = total_hits(hits) as f64;
     if total <= 0.0 {
         return 0.0;
     }
-    let weighted = 300.0 * (hits.geki + hits.n300) as f64
-        + 200.0 * hits.katu as f64
-        + 100.0 * hits.n100 as f64
-        + 50.0 * hits.n50 as f64;
-    100.0 * weighted / (300.0 * total)
+    // 用 u64 求和：六个 u32 相加在 debug 下会 panic、release 下回绕（坏指针可能给出巨大计数）。
+    let weighted = 300u64 * (hits.geki as u64 + hits.n300 as u64)
+        + 200 * hits.katu as u64
+        + 100 * hits.n100 as u64
+        + 50 * hits.n50 as u64;
+    100.0 * weighted as f64 / (300.0 * total)
 }
 
 pub fn total_hits(hits: &Hits) -> u32 {
-    hits.geki + hits.n300 + hits.katu + hits.n100 + hits.n50 + hits.miss
+    let sum = hits.geki as u64
+        + hits.n300 as u64
+        + hits.katu as u64
+        + hits.n100 as u64
+        + hits.n50 as u64
+        + hits.miss as u64;
+    sum.min(u32::MAX as u64) as u32
 }
 
 pub fn weight_for_acc(acc: f64) -> f64 {
@@ -249,6 +256,11 @@ fn is_allowed_selected(value: &str) -> bool {
 /// 也只能从 `speed_change` 读出来。`None` = 原生没读到 ⇒ 调用方按 `no_mods` 拒绝。
 fn lazer_mods_and_rate(snapshot: &Snapshot) -> Option<(Vec<String>, f64)> {
     let lazer_mods = snapshot.lazer_mods.as_ref()?;
+    // fail-closed：SelectedMods 里只要有一个元素没读全（对象/类型名/acronym/数量超限），
+    // 就不能签名——把 DT 静默丢成 NM 会写入错误的客观字段。展示层不受影响。
+    if !snapshot.lazer_mods_complete {
+        return None;
+    }
     let mods: Vec<String> = lazer_mods
         .iter()
         .map(|entry| entry.acronym.trim().to_uppercase())
@@ -436,16 +448,19 @@ pub fn install_id_in(dir: &Path) -> Option<String> {
         return Some(id.to_string());
     }
 
-    // 迁移：旧文件存在且合法 → 写入 state 文件后删除旧文件。
+    // 迁移：旧文件存在且合法 → 写入 state 文件**成功之后**才删旧文件。
+    // 写失败就返回 None（调用方拒绝签名），而不是每次调用都拿一个新的随机 id。
     let legacy = dir.join(INSTALL_ID_FILE);
     if let Ok(text) = std::fs::read_to_string(&legacy) {
         if let Ok(value) = serde_json::from_str::<Value>(&text) {
             if let Some(id) = value.get("install_id").and_then(Value::as_str) {
                 if is_hex32(id) {
                     state.install_id = Some(id.to_string());
-                    crate::config::window::write_window_state_in(dir, &state);
-                    let _ = std::fs::remove_file(&legacy);
-                    return Some(id.to_string());
+                    if crate::config::window::write_window_state_in(dir, &state) {
+                        let _ = std::fs::remove_file(&legacy);
+                        return Some(id.to_string());
+                    }
+                    return None;
                 }
             }
         }
@@ -453,8 +468,11 @@ pub fn install_id_in(dir: &Path) -> Option<String> {
 
     let id = new_install_id();
     state.install_id = Some(id.clone());
-    crate::config::window::write_window_state_in(dir, &state);
-    Some(id)
+    if crate::config::window::write_window_state_in(dir, &state) {
+        Some(id)
+    } else {
+        None
+    }
 }
 
 fn new_install_id() -> String {
@@ -587,9 +605,16 @@ mod tests {
                 overall_difficulty: None,
             },
         ]);
+        // 读全了才允许签名（fail-closed 见 `lazer_mods_and_rate`）。
+        snapshot.lazer_mods_complete = true;
         let (mods, rate) = lazer_mods_and_rate(&snapshot).expect("lazer mods");
         assert_eq!(mods, vec!["DT".to_string(), "MR".to_string()]);
         assert!((rate - 1.5).abs() < 1e-9);
+
+        // 列表读不全（任一元素失败/超限）⇒ 拒绝签名，绝不回落成 NM。
+        snapshot.lazer_mods_complete = false;
+        assert!(lazer_mods_and_rate(&snapshot).is_none(), "不完整的 mods 不能签名");
+        snapshot.lazer_mods_complete = true;
 
         // 自定义倍速（CL 0.75）也走同一个来源；没有速度 mod 时 rate = 1.0。
         snapshot.lazer_mods = Some(vec![crate::osu::model::LazerMod {
