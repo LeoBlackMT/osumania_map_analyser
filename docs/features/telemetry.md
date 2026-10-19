@@ -98,6 +98,8 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 **去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
 
-**存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建。私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）提供总览、拒绝原因、每图 N/加权中位数/IQR、特征残差与 CSV 导出；公开 dashboard 不含 per-map 数据。
+**存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天（时间窗口一律按**毫秒**换算，见 `store.FeedbackStore.Prune`）；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建（admin 页头显示这份聚合的生成时间，也可用"Rebuild aggregates"手动重建）。
+
+私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）按 **map + rate + mods + algorithm** 分组，列含义：`N` = 票数；`weight` = Σ权重（acc 曲线 v3）；`distinct` = 该组的独立 install 数（HMAC 去重 token）；`median` = target（displayed + vote）的**加权**中位数（按 `FEEDBACK_TRIM_RATIO` 两端裁剪）；`Q25/Q75/IQR` = target 的**未加权**四分位与四分位距；`rate` 显示实际倍速（×1.00 NM/MR、×1.50 DT/NC、×0.75 HT/DC），`mods` 为归一化后的列表（排序、去重、NC→DT、DC→HT）。公开 dashboard 不含 per-map 数据。
 
 **开关**：`enableDifficultyFeedback`（checkbox，Network 分组，**默认 `true`**）。不进 `recomputeNeeded`、不进缓存失效列表；关闭时页面不显示、不请求、不写本地去重。

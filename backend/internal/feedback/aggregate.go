@@ -432,11 +432,11 @@ SELECT a.bid, a.checksum, a.rate, a.actual_algorithm, a.mods, a.key_count, a.pat
        a.n, a.weight_sum, a.distinct_installs, a.target_median, a.target_q25, a.target_q75, a.updated_at
 FROM feedback_map_agg a
 JOIN (
-	SELECT bid, checksum, actual_algorithm, mods, displayed_val,
-	       ROW_NUMBER() OVER (PARTITION BY bid, checksum, actual_algorithm, mods ORDER BY created_at DESC) AS rn
+	SELECT bid, checksum, rate, actual_algorithm, mods, displayed_val,
+	       ROW_NUMBER() OVER (PARTITION BY bid, checksum, rate, actual_algorithm, mods ORDER BY created_at DESC) AS rn
 	FROM feedback_events
-) e ON e.bid=a.bid AND e.checksum=a.checksum AND e.actual_algorithm=a.actual_algorithm
-     AND e.mods=a.mods AND e.rn=1
+) e ON e.bid=a.bid AND e.checksum=a.checksum AND e.rate=a.rate
+     AND e.actual_algorithm=a.actual_algorithm AND e.mods=a.mods AND e.rn=1
 WHERE a.n>=? AND a.distinct_installs>=? AND ABS(a.target_median-e.displayed_val)>=?
 ORDER BY ABS(a.target_median-e.displayed_val) DESC, a.n DESC
 LIMIT ?`
