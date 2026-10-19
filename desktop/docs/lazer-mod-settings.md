@@ -89,8 +89,8 @@ ScoreInfo
 
 1. 用带探针的壳（本地 `cargo build --release` 或 CI 产物）启动 osu!lazer；
 2. 设置环境变量 `MMA_LAZER_MODS_PROBE=1` 后启动 `mma-shell.exe`；
-3. 进一张图，配置 `DT` 自定义倍速（例如 1.2x）+ `DA` 自定义 OD（例如 8.5），
-   开始游玩（结算前即可）；
+3. 在选歌界面配置 `DT` 自定义倍速（例如 1.2x）+ `DA` 自定义 OD（例如 8.5）：
+   此时每个 mod 对象会打印一次候选字段；进图后再看 `ScoreInfo.ModsJson` 行；
 4. 查看壳 exe 旁的 `logs/mma-shell-YYYYMMDD.log`，搜 `lazer mods probe`。
 
 成功时一行：
