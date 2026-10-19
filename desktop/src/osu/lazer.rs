@@ -17,6 +17,7 @@ pub mod screen;
 pub mod resolve;
 pub mod table;
 pub mod results;
+pub mod mods;
 pub mod frame;
 
 pub use fields::*;

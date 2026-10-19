@@ -307,6 +307,15 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         }
         gaps.extend(read.gaps);
     }
+
+    // ⑥c 预研探针：`MMA_LAZER_MODS_PROBE=1` 时从 Player 扫 `Score.ScoreInfo.ModsJson`。
+    //     只写壳日志，不参与载荷；读取链路固化前不动现有 `SelectedMods` 读取。
+    if snapshot.state_name.as_deref() == Some("play") {
+        if let Some(screen_top) = chain.screen_top {
+            super::mods::probe_once(source, table, screen_top, layout, modules);
+        }
+    }
+
     match resolved.selected_mods.clone() {
         Ok(offset) => {
             chain.selected_mods = read_ptr_field(source, game_base, offset);
