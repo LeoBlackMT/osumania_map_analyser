@@ -92,6 +92,8 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - **`passed` 恒 true**：壳没有独立的结算 pass/fail 标记，只靠页面完成率 ≥0.85 门控。
 - **限流依赖反代头**：文档部署（Caddy/Nginx → 127.0.0.1）下 `X-Forwarded-For` 决定按 IP 限流；直连暴露时该头可伪造（与遥测同一取舍）。
 
+**公开统计页**：`/feedback-stats`（与使用统计 `/` 同一套设计系统，页头选项卡切换）只展示**已接受**事件的聚合：总量（票数 / 谱面数 / 有票天数 / 平均票 / 加权平均残差）、按日票数、五档票分布、按 estimator 与键数的加权残差（`Σweight·(target−displayed)/Σweight`）。任何分组 **N < 5 不返回**，且**不含 per-map 明细**（那只在私有 admin 页）。数据由 `GET /api/v1/feedback/summary?days=30` 提供（60s 内存缓存，`days` 允许 1–90）；页面不加载任何第三方脚本。
+
 **签名与密钥**：Ed25519，签名串是以 `v1|` 开头的固定字段串（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
 
 **去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。

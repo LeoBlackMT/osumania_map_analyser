@@ -25,6 +25,12 @@ var dashboardCSS []byte
 //go:embed dashboard.js
 var dashboardJS []byte
 
+//go:embed feedback.html
+var feedbackHTML []byte
+
+//go:embed feedback.js
+var feedbackJS []byte
+
 // maxWindowDays bounds custom ranges (a guard against hand-typed giants; the
 // aggregate tables could answer more, but the UI is designed for <= 90 days).
 const maxWindowDays = 400
@@ -87,6 +93,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(dashboardJS)
+	case "/feedback-stats":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(feedbackHTML)
+	case "/feedback.js":
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(feedbackJS)
 	case "/api/v1/stats":
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

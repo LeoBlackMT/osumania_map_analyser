@@ -155,17 +155,17 @@ tokenInput.value = sessionStorage.getItem("mma.feedback.admin") || "";
 
 /* ── 主题切换（与统计页同一存档键与规则） ── */
 function applyTheme() {
-  const stored = localStorage.getItem("mma.dashboard.theme");
+  const stored = localStorage.getItem("mma-theme");
   const dark = stored
     ? stored === "dark"
     : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if (dark) document.documentElement.dataset.theme = "dark";
-  else delete document.documentElement.dataset.theme;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 }
 applyTheme();
 $("themeBtn").addEventListener("click", () => {
-  const dark = document.documentElement.dataset.theme === "dark";
-  localStorage.setItem("mma.dashboard.theme", dark ? "light" : "dark");
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  const next = current === "dark" ? "light" : "dark";
+  localStorage.setItem("mma-theme", next);
   applyTheme();
 });
 

@@ -90,6 +90,7 @@ func main() {
 		mux.Handle("/api/v1/feedback/stats", admin)
 		mux.Handle("/api/v1/feedback/export.csv", admin)
 		mux.Handle("/api/v1/feedback/refresh", admin)
+		mux.Handle("/api/v1/feedback/summary", feedback.NewSummaryHandler(feedbackStore))
 		mux.Handle("/feedback", admin)
 		go feedbackAggLoop(feedbackStore, cfg.FeedbackMinN, cfg.FeedbackTrimRatio)
 		go feedbackRetentionLoop(feedbackStore, cfg.FeedbackRawRetentionDays)
