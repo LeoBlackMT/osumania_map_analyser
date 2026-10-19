@@ -242,12 +242,12 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(text, "UNIQUE constraint failed") || strings.Contains(text, "constraint failed: UNIQUE")
 }
 
-// HasRecentDedup reports whether the token already rated this map inside the window.
-func (s *FeedbackStore) HasRecentDedup(token string, bid int64, since int64) (bool, error) {
+// HasRecentDedup reports whether the token already rated this map/rate inside the window.
+func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, since int64) (bool, error) {
 	var one int
 	err := s.db.QueryRow(
-		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=1.0 AND created_at>=? LIMIT 1",
-		token, bid, since,
+		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=? AND created_at>=? LIMIT 1",
+		token, bid, rate, since,
 	).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

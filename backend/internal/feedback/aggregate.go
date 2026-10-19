@@ -74,7 +74,9 @@ ORDER BY bid, checksum, rate, actual_algorithm, mods`)
 			&target, &weight, &token); err != nil {
 			return err
 		}
-		key := checksum + "|" + algo + "|" + mods
+		// 分组键必须含 bid 与 rate：checksum 可能被两个不同 bid 共用，
+		// 同一张图的 NM / DT 也是两次不同的游玩（不能混成一个中位数）。
+		key := fmt.Sprintf("%d|%s|%s|%s|%.3f", bid, checksum, algo, mods, rate)
 		group := groups[key]
 		if group == nil {
 			group = &mapGroup{

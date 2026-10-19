@@ -14,6 +14,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,9 +164,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dedupToken := h.dedupToken(env.Payload.InstallID, env.Payload.Bid)
+	dedupToken := h.dedupToken(env.Payload.InstallID, env.Payload.Bid, env.Payload.Rate)
 	since := now.Add(-time.Duration(h.cfg.FeedbackDedupDays) * 24 * time.Hour).UnixMilli()
-	duplicate, err := h.store.HasRecentDedup(dedupToken, env.Payload.Bid, since)
+	duplicate, err := h.store.HasRecentDedup(dedupToken, env.Payload.Bid, env.Payload.Rate, since)
 	if err != nil {
 		h.reject(w, day, ReasonAPIUnavailable, http.StatusServiceUnavailable)
 		return
@@ -187,7 +188,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	event := store.FeedbackEvent{
 		Bid:               env.Payload.Bid,
 		Checksum:          strings.ToLower(env.Payload.Checksum),
-		Rate:              1.0,
+		Rate:              env.Payload.Rate,
 		Mods:              string(modsJSON),
 		KeyCount:          env.Payload.KeyCount,
 		LnRatio:           env.Payload.LnRatio,
@@ -229,12 +230,14 @@ func (h *Handler) reject(w http.ResponseWriter, day int64, reason string, status
 	writeJSON(w, status, map[string]string{"error": reason})
 }
 
-func (h *Handler) dedupToken(installID string, bid int64) string {
+func (h *Handler) dedupToken(installID string, bid int64, rate float64) string {
 	mac := hmac.New(sha256.New, h.dedupKey)
 	mac.Write([]byte(installID))
 	mac.Write([]byte("|"))
 	mac.Write([]byte(strconv.FormatInt(bid, 10)))
-	mac.Write([]byte("|1.000"))
+	mac.Write([]byte("|"))
+	// 倍速进入去重键：同一张图 NM 与 DT 是两次不同的游玩（与文档一致）。
+	mac.Write([]byte(strconv.FormatFloat(rate, 'f', 3, 64)))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -255,6 +258,17 @@ func corsAllowed(origin string) bool {
 }
 
 func clientIP(r *http.Request) string {
+	// 文档部署是"Caddy/Nginx 反代 → 127.0.0.1:8080"：只看 RemoteAddr 会让所有用户
+	// 共享同一个 127.0.0.1（全站 5 次/小时）。与遥测的 clientIP 保持一致：优先
+	// X-Forwarded-For 的第一段，直连（无代理）时回落到 RemoteAddr。
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		if ip := strings.TrimSpace(xff); ip != "" {
+			return ip
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -263,13 +277,25 @@ func clientIP(r *http.Request) string {
 }
 
 func normalizeMods(mods []string) []string {
+	// 规范化：大写、去重、排序；DT/NC 与 HT/DC 归一到同一码。stable 的位掩码把 DT
+	// 合并成 NC，lazer 返回实际 DT——不归一的话同一局会被聚合成两行。
+	seen := map[string]bool{}
 	out := make([]string, 0, len(mods))
 	for _, mod := range mods {
-		out = append(out, strings.ToUpper(strings.TrimSpace(mod)))
+		code := strings.ToUpper(strings.TrimSpace(mod))
+		switch code {
+		case "NC":
+			code = "DT"
+		case "DC":
+			code = "HT"
+		}
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		out = append(out, code)
 	}
-	if len(out) == 0 {
-		return []string{}
-	}
+	sort.Strings(out)
 	return out
 }
 

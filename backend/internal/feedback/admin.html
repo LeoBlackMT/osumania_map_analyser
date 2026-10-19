@@ -79,7 +79,7 @@
       <input id="token" type="password" placeholder="FEEDBACK_ADMIN_TOKEN" autocomplete="off" />
       <button id="load" class="btn primary" type="button">Load</button>
       <button id="refresh" class="btn" type="button">Rebuild aggregates</button>
-      <a id="csv" href="#" download><button id="csvBtn" class="btn" type="button">Export CSV</button></a>
+      <button id="csvBtn" class="btn" type="button">Export CSV</button>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
@@ -181,6 +181,12 @@ const PAGE_SIZE = 20;
 const pages = new Map();
 let lastData = null;
 
+// 单元格一律转义后拼进 innerHTML：`pattern` 等字段原样入库（壳会 sanitize，但
+// release seed 可提取 / 本地改页面可绕过），未转义就是存储型 XSS。
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[ch]));
+
 function table(el, columns, rows, rowMapper) {
   const key = el.id;
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -190,10 +196,10 @@ function table(el, columns, rows, rowMapper) {
   const slice = rows.slice(start, start + PAGE_SIZE);
 
   const head = "<thead><tr>" + columns.map((c) =>
-    `<th class="${c.num ? "num" : ""}">${c.label}</th>`).join("") + "</tr></thead>";
+    `<th class="${c.num ? "num" : ""}">${esc(c.label)}</th>`).join("") + "</tr></thead>";
   const body = slice.length
     ? slice.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
-        `<td class="${columns[index].num ? "num" : ""}">${cell ?? ""}</td>`).join("") + "</tr>").join("")
+        `<td class="${columns[index].num ? "num" : ""}">${esc(cell)}</td>`).join("") + "</tr>").join("")
     : `<tr><td colspan="${columns.length}" class="muted">No rows</td></tr>`;
   el.innerHTML = head + "<tbody>" + body + "</tbody>";
 
@@ -287,7 +293,6 @@ async function load() {
     render(data);
     $("content").hidden = false;
     setStatus("Updated " + new Date().toLocaleTimeString());
-    $("csv").href = "/api/v1/feedback/export.csv";
   } catch (error) {
     setStatus("Failed: " + error.message + " (wrong token or endpoint disabled)", true);
   }

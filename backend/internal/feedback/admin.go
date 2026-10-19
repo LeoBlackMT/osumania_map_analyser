@@ -162,13 +162,27 @@ func (a *Admin) writeCSV(w http.ResponseWriter) {
 	})
 	for _, row := range rows {
 		_ = writer.Write([]string{
-			strconv.FormatInt(row.Bid, 10), row.Checksum, fmt.Sprintf("%.3f", row.Rate),
-			row.ActualAlgorithm, row.Mods, strconv.Itoa(row.KeyCount), row.Pattern,
-			row.LnBucket, strconv.Itoa(row.N), fmt.Sprintf("%.3f", row.WeightSum),
-			strconv.Itoa(row.Distinct), fmt.Sprintf("%.2f", row.Median),
-			fmt.Sprintf("%.2f", row.Q25), fmt.Sprintf("%.2f", row.Q75),
-			fmt.Sprintf("%.2f", row.IQR),
-			time.UnixMilli(row.UpdatedAt).UTC().Format(time.RFC3339),
+			csvSafe(strconv.FormatInt(row.Bid, 10)), csvSafe(row.Checksum),
+			csvSafe(fmt.Sprintf("%.3f", row.Rate)), csvSafe(row.ActualAlgorithm),
+			csvSafe(row.Mods), csvSafe(strconv.Itoa(row.KeyCount)), csvSafe(row.Pattern),
+			csvSafe(row.LnBucket), csvSafe(strconv.Itoa(row.N)),
+			csvSafe(fmt.Sprintf("%.3f", row.WeightSum)), csvSafe(strconv.Itoa(row.Distinct)),
+			csvSafe(fmt.Sprintf("%.2f", row.Median)), csvSafe(fmt.Sprintf("%.2f", row.Q25)),
+			csvSafe(fmt.Sprintf("%.2f", row.Q75)), csvSafe(fmt.Sprintf("%.2f", row.IQR)),
+			csvSafe(time.UnixMilli(row.UpdatedAt).UTC().Format(time.RFC3339)),
 		})
 	}
+}
+
+// csvSafe 防 CSV 公式注入：以 = + - @（或制表/回车）开头的单元格在 Excel/
+// LibreOffice 里会被当作公式执行，而管理员通常会双击打开导出的 CSV。
+func csvSafe(value string) string {
+	if value == "" {
+		return value
+	}
+	switch value[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + value
+	}
+	return value
 }
