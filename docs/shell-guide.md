@@ -23,7 +23,7 @@
 
 ## 一、快速开始
 
-- 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。
+- 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。Linux 包的目录结构与 Windows 相同（插件内容在包根、`mma-shell` 与 `index.html` 同级），解压后运行`./mma-shell`；tar 已保留可执行位。
 - 如果你需要在 Etterna 或 Malody V 中使用，请运行`bridges/install-bridge-zh.bat`或`bridges/install-bridge.bat`。对于Linux用户，请参照下方「安装桥」章节手动安装 Etterna 与 Malody V 的桥文件。
 - 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。设置的详细说明见[docs/settings.md](docs/settings.md)，预设系统的使用方法见[docs/presets-guide.md](docs/presets-guide.md)。
 - 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
@@ -152,7 +152,7 @@ This project originally gathered osu! data via tosu. However, as features expand
 
 ## 1. Quick Start
 
-- Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly.
+- Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly. The Linux package uses the same layout (plugin files at the archive root, `mma-shell` next to `index.html`); extract it and run `./mma-shell` (the tar keeps the executable bit).
 - If you need to use it with Etterna or Malody V, run `bridges/install-bridge-zh.bat` or `bridges/install-bridge.bat`. For Linux users, refer to the "Bridges" section below to install bridge files manually.
 - Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, check whether auto-detected game directories are correct; otherwise, fill in the game directories you use to locate beatmaps for analysis. See [docs/settings.md](settings.md) for settings details and [docs/presets-guide.md](presets-guide.md) for preset usage.
 - Once configured, restart the application if needed, and it will be ready to use. In the Malody V editor, click the `MMA Analyze` button manually to analyze. Window controls are described below.

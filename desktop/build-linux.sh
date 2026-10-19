@@ -101,7 +101,11 @@ rm -f "$tarball"
 # 打包：插件目录 + mma-shell + bridges（桥安装素材；二进制保留执行位）。
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
-cp -r "$plugin_dir" "$stage/"
+# 与 Windows zip 相同的目录结构：**插件内容直接放在包根**（`index.html` 与
+# `mma-shell` 同级），再放 bridges/ 与 offsets/。壳的 plugin_dir 规则 1
+# （"exe 同级有 index.html"）因此命中；历史包多套了一层
+# `ManiaMapAnalyser by Leo_Black/`，与 Windows 布局不一致。
+cp -a "$plugin_dir/." "$stage/"
 cp -r "$root/bridges" "$stage/bridges"
 if [ -d "$root/desktop/offsets" ]; then
     cp -r "$root/desktop/offsets" "$stage/offsets"
