@@ -850,6 +850,13 @@ pub fn read_lazer_mods(
             }
         };
 
+        if super::mods::probe_enabled() {
+            let acronym = mod_acronym_from_type_name(&type_name)
+                .map(|(acronym, _)| acronym)
+                .unwrap_or("?");
+            super::mods::probe_mod_object(source, table, mod_obj, &type_name, acronym, modules);
+        }
+
         if let Some((acronym, default_speed)) = mod_acronym_from_type_name(&type_name) {
             let mut speed_change = default_speed;
             let mut overall_difficulty = None;

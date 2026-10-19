@@ -23,14 +23,16 @@
 // （与 `results` 段同形），让 `read_lazer_mods` 优先读 `ModsJson`，`SelectedMods`
 // 的启发式降为兜底。
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::osu::model::LazerMod;
 use crate::osu::offsets::OffsetTable;
 
 use super::screen::read_eetype;
-use super::source::{read_ptr_field, read_string, Source, StringLayout};
+use super::source::{read_f64, read_ptr_field, read_string, read_u8, Source, StringLayout};
 
 /// `APIMod[]` 的 JSON 形状：
 /// `[{"acronym":"DT","settings":{"speed_change":1.2}}, {"acronym":"DA","settings":{"overall_difficulty":8.5}}]`
@@ -124,6 +126,73 @@ pub fn probe_once(
 
 struct ProbeRead {
     summary: String,
+}
+
+static PROBED_MODS: Mutex<Option<HashSet<u64>>> = Mutex::new(None);
+
+pub fn probe_enabled() -> bool {
+    std::env::var_os("MMA_LAZER_MODS_PROBE").is_some()
+}
+
+/// 逐个 mod 对象打印候选引用字段与三种解码（u8 / f32 / f64），用于确认
+/// `SpeedChange`（double）与 `DifficultyBindable`（可空 float）的真实布局。
+/// 每个对象只打印一次；只在 `MMA_LAZER_MODS_PROBE` 设置时工作。
+pub fn probe_mod_object(
+    source: &dyn Source,
+    table: &OffsetTable,
+    object: u64,
+    type_name: &str,
+    acronym: &str,
+    modules: &[(u64, String)],
+) {
+    if !probe_enabled() {
+        return;
+    }
+    {
+        let mut guard = PROBED_MODS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let set = guard.get_or_insert_with(HashSet::new);
+        if !set.insert(object) {
+            return;
+        }
+    }
+
+    let mut fields = Vec::new();
+    for offset in [0x10u64, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40] {
+        let Some(pointer) = read_ptr_field(source, object, offset as i64) else {
+            continue;
+        };
+        let bindable_type = read_eetype(source, table, pointer, modules)
+            .ok()
+            .and_then(|info| info.type_name)
+            .unwrap_or_else(|| "?".to_string());
+        let u8_value = read_u8(source, pointer + 0x20)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string());
+        let f32_value = read_f32(source, pointer + 0x24)
+            .map(|value| format!("{value:?}"))
+            .unwrap_or_else(|| "-".to_string());
+        let f64_value = read_f64(source, pointer + 0x20)
+            .map(|value| format!("{value:?}"))
+            .unwrap_or_else(|| "-".to_string());
+        fields.push(format!(
+            "+0x{offset:X} -> 0x{pointer:016X} type={bindable_type} \
+             u8@0x20={u8_value} f32@0x24={f32_value} f64@0x20={f64_value}"
+        ));
+    }
+    crate::server::log::log_at(
+        "info",
+        &format!(
+            "[osu] lazer mod probe: type={type_name} acronym={acronym} fields: {}",
+            fields.join("; ")
+        ),
+    );
+}
+
+fn read_f32(source: &dyn Source, addr: u64) -> Option<f32> {
+    let bytes = source.read(addr, 4)?;
+    Some(f32::from_le_bytes(bytes.try_into().ok()?))
 }
 
 fn read_play_mods_json(

@@ -108,6 +108,17 @@ ScoreInfo
 探针每个屏幕对象每秒最多扫一次；成功后不再重复。日志里只有 mod 配置，没有用户名/
 成绩/谱面标识。
 
+同一次探针还会对 `SelectedMods` 里的每个 mod 对象打印一次候选字段（`+0x10..+0x40`
+的引用、bindable 运行时类型、`u8@+0x20`、`f32@+0x24`、`f64@+0x20`）：
+
+```text
+[osu] lazer mod probe: type=osu.Game.Rulesets.Mania.Mods.ManiaModDifficultyAdjust acronym=DA fields: +0x10 -> 0x... type=osu.Game.Rulesets.Mods.DifficultyBindable u8@0x20=1 f32@0x24=8.5 f64@0x20=1.6e-...; ...
+```
+
+它用来核对两件事：`SpeedChange`（`BindableNumber<double>`）的 `f64@+0x20` 是不是
+自定义倍速；`DifficultyBindable`（`Bindable<float?>`）的 `u8@+0x20`/`f32@+0x24`
+是不是"有值 + OD"，以及 `DrainRate` 与 `OverallDifficulty` 谁在前。
+
 ## 5. 下一步
 
 - [ ] 用一次真机日志确认 `Score` / `ScoreInfo` 的可达性与位移；
