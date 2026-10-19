@@ -208,6 +208,13 @@ export const state = {
     // 本次结算帧的谱面身份（resultScreen 帧可能不带 beatmap，需保留上一帧值）。
     currentBeatmapId: 0,
     currentBeatmapChecksum: "",
+    // 最近一帧带 beatmap 的对象总数。结算帧通常不带 beatmap，gate 用它补
+    // `objectsTotal`（否则完成率/总数门会被判成"数据未到"）。
+    currentObjectsTotal: 0,
+    // 进入**本次**结算屏时是否从 play/pause 态过来（＝刚打完的一局）。
+    // 从选曲/本地排行榜直接打开的结算屏（查看历史成绩）没有 play 前态，不允许反馈；
+    // 页面启动时就已经在结算屏（壳中途重启）同样视为不确定 ⇒ 不提问。
+    resultsFromPlay: false,
     // 当前谱面最近一次分析产出的反馈上下文；换图/清卡时置 null。
     feedbackContext: null,
     numericDifficulty: null,

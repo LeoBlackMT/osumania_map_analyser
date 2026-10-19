@@ -793,11 +793,58 @@ export async function fetchBeatmapFile(reason) {
             state.lnStar = lnStar ?? (state.enableAlwaysShowLNDifficulty || Number(rework?.lnRatio ?? parsedInfo.lnRatio) > 0.15 ? rework?.star : 0) ?? 0;
         }
 
+        // Auto 显示档位必须在**第一次写卡片之前**定下来：档位取决于模式（RC → Etterna/MSD，
+        // 其余 → Pattern/ReworkSR），而模式可以从 LN 占比直接判出来（与 pattern 的 ModeTag
+        // 在 RC/非 RC 上等价）。先判档、必要时立即二次派发，才能避免"先用旧档位画一遍、
+        // 再整个重画一遍"——那正是切图时星数动画重复的直接原因。
+        if (autoDisplayEnabled) {
+            const previewModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
+            const beforeContent = state.contentBar;
+            const beforeSrText = state.srText;
+            const profileChanged = refreshAutoDisplayProfile(previewModeTag);
+
+            const missingEtterna = (
+                showsEtterna
+                || state.srText === "MSD"
+                || state.diffText === "MSD"
+            ) && !needEtternaAnalysis;
+            const missingPattern = (
+                showsPattern
+                || state.srText === "Pattern"
+                || state.diffText === "Pattern"
+                || state.useSvDetection
+            ) && !needPatternAnalysis;
+
+            if (profileChanged && ((missingEtterna || missingPattern)
+                || state.contentBar !== beforeContent
+                || state.srText !== beforeSrText)) {
+                // 外部源同样要补跑：它们没有 osu 那种"第二次抓同一张图/命中快照"的兜底，
+                // 但本轮用过的文本本来就在本地（externalText，不经 tosu 抓取）——把同一份
+                // 文本回填待用槽，二次派发即可直接重算，无需任何网络步骤。
+                // 仅在本轮仍是当前请求时回填：新帧会在自己的处理里同步推高
+                // analysisRequestSeq（scheduleRecompute 是同步派发），旧图的文本绝不会
+                // 喂给下一张图；二次派发随即取走该槽，槽位不会滞留。
+                if (externalText && !isStaleRequest()) {
+                    state.pendingSourceText = externalText;
+                }
+                // 二次派发沿用"衍生重算"语义：requestId 已在本函数开头清空，故不会
+                // 再发一帧 result（壳按首帧 requestId 关联）；首帧 result 由下方
+                // finally 无条件发出，stale 不影响 result 帧。
+                scheduleRecompute("auto profile switched", false);
+                return;
+            }
+        }
+
         // 拿到结果、即将首次写入 star 区块时再触发入场动画，
         // 与数值/难度名/图表的刷新同帧，换歌才整块入场，换难度只做轻量过渡。
+        // 星数只在"最终胶囊就是纯 SR"时先写一次：MSD/Pattern/Interlude/PP/6K 档位由下方
+        // 左胶囊终写一次性写入（否则同一个值会先滚一次、再滚一次）。
+        const plainStarCapsule = sixKConst === null && state.srText === "ReworkSR";
         if (rework) {
             playStarBlockEntranceOnce();
-            showNumericStarValue(rework.star);
+            if (plainStarCapsule) {
+                showNumericStarValue(rework.star);
+            }
             updateDiffTextVisibility();
 
             if (state.diffText === "Graph" || showsGraph) {
@@ -1195,39 +1242,17 @@ export async function fetchBeatmapFile(reason) {
 
         setForceHideNumericDifficulty(isVibroMap);
 
+        // 兜底：极少数谱面的 pattern ModeTag 与"LN 占比预览"不一致（SV/混合键型等），
+        // 此时按真实模式再校正一次档位。正常切图的档位已在首次写卡片前判定并派发，
+        // 这里不会命中；命中则与旧行为一致（丢弃本遍、重算一遍）。
         if (autoDisplayEnabled) {
             const beforeContent = state.contentBar;
             const beforeSrText = state.srText;
             const profileChanged = refreshAutoDisplayProfile(resolvedModeTag);
-
-            const missingEtterna = (
-                showsEtterna
-                || state.srText === "MSD"
-                || state.diffText === "MSD"
-            ) && !needEtternaAnalysis;
-            const missingPattern = (
-                showsPattern
-                || state.srText === "Pattern"
-                || state.diffText === "Pattern"
-                || state.useSvDetection
-            ) && !needPatternAnalysis;
-
-            if (profileChanged && ((missingEtterna || missingPattern)
-                || state.contentBar !== beforeContent
-                || state.srText !== beforeSrText)) {
-                // 外部源同样要补跑：它们没有 osu 那种"第二次抓同一张图/命中快照"的兜底，
-                // 但本轮用过的文本本来就在本地（externalText，不经 tosu 抓取）——把同一份
-                // 文本回填待用槽，二次派发即可直接重算，无需任何网络步骤（旧注释担心的
-                // "第二次走 tosu 抓取必然失败"对本类源不成立，故不再按 sourceRequestId 跳过）。
-                // 仅在本轮仍是当前请求时回填：新帧会在自己的处理里同步推高
-                // analysisRequestSeq（scheduleRecompute 是同步派发），旧图的文本绝不会
-                // 喂给下一张图；二次派发随即取走该槽，槽位不会滞留。
+            if (profileChanged && (state.contentBar !== beforeContent || state.srText !== beforeSrText)) {
                 if (externalText && !isStaleRequest()) {
                     state.pendingSourceText = externalText;
                 }
-                // 二次派发沿用"衍生重算"语义：requestId 已在本函数开头清空，故不会
-                // 再发一帧 result（壳按首帧 requestId 关联）；首帧 result 由下方
-                // finally 无条件发出，stale 不影响 result 帧。
                 scheduleRecompute("auto profile switched", false);
                 return;
             }
@@ -1291,7 +1316,10 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "SR";
             }
         } else if (rework) {
-            showNumericStarValue(rework.star);
+            // 纯 SR 档位已在首次写 star 区块时滚过一次，这里不再重放动画。
+            if (!plainStarCapsule) {
+                showNumericStarValue(rework.star);
+            }
             if (state.srText === "ReworkSR") {
                 leftCapsuleUnit = "SR";
             }
