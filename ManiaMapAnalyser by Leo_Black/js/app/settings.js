@@ -44,6 +44,7 @@ import {
     parseEnableAnalyzeLNValue,
     parseEnableAlwaysShowLNDifficultyValue,
     parseEnableTelemetryValue,
+    parseEnableDifficultyFeedbackValue,
     parseGameClientValue,
     patternClustersEl,
     ppBarsEl,
@@ -77,6 +78,7 @@ import { resolveAutoDisplayProfile } from "./modeLogic.js";
 import { applyCoverThemeForBeatmap, resetCoverTheme } from "./coverTheme.js";
 import { initTriangleField } from "./triangles.js";
 import { scheduleRecompute } from "./scheduler.js";
+import { syncFeedbackVisibility } from "./feedback/feedbackStrip.js";
 import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
 import { clearResultCache } from "./resultCache.js";
 import { setTelemetryConfig } from "./telemetry.js";
@@ -711,6 +713,16 @@ export function applyEnableTelemetrySetting(value) {
     return changed;
 }
 
+export function applyEnableDifficultyFeedbackSetting(value) {
+    const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.enableDifficultyFeedback);
+    const changed = state.enableDifficultyFeedback !== next;
+    state.enableDifficultyFeedback = next;
+    // 只在**真的切换**时同步：本地 opt-out（"不再提示"）必须跨 settings 应用保留，
+    // 否则每次 settings 帧/重连都会把它清掉（tosu 在线只读时这是唯一的抑制手段）。
+    if (changed) syncFeedbackVisibility();
+    return changed;
+}
+
 export function applyReverseCardExtendDirectionSetting(value) {
     const next = normalizeBooleanSetting(value, APP_CONFIG.defaults.reverseCardExtendDirection);
     const changed = state.reverseCardExtendDirection !== next;
@@ -763,6 +775,7 @@ const SETTING_HANDLERS = [
     { key: "enableAnalyzeLN", parse: parseEnableAnalyzeLNValue, apply: applyEnableAnalyzeLNSetting },
     { key: "enableAlwaysShowLNDifficulty", parse: parseEnableAlwaysShowLNDifficultyValue, apply: applyEnableAlwaysShowLNDifficultySetting },
     { key: "enableTelemetry", parse: parseEnableTelemetryValue, apply: applyEnableTelemetrySetting },
+    { key: "enableDifficultyFeedback", parse: parseEnableDifficultyFeedbackValue, apply: applyEnableDifficultyFeedbackSetting },
     { key: "display6kLevel", parse: parseDisplay6kLevelValue, apply: applyDisplay6kLevelSetting },
     { key: "extendedEstimationRange", parse: parseExtendedEstimationRangeValue, apply: applyExtendedEstimationRangeSetting },
     { key: "enableOsuTheme", parse: parseEnableOsuThemeValue, apply: applyEnableOsuThemeSetting },
@@ -954,6 +967,7 @@ export async function loadSettings() {
         applyEnableAnalyzeLNSetting(parseEnableAnalyzeLNValue(source));
         applyEnableAlwaysShowLNDifficultySetting(parseEnableAlwaysShowLNDifficultyValue(source));
         applyEnableTelemetrySetting(parseEnableTelemetryValue(source));
+        applyEnableDifficultyFeedbackSetting(parseEnableDifficultyFeedbackValue(source));
         applyDisplay6kLevelSetting(parseDisplay6kLevelValue(source));
         applyExtendedEstimationRangeSetting(parseExtendedEstimationRangeValue(source));
     }

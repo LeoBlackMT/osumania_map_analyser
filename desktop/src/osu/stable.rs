@@ -245,6 +245,85 @@ pub fn mp3_length_is_sane(seconds_ms: f64) -> bool {
     seconds_ms.is_finite() && seconds_ms >= 0.0 && seconds_ms <= MP3_LENGTH_MAX_MS
 }
 
+/// stable 安装目录里的**本机玩家名**候选（`osu!*.cfg` 里的 `Username = …`）。
+///
+/// 为什么需要它：stable 是闭源进程，没有 lazer 那样的"屏幕类型名"来识别回放；
+/// 唯一稳定的判别事实是——结算对象里的 `player_name`（回放结算屏显示的是**被观看者**）
+/// 与本机账号名（osu! 自己写进 cfg 的用户名）是否一致。
+///
+/// ⚠️ cfg **文件名**是 Windows 账户名（`osu!<windows-user>.cfg`），不是 osu! 用户名：
+/// 实测 `osu!.Leo_BlackLT.cfg` 里的 `Username = Shirasu-Azusa`。所以必须读文件内容，
+/// 且只认 `Username` 这一精确键（`SaveUsername` 之类不算）。
+///
+/// 规则：解析后为空的、`osu!.cfg`（无 Username 行）一律跳过；**候选存在且唯一地
+/// "不含"结算玩家名**时调用方才判回放（见 runner）。目录读不了 / 没有任何候选 ⇒
+/// 返回空 ⇒ 不标记（保持现状，绝不因为证据缺失误判）。
+pub fn local_player_names(game_folder: &str) -> Vec<String> {
+    let dir = std::path::Path::new(game_folder);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
+        };
+        if !file_name.starts_with("osu!") || !file_name.ends_with(".cfg") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for line in text.lines() {
+            let line = line.trim_start_matches('\u{feff}');
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            if key.trim() != "Username" {
+                continue;
+            }
+            let name = value.trim().trim_matches('"').trim();
+            if !name.is_empty() {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// 回放判定（stable，纯函数）：结算玩家名非空、本机候选**非空**且全部不匹配 ⇒ 回放。
+///
+/// 保守边界（宁可漏判不可误判——误判会把真实游玩踢出反馈采集）：
+/// - 候选为空（目录不可读 / 没有任何带用户名的 cfg）⇒ `false`；
+/// - 玩家名与任一本机候选相等（看自己的回放 / 多账号）⇒ `false`；
+/// - 拿不到玩家名 ⇒ `false`。
+pub fn replay_from_player_name(player_name: Option<&str>, local_names: &[String]) -> bool {
+    let Some(name) = player_name.map(str::trim).filter(|name| !name.is_empty()) else {
+        return false;
+    };
+    !local_names.is_empty() && local_names.iter().all(|candidate| candidate != name)
+}
+
+/// [`local_player_names`] 的 10 s 目录缓存：结算屏每帧（250 ms）都会走到这里，
+/// 不能每次都读盘；cfg 集合几乎不变，按目录键缓存即可。
+pub fn local_player_names_cached(game_folder: &str) -> Vec<String> {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, String, Vec<String>)>> =
+        std::sync::Mutex::new(None);
+    const TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+    let mut cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
+    if let Some((at, folder, names)) = cache.as_ref() {
+        if at.elapsed() < TTL && folder == game_folder {
+            return names.clone();
+        }
+    }
+    let names = local_player_names(game_folder);
+    *cache = Some((std::time::Instant::now(), game_folder.to_string(), names.clone()));
+    names
+}
+
 // ---- IO：逐条链 ----
 
 /// 一条链的中间值（诊断/证据用；**不进载荷**）。

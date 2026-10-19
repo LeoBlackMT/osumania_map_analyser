@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>/* 首次绘制前定好主题，避免浅色先闪一下再过渡到深色（切换选项卡/刷新都受益）。 */
+(function(){try{var s=localStorage.getItem("mma-theme");var d=s?s==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light");}catch(e){}})();</script>
+<title>ManiaMapAnalyser — Difficulty Feedback</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard.css">
+<style>
+  /* 反馈统计页专属：按日柱状图（其余沿用 dashboard.css）。 */
+  .daily { display: flex; align-items: flex-end; gap: 3px; height: 180px; padding: 4px 2px 0; }
+  .daily .dbar {
+    flex: 1 1 0; min-width: 2px; border-radius: 3px 3px 0 0;
+    background: var(--accent); opacity: .82; min-height: 2px;
+    transition: opacity .15s ease;
+  }
+  .daily .dbar:hover { opacity: 1; }
+  .daily-axis {
+    display: flex; justify-content: space-between;
+    color: var(--muted); font-size: 11px; margin-top: 8px;
+    font-family: var(--font-mono);
+  }
+  .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div>
+      <h1>ManiaMapAnalyser <span class="dim">· Difficulty Feedback</span></h1>
+      <p class="sub">Anonymous votes on the displayed RC difficulty. No usernames, no scores, no beatmap identity, no per-map rows.</p>
+    </div>
+    <div class="controls">
+      <div class="range" id="range" role="group" aria-label="Time range">
+        <button data-days="7">7d</button>
+        <button data-days="30" class="active">30d</button>
+        <button data-days="90">90d</button>
+      </div>
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <nav class="tabs" aria-label="Sections">
+    <a href="/">Usage statistics</a>
+    <a href="/feedback-stats" class="active" aria-current="page">Difficulty feedback</a>
+  </nav>
+  <p class="meta">
+    <span class="live">live</span>
+    <span id="updated">loading…</span>
+    <span class="sep">·</span>
+    <span>window <strong id="windowLabel">30d</strong></span>
+    <span class="sep">·</span>
+    <span>groups with N ≥ 5 only</span>
+  </p>
+</header>
+<main>
+  <section id="overview" class="cards"></section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Votes per day <small>UTC</small></h2>
+      <div class="body"><div id="daily" class="daily"></div><div class="daily-axis"><span id="dailyFrom">–</span><span id="dailyTo">–</span></div></div>
+    </section>
+    <section class="panel">
+      <h2>Vote distribution <small>dan, −1 … +1</small></h2>
+      <div class="body"><div id="votes" class="bars"></div></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Mean residual by estimator <small>target − displayed · weighted</small></h2>
+      <div class="body"><div id="algorithms" class="bars"></div></div>
+    </section>
+    <section class="panel">
+      <h2>Coverage by key count <small>votes</small></h2>
+      <div class="body"><div id="keycounts" class="bars"></div></div>
+    </section>
+  </div>
+
+  <section class="panel full" style="margin-bottom:14px">
+    <h2>How to read this <small>calibration signal, not a ranking</small></h2>
+    <div class="body">
+      <p class="hint">A positive residual means players found the map harder than the estimate shown (they voted “harder”); a negative one means it felt easier. Votes are weighted by accuracy (peak at 96%), and per-map rows are intentionally not published — the private admin view is the only place with map-level detail.</p>
+    </div>
+  </section>
+</main>
+<footer>
+  <span>aggregate statistics only</span>
+  <span class="sep">·</span>
+  <span>no per-map data</span>
+  <span class="sep">·</span>
+  <span>vanilla JS + SVG, no trackers</span>
+</footer>
+<script src="/feedback.js" defer></script>
+</body>
+</html>

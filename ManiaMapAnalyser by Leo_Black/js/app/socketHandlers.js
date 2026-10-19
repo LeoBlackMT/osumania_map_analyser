@@ -33,6 +33,7 @@ import { noteTelemetryActivity } from "./telemetry.js";
 import { isOsuSuppressed } from "./sources/sourceManager.js";
 import { notifySourceEvent } from "./sources/sourceManager.js";
 import { noteOsuScanPayloadArrival } from "./sources/osuScanHint.js";
+import { noteFeedbackFrame, resetFeedbackStrip } from "./feedback/feedbackStrip.js";
 
 
 function getModData(data) {
@@ -152,6 +153,7 @@ export function applySignalState(data) {
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;
+            const wasResultScreen = state.clientStateName === "resultscreen";
             const nextInPlayState = isPlayStateName(normalizedClientStateName);
             const nextIsResultScreen = isResultScreenStateName(normalizedClientStateName);
             const enteredPlayState = !wasInPlayState && nextInPlayState;
@@ -159,6 +161,16 @@ export function applySignalState(data) {
 
             state.clientStateName = normalizedClientStateName;
             state.isInPlayState = nextInPlayState;
+
+            // 结算屏来源：只有"刚从 play 态离开"进入的结算屏才是刚打完的一局。
+            // 从选曲/本地排行榜直接打开的结算屏（查看历史成绩）没有 play 前态 ⇒
+            // 不允许反馈；页面启动时已在结算屏（壳中途重启）也判为不确定。
+            if (nextIsResultScreen && !wasResultScreen) {
+                state.resultsFromPlay = leftPlayState;
+            } else if (!nextIsResultScreen) {
+                state.resultsFromPlay = false;
+            }
+
             updateCardPlayVisibility();
 
             if (enteredPlayState || (leftPlayState && !nextIsResultScreen)) {
@@ -268,6 +280,14 @@ export function applyBeatmapState(data) {
         const nextBeatmapIdentity = identityParts.join("|");
         if (!nextBeatmapIdentity) return;
 
+        // 反馈条只认最近一次解析出的谱面身份：结算帧通常不带 beatmap，必须留档。
+        if (beatmapId) state.currentBeatmapId = Number(beatmapId);
+        if (/^[0-9a-f]{32}$/.test(beatmapHash)) state.currentBeatmapChecksum = beatmapHash;
+        const objectsTotal = Number(beatmap?.stats?.objects?.total);
+        if (Number.isFinite(objectsTotal) && objectsTotal > 0) {
+            state.currentObjectsTotal = objectsTotal;
+        }
+
         // api_v2 packets can be partial. Only apply incoming mod state when
         // mod payload is explicitly present; otherwise keep current state.
         const shouldApplyModState = !previousModSignature
@@ -303,6 +323,9 @@ export function applyBeatmapState(data) {
         });
 
         state.lastBeatmapIdentity = nextBeatmapIdentity;
+        // 换图/换 mod：旧分析结果不再对应当前显示值，反馈条立即作废。
+        state.feedbackContext = null;
+        resetFeedbackStrip();
         // 空 key（partial 包）不污染历史，避免后续完整包比较被污染。
         if (nextSongKey) state.lastSongKey = nextSongKey;
         state.lastBeatmapIdentitySource = identityParts.length > 1
@@ -345,6 +368,8 @@ export function setupSocketListener() {
             return;
         }
         applyBeatmapState(data);
+        // 反馈条：每帧一次（内部有早退与一次性 token），必须在谱面身份更新之后。
+        noteFeedbackFrame(data);
         if (bufferedTosuData) {
             bufferedTosuData = null;
         }

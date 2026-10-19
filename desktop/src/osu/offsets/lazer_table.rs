@@ -45,8 +45,66 @@ pub struct OffsetTable {
     pub types: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
     pub runtime: Option<RuntimeSection>,
+    /// 结算屏 → `ScoreInfo` 的字段位移（读侧只在 `state.name == resultScreen` 用）。
+    #[serde(default)]
+    pub results: Option<ResultsSection>,
     pub verified_build: String,
     pub evidence: String,
+}
+
+/// 结算屏判定数链路的两个（可选第三个）字段位移。
+///
+/// 为什么不塞进 `types`：`types` 按"类型名 + 字段名"查表，而这两个位移挂的是
+/// **当前屏幕对象**（运行时才知道是哪个派生类，2026.1005 上是 `SoloResultsScreen`）
+/// 与 `ScoreInfo` 对象本身。读侧只在结算屏读它们，别处一律不发。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ResultsSection {
+    /// 结算屏对象上指向 `osu.Game.Scoring.ScoreInfo` 的字段位移（`ResultsScreen.Score`）。
+    pub score_offset: i64,
+    /// `ScoreInfo` 对象上指向 `<StatisticsJson>k__BackingField`（`System.String`）的位移。
+    ///
+    /// 可选：它只在**入库过**的成绩上有非空内容；`live` 在结算屏定位它靠"两段相邻的判定
+    /// JSON"，拿不到就不写这一项（读侧只用下面的字典）。
+    #[serde(default)]
+    pub statistics_offset: Option<i64>,
+    /// 结算屏对象上指向 `Player`/`ReplayPlayer` 的位移（回放判定；缺失则跳过该判定）。
+    #[serde(default)]
+    pub player_offset: Option<i64>,
+    /// `ScoreInfo` 对象上 `statistics`（`Dictionary<HitResult,int>`）的字段位移。
+    ///
+    /// 为什么需要它：`<StatisticsJson>` 只在**入库过**的成绩上非空（回放/历史成绩）；
+    /// 刚打完、还在结算屏上的分数，JSON 是空串，判定数只在 `statistics` 字典里。
+    #[serde(default)]
+    pub statistics_dict_offset: Option<i64>,
+    /// `Dictionary` 对象里 `_entries` 字段的位移（容器内部布局；`live` 在活体上测出）。
+    #[serde(default)]
+    pub dict_entries_offset: Option<i64>,
+    /// `HitResult` 枚举序号 → 载荷键（`{"miss":1,"meh":2,"ok":3,"good":4,"great":5,"perfect":6}`）。
+    ///
+    /// 来自 IL 的枚举成员声明顺序（隐式值 = 声明序号）；读字典时按它把整型键换成判定。
+    #[serde(default)]
+    pub hit_result_values: BTreeMap<String, u32>,
+    /// 活体验证见证（结算屏类型 + 解析出的判定摘要）。
+    #[serde(default)]
+    pub witness: String,
+}
+
+impl ResultsSection {
+    /// 位移都在合理域里、且 8 字节对齐才算可用（坏值 = 读侧按"没有 results 段"降级）。
+    pub fn usable(&self) -> bool {
+        let in_range = |offset: i64| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(&offset)
+                && offset % 8 == 0
+        };
+        let has_hits_source = self.statistics_offset.is_some()
+            || (self.statistics_dict_offset.is_some() && self.dict_entries_offset.is_some());
+        in_range(self.score_offset)
+            && has_hits_source
+            && self.player_offset.map_or(true, in_range)
+            && self.statistics_offset.map_or(true, in_range)
+            && self.statistics_dict_offset.map_or(true, in_range)
+            && self.dict_entries_offset.map_or(true, in_range)
+    }
 }
 
 /// `runtime` 段里的一个位移。
@@ -116,6 +174,7 @@ pub const TABLE_KEYS: &[&str] = &[
     "game_base_vtable",
     "types",
     "runtime",
+    "results",
     "verified_build",
     "evidence",
 ];
@@ -209,6 +268,11 @@ impl OffsetTable {
 
     pub fn runtime(&self) -> Option<&RuntimeSection> {
         self.runtime.as_ref()
+    }
+
+    /// `results` 段（位移越界/未对齐 ⇒ `None`，读侧按"表里没有结算段"降级）。
+    pub fn results(&self) -> Option<&ResultsSection> {
+        self.results.as_ref().filter(|section| section.usable())
     }
 
     pub fn runtime_entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script>/* 首次绘制前定好主题，避免浅色先闪一下再过渡到深色。 */
+(function(){try{var s=localStorage.getItem("mma-theme");var d=s?s==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light");}catch(e){}})();</script>
+<title>ManiaMapAnalyser — RC Feedback Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- 与公共统计页同一套设计系统（同源 /dashboard.css，go:embed 同一后端进程）。 -->
+<link rel="stylesheet" href="/dashboard.css">
+<style>
+  /* ── admin 专属补充：token 行、表格、pager（dashboard.css 不含表格样式） ── */
+  .controls input[type="password"] {
+    height: 38px; padding: 0 12px; min-width: 240px;
+    background: var(--panel); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 8px;
+    font: 500 13px var(--font-sans);
+    box-shadow: var(--shadow);
+  }
+  .controls input[type="password"]:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .controls .btn {
+    height: 38px; padding: 0 16px;
+    background: var(--panel); color: var(--fg-dim);
+    border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; font: 500 13px var(--font-sans);
+    box-shadow: var(--shadow);
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .controls .btn:hover { color: var(--fg); border-color: var(--border-strong); }
+  .controls .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .controls .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .meta .status { font-weight: 500; }
+  .meta .status.err { color: var(--danger); }
+
+  table {
+    border-collapse: collapse;
+    /* 列多时横向滚动而不是把内容挤断/溢出面板。 */
+    width: max-content; min-width: 100%;
+    font-size: 12.5px; font-variant-numeric: tabular-nums;
+  }
+  th, td { border-bottom: 1px solid var(--border); padding: 6px 10px; text-align: left; white-space: nowrap; }
+  th {
+    color: var(--muted); font-weight: 600; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: .04em;
+    position: sticky; top: 0; background: var(--panel); z-index: 1;
+  }
+  td.num, th.num { text-align: right; }
+  td { color: var(--fg); }
+  tbody tr:hover td { background: var(--accent-soft); }
+  .scroll {
+    max-height: 460px; overflow: auto;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel);
+  }
+  .muted { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 6px 2px 2px; line-height: 1.5; }
+  .pager {
+    display: flex; align-items: center; gap: 10px;
+    margin: 8px 2px 4px; font-size: 12px; color: var(--muted);
+  }
+  .pager button {
+    height: 26px; padding: 0 12px; font-size: 12px;
+    background: var(--panel); color: var(--fg-dim);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }
+  .pager button:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div>
+      <h1>ManiaMapAnalyser <span class="dim">· RC Feedback Admin</span></h1>
+      <p class="sub">Private calibration view of the difficulty-feedback votes. Token required; every write is audit-free and local.</p>
+    </div>
+    <div class="controls">
+      <input id="token" type="password" placeholder="FEEDBACK_ADMIN_TOKEN" autocomplete="off" />
+      <button id="load" class="btn primary" type="button">Load</button>
+      <button id="refresh" class="btn" type="button">Rebuild aggregates</button>
+      <button id="csvBtn" class="btn" type="button">Export CSV</button>
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <p class="meta">
+    <span class="live">admin</span>
+    <span id="status" class="status">enter the admin token and press Load</span>
+    <span class="sep">·</span>
+    <span>window <strong id="windowLabel">30d</strong></span>
+    <span class="sep">·</span>
+    <span>aggregates <strong id="aggUpdated">–</strong></span>
+  </p>
+</header>
+<main>
+  <section id="content" hidden>
+    <section id="totals" class="cards"></section>
+
+    <section class="panel full">
+      <h2>osu! API budget <small>daily calls</small></h2>
+      <div class="body"><div id="api" class="cards" style="margin-bottom:0"></div></div>
+    </section>
+
+    <section class="panel full">
+      <h2>Candidates <small>consensus differs from displayed value</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="candidates"></table></div>
+        <div class="pager" id="candidates-pager"></div>
+      </div>
+    </section>
+
+    <section class="panel full">
+      <h2>Per map <small>N ≥ threshold · one row per map + rate + mods + algorithm</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="maps"></table></div>
+        <div class="pager" id="maps-pager"></div>
+        <p class="hint">N = votes · weight = Σ weight (accuracy curve v3) · distinct = distinct installs · median = weighted median (trimmed) · Q25/Q75/IQR = plain target quartiles (unweighted) · target = displayed + vote</p>
+      </div>
+    </section>
+
+    <section class="panel full">
+      <h2>Rejections <small>per day · per reason</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="rejects"></table></div>
+        <div class="pager" id="rejects-pager"></div>
+      </div>
+    </section>
+
+    <section class="panel full" style="margin-bottom:14px">
+      <h2>Feature residuals <small>weighted mean target per bucket</small></h2>
+      <div class="body">
+        <div class="scroll"><table id="features"></table></div>
+        <div class="pager" id="features-pager"></div>
+      </div>
+    </section>
+  </section>
+</main>
+<footer>
+  <span>private admin surface</span>
+  <span class="sep">·</span>
+  <span>same design system as the public dashboard</span>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const tokenInput = $("token");
+tokenInput.value = sessionStorage.getItem("mma.feedback.admin") || "";
+
+/* ── 主题切换（与统计页同一存档键与规则） ── */
+function applyTheme() {
+  const stored = localStorage.getItem("mma-theme");
+  const dark = stored
+    ? stored === "dark"
+    : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+}
+applyTheme();
+$("themeBtn").addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  const next = current === "dark" ? "light" : "dark";
+  localStorage.setItem("mma-theme", next);
+  applyTheme();
+});
+
+function headers() {
+  return { "Authorization": "Bearer " + tokenInput.value.trim() };
+}
+
+function fmt(value, digits = 2) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "-";
+}
+
+const rateText = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? `×${n.toFixed(2)}` : "–";
+};
+
+const modsText = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text || text === "[]") return "NM";
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) && list.length ? list.join("+") : "NM";
+  } catch {
+    return text;
+  }
+};
+
+const PAGE_SIZE = 20;
+const pages = new Map();
+let lastData = null;
+
+// 单元格一律转义后拼进 innerHTML：`pattern` 等字段原样入库（壳会 sanitize，但
+// release seed 可提取 / 本地改页面可绕过），未转义就是存储型 XSS。
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[ch]));
+
+function table(el, columns, rows, rowMapper) {
+  const key = el.id;
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  let page = Math.min(pages.get(key) || 1, pageCount);
+  pages.set(key, page);
+  const start = (page - 1) * PAGE_SIZE;
+  const slice = rows.slice(start, start + PAGE_SIZE);
+
+  const head = "<thead><tr>" + columns.map((c) =>
+    `<th class="${c.num ? "num" : ""}"${c.title ? ` title="${esc(c.title)}"` : ""}>${esc(c.label)}</th>`).join("") + "</tr></thead>";
+  const body = slice.length
+    ? slice.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
+        `<td class="${columns[index].num ? "num" : ""}">${esc(cell)}</td>`).join("") + "</tr>").join("")
+    : `<tr><td colspan="${columns.length}" class="muted">No rows</td></tr>`;
+  el.innerHTML = head + "<tbody>" + body + "</tbody>";
+
+  const pager = document.getElementById(`${key}-pager`);
+  if (!pager) return;
+  if (!rows.length) { pager.innerHTML = ""; return; }
+  pager.innerHTML =
+    `<button data-page="prev" ${page === 1 ? "disabled" : ""}>Prev</button>` +
+    `<span>${page} / ${pageCount} · ${rows.length} rows</span>` +
+    `<button data-page="next" ${page === pageCount ? "disabled" : ""}>Next</button>`;
+  pager.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      pages.set(key, page + (button.dataset.page === "next" ? 1 : -1));
+      if (lastData) render(lastData);
+    });
+  });
+}
+
+/* 卡片复用统计页的 `.card > .v + .k` 结构。 */
+function renderCards(el, entries) {
+  el.innerHTML = entries.map(([label, value]) =>
+    `<div class="card"><div class="v">${value}</div><div class="k">${label}</div></div>`).join("");
+}
+
+function render(data) {
+  lastData = data;
+  $("windowLabel").textContent = `${data.days || 30}d`;
+  renderCards($("totals"), [
+    ["Accepted votes", data.totals.events],
+    ["Maps", data.totals.maps],
+    ["Days with votes", data.totals.distinct_days],
+    ["Agg rows", data.totals.agg_rows],
+    ["Candidates", data.totals.candidate_rows],
+    ["Rejected", data.totals.rejects],
+  ]);
+  renderCards($("api"), Object.entries(data.api || {}).map(([k, v]) => [k, v]));
+
+  table($("candidates"), [
+    { label: "bid", num: true },
+    { label: "rate", num: true, title: "speed rate: ×1.00 NM/MR, ×1.50 DT/NC, ×0.75 HT/DC" },
+    { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
+    { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "N", num: true, title: "votes in this group" },
+    { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
+    { label: "median", num: true, title: "weighted median of target (trimmed)" },
+    { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
+  ], data.candidates, (r) => [
+    r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern,
+    r.ln_bucket, r.n, r.distinct_installs, fmt(r.target_median), fmt(r.iqr),
+  ]);
+
+  table($("maps"), [
+    { label: "bid", num: true },
+    { label: "rate", num: true, title: "speed rate: ×1.00 NM/MR, ×1.50 DT/NC, ×0.75 HT/DC" },
+    { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
+    { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "N", num: true, title: "votes in this group" },
+    { label: "weight", num: true, title: "Σ weight (accuracy curve v3, peak at 96%)" },
+    { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
+    { label: "median", num: true, title: "weighted median of target (trimmed)" },
+    { label: "Q25", num: true, title: "25th percentile of target (unweighted)" },
+    { label: "Q75", num: true, title: "75th percentile of target (unweighted)" },
+    { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
+  ], data.maps, (r) => [
+    r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket,
+    r.n, fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
+    fmt(r.target_q25), fmt(r.target_q75), fmt(r.iqr),
+  ]);
+
+  table($("rejects"), [
+    { label: "day", num: true }, { label: "reason" }, { label: "count", num: true },
+  ], data.rejects, (r) => [
+    new Date(r.day).toISOString().slice(0, 10), r.reason, r.count,
+  ]);
+
+  table($("features"), [
+    { label: "day", num: true }, { label: "pattern" }, { label: "keys", num: true },
+    { label: "LN" }, { label: "OD" }, { label: "algo" }, { label: "N", num: true },
+    { label: "mean target", num: true }, { label: "vote sum", num: true },
+  ], data.features, (r) => [
+    new Date(r.day).toISOString().slice(0, 10), r.pattern, r.key_count, r.ln_bucket,
+    r.od_bucket, r.actual_algorithm, r.n,
+    fmt(r.target_weighted_sum / (r.weight_sum || 1)), fmt(r.vote_sum),
+  ]);
+
+  // 聚合表每 5 分钟重建一次：把"这份聚合有多新"直接写在页头，避免误以为新票没入库。
+  const stamps = [...(data.maps || []), ...(data.candidates || [])]
+    .map((row) => Number(row.updated_at) || 0);
+  const newest = stamps.length ? Math.max(...stamps) : 0;
+  $("aggUpdated").textContent = newest ? new Date(newest).toLocaleString() : "–";
+}
+
+function setStatus(text, isError = false) {
+  const el = $("status");
+  el.textContent = text;
+  el.classList.toggle("err", isError);
+}
+
+async function load() {
+  const token = tokenInput.value.trim();
+  if (!token) { setStatus("Enter the admin token.", true); return; }
+  sessionStorage.setItem("mma.feedback.admin", token);
+  setStatus("Loading…");
+  try {
+    const response = await fetch("/api/v1/feedback/stats?days=30", { headers: headers(), cache: "no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    render(data);
+    $("content").hidden = false;
+    setStatus("Updated " + new Date().toLocaleTimeString());
+  } catch (error) {
+    setStatus("Failed: " + error.message + " (wrong token or endpoint disabled)", true);
+  }
+}
+
+$("load").addEventListener("click", load);
+tokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") load();
+});
+$("refresh").addEventListener("click", async () => {
+  setStatus("Rebuilding…");
+  try {
+    const response = await fetch("/api/v1/feedback/refresh", { method: "POST", headers: headers() });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    await load();
+  } catch (error) {
+    setStatus("Rebuild failed: " + error.message, true);
+  }
+});
+$("csvBtn").addEventListener("click", async () => {
+  const response = await fetch("/api/v1/feedback/export.csv", { headers: headers() });
+  if (!response.ok) { setStatus("CSV failed: HTTP " + response.status, true); return; }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "feedback-map-agg.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

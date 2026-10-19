@@ -4,9 +4,23 @@
 #       包含：
 #       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
 #       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
+#       3. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell-linux.tar.gz（-SkipLinux 可跳过；
+#          Linux 包也写进同一个时间戳目录，目录结构与 zip 相同）
+#
+# 反馈签名（必填）：先设置 MMA_FEEDBACK_SIGNING_SEED（64 hex）与 MMA_FEEDBACK_KEY_ID，
+# 或设置 MMA_FEEDBACK_SEED_FILE 指向一个只含 seed 的本地文件（gitignore）。
+# 本地测试可加 -AllowDevSigning 使用内置 dev seed（服务端需 FEEDBACK_ALLOW_DEV_KEY=true）。
+# 只检查签名配置不打包：.\release.ps1 -SigningCheckOnly
+# 默认构建 Windows + Linux（Docker）；只要 Windows：-SkipLinux；只要 Linux：-Linux
+# 签名 seed 默认从 .secrets\feedback-seed.txt 读取（可用 env 覆盖）
 
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$AllowDevSigning,
+    [switch]$SigningCheckOnly,
+    [switch]$Linux,
+    [switch]$All,
+    [switch]$SkipLinux
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +28,84 @@ $root = $PSScriptRoot
 $pluginDir = Join-Path $root "ManiaMapAnalyser by Leo_Black"
 $desktop = Join-Path $root "desktop"
 
-# 版本号以插件 metadata.txt 为唯一来源（避免与 index.js/metadata 漂移）。
+# 反馈签名 seed 只从环境变量或本地 seed 文件读取；绝不写进仓库或日志。
+function Resolve-FeedbackSigning {
+    param([switch]$AllowDevSigning)
+
+    # 默认直接读仓库内的相对路径 .secrets\feedback-seed.txt（不入库）；env 仍可覆盖。
+    $seed = $env:MMA_FEEDBACK_SIGNING_SEED
+    if (-not $seed) {
+        $defaultSeed = Join-Path $root ".secrets\feedback-seed.txt"
+        if (Test-Path -LiteralPath $defaultSeed -PathType Leaf) {
+            $seed = Get-Content -LiteralPath $defaultSeed -Raw
+        } elseif ($env:MMA_FEEDBACK_SEED_FILE) {
+            $seedPath = $env:MMA_FEEDBACK_SEED_FILE
+            if (-not (Test-Path -LiteralPath $seedPath -PathType Leaf)) {
+                throw "MMA_FEEDBACK_SEED_FILE not found: $seedPath"
+            }
+            $seed = Get-Content -LiteralPath $seedPath -Raw
+        }
+    }
+    $seed = ("$seed").Trim()
+
+    if ($seed) {
+        if ($seed -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "MMA_FEEDBACK_SIGNING_SEED must be 64 hex chars (32 bytes); got $($seed.Length) chars"
+        }
+        $keyId = ("$($env:MMA_FEEDBACK_KEY_ID)").Trim()
+        if (-not $keyId) {
+            $pubFile = Join-Path $root ".secrets\feedback-public.txt"
+            if (Test-Path -LiteralPath $pubFile) {
+                $match = Select-String -LiteralPath $pubFile -Pattern '^key_id=(.+)$' | Select-Object -First 1
+                if ($match) { $keyId = $match.Matches[0].Groups[1].Value.Trim() }
+            }
+        }
+        if (-not $keyId) { $keyId = "release" }
+        if ($keyId -notmatch '^[A-Za-z0-9_-]{1,32}$') {
+            throw "MMA_FEEDBACK_KEY_ID must be 1-32 chars of [A-Za-z0-9_-]"
+        }
+        $env:MMA_FEEDBACK_SIGNING_SEED = $seed.ToLowerInvariant()
+        $env:MMA_FEEDBACK_KEY_ID = $keyId
+        Write-Host "Feedback signing: key_id=$keyId"
+
+        $keygenDir = Join-Path $root "backend"
+        $go = Get-Command go -ErrorAction SilentlyContinue
+        if ($go -and (Test-Path -LiteralPath (Join-Path $keygenDir "cmd\feedback-keygen\main.go"))) {
+            Push-Location $keygenDir
+            try {
+                $pub = (& go run ./cmd/feedback-keygen -derive -public-only 2>$null | Select-Object -Last 1)
+                $goOk = ($LASTEXITCODE -eq 0)
+            } finally {
+                Pop-Location
+            }
+            if ($goOk -and $pub) {
+                $pub = $pub.Trim()
+                Write-Host "Feedback public key: $pub"
+                Write-Host "  -> server FEEDBACK_PUBLIC_KEYS must contain: ${keyId}:${pub}"
+            } else {
+                Write-Warning "Could not derive the public key (go run failed). Verify it manually."
+            }
+        } else {
+            Write-Warning "Go not found; derive the public key with: cd backend; go run ./cmd/feedback-keygen -derive -public-only"
+        }
+    } elseif ($AllowDevSigning) {
+        Remove-Item Env:MMA_FEEDBACK_SIGNING_SEED -ErrorAction SilentlyContinue
+        Remove-Item Env:MMA_FEEDBACK_KEY_ID -ErrorAction SilentlyContinue
+        Write-Warning "Feedback signing: DEV SEED (key_id=dev). The server accepts it only with FEEDBACK_ALLOW_DEV_KEY=true."
+    } else {
+        throw "Feedback signing seed missing. Set MMA_FEEDBACK_SIGNING_SEED (64 hex) or MMA_FEEDBACK_SEED_FILE, or pass -AllowDevSigning for a local test build."
+    }
+}
+
+Resolve-FeedbackSigning -AllowDevSigning:$AllowDevSigning
+if ($SigningCheckOnly) {
+    Write-Host "Signing check passed."
+    exit 0
+}
+
+# 版本号与输出目录必须先定：Windows 包与 Linux 包（Docker 内）写进**同一个**
+# 时间戳目录。历史上 Linux tar.gz 落在 release\ 根目录，就是因为 Docker 构建
+# 发生在时间戳目录创建之前（见 build-linux.sh 的 MMA_RELEASE_DIR）。
 $metadataPath = Join-Path $pluginDir "metadata.txt"
 $version = ((Get-Content -LiteralPath $metadataPath) |
     Where-Object { $_ -like 'Version:*' } |
@@ -24,6 +115,39 @@ if (-not $version) { throw "version not found in $metadataPath" }
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outDir = Join-Path $root "release\${timestamp}-${version}"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+# 容器里 /src 就是仓库根；把相对路径交给 build-linux.sh，保持与 Windows 包同一目录。
+$releaseDirInContainer = "/src/release/$([System.IO.Path]::GetFileName($outDir))"
+
+# --- Linux 包（Docker）---
+function Build-LinuxShell {
+    # PS 5.1：原生命令的 stderr 重定向在 Stop 模式下会被当成异常。
+    $ErrorActionPreference = "Continue"
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        throw "Docker not found. Install Docker Desktop (it is required to build the Linux shell on Windows)."
+    }
+    $image = "mma-shell-linux-builder"
+    docker image inspect $image *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Building Docker image $image (first run only)..."
+        docker build -t $image -f (Join-Path $desktop "docker\Dockerfile") (Join-Path $desktop "docker")
+        if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
+    }
+    Write-Host "Building Linux shell in Docker..."
+    docker run --rm `
+        -v "${root}:/src" `
+        -w /src/desktop `
+        -e MMA_FEEDBACK_SIGNING_SEED `
+        -e MMA_FEEDBACK_KEY_ID `
+        -e MMA_FEEDBACK_ALLOW_DEV `
+        -e CARGO_TARGET_DIR=/src/desktop/target-linux `
+        -e "MMA_RELEASE_DIR=$releaseDirInContainer" `
+        $image bash build-linux.sh
+    if ($LASTEXITCODE -ne 0) { throw "Linux shell build failed" }
+}
+
+if ($Linux -or $All) { Build-LinuxShell }
+if ($Linux -and -not $All) { exit 0 }
 
 if (-not (Test-Path (Join-Path $pluginDir "index.html"))) {
     throw "plugin dir not found: $pluginDir"
@@ -51,7 +175,6 @@ $exeSrc = if ($env:CARGO_TARGET_DIR -and (Test-Path (Join-Path $env:CARGO_TARGET
 }
 if (-not (Test-Path $exeSrc)) { throw "release exe missing: $exeSrc" }
 
-New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 $zip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version-with-shell.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 
@@ -66,6 +189,13 @@ Copy-Item -Recurse $pluginDir $stage
 # 排除开发依赖（如 companella ORT 的 node_modules）
 Get-ChildItem -Path $stage -Recurse -Directory -Filter "node_modules" | Remove-Item -Recurse -Force
 Copy-Item $exeSrc (Join-Path $stage "mma-shell.exe")
+
+# 本地联调用启动器：注入本地反馈端点后启动同目录的 exe。随包分发，便于
+# 测试版直接双击 run-local.cmd 而不需要手动 set 环境变量。
+$runLocalSrc = Join-Path $root "release\run-local.cmd"
+if (Test-Path $runLocalSrc) {
+    Copy-Item $runLocalSrc (Join-Path $stage "run-local.cmd")
+}
 
 # 拷贝统一偏移表（desktop/offsets，包含 stable 与 lazer 原生内存读取必需的纯数据表与 README）
 $offsetsSrc = Join-Path $desktop "offsets"
@@ -149,3 +279,8 @@ Remove-Item -Recurse -Force $pluginStage
 
 $pluginMb = [math]::Round((Get-Item $pluginOnlyZip).Length / 1MB, 1)
 Write-Host "released (plugin only): $pluginOnlyZip ($pluginMb MB)"
+
+if (-not $SkipLinux) {
+    Write-Host "Building Linux package (set -SkipLinux to skip)..."
+    Build-LinuxShell
+}

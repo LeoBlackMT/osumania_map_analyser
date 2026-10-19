@@ -30,6 +30,7 @@
 - 可选：把数据库快照备份到华为云 OBS（每日 ×30 + 每月 ×12）。
 - 一次性重建命令：`telemetry-server -migrate`（停服状态下从原始事件清空重建全部聚合，幂等）。
 - 一次性清洗命令：`telemetry-server -clean`（停服状态下清洗历史非官方算法、异常调试耗时与未知版本）。
+- 可选：**RC 难度反馈**（服务端 `FEEDBACK_ENABLED=true` 才启用）——独立 `feedback.db` 接收壳签名后的五档评分，经 osu! API 校验与严格规则后入库，提供聚合表、私有 admin 页（`/feedback`）、公开聚合页（`/feedback-stats`，`GET /api/v1/feedback/summary`，无 per-map）与 CSV。客户端默认开启、可在插件设置里关闭；服务端未启用时相关路由 404。
 
 ## 隐私
 
@@ -38,6 +39,8 @@
 **永不采集/存储**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP 地址（连哈希都不存）、UA、操作系统、时区。采集端在服务端做字段白名单过滤，其余一律丢弃。
 
 看板与 `/api/v1/stats` 只暴露**聚合结果**——绝不暴露单个安装 ID、单条事件或 IP。
+
+**RC 难度反馈**是第二类、默认开启（可在设置中关闭）的数据：只上传谱面 ID/checksum、当前显示难度、五档评分、粗粒度 weight 与特征（键数/LN 比例/键型），不传 acc、分数、用户名或 session；`install_id` 只在服务端 HMAC 内使用、不落库。详见 [docs/features/telemetry.md §7](../docs/features/telemetry.md) 与 [docs/security.md](docs/security.md) §5。
 
 ## 架构
 
@@ -96,6 +99,8 @@ curl -d '{"id":"00000000-0000-4000-8000-000000000000","kind":"boot","version":"1
 | `MMA_TELEMETRY_RATE_LIMIT_PER_MIN` | `120` | 采集请求限速（次/分/IP，0 关闭） |
 | `MMA_TELEMETRY_STATS_CACHE_SECONDS` | `60` | `/api/v1/stats` 聚合缓存秒数 |
 | `MMA_BACKUP_OBS_*` | 空 | 华为云 OBS 备份凭据（空 = 禁用） |
+| `FEEDBACK_ENABLED` | `false` | 启用 RC 难度反馈端点（还需公钥/去重密钥/osu! client） |
+| `MMA_FEEDBACK_DB` | `feedback.db` | 反馈库路径（与遥测库分开） |
 
 ## HTTP 接口
 

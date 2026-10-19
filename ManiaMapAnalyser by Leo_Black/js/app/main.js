@@ -21,6 +21,7 @@ import { handleSongFrame } from "./sources/externalSource.js";
 import { applyShellState, applyMalody4Selection } from "./sources/shellState.js";
 import { initSourceManager } from "./sources/sourceManager.js";
 import { setupSocketListener, resumeBufferedOsuState } from "./socketHandlers.js";
+import { initFeedback } from "./feedback/feedbackStrip.js";
 
 setRecomputeHandler(fetchBeatmapFile);
 
@@ -30,6 +31,8 @@ export async function initialize() {
     await loadSettings();
     initTelemetry();
     startTelemetryHeartbeat();
+    // 仅壳窗口（24061 或壳的 hash 标记）会真的建出反馈条；浏览器/OBS 无 DOM。
+    initFeedback();
     updateModeTagVisibility();
     updatePauseCountVisibility();
     updateCardPlayVisibility();

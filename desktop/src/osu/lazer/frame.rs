@@ -2,10 +2,13 @@ use crate::osu::model::{Client, LazerMod, Reason, Snapshot};
 use crate::osu::offsets::{LookupError, OffsetTable};
 use super::fields::*;
 use super::resolve::*;
+#[allow(unused_imports)]
 use super::screen::{read_eetype, read_screen_state, runtime_probe, ScreenOutcome};
-use super::source::*;
+#[allow(unused_imports)]
 use super::table::*;
+use super::source::*;
 use super::types::*;
+use super::results;
 use std::path::PathBuf;
 
 /// 降级标记：`<载荷字段>:<原因>`。
@@ -265,6 +268,8 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         ScreenOutcome::Mapped(state) => {
             snapshot.state_number = Some(state.number);
             snapshot.state_name = Some(state.name.clone());
+            // 回放：当前屏幕是 ReplayPlayer（状态名同为 play，只能靠类型名区分）。
+            snapshot.replay = state.type_name.contains("ReplayPlayer");
         }
         ScreenOutcome::Unmapped(type_name) => {
             snapshot.state_name = Some(String::new());
@@ -279,18 +284,50 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             gaps.push(gap("state.number", &reason));
         }
     }
+
+    // ⑥b 结算屏判定数：`ResultsScreen.Score` → `ScoreInfo.<StatisticsJson>`。
+    //     lazer 没有 stable 那种"候选槽"，判定数只能从表里的 `results` 段读
+    //     （`live` 生成器在结算屏上活体验证后写入）。读不到 ⇒ 不发布（gap 逐字记录），
+    //     绝不 0 占位、也绝不沿用上一帧。
+    //     回放判定：结算屏的 `<player>` 是 `ReplayPlayer` ⇒ 这一局来自回放（从回放进入的
+    //     结算屏，栈顶是 ResultsScreen，光看屏幕类型识别不出来），不能收作真实游玩。
+    if snapshot.is_result_state() {
+        let read = results::read_results(
+            source,
+            table,
+            chain.screen_top.unwrap_or(0),
+            layout,
+            modules,
+        );
+        if read.replay {
+            snapshot.replay = true;
+        }
+        if let Some(hits) = read.hits {
+            snapshot.result_hits = Some(hits);
+        }
+        gaps.extend(read.gaps);
+    }
     match resolved.selected_mods.clone() {
         Ok(offset) => {
             chain.selected_mods = read_ptr_field(source, game_base, offset);
             if let Some(selected_mods) = chain.selected_mods {
-                snapshot.lazer_mods = read_lazer_mods(source, table, selected_mods, &resolved, modules);
-                if snapshot.lazer_mods.is_none() {
-                    for field in ["play.mods", "menu.mods", "resultsScreen.mods"] {
-                        gaps.push(gap(field, "offsets-missing-ScoreInfo.ModsJson"));
+                let read = read_lazer_mods(source, table, selected_mods, &resolved, modules);
+                match read {
+                    Some((mods, complete)) => {
+                        snapshot.lazer_mods = Some(mods);
+                        snapshot.lazer_mods_complete = complete;
+                    }
+                    None => {
+                        snapshot.lazer_mods = None;
+                        snapshot.lazer_mods_complete = false;
+                        for field in ["play.mods", "menu.mods", "resultsScreen.mods"] {
+                            gaps.push(gap(field, "offsets-missing-ScoreInfo.ModsJson"));
+                        }
                     }
                 }
             } else {
                 snapshot.lazer_mods = None;
+                snapshot.lazer_mods_complete = false;
                 gaps.push(gap("play.mods", "read"));
                 gaps.push(gap("menu.mods", "read"));
                 gaps.push(gap("resultsScreen.mods", "read"));
@@ -298,6 +335,7 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         }
         Err(error) => {
             snapshot.lazer_mods = None;
+            snapshot.lazer_mods_complete = false;
             gaps.push(offsets_gap("play.mods", &error));
             gaps.push(offsets_gap("menu.mods", &error));
             gaps.push(offsets_gap("resultsScreen.mods", &error));
@@ -306,7 +344,10 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     // ⑦ 播放时钟
     snapshot.play_time = read_live_time(source, game_base, &resolved, &mut chain, &mut gaps);
     gaps.push(GAP_PLAY_HITS.to_string());
-    gaps.push(GAP_RESULTS_HITS.to_string());
+    // 结算态由 ⑥b 负责：读到了就不该再报"offsets-missing"；读不到时它已经写了逐字的 gap。
+    if !snapshot.is_result_state() {
+        gaps.push(GAP_RESULTS_HITS.to_string());
+    }
     gaps.push(GAP_BACKGROUND.to_string());
     gaps.push(GAP_AUDIO.to_string());
 
@@ -543,6 +584,17 @@ pub fn attach(
         }
     };
     let loaded = load_table(&files, env_path.as_deref(), &table_dir, &info, &prove)?;
+    // 诊断：实际加载的是哪张表、有没有结算屏判定数（`results` 段）。页面只能看到
+    // `degradedFields`，这一行让现场日志能区分"表没这一段"与"读失败"。
+    crate::server::log::log_at(
+        "info",
+        &format!(
+            "osu: lazer table {} (origin {}) results_section={}",
+            loaded.table.key(),
+            loaded.origin.as_str(),
+            loaded.table.results().is_some()
+        ),
+    );
     let Some(candidate) = resolution.accepted() else {
         eprintln!(
             "[osu] lazer: L1 resolution failed — no GameBase candidate for {} anchor(s); \
@@ -726,13 +778,17 @@ pub fn mod_acronym_from_type_name(name: &str) -> Option<(&'static str, Option<f6
 }
 
 /// 从 SelectedMods 链（`Bindable<IReadOnlyList<Mod>>`）读取当前态启用的 mods 列表。
+///
+/// 返回 `(mods, complete)`：`complete = false` 表示列表里至少有一个元素**读不全**
+/// （对象/类型名/acronym/mods 数超过上限）。展示层照常使用 `mods`，但签名层必须
+/// 拒绝——把 DT 静默丢成 NM 会给后端写入错误的客观字段。
 pub fn read_lazer_mods(
     source: &dyn Source,
     table: &OffsetTable,
     selected_mods_ptr: u64,
     resolved: &Resolved,
     modules: &[(u64, String)],
-) -> Option<Vec<LazerMod>> {
+) -> Option<(Vec<LazerMod>, bool)> {
     if modules.is_empty() {
         return None;
     }
@@ -756,7 +812,7 @@ pub fn read_lazer_mods(
         return None;
     }
     if size == 0 {
-        return Some(Vec::new());
+        return Some((Vec::new(), true));
     }
     let items_mt = read_u64(source, items_array)?;
     if !plausible_ptr(items_mt) {
@@ -764,20 +820,25 @@ pub fn read_lazer_mods(
     }
 
     let count = (size as usize).min(32);
+    // 超过 32 个 mod 不可能是正常游玩，按"读不全"处理（展示仍然只展示前 32 个）。
+    let mut complete = size as usize <= 32;
     let mut mods = Vec::new();
     for i in 0..count {
-        let elem_addr = match field_addr(items_array, 16 + (i as i64) * 8) {
-            Some(addr) => addr,
-            None => continue,
+        let Some(elem_addr) = field_addr(items_array, 16 + (i as i64) * 8) else {
+            complete = false;
+            continue;
         };
-        let mod_obj = match read_u64(source, elem_addr) {
-            Some(obj) if plausible_ptr(obj) => obj,
-            _ => continue,
+        let Some(mod_obj) = read_u64(source, elem_addr).filter(|obj| plausible_ptr(*obj)) else {
+            complete = false;
+            continue;
         };
 
         let type_name = match read_eetype(source, table, mod_obj, modules) {
             Ok(read) => read.type_name.unwrap_or_default(),
-            Err(_) => String::new(),
+            Err(_) => {
+                complete = false;
+                String::new()
+            }
         };
 
         if let Some((acronym, default_speed)) = mod_acronym_from_type_name(&type_name) {
@@ -813,9 +874,12 @@ pub fn read_lazer_mods(
                 speed_change,
                 overall_difficulty,
             });
+        } else {
+            // 认不出的 mod 类型：展示层跳过，签名层必须判定为"读不全"。
+            complete = false;
         }
     }
-    Some(mods)
+    Some((mods, complete))
 }
 
 #[cfg(not(windows))]

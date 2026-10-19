@@ -265,6 +265,10 @@ pub struct Snapshot {
     pub play_hits: Option<Hits>,
     /// 结算 hits（`result_base` 链的同形槽）。
     pub result_hits: Option<Hits>,
+    /// 回放判定。lazer：结算屏 `ResultsScreen.<player>` 的运行时类型是 `ReplayPlayer`。
+    /// stable：结算成绩的玩家名与本机账号名（cfg 里的 `Username = …`）全部不匹配
+    /// （`osu::stable::replay_from_player_name`）。
+    pub replay: bool,
     /// **诊断**：8 个候选 u16 槽的原始值（`+0x88/0x8A/0x8C/0x8E/0x90/0x92/0x94` + `+0x68`），
     /// 顺序与 `stable::HITS_CANDIDATE_OFFSETS` 一致。只进对拍证据，不进载荷。
     pub hits_candidates: Vec<u16>,
@@ -312,6 +316,11 @@ pub struct Snapshot {
     /// **不映射到位掩码**：页面在 lazer 分支读 `array[].acronym` 与
     /// `array[].settings.{speed_change,overall_difficulty}`（`modData.js:150-180`）。
     pub lazer_mods: Option<Vec<LazerMod>>,
+    /// `lazer_mods` 是否**完整**读全（false = 至少一个元素读不全）。
+    ///
+    /// 展示层照常用 `lazer_mods`；签名层（`feedback::lazer_mods_and_rate`）必须拒绝
+    /// 不完整的列表——把 DT 静默丢成 NM 会写入错误的客观字段。
+    pub lazer_mods_complete: bool,
     /// lazer 解引用链的地址（诊断/证据用；**不进载荷**）。
     pub lazer_chain: Option<crate::osu::lazer::ChainAddrs>,
     /// lazer 当前谱面集的全部文件清单（`(filename, storage_path)`；用于反查背景/音频）。

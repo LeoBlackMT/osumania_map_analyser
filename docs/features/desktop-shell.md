@@ -72,15 +72,16 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 
 ## 3c. 本机 HTTP 端点（`127.0.0.1:24061`）
 
-Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头的裸 HTTP/1.0 客户端放行），其余 403（DNS rebinding 防护）；设置页与端点同源，故无需 CORS。
+Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头的裸 HTTP/1.0 客户端放行），其余 403（DNS rebinding 防护）；设置页与端点同源，故无需 CORS。唯一例外是 `/feedback`：tosu 在线时页面由 24050 提供，该端点显式允许 24050/24061 两个来源（不带 `*`）。
 
 | 端点 | 方法 | 状态码与语义 |
 | --- | --- | --- |
 | `/settings` | GET | 200 + **权威链全量对象**（在线 = tosu 设置文件；离线 = `mma-settings.json`；都没有则生成默认骨架并落盘）。读取侧不设只读门控——只读体现在写侧 |
 | `/settings` | POST | 200 + **合并后的全量对象**（请求键优先的读-改-写，base 的未知键保留，绝不把文件截断成请求体）；**403 `tosu online: settings are read-only`**（在线只读；判据与 GET 第 1 级是**同一个表达式**，且 POST 内先复探 tosu 存活、跳变经 `apply_tosu_online_transition` 切源）；**400**（body 不是合法 JSON 或不是对象）；**500**（base 不可读或写盘失败）。成功 → 更新缓存 + 广播 settings 帧 |
-| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`）；**400 `shell config unreadable`**（配置不可读） |
+| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`；`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400 `shell config unreadable`**（配置不可读） |
 | `/shell-config` | POST | 200 + 合并后的全量壳配置（请求键优先，未知键保留）；**400**（body 非 JSON / 非对象 / base 不可读或写盘失败——这几种情况**什么都不写**，不生成骨架）。成功 → 更新缓存 + `clear_detect_caches()`（根目录探测缓存失效）+ 广播 settings 帧 |
 | `/open-settings` | POST | 200 `{}`（**异步**发起建窗/聚焦，不等窗口真的建出来）；**503 `no app handle`**（无窗口模式：app 句柄未注入） |
+| `/feedback` | POST/OPTIONS | 200 + `{payload, auth}`：从 native 快照重算 `bid/checksum/rate/mods/hits/weight`，Ed25519 签名后交页面转发（壳不发 HTTPS）；**422** gate 失败（见 `src/feedback/mod.rs` 的原因码）；**409** 无读取器/快照；**413** body >4KB；OPTIONS 返回 204 预检头 |
 | `/cover/...` | GET | 白名单内的具体文件 200（`Access-Control-Allow-Origin: *`）；未列入白名单 404 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 插件目录静态文件（`canonicalize` 防穿越，`Cache-Control: no-store`）；其他方法 405，目录穿越/不存在 404 |
 | `/ws` | WS | 帧通道（§3 的八型 + diag 旁路），Origin 仅 loopback |
@@ -133,7 +134,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 ## 5. 构建与发布
 
 - 开发：`cargo build`（debug 保留控制台输出）。
-- 发布：`cargo build --release`；打包脚本 `release.ps1`（Windows，打 zip）/ `desktop/build-linux.sh`（Linux，打 tar.gz，保留执行位），版本号均读插件 `metadata.txt`，产物落在仓库 `release/{timestamp}-{version}/`（包含带壳完整包与纯插件本体包）；**Windows release 为 GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
+- 发布：`cargo build --release`；打包脚本 `release.ps1`（Windows，打 zip）/ `desktop/build-linux.sh`（Linux，打 tar.gz，保留执行位），版本号均读插件 `metadata.txt`，产物落在仓库 `release/{timestamp}-{version}/`（包含带壳完整包与纯插件本体包；**两个平台的带壳包目录结构相同**：插件内容在包根、`mma-shell`/`mma-shell.exe` 与 `index.html` 同级，另有 `bridges/` 与 `offsets/`）；**Windows release 为 GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
 - **入包规则（两个脚本同一份）**：开发产物一律不入包——`bridges/` 下的 `.tools`（NuGet 包缓存约 97 MB）、`bin`、`obj`、`tests` 按目录名排除；`bridges/malody/bepinex/plugin/` 只发安装素材 `MMAMalodySelection.dll` + `LICENSE` + `NOTICES.md`（安装器只读 DLL，后两者是该 DLL 的 MIT 归属与来源说明），5 个 `.cs`、`.csproj`、`NuGet.Config`、`build.ps1` 都是开发文件。两个脚本随后都断言加载器 `bepinex-il2cpp-788.zip`、`unity-libs/2022.3.62.zip` 与插件 DLL 在包内（前两者是 gitignore 的本地资产，缺一即装不上）。
 - **平台**：Windows 全功能；Linux 支持 Etterna 数据源（0.75+ 官方 Linux 版），Malody V 无 Linux 版（该源仅 Windows）。**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` 与 PE 版本校验是 Win32 语义）：Linux 上该源以 `platform-unsupported` **优雅不可用**，不影响其余三个源与浏览器模式。
 - CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows + Linux**（release 产物上传 artifact `mma-shell-windows` / `mma-shell-linux`；Linux = ubuntu-24.04 + Tauri 系统依赖）；`workflow_dispatch` 可手动触发。Linux 构建曾因无受众移除，Etterna 0.75 发布官方 Linux 版后恢复（Ubuntu 24.04 VM 全链路实测）。
@@ -146,4 +147,4 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **契约 v6 与版本号（当前状态）**：桥契约已升到 **v6**（v3→v4→v5→v6；v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d）。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `2.1.0`**——v6 升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）；若后续发布 bump 到 2.2.0，`_VERSION` 另经 `window.__MMA_VERSION`（`index.js:94`）进遥测与设置页显示。页面接受区间 `[3,6]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
-**本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时静默重试一次；④ lazer 目标上的 7 条字段缺口（mods/hits/背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。
+**本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时静默重试一次；④ lazer 目标上的 7 条字段缺口（mods/hits/背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-10 更新：lazer 的 mods 与 `resultsScreen.hits` 已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段；仍缺的是 `play.hits` 与背景/音频，见 osu-native-source.md §6.3。）

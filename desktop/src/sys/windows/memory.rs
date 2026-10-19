@@ -1,5 +1,6 @@
 // sys::windows::memory - 统一且带缩小重试机制的安全内存读取器
 
+#[allow(unused_imports)]
 use super::ffi::{self, Handle};
 
 /// 单次 ReadProcessMemory 调用的安全硬上限（1 MiB）。
@@ -105,6 +106,7 @@ pub trait MemoryReader {
 
 /// 基于 Windows 进程句柄的原生内存读取实现。
 pub struct LiveProcessReader {
+    #[allow(dead_code)]
     handle: Handle,
 }
 

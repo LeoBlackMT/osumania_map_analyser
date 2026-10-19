@@ -26,7 +26,7 @@ pub mod win;
 pub use runner::run;
 
 use crate::osu::invariants::HealthState;
-use crate::osu::model::Snapshot;
+use crate::osu::model::{Client, Snapshot};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -438,6 +438,13 @@ pub fn apply_hits(snapshot: &mut Snapshot) {
 }
 
 pub fn apply_hits_with_topo(snapshot: &mut Snapshot, topo: Option<&offsets::StableTopology>) {
+    // lazer 的判定数由原生读取（`lazer::results`：屏幕栈顶 → `ScoreInfo` 的
+    // `<StatisticsJson>`/`statistics` 字典）直接给出；stable 的"候选槽 + 拓扑映射"在这条链上
+    // 根本不适用。这里必须早退，否则每帧都会把 lazer 读到的 `result_hits` 清成 `None`
+    // （候选槽整块读满的门只对 stable 成立）。
+    if snapshot.client == Some(Client::Lazer) {
+        return;
+    }
     snapshot.play_hits = if invariants::play_hits_publishable(snapshot) {
         stable::hits_from_candidates_topo(&snapshot.hits_candidates, topo)
     } else {

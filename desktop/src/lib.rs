@@ -4,6 +4,7 @@ pub mod app;
 pub mod common;
 pub mod config;
 pub mod etterna;
+pub mod feedback;
 pub mod frames;
 pub mod malodyv;
 pub mod malody4;

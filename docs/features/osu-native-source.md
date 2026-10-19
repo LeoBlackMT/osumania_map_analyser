@@ -55,6 +55,8 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`desktop/src/osu/lazer/resolve.rs:220` 的 `vtable_witness_note`）。
 - **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`desktop/src/osu/lazer/resolve.rs` 的 L1 结构证明；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
+- **结算判定数（`resultsScreen.hits`）走表的 `results` 段**（`desktop/src/osu/lazer/results.rs`）：`ScreenStack` 栈顶（`ResultsScreen`）`+score_offset` → `ScoreInfo`。判定数有两个来源、读侧都支持：① `+statistics_offset` → `System.String <StatisticsJson>`（**入库过的成绩**，如回放/历史成绩）；② `+statistics_dict_offset` → `ScoreInfo.statistics`（`Dictionary<HitResult,int>`，**刚打完还没入库的活成绩**只有它有值——此时 JSON 是空串），按 `+dict_entries_offset` 枚举 entry、用 `hit_result_values`（`HitResult` 枚举序号→判定名）映射成载荷六键（`geki/300/katu/100/50/0`，与页面 `livePpCounts.extractCounts` 同口径）。同一段里 `+player_offset` 读 `ResultsScreen.<player>` 的运行时类型（`ReplayPlayer` ⇒ `replay:true`，覆盖"从回放进入结算屏"这一态）；类型读不到时 fail-closed，本帧不发布 hits。所有位移由 `live` 在**结算屏上**按"IL 字段相邻关系 + 运行时类型名"实测出来（不是常量）；表里没有可用的 hits 来源就整段降级，绝不 0 占位。
+- **mods 的来源是 `SelectedMods` 链**（`selected_mods → Bindable<...>.value`）：`read_lazer_mods` 逐元素解析运行时类型名得到 acronym，并从 mod 对象的 bindable（`+0x20`）读 `speed_change`；lazer 自定义倍速因此是**读出来的**，不是按位掩码推的。
 - **`Bindable<T>.value` 的偏移依赖 `T`**：查表键必须包含实例化实参，多个实例化命中 ⇒ 拒读并降级（OPEN-03 的修正：`NonNullableBindable<WorkingBeatmap>` 上是 `+0x20`，`+0x40` 是 `<Description>`）。
 - **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`desktop/src/osu/lazer/fields.rs:138-139` 的 `F_STRING_LENGTH` / `F_STRING_CHARS`）。
 
@@ -163,20 +165,20 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 6.2 lazer（64 位）
 
-今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}`；**并逐条上报缺来源的字段**（见 §6.3）。
+今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，含自定义 `speed_change`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）；**并逐条上报缺来源的字段**（见 §6.3）。
 
 - 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。证据 `.omo/evidence/osu-native-memory-transport/task-10f-build.txt`、`temp/osu-native-memory/evidence/D-contract-v6/D-notes.md` §17–§19。
 - **状态映射只对已对拍的态负责**：`selectPlay`（活机对拍）与 `menu`（dump 结构见证）已证；`edit` / `selectEdit` / `play` / `resultScreen` 的类型名在表里、映射规则已写，但**未与 tosu 活机对拍**（D-notes §19.5 末段）。
 
-### 6.3 lazer 已知缺口（7 条 `degradedFields`，机制原因逐条记档）
+### 6.3 lazer 已知缺口（逐条记档）
 
 | 载荷字段 | 降级原因字面量 | 机制原因 |
 |---|---|---|
-| `menu.mods` / `play.mods` / `resultsScreen.mods` | `offsets-missing-ScoreInfo.ModsJson` | `Mod.acronym` **不是字段**（IL 全库无该字段）；参照实现读的是 `ScoreInfo.<ModsJson>` 的 JSON 串，而那份 dump（主菜单态）没有 `ScoreInfo` 活对象 ⇒ 需要**一次带 mod 的选歌/游玩态 dump** |
-| `play.hits` / `resultsScreen.hits` | `offsets-missing-score-chain` | 计数域在 `ScoreInfo.<StatisticsJson>` / `ScoreProcessor`；同理需要游玩态 dump |
-| `files.background` / `files.audio` | `offsets-missing-BeatmapSetInfo.Files` | 需要 `BeatmapSetInfo.<Files>` 列表的**元素**（`filename` + `hash`），而 `dumpobj` 对数组只回 `Fields: None` ⇒ 需要"数组元素布局"的表格式扩展（`dumparray` 见证） |
+| `resultsScreen.hits` | `resultsScreen.hits:offsets-missing-results-section` | 计数域在 `ScoreInfo.<StatisticsJson>`（入库过的成绩）与 `ScoreInfo.statistics` 字典（刚打完的活成绩）里。表的 `results` 段由 `live` 在**结算屏上**实测写入（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）；`live` 生成表时游戏不在结算屏 ⇒ 这一段缺席 ⇒ 整段降级（反馈条给出非交互提示）。dump 链路（`extract → emit`）尚未产出这一段 |
+| `play.hits` | `play.hits:offsets-missing-score-chain` | lazer 局内没有与 stable "候选槽"等价的结果对象；本特性只覆盖结算屏 |
+| `files.background` / `files.audio` | `files.background:offsets-missing-BeatmapSetInfo.Files` | 需要 `BeatmapSetInfo.<Files>` 列表的**元素**（`filename` + `hash`），而 `dumpobj` 对数组只回 `Fields: None` ⇒ 需要"数组元素布局"的表格式扩展（`dumparray` 见证） |
 
-⇒ lazer 上 `modSignature` **只在 NM 时**与 tosu 逐字节相等（带 mod 的图差在 mods 段），`isInPlayState` 与图表时间窗在 lazer 上可用（`state.name` + `.osu` 解析都在），hits/livePP 面不可用。这是"**绝不编造**"的取舍（缺字段 = 不出现在载荷里 + 上报原因，绝不发 0/占位/沿用上一帧）。
+⇒ `mods` 已不再是缺口（`SelectedMods` 链 + `lazer_mods`），`resultsScreen.hits` 在表含 `results` 段时可用（RC 反馈条依赖它）；`play.hits` 仍不可用（lazer 上 livePP 面）。这是"**绝不编造**"的取舍（缺字段 = 不出现在载荷里 + 上报原因，绝不发 0/占位/沿用上一帧）。
 
 ### 6.4 明确不做
 
@@ -303,6 +305,7 @@ temp/lazer-offsets-gen.exe emit --sos %TEMP%\lazer-offsets-gen\run1\sos-intermed
                                 --deploy "<放着 mma-shell.exe 的目录>" --allow-version-mismatch
 ```
 
+- **结算屏判定数（`results` 段）**：`resultsScreen.hits` 的链路是 `ResultsScreen.Score → ScoreInfo` 的 `<StatisticsJson>`（入库过的成绩）或 `statistics` 字典（刚打完的活成绩）；位移（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）由 `live` 在**结算屏上**实测后写进表的 `results` 段；`collect → extract → il → emit` 这条 dump 链路目前**不产出**这一段。所以更新表时请在游戏停在结算屏（真实游玩或回放结束都行）时再跑一次 `temp/lazer-offsets-gen.exe live`：它按 IL 的字段相邻关系 + 运行时类型名定位，并当场用测出的偏移把判定数读回来做自校验（摘要是 `results.witness`）；不在结算屏时表的其余部分照常生成，只是 lazer 上发不出 `resultsScreen.hits`（页面对应提示，不静默）。
 - **dump 采集的代价与挂起**：`dotnet-dump collect` 会**短暂挂起游戏的全部线程**并 spawn `createdump` 子进程（不注入、不写内存、不挂调试器）；本机实测一次 **约 70 s**（最近一次 dump 2.696 GB / pid 22028），落盘前需 ≥4 GB 空闲（`--force` 可跳过检查）。因此采集**只在 dev-time、只在用户同意且在场时**执行；产品内一律走 `ReadProcessMemory`，工具不随发布产物分发。
 - **运行位置**：在受限的工作区上下文里 Toolhelp32 只能看到自己那一族进程（表现为"游戏没在跑"）——**从工作区外（如 `%TEMP%`）或普通 shell 启动**即可正常发现游戏（与壳自身的 B2 结论同族）。
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。

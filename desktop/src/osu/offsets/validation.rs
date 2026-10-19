@@ -1,5 +1,5 @@
 use super::lazer_table::OffsetTable;
-use super::lookup::MAX_FIELD_OFFSET;
+use super::lookup::{MAX_FIELD_OFFSET, MIN_FIELD_OFFSET};
 use super::stable_table::StableTable;
 
 /// Schema 不变量违规错误
@@ -276,5 +276,78 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
         }
     }
 
+    if let Some(results) = &table.results {
+        check_string_safety("results.witness", &results.witness)?;
+        check_results_offset("results.score_offset", results.score_offset)?;
+        if let Some(offset) = results.statistics_offset {
+            check_results_offset("results.statistics_offset", offset)?;
+        }
+        if let Some(offset) = results.player_offset {
+            check_results_offset("results.player_offset", offset)?;
+        }
+        if let Some(offset) = results.statistics_dict_offset {
+            check_results_offset("results.statistics_dict_offset", offset)?;
+        }
+        if let Some(offset) = results.dict_entries_offset {
+            check_results_offset("results.dict_entries_offset", offset)?;
+        }
+        for (key, value) in &results.hit_result_values {
+            check_string_safety("results.hit_result_values.key", key)?;
+            if *value > 64 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("results.hit_result_values.{key}"),
+                    *value as i64,
+                ));
+            }
+        }
+        // `usable()` 的"至少一个 hits 来源"必须在这里也成立：否则一张只有
+        // score_offset+player_offset 的表会通过校验、读侧却永远读不到 hits。
+        if !results.usable() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "results (no usable hits source)".to_string(),
+                0,
+            ));
+        }
+        // 字典路径要么两个位移都有、要么都没有（只写一半等于坏了）。
+        if results.statistics_dict_offset.is_some() != results.dict_entries_offset.is_some() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "results (statistics_dict_offset/dict_entries_offset must be paired)".to_string(),
+                0,
+            ));
+        }
+        // 有映射就必须六个判定键齐全且序号互不相同（缺键会把判定静默算成 0）。
+        if !results.hit_result_values.is_empty() {
+            let mut seen = std::collections::BTreeSet::new();
+            for key in ["perfect", "great", "good", "ok", "meh", "miss"] {
+                let Some(value) = results.hit_result_values.get(key) else {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("results.hit_result_values.{key}"),
+                        0,
+                    ));
+                };
+                if !seen.insert(*value) {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("results.hit_result_values.{key}"),
+                        *value as i64,
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// `results` 段的位移判据：在字段合理域内，且 8 字节对齐（引用字段必然对齐）。
+fn check_results_offset(field: &str, offset: i64) -> Result<(), ValidationError> {
+    if !(MIN_FIELD_OFFSET..=MAX_FIELD_OFFSET).contains(&offset) {
+        return Err(ValidationError::DisplacementOutOfRange(
+            field.to_string(),
+            offset,
+        ));
+    }
+    if offset % 8 != 0 {
+        return Err(ValidationError::InvalidAlignment(field.to_string(), offset));
+    }
     Ok(())
 }

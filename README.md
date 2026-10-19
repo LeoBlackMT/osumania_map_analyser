@@ -31,7 +31,7 @@
 ### 作为独立程序使用（推荐）
 1. 前往[Release](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest)下载带shell的最新版本。
 2. 将下载的文件解压到任意位置。
-3. 如果你需要在 Etterna 或 Malody V 中使用，请运行`bridges/install-bridge-zh.bat`（中文）或`bridges/install-bridge.bat`（英文）。对于Linux用户，请参照[本文档](docs/shell-guide.md)的「安装桥」章节手动安装 Etterna 与 Malody V 的桥文件。
+3. 如果你需要在 Etterna 或 Malody V 中使用，请运行`bridges/install-bridge-zh.bat`（中文）或`bridges/install-bridge.bat`（英文）。对于Linux用户，请参照[本文档](docs/shell-guide.md)的“安装桥”章节手动安装 Etterna 与 Malody V 的桥文件。
 4. 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。
 5. 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
 6. 阅读[设置说明](docs/settings.md)、[预设系统教程](docs/presets-guide.md)和[桌面壳完整教程](docs/shell-guide.md)（含注意事项和常见问题），开始使用。
@@ -60,19 +60,14 @@
 1. 本插件依赖于谱面数据的正确解析，某些特殊或非标准的谱面可能会导致分析结果不准确。
 2. 难度估计算法虽然经过调整，但仍然可能存在不准确的情况，请仅将其作为参考。对于4K，一般情况下高难相对比较准确，整体误差不超过半个段位，低难相对没那么准确；在Minijack、Stamina和Anchor等键型中，估计结果可能会有较大的偏差。对于6K和7K，整体表现相对一般。建议玩家结合自己的实际游玩体验进行判断，不要过于依赖估计结果，将算法视为一个玩家给出的难度估计。
 3. 该插件的性能可能会受到谱面复杂度和所选功能的影响，在某些情况下可能会出现卡顿或延迟的情况，请根据实际情况调整设置以获得更好的体验。
-4. 当lazer更新，内存无法正常读取且开发者尚未发布shell/偏移表更新时，在设置中点击Memory Offsets Management->Live Generator可快速根据当前运行的Lazer进程尝试生成偏移表。使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
+4. 当Lazer更新，内存无法正常读取且开发者尚未发布shell/偏移表更新时，在设置中点击Memory Offsets Management->Live Generator可快速根据当前运行的Lazer进程尝试生成偏移表。使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
 5. 如果存在问题欢迎提交issue。
 
 ## 难度估计算法基准测试
 - 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
 - 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
-- 受限于人工标注误差以及玩家个人差异，目前在700+样本量下的难度估计准确度已经接近极限，如果你有兴趣参与，可以参与到算法的改进中来，帮助提升难度估计的准确性。
+- 受限于人工标注误差以及玩家个人差异，目前在700+样本量下的难度估计准确度已经接近极限。我们添加了对算法的反馈功能，欢迎广大玩家在游玩时对其进行反馈，这有助于我们寻找偏离较大的谱面并针对优化，谢谢！
 - 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
-
-## 隐私/匿名使用统计
-本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容**不含**用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。公开看板见：https://mma-stats.leoblack.top/
-
-如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
 
 ## 设置说明
 注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。  
@@ -83,6 +78,11 @@
 ## 算法说明
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（数值难度 11~17，即段位 Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均（降低方差），输出最终难度。元模型按段位 0.5 序数刻度校准，使结果更贴近段位判定。如有需要，请前往[此处](docs/roxy_algorithm.md)(英文)查看算法文档。
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看算法文档。
+
+## 隐私/匿名使用统计
+- 本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容不含用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
+- 本插件默认开启估计算法反馈，在玩家游玩结束后会在卡片下方提示玩家对本次估计算法进行反馈，用于收集准确度信息、偏差较大谱面以及整体估计情况。上报内容只包含本轮游玩的谱面bid、模组和算法输出等必要信息，不包含个人信息。数据仅用于改进估计算法。如不希望上报，可在设置 → Network 分组中关闭 "Difficulty Feedback"。
+- 两者的数据透明公开，看板见：https://mma-stats.leoblack.top/
 
 ## 贡献指南
 详见 [CONTRIBUTING.md](CONTRIBUTING.md)。

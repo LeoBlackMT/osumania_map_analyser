@@ -1,5 +1,6 @@
 // Malody 4.3.7 锚点：版本表、身份键解析、PE 版本校验与 Win32 读取层。
 
+#[allow(unused_imports)]
 use std::path::Path;
 
 #[path = "spec.rs"]

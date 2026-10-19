@@ -42,14 +42,64 @@
 ## 4. 埋点位置
 
 - `index.js:6`：`const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top"` + `window.__MMA_TELEMETRY_ENDPOINT`（`index.js:95`）。
-- `main.js:30-32` `initialize()`：`loadSettings()` 之后 `initTelemetry()` + `startTelemetryHeartbeat()`。
-- `socketHandlers.js`：`setupSocketListener()`（`:340`）的 `api_v2` 回调首行调 `applySignalState(data)`，其函数体顶部（`:151`）`noteTelemetryActivity()`。
-- `analysis.js` `fetchBeatmapFile()`：顶部记录 `analysisStartedAt`（`:401`）；成功路径末尾（`rework && metadataErrors.length===0 && !isStaleRequest()`）调 `trackTelemetryAnalyze(...)`（`:1344`）。缓存命中/未命中都上报（命中 `durationMs≈0` 体现缓存效果）；失败、stale、auto-profile 提前 return 均不上报。
+- `main.js` `initialize()`：`loadSettings()` 之后 `initTelemetry()` + `startTelemetryHeartbeat()`（`:32-33`）+ `initFeedback()`（`:35`，仅壳窗口生效，见 §7）。
+- `socketHandlers.js`：`setupSocketListener()`（`:348`）的 `api_v2` 回调首行调 `applySignalState(data)`，其函数体顶部（`:152`）`noteTelemetryActivity()`；`applyBeatmapState(data)` 之后（`:357`）调 `noteFeedbackFrame(data)`（§7）。
+- `analysis.js` `fetchBeatmapFile()`：顶部记录 `analysisStartedAt`（`:403`）；成功路径末尾（`rework && metadataErrors.length===0 && !isStaleRequest()`）调 `trackTelemetryAnalyze(...)`（`:1368`）。缓存命中/未命中都上报（命中 `durationMs≈0` 体现缓存效果）；失败、stale、auto-profile 提前 return 均不上报。
 
 ## 5. 与 CLAUDE.md 的关系
 
-CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数据/计算」。本项目作者已明确授权**豁免这一条**用于遥测：插件向自建后端上报匿名统计是唯一允许的 tosu 之外数据去向。已同步在 CLAUDE.md 记录该豁免。
+CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数据/计算」。本项目作者已明确授权**豁免这一条**用于两类数据去向：① 遥测（本文档）；② RC 难度反馈（§7，独立 opt-in）。两者均已同步在 CLAUDE.md 记录。
 
 ## 6. 设置项
 
 唯一新增设置 `enableTelemetry`（checkbox，Network 分组，默认 `true`）。它是**纯遥测开关**：不进 `recomputeNeeded`，不进 `clearResultCache()` 失效列表，只进 `changed` 聚合（与 `enableNumericDifficulty` 同类「立即应用、不重算」）。
+
+## 7. RC 难度反馈（独立数据类别，非遥测）
+
+> 与上文遥测**完全独立**：不同设置、不同端点、不同数据库、不同保留期。关闭 `enableTelemetry` 不影响反馈；关闭 `enableDifficultyFeedback` 不影响遥测。
+
+**用途**：收集玩家对“当前显示难度”的五档评价（`-1 / -0.5 / 0 / +0.5 / +1`，步长 0.5 个段位），用于发现估算器的系统性偏差、筛选高共识争议谱面交给专家复标。**不参与任何在线校准**：后端不生成 per-map 查表，页面永远只显示算法自身的计算结果。
+
+**采集边界（硬约束）**：
+
+- 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
+- **lazer（原生读取）的结算判定数**：来自 lazer 偏移表的 `results` 段（`ResultsScreen.Score → ScoreInfo`）。判定数有两个来源、读侧都支持：① `ScoreInfo.<StatisticsJson>`（入库过的成绩，如回放/历史成绩）；② `ScoreInfo.statistics` 字典（`Dictionary<HitResult,int>`，**刚打完、还没入库的活成绩只有它有值**——此时 JSON 是空串）。字典需要表里的 `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values`（枚举序号→判定名，来自 IL 声明顺序）。全部位移由生成器 `live` 在**结算屏上实测并自校验**后写表（见 `tools/lazer-offsets-gen/README.md`）。表里没有这一段（旧表，或 `live` 生成时游戏不在结算屏）⇒ 页面 gate 停在 `no_hits`，反馈条显示一条非交互提示而不是静默；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
+- 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
+- 倍速只允许 `1.0 / 1.5 / 0.75`（对应 NM/MR、DT/NC、HT/DC）；其余倍速拒绝。
+- mod 白名单 `NM, MR, SD, PF, SV2, TD, CS, HD, FI, FL, DT, NC, HT, DC`；其余（`nK`、`HO`、`IN`、`RD`、`NF`、`AT/AU`、改 OD mod 等）一律拒绝。入库前 mods 会排序、去重，并把 `NC→DT`、`DC→HT` 归一（stable 的位掩码把 DT 合并成 NC，lazer 返回实际 DT；不归一会把同一局聚合成两行）。变速 mod 的记录按实际 rate 入库与去重。
+- 仅完整通关：页面按完成率 ≥0.85、总击打 ≥200、ScoreV1 准度 **90–100**（**不设 miss 上限**）门控；壳在签名载荷里写 `passed: true`——壳当前没有独立的结算 pass/fail 标记，服务端也不重算（已知限制，见 §7 末尾）。
+- **回放不算**：lazer 由结算屏 `ResultsScreen.<player>` 的运行时类型判定（`ReplayPlayer`）；stable 是闭源进程，改用结算成绩的玩家名与本机账号名比对（`osu!*.cfg` 里的 `Username = …`，见 `desktop/src/osu/stable.rs` 的 `local_player_names` / `replay_from_player_name`；cfg **文件名**是 Windows 账户名，不是 osu! 用户名；候选为空/看自己的回放不标记）。回放结果**静默跳过**，不弹任何提示（只在 `__MMAFeedbackLastGate` 留 `reason: "replay"`）。
+- **只对刚打完的一局提问**：进入本次结算屏前必须经过 play/pause 态（页面 `state.resultsFromPlay`，由 `socketHandlers.js` 的状态迁移计算）。从选曲/本地排行榜直接打开的结算屏（查看历史成绩）不是刚打出的成绩，直接跳过（`reason: "not_fresh_play"`）；壳在结算屏中途启动、没有 play 前态时同样不提问。
+- 本地联调：壳用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback` 启动即可把投票发到本地后端（`/shell-config` 的 `feedback.endpoint` 下发给页面，无需控制台）。需要在壳窗口里开控制台时，用 `cargo build --release --features devtools` 构建并设 `MMA_DEVTOOLS=1` 启动；默认发布构建不含 devtools。
+- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
+- 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
+
+**字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
+
+`od` 是**必填客观字段**：由页面从本地 `.osu` 解析（`parsedSummary.od` → snapshot → `feedbackContext`），壳与后端都会校验 0–10，后端再用 osu! API 的 OD 比对（±0.01）。**服务端不用 API 的值回填**——缺失即拒绝（`bad_od`），否则 OD 校验形同虚设。
+
+**weight 曲线（v3）**：峰值在 **acc = 96**，左右不对称的高斯：`w = 0.30 + 0.70*exp(-0.5*((acc-96)/σ)^2)`，`σ = 3.2`（acc≤96）/ `4.0`（acc>96）。90% ≈ 0.42，96% = 1.00，100% ≈ 0.72；`weight_version=3`。
+
+**信任链**：
+
+1. 页面只提交 `vote` 与显示值等报告字段；
+2. 壳从 native 快照重算 `bid/checksum/rate/mods/hits/weight`（`passed` 由页面完成率门控，壳签名 `true`），用 Ed25519 签名后把信封交给页面（壳不发 HTTPS）；`displayed_val/od/ln_ratio/pattern/key_count/settings_hash` 由页面提供、壳只做范围校验；
+3. 后端验签（`FEEDBACK_PUBLIC_KEYS`）、校验 `timestamp ±300s`、`(key_id, nonce)` 一次性、osu! API 的 `bid → checksum/mode/convert`，任一失败**直接丢弃**，只增当天拒绝计数。
+
+**已知限制**（记录在案，不假装解决）：
+
+- **壳是本机的签名 oracle**：seed 编译在二进制里（可提取），`/feedback` 只绑回环、本机进程可直接 POST 取信封，`displayed_val/ln_ratio/pattern` 等页面字段没有独立真值 ⇒ 签名证明"来自官方壳"，不能证明"这些数值是用户当时看到的"。防的是远程伪造，不是本机作弊。
+- **`passed` 恒 true**：壳没有独立的结算 pass/fail 标记，只靠页面完成率 ≥0.85 门控。
+- **限流依赖反代头**：文档部署（Caddy/Nginx → 127.0.0.1）下 `X-Forwarded-For` 决定按 IP 限流；直连暴露时该头可伪造（与遥测同一取舍）。
+
+**公开统计页**：`/feedback-stats`（与使用统计 `/` 同一套设计系统，页头选项卡切换）只展示**已接受**事件的聚合：总量（票数 / 谱面数 / 有票天数 / 平均票 / 加权平均残差）、按日票数、五档票分布、按 estimator 与键数的加权残差（`Σweight·(target−displayed)/Σweight`）。任何分组 **N < 5 不返回**，且**不含 per-map 明细**（那只在私有 admin 页）。数据由 `GET /api/v1/feedback/summary?days=30` 提供（60s 内存缓存，`days` 允许 1–90）；页面不加载任何第三方脚本。
+
+**签名与密钥**：Ed25519，签名串是以 `v1|` 开头的固定字段串（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
+
+**去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
+
+**存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天（时间窗口一律按**毫秒**换算，见 `store.FeedbackStore.Prune`）；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建（admin 页头显示这份聚合的生成时间，也可用"Rebuild aggregates"手动重建）。
+
+私有 admin 页 `/feedback`（`FEEDBACK_ADMIN_TOKEN`）按 **map + rate + mods + algorithm** 分组，列含义：`N` = 票数；`weight` = Σ权重（acc 曲线 v3）；`distinct` = 该组的独立 install 数（HMAC 去重 token）；`median` = target（displayed + vote）的**加权**中位数（按 `FEEDBACK_TRIM_RATIO` 两端裁剪）；`Q25/Q75/IQR` = target 的**未加权**四分位与四分位距；`rate` 显示实际倍速（×1.00 NM/MR、×1.50 DT/NC、×0.75 HT/DC），`mods` 为归一化后的列表（排序、去重、NC→DT、DC→HT）。公开 dashboard 不含 per-map 数据。
+
+**开关**：`enableDifficultyFeedback`（checkbox，Network 分组，**默认 `true`**）。不进 `recomputeNeeded`、不进缓存失效列表；关闭时页面不显示、不请求、不写本地去重。

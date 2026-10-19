@@ -1,5 +1,6 @@
 // sys::windows::handle - 安全的 RAII 进程与系统句柄管理
 
+#[allow(unused_imports)]
 use super::ffi::{self, Handle, INVALID_HANDLE_VALUE};
 
 /// 安全的只读进程/快照句柄包装器。

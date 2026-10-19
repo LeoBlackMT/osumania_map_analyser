@@ -97,6 +97,25 @@ temp/lazer-offsets-gen.exe live --out %TEMP%\lazer-offsets-gen\live1 --json
 - **零挂起**：只用 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION` 打开进程，不挂起任何线程；
 - **活体自校验门（Live Validation Gate）**：只有三条链全部**当场解出真值**才允许落盘 —— ①锚点 + `GAME_BASE_HOPS` 解出 GameBase 且 vtable 有效；②`GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash` 成功解出 32 位 hex MD5；③`ScreenStack → top screen` 反查到有效 TypeDef RID 与类型名。任一条不成立即拒绝出表。
 
+### `live` 的 `results` 段（结算屏判定数）
+
+`live` 还会在**游戏停在结算屏**时测出 `resultsScreen.hits` 需要的三个位移并写进表的 `results` 段（读侧 `desktop/src/osu/lazer/results.rs`：`ResultsScreen.Score → ScoreInfo.<StatisticsJson>`，`<player>` 的运行时类型决定 `replay`）。定位判据全部是结构，没有写死偏移：
+
+1. **IL 前置见证**（构建期事实）：`ResultsScreen` 的 `SelectedScore → Score → ScorePanelList`、`<VerticalScrollContent> → <player>`，以及 `ScoreInfo` 的 `<StatisticsJson> → <MaximumStatisticsJson>` 必须是**连续的实例字段**（`il_results_field_order`）；
+2. **运行时定位**（活进程）：结算屏对象里"前一槽 Bindable、本槽 ScoreInfo、后一槽 ScorePanelList"的槽 = `score_offset`；`ScoreInfo` 里"本槽与下一槽都是判定形状的 JSON 字符串"的第一枚 = `statistics_offset`；`<VerticalScrollContent>` 后一槽的 `*Player` = `player_offset`。每个偏移必须**唯一命中**，否则整段不写；
+3. **活体自校验**：用测出的偏移把 `StatisticsJson` 再读一遍，摘要（`miss=/meh=/ok=/good=/great=/perfect=`）进表的 `results.witness` 与 `--json` 输出。
+
+用法（**在结算屏上**执行；真实游玩或回放结束都行）：
+
+```powershell
+# 0) 游戏打完一局、停在结算屏（不要退回选歌）
+temp/lazer-offsets-gen.exe live --json
+# stdout 的 JSON 里会出现 "results":{"score_offset":…,"statistics_offset":…,"player_offset":…}
+# 表里多出 "results" 段；stderr 会打印解析出的判定摘要
+```
+
+> 不在结算屏时：表的其余部分照常生成，`results` 段缺席（`"results":null`），读侧对 `resultsScreen.hits` 整段降级并给页面提示——**不会**用 0 或上一帧占位。完整 dump 链路（`extract → emit`）目前**不产出**这一段（`spec.rs` 的链还不支持数组元素步）。
+
 `live` 支持 `--out`（落点）、`--lazer-dir`（指定安装目录）、`--pid`（指定进程）三个选项，另有 `--json`（机器可读输出）与 `--dry-run`（只解析不落盘）。需要**跨版本 IL 差分**或**双见证 provenance 记录**时，仍应走完整的 `collect → extract → il → emit` 链路。
 
 ## 输出格式（Output format）
@@ -180,6 +199,10 @@ field	osu.Game.dll	osu.Game.OsuGameBase	<Storage>k__BackingField	instance	class	
 - **读取侧要用同一个规范化规则**：`Ns.Type\`1[[Arg, Asm]]` → ``Ns.Type`1<Arg>``（去程序集限定与
   空白；被 SOS 列宽截断的串只保留去空白原文）。IL 侧的对照键是**开放泛型定义**（把 `<…>` 去掉）。
 - 泛型 `Type.Field` 缺对应实例化时**必须按字段降级**（`degradedFields`），不得猜另一个实例化。
+- **`results` 段**（可选；只有 `live` 在结算屏上生成，见上文）：`{"score_offset", "statistics_offset",
+  "player_offset", "witness"}`。前两个是读 `resultsScreen.hits` 的链路（`ResultsScreen.Score` →
+  `ScoreInfo.<StatisticsJson>`），第三个只用来判"这是不是回放"。读侧在没有这一段时整段降级
+  （`resultsScreen.hits:offsets-missing-results-section`）；`emit`（dump 链路）目前不产出它。
 
 ## 表落点与读取侧的回落梯（reader ladder）
 

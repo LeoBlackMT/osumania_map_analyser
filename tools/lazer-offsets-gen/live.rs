@@ -20,11 +20,12 @@ use std::path::{Path, PathBuf};
 
 #[cfg(windows)]
 use crate::{
-    CloseHandle, CreateToolhelp32Snapshot, Handle, IsWow64Process, OpenProcess, Process32FirstW,
-    Process32NextW, QueryFullProcessImageNameW, ReadProcessMemory, VirtualQueryEx,
-    INVALID_HANDLE_VALUE, MEMORY_BASIC_INFORMATION, MEM_COMMIT, PAGE_EXECUTE_READWRITE, PAGE_GUARD,
-    PAGE_NOACCESS, PAGE_READWRITE, PROCESSENTRY32W, PROCESS_QUERY_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ, TH32CS_SNAPPROCESS,
+    CloseHandle, CreateToolhelp32Snapshot, Handle, IsWow64Process, Module32FirstW, Module32NextW,
+    OpenProcess, Process32FirstW, Process32NextW, QueryFullProcessImageNameW, ReadProcessMemory,
+    VirtualQueryEx, INVALID_HANDLE_VALUE, MEMORY_BASIC_INFORMATION, MEM_COMMIT, MODULEENTRY32W,
+    PAGE_EXECUTE_READWRITE, PAGE_GUARD, PAGE_NOACCESS, PAGE_READWRITE, PROCESSENTRY32W,
+    PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
+    TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS,
 };
 
 pub fn run_live(options: &Options) -> i32 {
@@ -32,18 +33,29 @@ pub fn run_live(options: &Options) -> i32 {
 
     match execute_live(options) {
         Ok(info) => {
+            let results_json = match &info.results {
+                Some(results) => format!(r#","results":{results}"#),
+                None => r#","results":null"#.to_string(),
+            };
             if json_output {
                 println!(
-                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true}}"#,
+                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}}}"#,
                     info.lazer_version,
                     info.runtime_version,
                     info.arch,
-                    info.output_path.display().to_string().replace('\\', "\\\\")
+                    info.output_path.display().to_string().replace('\\', "\\\\"),
+                    results_json,
                 );
             } else {
                 println!("Live offset generation succeeded!");
                 println!("  Version: {} ({})", info.lazer_version, info.runtime_version);
                 println!("  Target: {}", info.arch);
+                match &info.results {
+                    Some(results) => println!("  Results section: {results}"),
+                    None => println!(
+                        "  Results section: not captured (run `live` while the result screen is up)"
+                    ),
+                }
                 println!("  Saved to: {}", info.output_path.display());
             }
             0
@@ -68,6 +80,9 @@ pub struct GenerationOutcome {
     pub runtime_version: String,
     pub arch: String,
     pub output_path: PathBuf,
+    /// 结算屏上捕获到的 `results` 段（JSON 对象文本）。`None` = 这次 `live` 时游戏不在
+    /// 结算屏（表格的其余部分照常生成）。
+    pub results: Option<String>,
 }
 
 pub struct LiveError {
@@ -174,8 +189,16 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         ));
     }
 
+    // 5b. EEType 解析用的模块表（结算屏的 `results` 发现靠它把 RID 换成类型名）。
+    let modules = module_list(pid);
+    eprintln!(
+        "[live] {} module(s) enumerated for the results-section discovery",
+        modules.len()
+    );
+    let resolver = EetypeResolver::new(handle, &inventory, &modules);
+
     // 6. 多跳解析并活体校验 GameBase
-    let mut verified_table: Option<String> = None;
+    let mut verified_table: Option<(String, Option<ResultsOffsets>)> = None;
     let mut _verified_vtable: u64 = 0;
 
     for anchor in &anchor_hits {
@@ -200,16 +223,17 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
             };
 
             // 7. 活体门禁验证（Live Gate Validation）
-            if let Some(table_json) = validate_and_emit(
+            if let Some(emitted) = validate_and_emit(
                 handle,
                 game_base,
                 vtable,
                 &inventory,
+                &resolver,
                 &lazer_version,
                 &runtime_version,
                 &arch,
             ) {
-                verified_table = Some(table_json);
+                verified_table = Some(emitted);
                 _verified_vtable = vtable;
                 break;
             }
@@ -219,13 +243,23 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         }
     }
 
-    let Some(table_json) = verified_table else {
+    let Some((table_json, results)) = verified_table else {
         return Err(LiveError::new(
             "live_validation_failed",
             "found candidate GameBase, but live validation checks (MD5Hash / ScreenStack / VTable) failed",
             4,
         ));
     };
+    match &results {
+        Some(found) => eprintln!(
+            "[live] results section captured: screen={} player={} json({})",
+            found.screen_type, found.player_type, found.statistics_summary
+        ),
+        None => eprintln!(
+            "[live] results section NOT captured — run `live` while the result screen is up to \
+             include it (the rest of the table is unaffected)"
+        ),
+    }
 
     // 8. 落盘写入文件
     let file_name = format!("{lazer_version}__{runtime_version}__{arch}.json");
@@ -294,6 +328,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         runtime_version,
         arch,
         output_path: out_file,
+        results: results.as_ref().map(|found| found.to_json()),
     })
 }
 
@@ -483,6 +518,644 @@ fn read_clr_string(handle: Handle, addr: u64) -> Option<String> {
     Some(String::from_utf16_lossy(&u16_chars))
 }
 
+// ------------------------------------------------- 结算屏判定数（results 段）----
+//
+// 为什么 live 要管这一段：lazer 的结算判定数只在 `ScoreInfo.<StatisticsJson>` 上，
+// 不是 stable 那种"候选槽"；而 `live` 是**点击即用**的表格生成路径（README 的 1-CLICK LIVE）。
+// 所以生成器必须在结算屏上：
+//   ① 用 IL 清单确认字段**相邻关系**（`SelectedScore→Score→ScorePanelList` 等，构建期事实）；
+//   ② 在活进程里按"类型名 + 相邻槽"把两个（第三个）偏移**测出来**（运行期事实）；
+//   ③ 再用测出来的偏移把 JSON 读一遍、打印判定摘要（活体自校验）。
+// 任何一步不成立 ⇒ 不写 `results` 段（读侧降级为"发不出 hits"），绝不猜偏移。
+
+/// 表 `runtime` 段见证到的位移（与 [`serde_json_table`] 写进表的数字同源）。
+#[cfg(windows)]
+const EETYPE_TOKEN_OFFSET: u64 = 8;
+#[cfg(windows)]
+const EETYPE_TOKEN_SHIFT: u32 = 8;
+#[cfg(windows)]
+const EETYPE_LOADER_MODULE_OFFSET: u64 = 24;
+#[cfg(windows)]
+const MODULE_IMAGE_BASE_OFFSET: u64 = 200;
+
+/// 结算屏对象扫描上限：2026.1005 实测 `Score`@0x3A0 / `<player>`@0x3B8；派生类可能追加字段。
+#[cfg(windows)]
+const RESULTS_SCREEN_SCAN_LIMIT: u64 = 0x900;
+/// `ScoreInfo` 对象扫描上限：2026.1005 实测 `<StatisticsJson>`@0x58。
+#[cfg(windows)]
+const SCORE_INFO_SCAN_LIMIT: u64 = 0x200;
+
+/// 目标进程的模块表：映像基址 → 模块文件名。
+#[cfg(windows)]
+fn module_list(pid: u32) -> Vec<(u64, String)> {
+    use std::ffi::c_void;
+    use std::mem::size_of;
+    use std::ptr::null_mut;
+    let mut modules = Vec::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+        if snapshot != 0 && snapshot != INVALID_HANDLE_VALUE {
+            let mut entry = MODULEENTRY32W {
+                dwSize: size_of::<MODULEENTRY32W>() as u32,
+                th32ModuleID: 0,
+                th32ProcessID: 0,
+                GlblcntUsage: 0,
+                ProccntUsage: 0,
+                modBaseAddr: null_mut::<u8>(),
+                modBaseSize: 0,
+                hModule: null_mut::<c_void>(),
+                szModule: [0; 256],
+                szExePath: [0; 260],
+            };
+            if Module32FirstW(snapshot, &mut entry) != 0 {
+                loop {
+                    let end = entry
+                        .szModule
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(entry.szModule.len());
+                    modules.push((
+                        entry.modBaseAddr as u64,
+                        String::from_utf16_lossy(&entry.szModule[..end]),
+                    ));
+                    entry.dwSize = size_of::<MODULEENTRY32W>() as u32;
+                    if Module32NextW(snapshot, &mut entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snapshot);
+        }
+    }
+    modules
+}
+
+/// EEType → 类型名：`MT +0x8` 的 RID + loader module → 映像基址 → 模块文件名 → IL 清单的
+/// `(程序集, RID)` 行。解析失败返回 `None`（**绝不猜**），调用方据此跳过候选。
+#[cfg(windows)]
+struct EetypeResolver<'a> {
+    handle: Handle,
+    /// `"<程序集 stem 小写>|<RID 十六进制>" → 完整类型名`
+    names: BTreeMap<String, &'a str>,
+    modules: &'a [(u64, String)],
+}
+
+#[cfg(windows)]
+impl<'a> EetypeResolver<'a> {
+    fn new(handle: Handle, inventory: &'a IlInventory, modules: &'a [(u64, String)]) -> Self {
+        let mut names = BTreeMap::new();
+        for row in &inventory.types {
+            let assembly = row.assembly.to_lowercase();
+            let stem = assembly.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(&assembly);
+            names.insert(format!("{stem}|{:X}", row.rid), row.name.as_str());
+        }
+        Self {
+            handle,
+            names,
+            modules,
+        }
+    }
+
+    fn name(&self, object: u64) -> Option<String> {
+        if !is_valid_ptr(object) {
+            return None;
+        }
+        let method_table = read_ptr(self.handle, object)?;
+        if !is_valid_ptr(method_table) {
+            return None;
+        }
+        let packed = read_i32(self.handle, method_table + EETYPE_TOKEN_OFFSET)?;
+        let rid = (packed as u32) >> EETYPE_TOKEN_SHIFT;
+        if rid == 0 {
+            return None;
+        }
+        let module = read_ptr(self.handle, method_table + EETYPE_LOADER_MODULE_OFFSET)?;
+        if !is_valid_ptr(module) {
+            return None;
+        }
+        let image_base = read_ptr(self.handle, module + MODULE_IMAGE_BASE_OFFSET)?;
+        let module_name = self
+            .modules
+            .iter()
+            .find(|(base, _)| *base == image_base)?
+            .1
+            .clone();
+        let lower = module_name.to_lowercase();
+        let stem = lower.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(&lower);
+        self.names
+            .get(&format!("{stem}|{rid:X}"))
+            .map(|name| (*name).to_string())
+    }
+}
+
+/// IL 侧见证：运行期发现依赖的三组**相邻实例字段**必须真的相邻（构建期事实）。
+///
+/// 相邻关系是发现算法的定位判据（`ScoreInfo` 前面是 `SelectedScore` 的 Bindable、后面是
+/// `ScorePanelList`；`<player>` 前面是 `<VerticalScrollContent>`；`<StatisticsJson>` 后面是
+/// `<MaximumStatisticsJson>`）。IL 一旦不再相邻 ⇒ 拒绝发现（fail closed，不写 results 段）。
+#[cfg(windows)]
+fn il_results_field_order(inventory: &IlInventory) -> Result<(), String> {
+    let order = |type_name: &str, field: &str| -> Option<usize> {
+        inventory
+            .fields
+            .iter()
+            .find(|row| row.type_name == type_name && row.field == field && row.kind == "instance")
+            .map(|row| row.order)
+    };
+    let results_screen = "osu.Game.Screens.Ranking.ResultsScreen";
+    let selected = order(results_screen, "SelectedScore")
+        .ok_or("IL-missing:ResultsScreen.SelectedScore")?;
+    let score = order(results_screen, "Score").ok_or("IL-missing:ResultsScreen.Score")?;
+    let panels = order(results_screen, "<ScorePanelList>k__BackingField")
+        .ok_or("IL-missing:ResultsScreen.ScorePanelList")?;
+    if !(selected + 1 == score && score + 1 == panels) {
+        return Err(format!(
+            "IL-order:ResultsScreen.SelectedScore({selected})->Score({score})->ScorePanelList({panels})"
+        ));
+    }
+    let scroll = order(results_screen, "<VerticalScrollContent>k__BackingField")
+        .ok_or("IL-missing:ResultsScreen.VerticalScrollContent")?;
+    let player = order(results_screen, "<player>k__BackingField")
+        .ok_or("IL-missing:ResultsScreen.player")?;
+    if scroll + 1 != player {
+        return Err(format!(
+            "IL-order:ResultsScreen.VerticalScrollContent({scroll})->player({player})"
+        ));
+    }
+    let score_info = "osu.Game.Scoring.ScoreInfo";
+    let statistics = order(score_info, "<StatisticsJson>k__BackingField")
+        .ok_or("IL-missing:ScoreInfo.StatisticsJson")?;
+    let maximum = order(score_info, "<MaximumStatisticsJson>k__BackingField")
+        .ok_or("IL-missing:ScoreInfo.MaximumStatisticsJson")?;
+    if statistics + 1 != maximum {
+        return Err(format!(
+            "IL-order:ScoreInfo.StatisticsJson({statistics})->MaximumStatisticsJson({maximum})"
+        ));
+    }
+    Ok(())
+}
+
+/// `live` 在结算屏上测出的 `results` 段（含活体自校验的判定摘要）。
+#[cfg(windows)]
+struct ResultsOffsets {
+    screen_type: String,
+    player_type: String,
+    score_offset: u64,
+    /// `<StatisticsJson>`（只有**入库过**的成绩有内容；定位不到就是 `None`）。
+    statistics_offset: Option<u64>,
+    player_offset: u64,
+    /// `statistics` 字典（活成绩的唯一来源）与它的 `_entries` 位移。
+    statistics_dict_offset: Option<u64>,
+    dict_entries_offset: Option<u64>,
+    /// `HitResult` 枚举序号 → 载荷键（IL 的枚举声明顺序）。
+    hit_result_values: BTreeMap<String, u32>,
+    statistics_summary: String,
+}
+
+#[cfg(windows)]
+impl ResultsOffsets {
+    fn witness(&self) -> String {
+        format!(
+            "live result screen: {} (player={}): ResultsScreen.Score -> ScoreInfo at score_offset; \
+             hits from {}{} ({})",
+            self.screen_type,
+            self.player_type,
+            if self.statistics_dict_offset.is_some() {
+                "ScoreInfo.statistics dictionary"
+            } else {
+                "ScoreInfo.StatisticsJson"
+            },
+            if self.statistics_offset.is_some() {
+                "; StatisticsJson located for realm-loaded scores"
+            } else {
+                ""
+            },
+            self.statistics_summary
+        )
+    }
+
+    /// `--json` 输出里的 `results` 对象（只含实际测到的位移）。
+    fn to_json(&self) -> String {
+        let mut out = format!(
+            r#"{{"score_offset":{},"player_offset":{}"#,
+            self.score_offset, self.player_offset
+        );
+        if let Some(value) = self.statistics_offset {
+            out.push_str(&format!(r#","statistics_offset":{value}"#));
+        }
+        if let Some(value) = self.statistics_dict_offset {
+            out.push_str(&format!(r#","statistics_dict_offset":{value}"#));
+        }
+        if let Some(value) = self.dict_entries_offset {
+            out.push_str(&format!(r#","dict_entries_offset":{value}"#));
+        }
+        out.push('}');
+        out
+    }
+}
+
+/// `HitResult` 的枚举表：`(载荷键 → 枚举序号, 成员总数)`。
+///
+/// 枚举序号来自 IL 的**成员声明顺序**（`HitResult` 的成员全是隐式值：`None=0, Miss=1, …`；
+/// `value__` 排在第一位，剔除它以后的下标就是值）。生成器出表时把这张表写进 `results`，
+/// 读侧据此把字典里的整型键换回判定名——不猜、不写死枚举顺序。
+#[cfg(windows)]
+fn il_hit_result_table(inventory: &IlInventory) -> Option<(BTreeMap<String, u32>, u32)> {
+    const HIT_RESULT: &str = "osu.Game.Rulesets.Scoring.HitResult";
+    let mut members: Vec<(usize, &str)> = inventory
+        .fields
+        .iter()
+        .filter(|row| row.type_name == HIT_RESULT && row.field != "value__")
+        .map(|row| (row.order, row.field.as_str()))
+        .collect();
+    if members.len() < 8 {
+        return None;
+    }
+    members.sort_by_key(|(order, _)| *order);
+    let ordinal = |member: &str| -> Option<u32> {
+        members
+            .iter()
+            .position(|(_, name)| *name == member)
+            .map(|index| index as u32)
+    };
+    let mut values = BTreeMap::new();
+    for (key, member) in [
+        ("miss", "Miss"),
+        ("meh", "Meh"),
+        ("ok", "Ok"),
+        ("good", "Good"),
+        ("great", "Great"),
+        ("perfect", "Perfect"),
+    ] {
+        values.insert(key.to_string(), ordinal(member)?);
+    }
+    Some((values, members.len() as u32))
+}
+
+/// JSON 字符串转义（`witness` 是唯一进表的自由文本；只做最小必要转义）。
+#[cfg(windows)]
+fn escape_json(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// 统计 JSON 的形状判据：JSON object + 三个 mania 判定键（live 只用它做定位与自校验）。
+#[cfg(windows)]
+fn looks_like_statistics_json(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with('{')
+        && trimmed.ends_with('}')
+        && trimmed.contains("\"miss\":")
+        && trimmed.contains("\"great\":")
+        && trimmed.contains("\"perfect\":")
+}
+
+/// 从统计 JSON 里取六个判定键的计数（只为与字典交叉校验，不引 serde）。
+#[cfg(windows)]
+fn statistics_counts_from_json(text: &str) -> BTreeMap<String, u32> {
+    let mut counts = BTreeMap::new();
+    for key in ["miss", "meh", "ok", "good", "great", "perfect"] {
+        let needle = format!("\"{key}\":");
+        let Some(at) = text.find(&needle) else {
+            continue;
+        };
+        let digits: String = text[at + needle.len()..]
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(value) = digits.parse::<u32>() {
+            counts.insert(key.to_string(), value);
+        }
+    }
+    counts
+}
+
+/// 一个 `Dictionary<HitResult,int>` 对象里 `_entries` 字段的位移（8 字节槽）。
+///
+/// 判据（全是结构 + 语义）：
+/// 1. 该槽指向一个**数组**（长度 @+0x08，元素 @+0x10），长度在 `1..=64`；
+/// 2. entry（步长 16：`hashCode/next/key/value`）里 `hashCode < 0` 的是释放槽，跳过；
+/// 3. 存活 entry 必须 `hashCode == key`（`HitResult` 枚举的 `GetHashCode()` = 序号）、
+///    `key` 在枚举成员范围内、`value` 非负；
+/// 4. 至少一个键属于我们关心的六个判定、且至少一个值 > 0。
+#[cfg(windows)]
+fn dictionary_entries_offset(
+    handle: Handle,
+    dictionary: u64,
+    hit_result_values: &BTreeMap<String, u32>,
+    enum_size: u32,
+) -> Option<u64> {
+    if !is_valid_ptr(dictionary) {
+        return None;
+    }
+    for offset in (8..0x48).step_by(8) {
+        let Some(entries) = read_ptr(handle, dictionary + offset) else {
+            continue;
+        };
+        if !is_valid_ptr(entries) {
+            continue;
+        }
+        let Some(length) = read_i32(handle, entries + 8) else {
+            continue;
+        };
+        if length <= 0 || length > 64 {
+            continue;
+        }
+        let mut used = 0usize;
+        let mut known = 0usize;
+        let mut positive = false;
+        let mut valid = true;
+        for index in 0..length as u64 {
+            let entry = entries + 16 + index * 16;
+            let Some(hash) = read_i32(handle, entry) else {
+                valid = false;
+                break;
+            };
+            if hash < 0 {
+                continue;
+            }
+            let Some(key) = read_i32(handle, entry + 8) else {
+                valid = false;
+                break;
+            };
+            let Some(value) = read_i32(handle, entry + 12) else {
+                valid = false;
+                break;
+            };
+            if hash != key || key < 0 || (key as u32) >= enum_size || value < 0 {
+                valid = false;
+                break;
+            }
+            used += 1;
+            if hit_result_values.values().any(|mapped| *mapped == key as u32) {
+                known += 1;
+            }
+            if value > 0 {
+                positive = true;
+            }
+        }
+        if valid && used > 0 && known > 0 && positive {
+            return Some(offset);
+        }
+    }
+    None
+}
+
+/// 定位 `ScoreInfo.statistics` 字典与它的 `_entries` 位移，并读出一份 `名字 → 计数`。
+///
+/// 定位判据：`statistics` 后面紧跟 `maximumStatistics`（IL 字段顺序，同为
+/// `Dictionary<HitResult,int>`）⇒ 只有"本槽与后一槽都呈判定字典形状"的那一对才算。
+#[cfg(windows)]
+fn discover_statistics_dict(
+    handle: Handle,
+    resolver: &EetypeResolver<'_>,
+    score: u64,
+    hit_result_values: &BTreeMap<String, u32>,
+    enum_size: u32,
+) -> Option<(u64, u64, BTreeMap<String, u32>)> {
+    let mut found: Vec<(u64, u64)> = Vec::new();
+    for offset in (8..SCORE_INFO_SCAN_LIMIT).step_by(8) {
+        let Some(value) = read_ptr(handle, score + offset) else {
+            continue;
+        };
+        if !is_valid_ptr(value) {
+            continue;
+        }
+        let Some(type_name) = resolver.name(value) else {
+            continue;
+        };
+        if !type_name.contains("Dictionary`2") {
+            continue;
+        }
+        let Some(entries_offset) =
+            dictionary_entries_offset(handle, value, hit_result_values, enum_size)
+        else {
+            continue;
+        };
+        let Some(next) = read_ptr(handle, score + offset + 8) else {
+            continue;
+        };
+        let next_ok = resolver
+            .name(next)
+            .map(|name| name.contains("Dictionary`2"))
+            .unwrap_or(false)
+            && dictionary_entries_offset(handle, next, hit_result_values, enum_size).is_some();
+        if next_ok {
+            found.push((offset, entries_offset));
+        }
+    }
+    if found.len() != 1 {
+        return None;
+    }
+    let (dict_offset, entries_offset) = found[0];
+    let dictionary = read_ptr(handle, score + dict_offset)?;
+    let entries = read_ptr(handle, dictionary + entries_offset)?;
+    let length = read_i32(handle, entries + 8)?;
+    let mut counts: BTreeMap<u32, u32> = BTreeMap::new();
+    for index in 0..length.clamp(0, 64) as u64 {
+        let entry = entries + 16 + index * 16;
+        let Some(hash) = read_i32(handle, entry) else {
+            continue;
+        };
+        if hash < 0 {
+            continue;
+        }
+        let key = read_i32(handle, entry + 8)?;
+        let value = read_i32(handle, entry + 12)?;
+        counts.insert(key as u32, value as u32);
+    }
+    let mut mapped = BTreeMap::new();
+    for (name, key) in hit_result_values {
+        mapped.insert(name.clone(), counts.get(key).copied().unwrap_or(0));
+    }
+    Some((dict_offset, entries_offset, mapped))
+}
+
+/// 唯一性要求：发现到的偏移必须恰好一个（否则拒绝——绝不挑一个"看起来像"的）。
+#[cfg(windows)]
+fn single_offset(values: &[u64], what: &str) -> Result<u64, String> {
+    match values {
+        [one] => Ok(*one),
+        [] => Err(format!("{what}-not-found")),
+        _ => Err(format!(
+            "{what}-ambiguous:[{}]",
+            values
+                .iter()
+                .map(|value| format!("0x{value:X}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        )),
+    }
+}
+
+/// 在结算屏上测 `results` 段的三个偏移。
+///
+/// 判据全部是"结构"（类型名来自 IL 的 RID→名、相邻关系来自 IL 的字段顺序），
+/// 没有任何在用的固定偏移常量；测出来之后立刻用它们把 JSON 再读一遍做自校验。
+#[cfg(windows)]
+fn discover_results(
+    handle: Handle,
+    resolver: &EetypeResolver<'_>,
+    screen: u64,
+    hit_result_values: &BTreeMap<String, u32>,
+    enum_size: u32,
+) -> Result<ResultsOffsets, String> {
+    let screen_type = resolver
+        .name(screen)
+        .ok_or_else(|| "screen-type-unresolved".to_string())?;
+    if !screen_type.contains("ResultsScreen") {
+        return Err(format!("screen-is-not-a-result-screen:{screen_type}"));
+    }
+    let slot_type = |address: u64| -> String {
+        read_ptr(handle, address)
+            .and_then(|pointer| resolver.name(pointer))
+            .unwrap_or_default()
+    };
+
+    // `Score`：`SelectedScore`(Bindable<ScoreInfo>) → `Score`(ScoreInfo) → `ScorePanelList`，
+    // 三个相邻引用字段（IL 顺序）；运行时按这条"前 Bindable / 后 ScorePanelList"的指纹定位。
+    let mut score_offsets = Vec::new();
+    for offset in (8..RESULTS_SCREEN_SCAN_LIMIT).step_by(8) {
+        let Some(value) = read_ptr(handle, screen + offset) else {
+            continue;
+        };
+        if !is_valid_ptr(value) {
+            continue;
+        }
+        let Some(type_name) = resolver.name(value) else {
+            continue;
+        };
+        if !type_name.contains("ScoreInfo") {
+            continue;
+        }
+        if slot_type(screen + offset - 8).contains("Bindable")
+            && slot_type(screen + offset + 8).contains("ScorePanelList")
+        {
+            score_offsets.push(offset);
+        }
+    }
+    let score_offset = single_offset(&score_offsets, "Score")?;
+    let score = read_ptr(handle, screen + score_offset)
+        .ok_or_else(|| "score-pointer-unreadable".to_string())?;
+
+    // ① `<StatisticsJson>`：**只有入库过的成绩**有内容（活成绩是空串）。定位判据同前：
+    //    `<StatisticsJson>` 后面紧跟 `<MaximumStatisticsJson>`（两段 JSON 形状相同）。
+    let mut statistics_offsets = Vec::new();
+    for offset in (8..SCORE_INFO_SCAN_LIMIT).step_by(8) {
+        let Some(text) = read_ptr(handle, score + offset)
+            .and_then(|pointer| read_clr_string(handle, pointer))
+        else {
+            continue;
+        };
+        if !looks_like_statistics_json(&text) {
+            continue;
+        }
+        let next_is_statistics = read_ptr(handle, score + offset + 8)
+            .and_then(|pointer| read_clr_string(handle, pointer))
+            .map(|next| looks_like_statistics_json(&next))
+            .unwrap_or(false);
+        if next_is_statistics {
+            statistics_offsets.push(offset);
+        }
+    }
+    let statistics_offset = match statistics_offsets.len() {
+        0 => None,
+        1 => Some(statistics_offsets[0]),
+        _ => return Err(format!("StatisticsJson-ambiguous:{statistics_offsets:X?}")),
+    };
+    let json_counts = match statistics_offset {
+        Some(offset) => {
+            let json = read_ptr(handle, score + offset)
+                .and_then(|pointer| read_clr_string(handle, pointer))
+                .ok_or_else(|| "statistics-json-unreadable".to_string())?;
+            if !looks_like_statistics_json(&json) {
+                return Err("statistics-json-shape".to_string());
+            }
+            Some(statistics_counts_from_json(&json))
+        }
+        None => None,
+    };
+
+    // ② `statistics` 字典：活成绩（还没入库）的唯一判定数来源。
+    let dict = discover_statistics_dict(handle, resolver, score, hit_result_values, enum_size);
+    if statistics_offset.is_none() && dict.is_none() {
+        return Err("no-hits-source".to_string());
+    }
+    // 两个来源同时可读 ⇒ 交叉校验枚举序号映射（枚举顺序/实现漂移时 fail closed）。
+    if let (Some(json), Some((_, _, mapped))) = (&json_counts, &dict) {
+        for key in ["miss", "meh", "ok", "good", "great", "perfect"] {
+            if json.get(key).copied().unwrap_or(0) != mapped.get(key).copied().unwrap_or(0) {
+                return Err(format!("hit-result-mapping-mismatch:{key}"));
+            }
+        }
+    }
+
+    // `<player>`：`<VerticalScrollContent>` 后面紧跟 `<player>`（IL 顺序）；它的运行时类型是
+    // `SoloPlayer`（正常游玩）或 `ReplayPlayer`（回放）⇒ 回放判定在结算屏上也成立。
+    let mut player_offsets = Vec::new();
+    for offset in (8..RESULTS_SCREEN_SCAN_LIMIT).step_by(8) {
+        let Some(value) = read_ptr(handle, screen + offset) else {
+            continue;
+        };
+        if !is_valid_ptr(value) {
+            continue;
+        }
+        let Some(type_name) = resolver.name(value) else {
+            continue;
+        };
+        if !type_name.contains("Player") {
+            continue;
+        }
+        if slot_type(screen + offset - 8).contains("VerticalScroll") {
+            player_offsets.push(offset);
+        }
+    }
+    let player_offset = single_offset(&player_offsets, "player")?;
+    let player_type = resolver
+        .name(read_ptr(handle, screen + player_offset).unwrap_or(0))
+        .unwrap_or_default();
+
+    Ok(ResultsOffsets {
+        screen_type,
+        player_type,
+        score_offset,
+        statistics_offset,
+        player_offset,
+        statistics_dict_offset: dict.as_ref().map(|(offset, _, _)| *offset),
+        dict_entries_offset: dict.as_ref().map(|(_, offset, _)| *offset),
+        hit_result_values: hit_result_values.clone(),
+        statistics_summary: match &dict {
+            Some((_, _, mapped)) => summary_from_counts(mapped),
+            None => json_counts
+                .as_ref()
+                .map(summary_from_counts)
+                .unwrap_or_default(),
+        },
+    })
+}
+
+/// 六个判定的 `名字=计数` 摘要（见证/日志用）。
+#[cfg(windows)]
+fn summary_from_counts(counts: &BTreeMap<String, u32>) -> String {
+    ["miss", "meh", "ok", "good", "great", "perfect"]
+        .iter()
+        .map(|key| format!("{key}={}", counts.get(*key).copied().unwrap_or(0)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(windows)]
 fn scan_process_memory(handle: Handle, pattern: &[u8]) -> Vec<i64> {
     let mut hits = Vec::new();
@@ -572,10 +1245,11 @@ fn validate_and_emit(
     game_base: u64,
     vtable: u64,
     inventory: &IlInventory,
+    resolver: &EetypeResolver<'_>,
     lazer_version: &str,
     runtime_version: &str,
     arch: &str,
-) -> Option<String> {
+) -> Option<(String, Option<ResultsOffsets>)> {
     if !is_valid_ptr(vtable) || !is_valid_ptr(game_base) {
         return None;
     }
@@ -599,13 +1273,18 @@ fn validate_and_emit(
     let screen_stack = read_ptr(handle, game_base + 1568);
     let stack = screen_stack.and_then(|ss| read_ptr(handle, ss + 800));
     let array = stack.and_then(|st| read_ptr(handle, st + 8));
-    let length = array.and_then(|arr| read_i32(handle, arr + 8)).unwrap_or(0);
+    // 栈深用 `Stack._size`（+0x10），**不是**数组容量 `_array.length`（+0x8）：
+    // 容量 > 栈深是常态，按容量取 "最后一个元素" 会读到空槽。
+    let array_len = array.and_then(|arr| read_i32(handle, arr + 8)).unwrap_or(0);
+    let size = stack.and_then(|st| read_i32(handle, st + 16)).unwrap_or(0);
 
     let mut rid = 0u32;
+    let mut top_screen: Option<u64> = None;
     if let Some(arr) = array {
-        if length > 0 && length <= 64 {
-            if let Some(top_screen) = read_ptr(handle, arr + 16 + ((length - 1) as u64) * 8) {
-                if let Some(screen_mt) = read_ptr(handle, top_screen) {
+        if size > 0 && size <= array_len && size <= 64 {
+            if let Some(screen) = read_ptr(handle, arr + 16 + ((size - 1) as u64) * 8) {
+                top_screen = Some(screen);
+                if let Some(screen_mt) = read_ptr(handle, screen) {
                     if let Some(rid_raw) = read_i32(handle, screen_mt + 8) {
                         rid = (rid_raw as u32) >> 8;
                     }
@@ -654,6 +1333,38 @@ fn validate_and_emit(
         }
     }
 
+    // 活体验证 4（结算屏）：测 `results` 段，并当场用测出的偏移把 `StatisticsJson` 再读一遍
+    // （自校验：读不出非空 JSON 就不写这一段）。IL 的相邻字段见证是前置条件（构建期事实）。
+    let results = match top_screen {
+        Some(screen) => match il_results_field_order(inventory) {
+            Ok(()) => match il_hit_result_table(inventory) {
+                Some((values, enum_size)) => {
+                    match discover_results(handle, resolver, screen, &values, enum_size) {
+                        Ok(found) => Some(found),
+                        Err(reason) => {
+                            eprintln!("[live] results section not captured: {reason}");
+                            None
+                        }
+                    }
+                }
+                None => {
+                    eprintln!(
+                        "[live] results section not captured (IL witness): IL-missing:HitResult"
+                    );
+                    None
+                }
+            },
+            Err(reason) => {
+                eprintln!("[live] results section not captured (IL witness): {reason}");
+                None
+            }
+        },
+        None => {
+            eprintln!("[live] results section not captured: screen-top-unreadable");
+            None
+        }
+    };
+
     // 组装已知经过活体校验的类型布局
     let json = serde_json_table(
         lazer_version,
@@ -664,11 +1375,13 @@ fn validate_and_emit(
         &typedef_map,
         &md5,
         rid,
+        results.as_ref(),
     );
 
-    Some(json)
+    Some((json, results))
 }
 
+#[cfg(windows)]
 fn serde_json_table(
     lazer_version: &str,
     runtime_version: &str,
@@ -678,6 +1391,7 @@ fn serde_json_table(
     typedefs: &BTreeMap<String, BTreeMap<String, String>>,
     sample_md5: &str,
     observed_rid: u32,
+    results: Option<&ResultsOffsets>,
 ) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -787,6 +1501,38 @@ fn serde_json_table(
     out.push_str("      \"stack\": 800\n");
     out.push_str("    }\n");
     out.push_str("  },\n");
+
+    // 结算屏判定数链（只在结算屏上捕获到才写；读侧没有这一段就降级为"发不出 hits"）。
+    if let Some(found) = results {
+        out.push_str("  \"results\": {\n");
+        out.push_str(&format!("    \"score_offset\": {},\n", found.score_offset));
+        if let Some(offset) = found.statistics_offset {
+            out.push_str(&format!("    \"statistics_offset\": {offset},\n"));
+        }
+        out.push_str(&format!("    \"player_offset\": {},\n", found.player_offset));
+        if let Some(offset) = found.statistics_dict_offset {
+            out.push_str(&format!("    \"statistics_dict_offset\": {offset},\n"));
+        }
+        if let Some(offset) = found.dict_entries_offset {
+            out.push_str(&format!("    \"dict_entries_offset\": {offset},\n"));
+        }
+        if !found.hit_result_values.is_empty() {
+            out.push_str("    \"hit_result_values\": {\n");
+            let total = found.hit_result_values.len();
+            for (index, (name, value)) in found.hit_result_values.iter().enumerate() {
+                out.push_str(&format!(
+                    "      \"{name}\": {value}{}\n",
+                    if index + 1 == total { "" } else { "," }
+                ));
+            }
+            out.push_str("    },\n");
+        }
+        out.push_str(&format!(
+            "    \"witness\": \"{}\"\n",
+            escape_json(&found.witness())
+        ));
+        out.push_str("  },\n");
+    }
 
     out.push_str("  \"runtime\": {\n");
     out.push_str("    \"eetype\": {\n");

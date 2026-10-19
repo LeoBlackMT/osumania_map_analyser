@@ -579,6 +579,11 @@ export function createSettingsParsers(appConfig) {
         return normalizeBooleanSetting(value, appConfig.defaults.enableTelemetry);
     }
 
+    function parseEnableDifficultyFeedbackValue(settingsPayload) {
+        const value = extractSettingValue(settingsPayload, "enableDifficultyFeedback");
+        return normalizeBooleanSetting(value, appConfig.defaults.enableDifficultyFeedback);
+    }
+
     return {
         parseEnablePatternValue,
         parseContentBarValue,
@@ -617,6 +622,7 @@ export function createSettingsParsers(appConfig) {
         parseEnableAnalyzeLNValue,
         parseEnableAlwaysShowLNDifficultyValue,
         parseEnableTelemetryValue,
+        parseEnableDifficultyFeedbackValue,
         parseGameClientValue,
     };
 }

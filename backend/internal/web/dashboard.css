@@ -96,6 +96,21 @@ header .sub {
 }
 .meta .sep { color: var(--border-strong); }
 
+/* ── Section tabs (Usage / Difficulty feedback) ──────── */
+.tabs {
+  display: flex; gap: 4px; margin-top: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs a {
+  padding: 9px 14px; margin-bottom: -1px;
+  color: var(--fg-dim); text-decoration: none;
+  font-size: 13px; font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: color .15s ease, border-color .15s ease;
+}
+.tabs a:hover { color: var(--fg); }
+.tabs a.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
 /* ── Controls (range + theme toggle) ─────────────────── */
 .controls { display: flex; align-items: center; gap: 10px; }
 .range {

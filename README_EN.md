@@ -68,13 +68,13 @@ Global shortcuts remain active even when the window is unfocused or click-throug
 ## Estimator Algorithm Benchmark
 - Benchmarks have been migrated to the standalone repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and results can be viewed [here](https://benchmark.leoblack.top/). Tests cover multiple algorithms across various beatmap categories to help players find what fits them best.
 - Please note that while benchmarks provide reference performance, real-world results can vary with beatmap patterns, mod combinations, and other factors. Combine benchmark results with your own play experience.
-- Due to manual annotation error and individual player differences, estimation accuracy on the 700+ sample set has approached its practical limit. If interested, you are welcome to participate in improving the algorithms.
+- Due to manual annotation error and individual player differences, estimation accuracy on the 700+ sample set has approached its practical limit. We have added a feedback feature for the estimators: players are welcome to rate estimates after a play, which helps us find maps that deviate most and improve them. Thank you!
 - You can download benchmark beatmap samples [here](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z). Please read the disclaimer and use the data responsibly.
 
 ## Privacy / Anonymous Usage Statistics
-This plugin sends anonymous usage statistics by default to track active users, online distribution, and usage patterns. Telemetry contains **no** usernames, player IDs, scores, beatmap identities (titles/MD5), or IP addresses. Data is strictly used for aggregated statistics. Public dashboard: https://mma-stats.leoblack.top/
-
-To opt out, disable "Anonymous Usage Statistics" under Settings → Network.
+- Anonymous usage statistics are enabled by default to track active users, online distribution, and usage patterns. Telemetry contains no usernames, player IDs, scores, beatmap identities (titles/MD5), or IP addresses; data is strictly used for aggregated statistics. To opt out, disable "Anonymous Usage Statistics" under Settings → Network.
+- Estimator difficulty feedback is enabled by default: after a play, the card asks you to rate this play's estimate. It collects accuracy information, maps with large deviations, and overall estimator behavior. Only the beatmap ID, mods, and estimator outputs of this play are sent — no personal information — and the data is used only to improve the estimators. To opt out, disable "Difficulty Feedback" under Settings → Network.
+- Both datasets are public on the dashboard: https://mma-stats.leoblack.top/
 
 ## Settings Guide
 Note: It is recommended to start with default settings or select a suitable preset, then fine-tune according to personal preference.  

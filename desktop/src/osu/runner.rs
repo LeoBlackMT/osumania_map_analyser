@@ -7,6 +7,7 @@
 // - .osu 谱面文件解析与缓存 (attach_beatmap_file)
 // - 状态发布辅助 (publish_phase / publish_outcome / publish_idle 等)
 
+#[allow(unused_imports)]
 use std::sync::Arc;
 use std::thread;
 use crate::osu::invariants::{FrameAction, Gate};
@@ -410,6 +411,7 @@ pub fn run(reader: Reader) {
                         }),
                         None,
                     );
+                    log_results_diagnostic(&frame.snapshot, &frame.gaps);
                     FrameRead {
                         snapshot: frame.snapshot,
                         probe: None,
@@ -1042,6 +1044,24 @@ pub fn read_frame(
                 if result.result_base.is_none() {
                     degraded.push("resultsScreen.mods".to_string());
                 }
+                // stable 的回放判定（lazer 靠屏幕类型名，stable 是闭源进程）：结算屏上
+                // 结算对象的 player_name 是"被观看者"，与本机账号名（cfg 文件里的
+                // `Username = …`，不是文件名——文件名是 Windows 账户名）全部不匹配
+                // ⇒ 这一局来自回放。候选为空/名字缺失/看自己的回放 ⇒ 不标记
+                // （宁可漏判不可误判，见 `stable::replay_from_player_name`）。
+                //
+                // ⚠️ 这里不能读 `snapshot.game_folder`：它在本函数末尾才赋值（默认 None），
+                // 早读会让整段判定永远不执行（历史上就踩过）。直接从进程镜像路径取。
+                if snapshot.is_result_state() && !snapshot.replay {
+                    if let Some(name) = result.player_name.as_deref() {
+                        if let Some(folder) = stable::game_folder(&target.image_path) {
+                            let local_names = stable::local_player_names_cached(&folder);
+                            if stable::replay_from_player_name(Some(name), &local_names) {
+                                snapshot.replay = true;
+                            }
+                        }
+                    }
+                }
                 result_read = Some(result);
             }
             Err(reason) => {
@@ -1102,8 +1122,38 @@ pub fn read_songs_cfg_value(_target: &win::Target, _addr: u32) -> Option<String>
     None
 }
 
-pub fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>) {
-    let previous_bg = snapshot.background.clone();
+/// 结算屏判定数结论的日志：**只在结论变化时写一行**（250 ms 一帧，不能每帧写）。
+///
+/// 为什么需要它：`resultsScreen.hits` 是"表里有没有 `results` 段 + 活体读得到吗"两件事的
+/// 合成结果，页面只能看到 `no_hits`；把失败时的那条 gap 写进壳日志，现场才可诊断。
+fn log_results_diagnostic(snapshot: &Snapshot, gaps: &[String]) {
+    if !snapshot.is_result_state() {
+        return;
+    }
+    static LAST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    let reasons: Vec<&str> = gaps
+        .iter()
+        .filter(|gap| gap.starts_with("resultsScreen.hits:"))
+        .map(String::as_str)
+        .collect();
+    let message = match snapshot.result_hits {
+        Some(hits) => format!(
+            "resultScreen hits published ({}) replay={}",
+            hits.canonical(),
+            snapshot.replay
+        ),
+        None => format!("resultScreen hits NOT published ({reasons:?})"),
+    };
+    let mut last = LAST.lock().unwrap_or_else(|error| error.into_inner());
+    if last.as_deref() == Some(message.as_str()) {
+        return;
+    }
+    *last = Some(message.clone());
+    let level = if snapshot.result_hits.is_some() { "info" } else { "warn" };
+    crate::server::log::log_at(level, &format!("osu: lazer {message}"));
+}
+
+pub fn attach_beatmap_file(snapshot: &mut Snapshot, cache: &mut Option<OsuFileCache>) {    let previous_bg = snapshot.background.clone();
     snapshot.beatmap_file = None;
     snapshot.beatmap_file_error = None;
     snapshot.beatmap_file_md5 = None;

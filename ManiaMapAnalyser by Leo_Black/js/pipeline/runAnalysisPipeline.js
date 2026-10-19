@@ -106,6 +106,8 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         metadata: parsedData.metaData || {},
         lnRatio: Number(parsedData.lnRatio) || 0,
         columnCount: Number(parsedData.columnCount) || 0,
+        // OD 是反馈签名的客观字段：必须来自本地 .osu 解析（-1 = 未解析到）。
+        od: Number(parsedData.od),
     };
 
     // ── 马拉松时长修正：估算器内嵌前置（按需）──────────────────────────

@@ -102,16 +102,123 @@ pub fn respond_json(stream: &mut TcpStream, code: u16, body: &str) {
     write_response(stream, code, "application/json", body.as_bytes());
 }
 
+/// `/feedback` 允许的页面来源：壳自己的 24061 与 tosu 页面 24050（tosu 在线时壳加载 tosu 页面）。
+const FEEDBACK_ORIGINS: &[&str] = &[
+    "http://127.0.0.1:24061",
+    "http://localhost:24061",
+    "http://127.0.0.1:24050",
+    "http://localhost:24050",
+    "http://tauri.localhost",
+];
+
+fn header_value<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+    head.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        if key.trim().eq_ignore_ascii_case(name) {
+            Some(value.trim())
+        } else {
+            None
+        }
+    })
+}
+
+fn allowed_origin(head: &str) -> Option<String> {
+    let origin = header_value(head, "origin")?;
+    FEEDBACK_ORIGINS
+        .iter()
+        .find(|allowed| allowed.eq_ignore_ascii_case(origin))
+        .map(|_| origin.to_string())
+}
+
+fn respond_json_cors(stream: &mut TcpStream, code: u16, body: &str, origin: Option<&str>) {
+    let cors = origin
+        .map(|value| format!("Access-Control-Allow-Origin: {value}\r\nVary: Origin\r\n"))
+        .unwrap_or_default();
+    let head = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+        code,
+        status_text(code),
+        body.len(),
+        cors
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body.as_bytes());
+}
+
+fn plugin_version(plugin_dir: &std::path::Path) -> String {
+    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION
+        .get_or_init(|| {
+            std::fs::read_to_string(plugin_dir.join("metadata.txt"))
+                .ok()
+                .and_then(|text| {
+                    text.lines().find_map(|line| {
+                        line.trim()
+                            .strip_prefix("Version:")
+                            .map(|value| value.trim().to_string())
+                    })
+                })
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "unknown".to_string())
+        })
+        .clone()
+}
+
+/// POST /feedback：从 native 快照重算客观字段并签名；不直接发后端。
+fn handle_feedback(shared: &Arc<Shared>, mut stream: TcpStream, body: &str, origin: Option<String>) {
+    if body.len() > 4096 {
+        respond_json_cors(&mut stream, 413, r#"{"error":"body_too_large"}"#, origin.as_deref());
+        return;
+    }
+    let page: crate::feedback::PageFeedback = match serde_json::from_str(body) {
+        Ok(value) => value,
+        Err(_) => {
+            respond_json_cors(&mut stream, 400, r#"{"error":"bad_json"}"#, origin.as_deref());
+            return;
+        }
+    };
+    let Some(reader) = crate::osu::instance() else {
+        respond_json_cors(&mut stream, 409, r#"{"error":"no_reader"}"#, origin.as_deref());
+        return;
+    };
+    let Some(snapshot) = reader.snapshot() else {
+        respond_json_cors(&mut stream, 409, r#"{"error":"no_snapshot"}"#, origin.as_deref());
+        return;
+    };
+    let Some(install_id) = crate::feedback::install_id() else {
+        respond_json_cors(&mut stream, 500, r#"{"error":"install_id"}"#, origin.as_deref());
+        return;
+    };
+    let version = plugin_version(&shared.plugin_dir);
+    let payload = match crate::feedback::build_payload(&snapshot, &page, &version, &install_id) {
+        Ok(value) => value,
+        Err(reason) => {
+            let body = serde_json::json!({ "error": reason }).to_string();
+            respond_json_cors(&mut stream, 422, &body, origin.as_deref());
+            return;
+        }
+    };
+    let Some(envelope) = crate::feedback::sign(&payload) else {
+        respond_json_cors(&mut stream, 500, r#"{"error":"sign_failed"}"#, origin.as_deref());
+        return;
+    };
+    let body = serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string());
+    respond_json_cors(&mut stream, 200, &body, origin.as_deref());
+}
+
 fn status_text(code: u16) -> &'static str {
     match code {
         200 => "OK",
         202 => "Accepted",
+        204 => "No Content",
         400 => "Bad Request",
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
         413 => "Payload Too Large",
         415 => "Unsupported Media Type",
+        422 => "Unprocessable Entity",
         500 => "Internal Server Error",
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
@@ -293,6 +400,35 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         return;
     }
 
+    // POST /feedback：RC 难度反馈的壳侧门控与签名（页面负责把信封转发到后端）。
+    if path == "/feedback" {
+        let origin = allowed_origin(head);
+        if method == "OPTIONS" {
+            let Some(origin) = origin else {
+                respond_json(&mut stream, 403, r#"{"error":"forbidden origin"}"#);
+                return;
+            };
+            let head = format!(
+                "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Max-Age: 600\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(head.as_bytes());
+            return;
+        }
+        if method != "POST" {
+            respond_json_cors(&mut stream, 405, r#"{"error":"method not allowed"}"#, origin.as_deref());
+            return;
+        }
+        // 浏览器 POST 必带 Origin（包含跨源页面）：来源不在白名单就直接拒绝，
+        // 与 OPTIONS 同一规则。无 Origin 只可能是本机进程直连（端点只绑回环），
+        // 见 CONTRACT.md §13。
+        if header_value(head, "origin").is_some() && origin.is_none() {
+            respond_json(&mut stream, 403, r#"{"error":"forbidden origin"}"#);
+            return;
+        }
+        handle_feedback(&shared, stream, body, origin);
+        return;
+    }
+
     if path == "/settings" {
         // 优先级：tosu 在线设置文件 > tosu 设置文件（离线）> mma-settings.json >
         // settings.json 生成默认。见 config::resolve_plugin_settings。
@@ -311,6 +447,12 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             return;
         }
         let win = config::read_window_state();
+        // 结算屏的"这一局来自回放"位：页面在进入结算屏时本来就要取一次本端点（穿透状态），
+        // 顺手带上它——回放结果就不会在数据面切换的窗口里先弹成"可评分"。
+        let replay = crate::osu::instance()
+            .and_then(|reader| reader.snapshot())
+            .map(|snapshot| snapshot.is_result_state() && snapshot.replay)
+            .unwrap_or(false);
         let body = serde_json::json!({
             "config": cfg,
             "resolved": {
@@ -321,6 +463,16 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             "window": {
                 "topmost": win.topmost,
                 "clickThrough": win.click_through
+            },
+            "feedback": {
+                "replay": replay,
+                // 本地联调：用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback`
+                // 启动壳时，页面把投票发到该地址而不是生产后端（壳窗口没有控制台，
+                // 页面自己写不了 window.__MMA_FEEDBACK_ENDPOINT）。生产不设 ⇒ null。
+                "endpoint": std::env::var("MMA_FEEDBACK_ENDPOINT")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
             }
         });
         respond_json(&mut stream, 200, &body.to_string());
@@ -453,7 +605,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 
     // POST /offsets/update：检查并更新远端签名内存表（P2 Topic 10，静默离线回落）
     if method == "POST" && path == "/offsets/update" {
-        let manifest_url = "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
+        let manifest_url = REMOTE_OFFSETS_MANIFEST;
         let update_outcome = check_and_apply_remote_offsets(manifest_url);
         respond_json(&mut stream, 200, &update_outcome.to_string());
         return;
@@ -559,6 +711,7 @@ fn create_curl_command() -> std::process::Command {
     #[cfg(windows)]
     let mut cmd = std::process::Command::new("curl.exe");
     #[cfg(not(windows))]
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new("curl");
 
     #[cfg(windows)]
@@ -569,7 +722,11 @@ fn create_curl_command() -> std::process::Command {
     cmd
 }
 
-fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+/// 远端偏移表清单地址（手动按钮与每日自动检查共用）。
+pub const REMOTE_OFFSETS_MANIFEST: &str =
+    "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
+
+pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     let mut cmd = create_curl_command();
     cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
     let output = match cmd.output() {

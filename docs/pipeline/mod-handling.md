@@ -25,7 +25,7 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 
 ## 2. 已知 mod 代码表
 
-白名单定义于 `js/../config.js:122`：
+白名单定义于 `js/../config.js:126-134`：
 
 | 代码 | 含义（插件视角） | 参与计算 | 说明 |
 | --- | --- | --- | --- |
@@ -42,10 +42,10 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 | `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：无 SV2 且 lazer 带 CL → classic=true |
 | `SV2` | ScoreV2（计分方式） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；**只要存在 SV2（无论 client）→ classic=false，优先级最高** |
 
-- `APP_CONFIG.mods.knownCodes`（config.js:122）共 **12** 个代码；`APP_CONFIG.mods.bitFlags`（config.js:123-130）覆盖 stable 位标志对应项：`EZ:2, HR:16, DT:64, HT:256, NC:512, SV2:536870912`（EZ/HR/DT/HT/NC/SV2 与 osu bitflag 一一对应；DA/DC/IN/HO/MR/CL 无 bitflag，是 lazer 专属代码，走字符串路径。`CL` 在字符串/acronym 路径被收集，`SV2` 在 stable 走 bitflag 路径，lazer 下也可能以 acronym 出现）。
-- **派生导出**（`js/app/appContext.js:286-289`）：
-  - `SORTED_KNOWN_MOD_CODES`（appContext.js:288）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。`SV2` 含数字，normalization 保留数字（modData.js:28 `addCodesFromString` 注释）。
-  - `MOD_BIT_FLAG_ENTRIES`（appContext.js:289）= `Object.entries(bitFlags)`，供 `addCodesFromNumber` 遍历。
+- `APP_CONFIG.mods.knownCodes`（config.js:126-134）共 **67** 个代码（本轮起覆盖完整 mania 码表：全部 stable bit 代码 + `nK` + lazer 专属代码）；`APP_CONFIG.mods.bitFlags`（config.js:135-166）共 **32** 项，与 osu stable 位标志一一对应（`NF:1 … MR:1073741824`）。`DA/DC/IN/HO/CL` 无 bitflag（lazer 专属代码，走字符串路径；`CL` 在字符串/acronym 路径被收集），`SV2` 在 stable 走 bitflag 路径、lazer 下也可能以 acronym 出现。扩表只扩大"可识别"范围——除 §2 表列出的计算相关代码外，其余（`NF/HD/FL/RD/CN/AT/nK` 等）仅用于识别、`hasModInfo` 与 RC 反馈 gate，不参与计算。
+- **派生导出**（`js/app/appContext.js:292-295`）：
+  - `SORTED_KNOWN_MOD_CODES`（appContext.js:294）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。`SV2` 含数字，normalization 保留数字（modData.js:28 `addCodesFromString` 注释）。
+  - `MOD_BIT_FLAG_ENTRIES`（appContext.js:295）= `Object.entries(bitFlags)`，供 `addCodesFromNumber` 遍历。
 
 ### 2.1 classic 判定（Classic 感知星数）
 
@@ -93,7 +93,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 ```
 
 - 条件：**首次收到 mod 状态**（`state.modSignature` 为空），或**本包确实携带显式 mod 载荷**（hasModPayload 且有信息或显式无 mod）。
-- 应用时写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（socketHandlers.js:290-295；state 初始值见 `appContext.js:160-163`：`speedRate: 1.0`、`odFlag: null`、`cvtFlag: null`、`modSignature: ""`），并同步应用 `state.modCodes`/`state.classicMod`（socketHandlers.js:175-178，在 beatmap 守卫早退之前）。
+- 应用时写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（socketHandlers.js:296-299；state 初始值见 `appContext.js:160-163`：`speedRate: 1.0`、`odFlag: null`、`cvtFlag: null`、`modSignature: ""`），并同步应用 `state.modCodes`/`state.classicMod`（socketHandlers.js:176-178，在 beatmap 守卫早退之前）。
 - 签名变化才触发重算：`nextModSignature !== previousModSignature` 构成 `hasStateMismatch`（socketHandlers.js:279-280）→ `scheduleRecompute("beatmap/mod changed", true)`（socketHandlers.js:325）。
 
 ## 4. 速率处理（speedRate → musicRate）
@@ -179,10 +179,10 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **api_v2 部分包**：部分包不含 mod 字段。若无条件应用会造成 `state.modSignature` 被空载荷覆盖（或抖动），因此 socketHandlers.js:271-272 的注释明确"仅在 mod payload 显式存在时应用"；无载荷时保持 `previousModSignature`（socketHandlers.js:275-277）。
 - **changeKind = "mod"**：谱面身份（identity）不变而仅签名变化时，`changeKind` 置为 `"mod"`（`resolveChangeKind` 定义于 `js/app/changeKind.js`；调用点 socketHandlers.js:298-303），渲染层据此选择入场动画（换歌/换难度/仅改 mod 三态，注释见 socketHandlers.js:297）。
 - **lazer vs stable 差异**：cvtFlag 仅 lazer 有（modData.js:210-216）；lazer 有 speed_change/DA-OD 数字通道（modData.js:182-189），stable 只能走 bitflag（`addCodesFromNumber`）。混合场景（tourney/ipcClients）也会被收集（modData.js:11-26）。
-- **MR 是识别但无用的代码**：在 knownCodes 中（config.js:122）故能被提取，但全库无任何计算分支引用它，仅影响 `hasModInfo`（有 MR 时不算"无 mod"）。
+- **MR 是识别但无用的代码**：在 knownCodes 中（config.js:126）故能被提取，但全库无任何计算分支引用它，仅影响 `hasModInfo`（有 MR 时不算"无 mod"）。
 - **速率优先级**：lazer 自定义倍速 > NC/DT > HT/DC > 1.0（modData.js:194-200）。NC/DT 与 HT/DC 不可能同时出现，若同时命中先判加速后判减速。
 - **签名精度**：速率保留 5 位小数（modData.js:235），lazer 自定义速率如 1.05/0.9 等非整数值也能稳定区分；`1.00000|none|none|0` 为无 mod 且非 Classic 的基准签名。
-- **新增计算相关 mod 代码**：需同时加入 `knownCodes`（config.js:122）与（若需 stable bitflag）`bitFlags`（config.js:123-130）；`SORTED_KNOWN_MOD_CODES`/`MOD_BIT_FLAG_ENTRIES` 是派生导出，无需手动改。若新代码参与计算（速率/OD/cvt），必须在 `getModData` 的判定分支（modData.js:194-216）与签名构建处同步处理，否则签名不反映其影响（缓存会按旧语义命中）。
+- **新增计算相关 mod 代码**：需同时加入 `knownCodes`（config.js:126）与（若需 stable bitflag）`bitFlags`（config.js:135-166）；`SORTED_KNOWN_MOD_CODES`/`MOD_BIT_FLAG_ENTRIES` 是派生导出，无需手动改。若新代码参与计算（速率/OD/cvt），必须在 `getModData` 的判定分支（modData.js:194-216）与签名构建处同步处理，否则签名不反映其影响（缓存会按旧语义命中）。
 ## 多数据源（外部源）补充
 
 外部源（Etterna、Malody V、Malody 4.3.7）**不使用 modData 派生**：`externalSource.js` 直构

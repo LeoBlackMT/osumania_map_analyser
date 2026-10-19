@@ -47,6 +47,7 @@ osu 源在壳版里有**两条传输**，页面只看一条（`DECISIONS.md` DEC
 - **原生位进路由**：`state.shellOsuNativeAlive` 是"覆盖真的生效"的位，进 L3' 存活回窗（`sourceManager.js:130`）与 osu 败方门控（`sourceManager.js:196-197`）——否则原生帧会被当"败方帧"静默缓冲（用户可见现象：换图不更新）。
 - **浏览器模式不变式（硬约束）**：无壳 / 浏览器 tosu 页（24050）永不接受端点覆盖（`isShellPage()` 门控），`state.wsEndpoint` 与结果缓存的语义一字不变；原生传输的失败面（reason 闭集、`degradedFields`、冻结/保持）只出现在壳页。
 - **能力边界（逐客户端）**：stable 供计划 §3.3 的完整字段表；lazer 供身份/状态/时间/`.osu` 解析面，mods 三槽 / hits 两枚 / 背景音频共 **7 条字段缺口**逐条进 `sources.osu.degradedFields`（详见 [osu-native-source.md](osu-native-source.md) §6）。
+- **对 RC 难度反馈的影响**：反馈需要完整的 `resultsScreen.hits` 与 `result_mods_mask`。stable native 具备；lazer native 缺 hits 时页面 gate 停在 `no_hits`，反馈条改为显示一条非交互提示（不静默），即便绕过页面壳的 `/feedback` 也会返回 422（不签名、不入库）。这是刻意行为：宁可不收，也不用 0 命中算权重。
 - 域内细节（架构、reason 闭集、L0–L3 健康机、锚点失效定位、lazer 偏移表重建、自检清单）一律以 [osu-native-source.md](osu-native-source.md) 为唯一权威，本节只描述它在多源体系里的位置。
 
 ## 转换器

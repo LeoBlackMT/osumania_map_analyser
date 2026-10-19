@@ -21,6 +21,7 @@ import (
 
 	"osumania-telemetry/internal/backup"
 	"osumania-telemetry/internal/config"
+	"osumania-telemetry/internal/feedback"
 	"osumania-telemetry/internal/ratelimit"
 	"osumania-telemetry/internal/store"
 	"osumania-telemetry/internal/telemetry"
@@ -61,7 +62,45 @@ func main() {
 	go rawRetentionLoop(st, cfg.RawRetentionDays)
 	go hourRetentionLoop(st, cfg.HourRetentionDays)
 
-	bm, err := backup.New(cfg, st)
+	var feedbackStore *store.FeedbackStore
+	if cfg.FeedbackEnabled {
+		feedbackStore, err = store.OpenFeedback(cfg.FeedbackDB)
+		if err != nil {
+			log.Fatalf("feedback store: %v", err)
+		}
+		defer feedbackStore.Close()
+		if !cfg.FeedbackReady() {
+			log.Printf("feedback: enabled but not ready (missing keys or dedup secret); endpoint disabled")
+		}
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/event", eventHandler)
+	if feedbackStore != nil && cfg.FeedbackReady() {
+		osuAPI := feedback.NewOSUAPI(cfg.OSUClientID, cfg.OSUClientSecret, feedbackStore,
+			cfg.FeedbackOSURatePerMin, cfg.FeedbackOSURateBurst, cfg.FeedbackOSUWaitMS,
+			cfg.FeedbackNegativeCacheDays, cfg.FeedbackAPICooldownSeconds)
+		refresh := func() error {
+			return feedback.RefreshAll(feedbackStore, cfg.FeedbackMinN, cfg.FeedbackTrimRatio)
+		}
+		ingest := feedback.NewHandler(cfg, feedbackStore, osuAPI)
+		admin := feedback.NewAdmin(feedbackStore, cfg.FeedbackAdminToken,
+			cfg.FeedbackMinN, 5, 0.5, osuAPI.Metrics, refresh)
+		mux.Handle("/api/v1/feedback", ingest)
+		mux.Handle("/api/v1/feedback/stats", admin)
+		mux.Handle("/api/v1/feedback/export.csv", admin)
+		mux.Handle("/api/v1/feedback/refresh", admin)
+		mux.Handle("/api/v1/feedback/summary", feedback.NewSummaryHandler(feedbackStore))
+		mux.Handle("/feedback", admin)
+		go feedbackAggLoop(feedbackStore, cfg.FeedbackMinN, cfg.FeedbackTrimRatio)
+		go feedbackRetentionLoop(feedbackStore, cfg.FeedbackRawRetentionDays)
+		log.Printf("feedback: enabled (db=%s, validation=%v)", cfg.FeedbackDB, cfg.FeedbackOSUValidation)
+	} else if cfg.FeedbackEnabled {
+		log.Printf("feedback: route disabled (configuration incomplete)")
+	}
+	mux.Handle("/", webHandler)
+
+	bm, err := backup.New(cfg, st, feedbackStore, version)
 	if err != nil {
 		log.Fatalf("backup: %v", err)
 	}
@@ -70,10 +109,6 @@ func main() {
 	} else {
 		log.Printf("backup: disabled (OBS credentials not set)")
 	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/event", eventHandler)
-	mux.Handle("/", webHandler)
 
 	server := &http.Server{
 		Addr:              cfg.Addr,
@@ -174,6 +209,37 @@ func hourRetentionLoop(st *store.Store, retentionDays int) {
 			log.Printf("hour retention: %v", err)
 		} else if n > 0 {
 			log.Printf("hour retention: deleted %d install-hour rows older than %d days", n, retentionDays)
+		}
+	}
+	run()
+	for range time.Tick(24 * time.Hour) {
+		run()
+	}
+}
+
+// feedbackAggLoop rebuilds the per-map and per-feature aggregates every 5
+// minutes. Raw events are the source of truth, so the tables are disposable.
+func feedbackAggLoop(st *store.FeedbackStore, minN int, trim float64) {
+	run := func() {
+		if err := feedback.RefreshAll(st, minN, trim); err != nil {
+			log.Printf("feedback agg: %v", err)
+		}
+	}
+	run()
+	for range time.Tick(5 * time.Minute) {
+		run()
+	}
+}
+
+// feedbackRetentionLoop prunes expired nonces daily plus old raw events and
+// validation cache entries.
+func feedbackRetentionLoop(st *store.FeedbackStore, rawRetentionDays int) {
+	run := func() {
+		now := time.Now().UnixMilli()
+		if n, err := st.Prune(now, rawRetentionDays, 10); err != nil {
+			log.Printf("feedback retention: %v", err)
+		} else if n > 0 {
+			log.Printf("feedback retention: deleted %d rows", n)
 		}
 	}
 	run()
