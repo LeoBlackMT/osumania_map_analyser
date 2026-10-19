@@ -78,7 +78,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | --- | --- | --- |
 | `/settings` | GET | 200 + **权威链全量对象**（在线 = tosu 设置文件；离线 = `mma-settings.json`；都没有则生成默认骨架并落盘）。读取侧不设只读门控——只读体现在写侧 |
 | `/settings` | POST | 200 + **合并后的全量对象**（请求键优先的读-改-写，base 的未知键保留，绝不把文件截断成请求体）；**403 `tosu online: settings are read-only`**（在线只读；判据与 GET 第 1 级是**同一个表达式**，且 POST 内先复探 tosu 存活、跳变经 `apply_tosu_online_transition` 切源）；**400**（body 不是合法 JSON 或不是对象）；**500**（base 不可读或写盘失败）。成功 → 更新缓存 + 广播 settings 帧 |
-| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`）；**400 `shell config unreadable`**（配置不可读） |
+| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`；`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400 `shell config unreadable`**（配置不可读） |
 | `/shell-config` | POST | 200 + 合并后的全量壳配置（请求键优先，未知键保留）；**400**（body 非 JSON / 非对象 / base 不可读或写盘失败——这几种情况**什么都不写**，不生成骨架）。成功 → 更新缓存 + `clear_detect_caches()`（根目录探测缓存失效）+ 广播 settings 帧 |
 | `/open-settings` | POST | 200 `{}`（**异步**发起建窗/聚焦，不等窗口真的建出来）；**503 `no app handle`**（无窗口模式：app 句柄未注入） |
 | `/feedback` | POST/OPTIONS | 200 + `{payload, auth}`：从 native 快照重算 `bid/checksum/rate/mods/hits/weight`，Ed25519 签名后交页面转发（壳不发 HTTPS）；**422** gate 失败（见 `src/feedback/mod.rs` 的原因码）；**409** 无读取器/快照；**413** body >4KB；OPTIONS 返回 204 预检头 |

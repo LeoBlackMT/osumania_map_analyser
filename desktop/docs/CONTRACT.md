@@ -277,10 +277,10 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | --- | --- | --- |
 | `/settings` | GET | 200 = 权威链全量对象（在线 tosu 文件 / 离线本地 `mma-settings.json` / 生成骨架并落盘）；读取侧无只读门控 |
 | `/settings` | POST | 200 = 合并后全量对象（请求键优先读-改-写 + 广播 settings 帧）；**403** 在线只读（判据同 §6）；**400** body 非 JSON / 非对象；**500** base 不可读或写盘失败 |
-| `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}}`；**400** 配置不可读 |
+| `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400** 配置不可读 |
 | `/shell-config` | POST | 200 = 合并后全量壳配置（+ `clear_detect_caches()` + 广播 settings 帧）；**400** body 非 JSON / 非对象 / base 不可读 / 写盘失败（不写盘） |
 | `/open-settings` | POST | 200 `{}`（异步发起建窗/聚焦，不等窗口建成）；**503** 无 app 句柄（无窗口模式） |
-| `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/mods/rate/total_hits/completion/miss_rate/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403/405** 来源或方法不允许。OPTIONS 返回 204 + CORS 预检头 |
+| `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/no_mods/mods/rate/total_hits/completion/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403** Origin 不在白名单（无 Origin = 本机进程直连）；**405** 方法不允许。OPTIONS 返回 204 + CORS 预检头 |
 | `/cover/...` | GET | 200 白名单内的具体文件（`Access-Control-Allow-Origin: *`）；404 未列入白名单或读取失败 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 200 插件目录静态文件（防穿越，`Cache-Control: no-store`）；405 其他方法；404 穿越/不存在 |
 | `/ws` | WS | 帧通道（§0–§12 的八型 + diag） |
