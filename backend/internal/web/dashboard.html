@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>/* 首次绘制前定好主题，避免浅色先闪一下再过渡到深色（切换选项卡/刷新都受益）。 */
+(function(){try{var s=localStorage.getItem("mma-theme");var d=s?s==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light");}catch(e){}})();</script>
 <title>ManiaMapAnalyser — Usage Statistics</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<script>/* 首次绘制前定好主题，避免浅色先闪一下再过渡到深色。 */
+(function(){try{var s=localStorage.getItem("mma-theme");var d=s?s==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",d?"dark":"light");}catch(e){}})();</script>
 <title>ManiaMapAnalyser — RC Feedback Admin</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23635bff'/%3E%3Cpath d='M16 6.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2-5.4-3.4-5.4 3.4 1.2-6.2-4.6-4.3 6.2-.8z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,7 +39,9 @@
   .meta .status.err { color: var(--danger); }
 
   table {
-    border-collapse: collapse; width: 100%;
+    border-collapse: collapse;
+    /* 列多时横向滚动而不是把内容挤断/溢出面板。 */
+    width: max-content; min-width: 100%;
     font-size: 12.5px; font-variant-numeric: tabular-nums;
   }
   th, td { border-bottom: 1px solid var(--border); padding: 6px 10px; text-align: left; white-space: nowrap; }
@@ -55,6 +59,7 @@
     background: var(--panel);
   }
   .muted { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 6px 2px 2px; line-height: 1.5; }
   .pager {
     display: flex; align-items: center; gap: 10px;
     margin: 8px 2px 4px; font-size: 12px; color: var(--muted);
@@ -97,7 +102,7 @@
     <span class="sep">·</span>
     <span>window <strong id="windowLabel">30d</strong></span>
     <span class="sep">·</span>
-    <span>stats window <strong>days=30</strong></span>
+    <span>aggregates <strong id="aggUpdated">–</strong></span>
   </p>
 </header>
 <main>
@@ -118,10 +123,11 @@
     </section>
 
     <section class="panel full">
-      <h2>Per map <small>N ≥ threshold</small></h2>
+      <h2>Per map <small>N ≥ threshold · one row per map + rate + mods + algorithm</small></h2>
       <div class="body">
         <div class="scroll"><table id="maps"></table></div>
         <div class="pager" id="maps-pager"></div>
+        <p class="hint">N = votes · weight = Σ weight (accuracy curve v3) · distinct = distinct installs · median = weighted median (trimmed) · Q25/Q75/IQR = plain target quartiles (unweighted) · target = displayed + vote</p>
       </div>
     </section>
 
@@ -177,6 +183,22 @@ function fmt(value, digits = 2) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "-";
 }
 
+const rateText = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? `×${n.toFixed(2)}` : "–";
+};
+
+const modsText = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text || text === "[]") return "NM";
+  try {
+    const list = JSON.parse(text);
+    return Array.isArray(list) && list.length ? list.join("+") : "NM";
+  } catch {
+    return text;
+  }
+};
+
 const PAGE_SIZE = 20;
 const pages = new Map();
 let lastData = null;
@@ -196,7 +218,7 @@ function table(el, columns, rows, rowMapper) {
   const slice = rows.slice(start, start + PAGE_SIZE);
 
   const head = "<thead><tr>" + columns.map((c) =>
-    `<th class="${c.num ? "num" : ""}">${esc(c.label)}</th>`).join("") + "</tr></thead>";
+    `<th class="${c.num ? "num" : ""}"${c.title ? ` title="${esc(c.title)}"` : ""}>${esc(c.label)}</th>`).join("") + "</tr></thead>";
   const body = slice.length
     ? slice.map((row) => "<tr>" + rowMapper(row).map((cell, index) =>
         `<td class="${columns[index].num ? "num" : ""}">${esc(cell)}</td>`).join("") + "</tr>").join("")
@@ -226,6 +248,7 @@ function renderCards(el, entries) {
 
 function render(data) {
   lastData = data;
+  $("windowLabel").textContent = `${data.days || 30}d`;
   renderCards($("totals"), [
     ["Accepted votes", data.totals.events],
     ["Maps", data.totals.maps],
@@ -237,24 +260,36 @@ function render(data) {
   renderCards($("api"), Object.entries(data.api || {}).map(([k, v]) => [k, v]));
 
   table($("candidates"), [
-    { label: "bid", num: true }, { label: "algo" }, { label: "keys", num: true },
-    { label: "pattern" }, { label: "LN" }, { label: "N", num: true },
-    { label: "distinct", num: true }, { label: "median", num: true },
-    { label: "IQR", num: true }, { label: "mods" },
+    { label: "bid", num: true },
+    { label: "rate", num: true, title: "speed rate: ×1.00 NM/MR, ×1.50 DT/NC, ×0.75 HT/DC" },
+    { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
+    { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "N", num: true, title: "votes in this group" },
+    { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
+    { label: "median", num: true, title: "weighted median of target (trimmed)" },
+    { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
   ], data.candidates, (r) => [
-    r.bid, r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket, r.n,
-    r.distinct_installs, fmt(r.target_median), fmt(r.iqr), r.mods,
+    r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern,
+    r.ln_bucket, r.n, r.distinct_installs, fmt(r.target_median), fmt(r.iqr),
   ]);
 
   table($("maps"), [
-    { label: "bid", num: true }, { label: "algo" }, { label: "keys", num: true },
-    { label: "pattern" }, { label: "LN" }, { label: "N", num: true },
-    { label: "weight", num: true }, { label: "distinct", num: true },
-    { label: "median", num: true }, { label: "Q25", num: true },
-    { label: "Q75", num: true }, { label: "IQR", num: true },
+    { label: "bid", num: true },
+    { label: "rate", num: true, title: "speed rate: ×1.00 NM/MR, ×1.50 DT/NC, ×0.75 HT/DC" },
+    { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
+    { label: "algo" }, { label: "keys", num: true },
+    { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "N", num: true, title: "votes in this group" },
+    { label: "weight", num: true, title: "Σ weight (accuracy curve v3, peak at 96%)" },
+    { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
+    { label: "median", num: true, title: "weighted median of target (trimmed)" },
+    { label: "Q25", num: true, title: "25th percentile of target (unweighted)" },
+    { label: "Q75", num: true, title: "75th percentile of target (unweighted)" },
+    { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
   ], data.maps, (r) => [
-    r.bid, r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket, r.n,
-    fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
+    r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket,
+    r.n, fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
     fmt(r.target_q25), fmt(r.target_q75), fmt(r.iqr),
   ]);
 
@@ -273,6 +308,12 @@ function render(data) {
     r.od_bucket, r.actual_algorithm, r.n,
     fmt(r.target_weighted_sum / (r.weight_sum || 1)), fmt(r.vote_sum),
   ]);
+
+  // 聚合表每 5 分钟重建一次：把"这份聚合有多新"直接写在页头，避免误以为新票没入库。
+  const stamps = [...(data.maps || []), ...(data.candidates || [])]
+    .map((row) => Number(row.updated_at) || 0);
+  const newest = stamps.length ? Math.max(...stamps) : 0;
+  $("aggUpdated").textContent = newest ? new Date(newest).toLocaleString() : "–";
 }
 
 function setStatus(text, isError = false) {
