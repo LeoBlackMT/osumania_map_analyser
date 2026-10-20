@@ -20,6 +20,7 @@ import { runSunnyWindowEstimatorFromText } from "../estimator/sunnyWindowEstimat
 import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
+import { runPolarisEstimatorFromText } from "../estimator/polarisEstimator.js";
 import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
@@ -74,7 +75,7 @@ function sanitizePatternResult(result) {
  *
  * @param {object} input
  * @param {string} input.rawText  .osu 文件文本
- * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Mixed / Companella
+ * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Polaris / Mixed / Companella
  * @param {object} input.options  显式传入的估算选项（禁止读 state）：speedRate, odFlag, cvtFlag,
  *   withGraph, forceSunnyReferenceHo, forceSunnyWindow, enableAnalyzeLN,
  *   enableAlwaysShowLNDifficulty, display6kLevel, extendedEstimationRange,
@@ -188,6 +189,16 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         }
     } else if (estimatorAlgorithm === "Roxy") {
         selectedRework = runRoxyEstimatorFromText(rawText, options, parser);
+        actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
+        if (!isValidResult(selectedRework)) {
+            selectedRework = runSunnyEstimatorFromText(rawText, options, parser);
+            actualEstimatorAlgorithm = "Sunny";
+        }
+    } else if (estimatorAlgorithm === "Polaris") {
+        // Polaris（表修正：7K 的 RC+LN、4K 的 LN）：star 恒为 Sunny 原始 sr（生效时）——
+        // 其他键数与 cvt 旗标下由估算器内部回退 Sunny（actualEstimatorAlgorithm = "Sunny"），
+        // 不进 NORMALIZATION_ALGORITHMS。
+        selectedRework = runPolarisEstimatorFromText(rawText, options, parser);
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
         if (!isValidResult(selectedRework)) {
             selectedRework = runSunnyEstimatorFromText(rawText, options, parser);

@@ -4,6 +4,7 @@ import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
+import { calibrateTableHalves } from "./polarisEstimator.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
@@ -252,13 +253,36 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
     const mixedModeTag = hoEnabled ? "RC" : modeTagFromLnRatio(Number(sunnyBaseline.lnRatio));
     const sunnyParts = splitDifficultyParts(sunnyBaseline.estDiff);
     const lnRatio = Number(sunnyBaseline.lnRatio);
-    const lnDifficulty = sunnyParts.ln;
+    // 表映射两半的 Polaris 校准结果（与"选 Polaris"共用同一份实现，两边不可能给出不同答案）：
+    //   - 7K：RC 与 LN 都有——7K 的 Mixed 恒为 Sunny 基线，Polaris 就是那个"更佳"的选项。
+    //   - 4K / 6K：有区间表但没有拟合曲线 ⇒ 两半都是 null，保持 Sunny 表映射
+    //     （4K 曾有 LN 半校准，实机测试后随 4K 侧全部回退）。
+    const calibratedHalves = calibrateTableHalves({
+        columnCount,
+        star: Number(sunnyBaseline.star),
+        rate: Number(options.speedRate ?? 1.0) || 1.0,
+        lnRatio,
+        extendedEstimationRange: options.extendedEstimationRange === true,
+    });
+    const lnDifficulty = calibratedHalves?.ln?.label ?? sunnyParts.ln;
 
     if (mixedModeTag === "RC" && columnCount !== 4) {
+        // 非 4K 的 RC 谱面没有路由链可用（Azusa/Roxy/Daniel/Companella 全部 4K 专用）。
+        // 7K 另有一个更优选项：Polaris 的表修正（同一张区间表 + 行为数据拟合的平滑修正）。
+        if (!calibratedHalves?.rc) {
+            return {
+                ...sunnyBaseline,
+                mixedCompanellaPlan: null,
+                actualEstimatorAlgorithm: actualAlgorithm,
+            };
+        }
         return {
             ...sunnyBaseline,
+            estDiff: calibratedHalves.rc.label,
+            numericDifficulty: calibratedHalves.rc.inRange ? Number(calibratedHalves.rc.level.toFixed(2)) : null,
+            numericDifficultyHint: null,
             mixedCompanellaPlan: null,
-            actualEstimatorAlgorithm: actualAlgorithm,
+            actualEstimatorAlgorithm: "Polaris",
         };
     }
 
@@ -367,6 +391,14 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     actualAlgorithm = "Daniel";
                 }
             }
+        } else if (calibratedHalves?.rc) {
+            // L5 的 7K：不再停在未校准的 Sunny 表映射。Mixed 的定位是"自动选出最佳算法"，
+            // 7K 上没有 Azusa/Roxy/Daniel/Companella（全部 4K 专用），最佳就是 Polaris——
+            // 同一张区间表 + 行为数据拟合的平滑修正。6K/10K 无曲线，仍走 Sunny。
+            rcDifficulty = calibratedHalves.rc.label;
+            rcNumericDifficulty = calibratedHalves.rc.inRange ? Number(calibratedHalves.rc.level.toFixed(2)) : null;
+            rcNumericDifficultyHint = null;
+            actualAlgorithm = "Polaris";
         }
 
         estDiff = composeDifficultyFromRcLn(rcDifficulty, lnDifficulty, lnRatio);
