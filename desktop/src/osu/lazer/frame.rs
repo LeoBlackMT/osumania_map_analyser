@@ -1,5 +1,5 @@
 use crate::osu::model::{Client, LazerMod, Reason, Snapshot};
-use crate::osu::offsets::{LookupError, OffsetTable};
+use crate::osu::offsets::{LookupError, ModsSection, OffsetTable};
 use super::fields::*;
 use super::resolve::*;
 #[allow(unused_imports)]
@@ -859,9 +859,33 @@ pub fn read_lazer_mods(
 
         if let Some((acronym, default_speed)) = mod_acronym_from_type_name(&type_name) {
             let mut speed_change = default_speed;
+            let mut adjust_pitch = None;
+            let mut drain_rate = None;
             let mut overall_difficulty = None;
+            let mut extended_limits = None;
+            let mut table_handled = false;
 
-            if default_speed.is_some() {
+            if let Some(section) = table.mods() {
+                // `mods` 段的 DA 位移是 osu!mania 的（OD 在 +0x28）；别的 ruleset 的
+                // `ModDifficultyAdjust` OD 在 +0x18，不能套用，直接不读（OD 留空）。
+                let mania_da = acronym != "DA" || type_name.contains("Mania");
+                if let Some(fields) = section.settings_for(acronym).filter(|_| mania_da) {
+                    table_handled = true;
+                    let read = read_mod_settings(source, mod_obj, fields, section);
+                    speed_change = read.speed_change;
+                    adjust_pitch = read.adjust_pitch;
+                    drain_rate = read.drain_rate;
+                    overall_difficulty = read.overall_difficulty;
+                    extended_limits = read.extended_limits;
+                    if !read.complete {
+                        complete = false;
+                    }
+                }
+            }
+
+            // 旧表（没有 `mods` 段）只保留倍速启发式；DA 的 OD 不再猜——旧启发式会把
+            // `DifficultyBindable` 的 f64 垃圾值当成 OD（实测 1.37e-314）。
+            if !table_handled && default_speed.is_some() {
                 for offset in [0x10, 0x18, 0x20, 0x28, 0x30, 0x38] {
                     if let Some(bindable) = read_ptr_field(source, mod_obj, offset) {
                         if let Some(val) = read_f64(source, bindable + 0x20) {
@@ -872,23 +896,15 @@ pub fn read_lazer_mods(
                         }
                     }
                 }
-            } else if acronym == "DA" {
-                for offset in [0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48] {
-                    if let Some(bindable) = read_ptr_field(source, mod_obj, offset) {
-                        if let Some(val) = read_f64(source, bindable + 0x20) {
-                            if val.is_finite() && val >= 0.0 && val <= 11.0 {
-                                overall_difficulty = Some(val);
-                                break;
-                            }
-                        }
-                    }
-                }
             }
 
             mods.push(LazerMod {
                 acronym: acronym.to_string(),
                 speed_change,
+                adjust_pitch,
+                drain_rate,
                 overall_difficulty,
+                extended_limits,
             });
         } else {
             // 认不出的 mod 类型：展示层跳过，签名层必须判定为"读不全"。
@@ -896,6 +912,84 @@ pub fn read_lazer_mods(
         }
     }
     Some((mods, complete))
+}
+
+#[derive(Default)]
+struct ModSettingsRead {
+    speed_change: Option<f64>,
+    adjust_pitch: Option<bool>,
+    drain_rate: Option<f64>,
+    overall_difficulty: Option<f64>,
+    extended_limits: Option<bool>,
+    complete: bool,
+}
+
+/// 按偏移表的 `mods` 段读一个 mod 的自定义设置。
+///
+/// 字段名决定解码：`speed_change` 是 `BindableNumber<double>` 的 f64；`adjust_pitch` /
+/// `extended_limits` 是 `BindableBool` 的 u8；`drain_rate` / `overall_difficulty` 是
+/// `DifficultyBindable` 内部的 `BindableFloat CurrentNumber`（f32），不是 bindable 自身
+/// 的 `Value`。任一字段读不到 ⇒ `complete = false`（签名层据此拒绝），但已读到的值照常返回。
+fn read_mod_settings(
+    source: &dyn Source,
+    mod_obj: u64,
+    fields: &std::collections::BTreeMap<String, i64>,
+    section: &ModsSection,
+) -> ModSettingsRead {
+    let mut read = ModSettingsRead {
+        complete: true,
+        ..ModSettingsRead::default()
+    };
+    for (name, field_offset) in fields {
+        let Some(bindable) = read_ptr_field(source, mod_obj, *field_offset) else {
+            read.complete = false;
+            continue;
+        };
+        let Some(value_addr) = field_addr(bindable, section.bindable_value) else {
+            read.complete = false;
+            continue;
+        };
+        match name.as_str() {
+            "speed_change" => match read_f64(source, value_addr) {
+                Some(value) if value.is_finite() && value > 0.0 => {
+                    read.speed_change = Some(value)
+                }
+                _ => read.complete = false,
+            },
+            "adjust_pitch" => match read_u8(source, value_addr) {
+                Some(value) => read.adjust_pitch = Some(value == 1),
+                None => read.complete = false,
+            },
+            "drain_rate" | "overall_difficulty" => {
+                let Some(current) = read_ptr_field(source, bindable, section.difficulty_current)
+                else {
+                    read.complete = false;
+                    continue;
+                };
+                let Some(current_addr) = field_addr(current, section.bindable_value) else {
+                    read.complete = false;
+                    continue;
+                };
+                match read_f32(source, current_addr) {
+                    Some(value) if value.is_finite() => {
+                        if name == "drain_rate" {
+                            read.drain_rate = Some(value as f64);
+                        } else {
+                            read.overall_difficulty = Some(value as f64);
+                        }
+                    }
+                    _ => read.complete = false,
+                }
+            }
+            "extended_limits" => match read_u8(source, value_addr) {
+                Some(value) => read.extended_limits = Some(value == 1),
+                None => read.complete = false,
+            },
+            // 校验器保证不会出现；留一条 fail-closed 的兜底。
+            _ => read.complete = false,
+        }
+    }
+    read
 }
 
 #[cfg(not(windows))]
@@ -970,6 +1064,119 @@ mod tests {
             Some(("7K", None))
         );
         assert_eq!(mod_acronym_from_type_name("osu.Game.Unknown"), None);
+    }
+
+    // ---- `mods` 表段读取（2026-10-20 活体布局的合成镜像） ----
+
+    struct Mem {
+        base: u64,
+        bytes: Vec<u8>,
+    }
+
+    impl Source for Mem {
+        fn read(&self, addr: u64, len: usize) -> Option<Vec<u8>> {
+            let start = addr.checked_sub(self.base)? as usize;
+            let end = start.checked_add(len)?;
+            if end > self.bytes.len() {
+                return None;
+            }
+            Some(self.bytes[start..end].to_vec())
+        }
+    }
+
+    fn put_q(image: &mut [u8], base: u64, addr: u64, value: u64) {
+        let at = (addr - base) as usize;
+        image[at..at + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_u8(image: &mut [u8], base: u64, addr: u64, value: u8) {
+        image[(addr - base) as usize] = value;
+    }
+
+    fn put_f32(image: &mut [u8], base: u64, addr: u64, value: f32) {
+        let at = (addr - base) as usize;
+        image[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_f64(image: &mut [u8], base: u64, addr: u64, value: f64) {
+        let at = (addr - base) as usize;
+        image[at..at + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn mods_section() -> ModsSection {
+        let mut dt = std::collections::BTreeMap::new();
+        dt.insert("speed_change".to_string(), 0x10);
+        dt.insert("adjust_pitch".to_string(), 0x18);
+        let mut da = std::collections::BTreeMap::new();
+        da.insert("drain_rate".to_string(), 0x10);
+        da.insert("extended_limits".to_string(), 0x20);
+        da.insert("overall_difficulty".to_string(), 0x28);
+        let mut settings = std::collections::BTreeMap::new();
+        settings.insert("DT".to_string(), dt);
+        settings.insert("DA".to_string(), da);
+        ModsSection {
+            bindable_value: 0x40,
+            difficulty_current: 0x60,
+            settings,
+        }
+    }
+
+    #[test]
+    fn mods_section_reads_custom_rate_and_da_od() {
+        const BASE: u64 = 0x1000_0000;
+        let mut image = vec![0u8; 0x4000];
+        let dt = BASE + 0x100;
+        let da = BASE + 0x200;
+
+        // DT: SpeedChange (BindableDouble) + AdjustPitch (BindableBool)。
+        put_q(&mut image, BASE, dt + 0x10, BASE + 0x1000);
+        put_q(&mut image, BASE, dt + 0x18, BASE + 0x1100);
+        put_f64(&mut image, BASE, BASE + 0x1000 + 0x40, 1.2);
+        put_u8(&mut image, BASE, BASE + 0x1100 + 0x40, 0);
+
+        // DA: DrainRate / OverallDifficulty 是 DifficultyBindable，值在 +0x60 的
+        // CurrentNumber（BindableFloat）的 +0x40；ExtendedLimits 是 BindableBool。
+        put_q(&mut image, BASE, da + 0x10, BASE + 0x1200);
+        put_q(&mut image, BASE, BASE + 0x1200 + 0x60, BASE + 0x1300);
+        put_f32(&mut image, BASE, BASE + 0x1300 + 0x40, 5.5);
+        put_q(&mut image, BASE, da + 0x20, BASE + 0x1400);
+        put_u8(&mut image, BASE, BASE + 0x1400 + 0x40, 1);
+        put_q(&mut image, BASE, da + 0x28, BASE + 0x1500);
+        put_q(&mut image, BASE, BASE + 0x1500 + 0x60, BASE + 0x1600);
+        put_f32(&mut image, BASE, BASE + 0x1600 + 0x40, 15.0);
+
+        let memory = Mem { base: BASE, bytes: image };
+        let section = mods_section();
+
+        let dt_fields = section.settings_for("DT").expect("DT");
+        let read = read_mod_settings(&memory, dt, dt_fields, &section);
+        assert!(read.complete);
+        assert_eq!(read.speed_change, Some(1.2));
+        assert_eq!(read.adjust_pitch, Some(false));
+
+        let da_fields = section.settings_for("DA").expect("DA");
+        let read = read_mod_settings(&memory, da, da_fields, &section);
+        assert!(read.complete);
+        assert_eq!(read.drain_rate, Some(5.5));
+        assert_eq!(read.overall_difficulty, Some(15.0));
+        assert_eq!(read.extended_limits, Some(true));
+    }
+
+    #[test]
+    fn missing_difficulty_current_marks_the_mod_incomplete() {
+        const BASE: u64 = 0x1000_0000;
+        let mut image = vec![0u8; 0x4000];
+        let da = BASE + 0x200;
+        put_q(&mut image, BASE, da + 0x10, BASE + 0x1200);
+        // 不写 +0x1200 + 0x60：CurrentNumber 为空。
+        put_q(&mut image, BASE, da + 0x20, BASE + 0x1400);
+        put_q(&mut image, BASE, da + 0x28, BASE + 0x1500);
+        let memory = Mem { base: BASE, bytes: image };
+        let section = mods_section();
+        let fields = section.settings_for("DA").expect("DA");
+        let read = read_mod_settings(&memory, da, fields, &section);
+        assert!(!read.complete, "读不到 CurrentNumber 必须 fail-closed");
+        assert_eq!(read.overall_difficulty, None);
     }
 }
 

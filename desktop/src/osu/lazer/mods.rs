@@ -32,7 +32,7 @@ use crate::osu::model::LazerMod;
 use crate::osu::offsets::OffsetTable;
 
 use super::screen::read_eetype;
-use super::source::{read_f64, read_ptr_field, read_string, read_u8, Source, StringLayout};
+use super::source::{read_f32, read_f64, read_ptr_field, read_string, read_u8, Source, StringLayout};
 
 /// `APIMod[]` 的 JSON 形状：
 /// `[{"acronym":"DT","settings":{"speed_change":1.2}}, {"acronym":"DA","settings":{"overall_difficulty":8.5}}]`
@@ -57,12 +57,16 @@ pub fn lazer_mods_from_mods_json(text: &str) -> Option<Vec<LazerMod>> {
                 .and_then(|value| value.as_f64())
                 .filter(|value| value.is_finite())
         };
+        let boolean = |key: &str| settings.and_then(|settings| settings.get(key)).and_then(|value| value.as_bool());
         mods.push(LazerMod {
             acronym: acronym.to_uppercase(),
             // 速率必须为正；0/负数不是有效倍速。
             speed_change: number("speed_change").filter(|value| *value > 0.0),
+            adjust_pitch: boolean("adjust_pitch"),
+            drain_rate: number("drain_rate"),
             // OD 0 合法。
             overall_difficulty: number("overall_difficulty"),
+            extended_limits: boolean("extended_limits"),
         });
     }
     Some(mods)
@@ -167,18 +171,18 @@ pub fn probe_mod_object(
             .ok()
             .and_then(|info| info.type_name)
             .unwrap_or_else(|| "?".to_string());
-        let u8_value = read_u8(source, pointer.saturating_add(0x20))
+        let u8_value = read_u8(source, pointer.saturating_add(0x40))
             .map(|value| value.to_string())
             .unwrap_or_else(|| "-".to_string());
-        let f32_value = read_f32(source, pointer.saturating_add(0x24))
+        let f32_value = read_f32(source, pointer.saturating_add(0x40))
             .map(|value| format!("{value:?}"))
             .unwrap_or_else(|| "-".to_string());
-        let f64_value = read_f64(source, pointer.saturating_add(0x20))
+        let f64_value = read_f64(source, pointer.saturating_add(0x40))
             .map(|value| format!("{value:?}"))
             .unwrap_or_else(|| "-".to_string());
         fields.push(format!(
             "+0x{offset:X} -> 0x{pointer:016X} type={bindable_type} \
-             u8@0x20={u8_value} f32@0x24={f32_value} f64@0x20={f64_value}"
+             u8@0x40={u8_value} f32@0x40={f32_value} f64@0x40={f64_value}"
         ));
     }
     crate::server::log::log_at(
@@ -188,11 +192,6 @@ pub fn probe_mod_object(
             fields.join("; ")
         ),
     );
-}
-
-fn read_f32(source: &dyn Source, addr: u64) -> Option<f32> {
-    let bytes = source.read(addr, 4)?;
-    Some(f32::from_le_bytes(bytes.try_into().ok()?))
 }
 
 fn read_play_mods_json(
@@ -311,8 +310,8 @@ mod tests {
     fn mods_json_maps_custom_rate_and_od() {
         let mods = lazer_mods_from_mods_json(
             r#"[
-                {"acronym":"DT","settings":{"speed_change":1.2}},
-                {"acronym":"DA","settings":{"overall_difficulty":8.5}},
+                {"acronym":"DT","settings":{"speed_change":1.2,"adjust_pitch":false}},
+                {"acronym":"DA","settings":{"drain_rate":5.5,"overall_difficulty":8.5,"extended_limits":true}},
                 {"acronym":"MR"}
             ]"#,
         )
@@ -321,10 +320,13 @@ mod tests {
         assert_eq!(mods.len(), 3);
         assert_eq!(mods[0].acronym, "DT");
         assert_eq!(mods[0].speed_change, Some(1.2));
+        assert_eq!(mods[0].adjust_pitch, Some(false));
         assert_eq!(mods[0].overall_difficulty, None);
         assert_eq!(mods[1].acronym, "DA");
         assert_eq!(mods[1].speed_change, None);
+        assert_eq!(mods[1].drain_rate, Some(5.5));
         assert_eq!(mods[1].overall_difficulty, Some(8.5));
+        assert_eq!(mods[1].extended_limits, Some(true));
         assert_eq!(mods[2].acronym, "MR");
         assert_eq!(mods[2].speed_change, None);
         assert_eq!(mods[2].overall_difficulty, None);

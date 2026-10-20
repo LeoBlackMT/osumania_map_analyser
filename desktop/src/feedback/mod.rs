@@ -597,12 +597,18 @@ mod tests {
             crate::osu::model::LazerMod {
                 acronym: "DT".to_string(),
                 speed_change: Some(1.5),
+                adjust_pitch: None,
+                drain_rate: None,
                 overall_difficulty: None,
+                extended_limits: None,
             },
             crate::osu::model::LazerMod {
                 acronym: "MR".to_string(),
                 speed_change: None,
+                adjust_pitch: None,
+                drain_rate: None,
                 overall_difficulty: None,
+                extended_limits: None,
             },
         ]);
         // 读全了才允许签名（fail-closed 见 `lazer_mods_and_rate`）。
@@ -620,7 +626,10 @@ mod tests {
         snapshot.lazer_mods = Some(vec![crate::osu::model::LazerMod {
             acronym: "cl".to_string(),
             speed_change: Some(0.75),
+            adjust_pitch: None,
+            drain_rate: None,
             overall_difficulty: None,
+            extended_limits: None,
         }]);
         assert_eq!(
             lazer_mods_and_rate(&snapshot),

@@ -126,7 +126,7 @@ impl Client {
     }
 }
 
-/// lazer 的一个 mod（页面只需要三件：`acronym` + `settings` 里的两个数值）。
+/// lazer 的一个 mod（页面只需要 `acronym` + `settings` 里的自定义值）。
 ///
 /// 为什么不是位掩码：lazer 的 mod 不是位域（`ModsJson` 是 acronym 列表），`modSignature` 的
 /// `speedRate`/`odFlag` 取值在 lazer 分支读的是 `array[].settings.{speed_change,
@@ -137,8 +137,14 @@ pub struct LazerMod {
     pub acronym: String,
     /// `settings.speed_change`（DT/HT 等速率 mod 的倍率；`None` = 该 mod 没有这个设置）。
     pub speed_change: Option<f64>,
+    /// `settings.adjust_pitch`（DT/HT 的 pitch 开关；`None` = 没有这个设置）。
+    pub adjust_pitch: Option<bool>,
+    /// `settings.drain_rate`（DA 的 HP 覆写）。
+    pub drain_rate: Option<f64>,
     /// `settings.overall_difficulty`（DA 的 OD 值）。
     pub overall_difficulty: Option<f64>,
+    /// `settings.extended_limits`（DA 的扩展上限开关）。
+    pub extended_limits: Option<bool>,
 }
 
 /// `GameState` 名的**观测集**（唯一权威：P8 的 `(state.number, state.name)` 台账）。

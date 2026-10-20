@@ -17,8 +17,8 @@
       "game_version": "2026.1005.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
-      "sha256": "7505b467e1f62959d344513dc68f61b750e362d185dc109d89c619e727fe23fa",
-      "signature": "9131a353941e925f3d656f885a99cbe9b2f1a77c6a8b2adc0713a9384584e194ce11d684ddfd702e6be2e911c5bf166877ab94050cad9de540ace812629f4d07"
+      "sha256": "1b180b40cfbd3ae9633de040e72d44e2d140fb3dcc4fcbac8b916f9bb4f2d709",
+      "signature": "44332531d6c5930cd4822bc352c297e4460ea24abbdfd5d863746447db3cc8dcca7b9f38a0b49c40b6dee99469e1a1e38dd1d9d48ce5712b78329393b179e00f"
     },
     {
       "filename": "2026.921.0.0__10.0.12__x64.json",

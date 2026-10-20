@@ -29,7 +29,7 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 
 | 代码 | 含义（插件视角） | 参与计算 | 说明 |
 | --- | --- | --- | --- |
-| `DA` | lazer Difficulty Adjust | 是（speed_change / overall_difficulty，仅 lazer） | 通过 mod settings 携带自定义倍速与 OD（modData.js:175-189） |
+| `DA` | lazer Difficulty Adjust | 是（overall_difficulty / drain_rate，仅 lazer） | 通过 mod settings 携带自定义 OD 与 HP；自定义倍速在 DT/HT 的 speed_change |
 | `NC` | Nightcore | 是（速率 1.5×） | 与 DT 等效加速 |
 | `DT` | Double Time | 是（速率 1.5×） | 对应 stable bitflag 64 |
 | `HT` | Half Time | 是（速率 0.75×） | 对应 stable bitflag 256 |
@@ -100,7 +100,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 `getModData` 内速率判定优先级（modData.js:194-200）：
 
-1. **lazer 自定义倍速**：mod 数组中出现带 `settings.speed_change`（>0 且有限）的 mod（通常是 `DA`）→ `speedRate = lazerSpeedChange`（modData.js:175-180、:194-195）。lazer 的 `mods.rate` 即由此承载，**优先级高于任何固定倍速 mod**。
+1. **lazer 自定义倍速**：mod 数组中出现带 `settings.speed_change`（>0 且有限）的 mod（通常是 DT/HT）→ `speedRate = lazerSpeedChange`（modData.js:175-180、:194-195）。lazer 的 `mods.rate` 即由此承载，**优先级高于任何固定倍速 mod**。
 2. **NC/DT** → `speedRate = 1.5`（modData.js:196-197）。
 3. **HT/DC** → `speedRate = 0.75`（modData.js:198-199）。
 4. 否则保持 `1.0`（modData.js:155 初始化）。
@@ -121,6 +121,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 取值域：`null`（无变化）| `"HR"` | `"EZ"` | **数字**（lazer DA 的自定义 OD）。
 
 - lazer：DA mod 携带 `settings.overall_difficulty`（数字）→ `odFlag = daOverallDifficulty`（modData.js:182-189、:202-203）。
+- **壳的原生读取（2026-10 起）**：按偏移表 `mods` 段从 `SelectedMods` 的 mod 对象读——DT/HT/NC/DC 的 `SpeedChange` 是 `BindableDouble`（`f64@+0x40`）；DA 的 `DrainRate`/`OverallDifficulty` 是 `DifficultyBindable`，其内部 `BindableFloat CurrentNumber@+0x60` 的 `f32@+0x40` 才是值；`ExtendedLimits` 是 `BindableBool`。活体验证（Lazer 2026.1005，DT 1.2x + DA OD 15/HP 5.5）与 tosu v2 的 `menu.mods.array[].settings` 逐值一致。表无 `mods` 段时只保留旧倍速启发式，**不猜 DA 的 OD**。详见 [../features/osu-native-source.md](../features/osu-native-source.md) 与 [desktop/docs/lazer-mod-settings.md](../../desktop/docs/lazer-mod-settings.md)。
 - 否则 HR → `"HR"`（OD 上升）、EZ → `"EZ"`（OD 下降）（modData.js:204-208）。
 - 传递给估算器（`estimatorOptions.odFlag` analysis.js:576），用于 OD 相关的判定与调整（具体数学不在本文范围）。
 

@@ -1,138 +1,128 @@
-# lazer 模组自定义设置（自定义倍速 / DA 自定义 OD）读取预研
+# lazer 模组自定义设置（自定义倍速 / DA 的自定义 OD、HP）
 
-> 状态：**预研（2026-10-19）**。本文记录的链路尚未接入载荷；现有行为仍是
-> `SelectedMods` + 位移启发式读取。探针只写日志，不改变任何发布字段。
->
-> 目标：把 lazer 的**自定义倍速**（DT/HT 的 `speed_change`）与 **DA 自定义 OD**
-> （`overall_difficulty`）从"猜 bindable 位移"换成有名字、可校验的来源。
+> 状态：**已接入（2026-10-20）**。`SelectedMods` 的每个 mod 对象按偏移表的 `mods`
+> 段读取；表里没有这一段时只保留旧的倍速启发式，**不再猜 DA 的 OD**。
+> 活体验证：Lazer `2026.1005.0-lazer` 选歌界面，DT 1.2x + DA OD 15 / HP 5.5，
+> 读到 `DT speed_change=1.2 / adjust_pitch=false`、`DA drain_rate=5.5 /
+> overall_difficulty=15 / extended_limits=true`（与 tosu v2 的 `menu.mods.array[].settings`
+> 逐值一致）。
 
 ---
 
-## 1. 现状与问题
+## 1. 为什么不能继续用旧启发式
 
-`desktop/src/osu/lazer/frame.rs` 的 `read_lazer_mods` 从 `SelectedMods` 链
-（`Bindable<IReadOnlyList<Mod>>`）逐元素解析运行时类型名得到 acronym，然后在
-mod 对象的候选位移（`0x10..0x38`）上找 bindable，按 `+0x20` 读 f64：
+旧代码在 mod 对象的候选位移上找 bindable，按 `+0x20` 读 f64。实测：
 
-- **倍速可用**：`ModDoubleTime` / `ModNightcore` 等的 `SpeedChange` 是
-  `BindableNumber<double>`，值就在 `+0x20`。自定义倍速能读出来，但仍是"扫描候选
-  位移 + 值域过滤"，不是按字段名读。
-- **DA 自定义 OD 不可靠**：`ModDifficultyAdjust.OverallDifficulty` 是
-  `DifficultyBindable : Bindable<float?>`（**可空 float**），不是 double。
-  `+0x20` 处是 `Nullable<float>` 的 `hasValue` 字节，真正的值在 `+0x24`；
-  按 f64 读会得到无意义的值或 0。更麻烦的是基类字段顺序里 `DrainRate` 在
-  `OverallDifficulty` 之前，扫描会先命中 HP，无法区分两者。
+- **倍速**：`BindableNumber<double>` 的 `Value` 在 **`+0x40`**，不是 `+0x20`；
+- **DA**：`DrainRate` / `OverallDifficulty` 是 `DifficultyBindable : Bindable<float?>`，
+  真正的自定义值在它内部 `BindableFloat CurrentNumber`（`+0x60`）的 `+0x40`，
+  而且是 `float`。按 f64 读 `+0x20` 会读到 `1.37e-314` 这类垃圾值；旧代码还把它
+  当成合法 OD（0 ≤ x ≤ 11）发了出去。
 
-结论：DA 的 OD 需要换来源，而不是继续调启发式。
+## 2. 活的字段布局（2026.1005.0.0 / .NET 10.0.12 / x64）
 
-## 2. 权威来源：`ScoreInfo.ModsJson`
+`SelectedMods` 的 mod 对象：
 
-lazer 在**开局时**就把当前 mod 配置序列化进成绩对象：
+| mod | 字段 | 位移 | bindable 类型 | 值读取 |
+|---|---|---|---|---|
+| DT / HT | `SpeedChange` | `+0x10` | `BindableDouble` | `f64 @ +0x40` |
+| DT / HT | `AdjustPitch` | `+0x18` | `BindableBool` | `u8 @ +0x40`（1 = on） |
+| NC / DC | `SpeedChange` | `+0x10` | `BindableDouble` | `f64 @ +0x40` |
+| DA | `DrainRate` | `+0x10` | `DifficultyBindable` | `+0x60` → `BindableFloat` → `f32 @ +0x40` |
+| DA | `OverallDifficulty`（mania） | `+0x28` | `DifficultyBindable` | 同上 |
+| DA | `ExtendedLimits` | `+0x20` | `BindableBool` | `u8 @ +0x40` |
 
-```text
-Player.load
-  → Score = CreateScore(playableBeatmap)
-  → Score.ScoreInfo.Mods = gameplayMods        // Player.cs
-  → ScoreInfo.Mods setter
-  → updateModsJson()
-  → ModsJson = JsonConvert.SerializeObject(APIMods)
-```
+> 非 mania 的 DA 的 `OverallDifficulty` 在 `+0x18`；本插件只读 osu!mania，表里按
+> mania 的 `+0x28` 填写。
 
-`APIMod(Mod)` 只收录**非默认**设置：
+## 3. 表段与读取
 
-```csharp
-foreach (var (_, property) in mod.GetSettingsSourceProperties())
-{
-    var bindable = (IBindable)property.GetValue(mod)!;
-    if (!bindable.IsDefault)
-        Settings.Add(property.Name.ToSnakeCase(), bindable.GetUnderlyingSettingValue());
+偏移表新增（纯数据）：
+
+```json
+"mods": {
+  "bindable_value": 64,
+  "difficulty_current": 96,
+  "settings": {
+    "DT": {"speed_change": 16, "adjust_pitch": 24},
+    "NC": {"speed_change": 16},
+    "HT": {"speed_change": 16, "adjust_pitch": 24},
+    "DC": {"speed_change": 16},
+    "DA": {"drain_rate": 16, "extended_limits": 32, "overall_difficulty": 40}
+  }
 }
 ```
 
-所以：
+- `bindable_value`：普通 `Bindable<T>.Value` 的位移（本构建 `0x40`）；
+- `difficulty_current`：`DifficultyBindable` 内部 `CurrentNumber` 的位移（本构建 `0x60`）；
+- `settings`：acronym → 设置名 → mod 对象上的字段位移；设置名是闭集
+  （`speed_change` / `adjust_pitch` / `drain_rate` / `overall_difficulty` / `extended_limits`），
+  表里出现未知名字会被 `validation.rs` 拒绝。
 
-- `DT` 用默认 1.5x → `ModsJson` 里没有 `settings`；
-- `DT` 改成 1.2x → `{"acronym":"DT","settings":{"speed_change":1.2}}`；
-- `DA` 改 OD 8.5 → `{"acronym":"DA","settings":{"overall_difficulty":8.5}}`。
+读侧（`frame::read_mod_settings`）：
 
-这条来源的优点：
+1. 按表取 mod 对象字段 → bindable；
+2. `speed_change` 读 bindable 的 f64；`adjust_pitch` / `extended_limits` 读 u8；
+3. `drain_rate` / `overall_difficulty` 先读 `+0x60` 的 `BindableFloat`，再读它的 f32；
+4. 任一字段读失败 ⇒ `LazerMod` 的 `complete = false`（反馈签名层 fail-closed），
+   已读到的值仍用于展示。
 
-1. **名字自描述**：`speed_change` / `overall_difficulty` 直接对应页面
-   `modData.js` 读的键，不需要猜字段顺序；
-2. **跨版本稳**：JSON 是 lazer 自己的序列化格式，不随对象布局变化；
-3. **覆盖任意 ruleset**：acronym 由游戏给出，不需要维护类型名白名单；
-4. **默认值免费**：缺失键就是默认，和现有 `modData.js` 的语义一致。
+表里没有 `mods` 段（旧表/用户自建表）时：
 
-## 3. 读取链路（待固化）
+- DT/NC/HT/DC 仍走旧倍速启发式（可能是默认值）；
+- **DA 不再发 `overall_difficulty`**，避免把垃圾值当成 OD。
 
-```text
-ScreenStack 栈顶（Player / SoloPlayer）
-  + <Score>k__BackingField      → osu.Game.Scoring.Score
-Score
-  + ScoreInfo                   → osu.Game.Scoring.ScoreInfo
-ScoreInfo
-  + <ModsJson>k__BackingField   → System.String（JSON）
+## 4. 载荷形状
+
+`packet::lazer_mods_value` 现在发与 tosu v2 同形的 `settings`：
+
+```json
+{"acronym":"DT","settings":{"speed_change":1.2,"adjust_pitch":false}}
+{"acronym":"DA","settings":{"drain_rate":5.5,"overall_difficulty":15,"extended_limits":true}}
 ```
 
-三个位移都随 lazer 构建变化，因此分两步：
+页面 `modData.js` 仍只消费 `speed_change` / `overall_difficulty`；多出来的键不影响
+`modSignature`，但让壳与 tosu 的口径一致。
 
-1. **探针**（已实现）：不写死位移，从屏幕对象开始逐个引用字段找类型名
-   `osu.Game.Scoring.Score` → `osu.Game.Scoring.ScoreInfo`，再在 `ScoreInfo`
-   的字符串字段里找以 `[` 开头、带 `"acronym"` 且能解析的 JSON。只读、只记日志。
-2. **固化**（待办）：拿到一次真机日志后，把 Score/ScoreInfo 位移写进偏移表的
-   `play` 段（与结算屏的 `results` 段同形），读侧直接按表读，不再扫描。
+## 5. 备选来源（未采用）：`ScoreInfo.ModsJson`
 
-`results` 段已经证明 `ScoreInfo` 可以按表读（`results.rs`），`play` 段只是同一类
-结构在 Player 上的入口。
+lazer 在开局时会把 `APIMod[]` 序列化进 `Score.ScoreInfo.ModsJson`（只含非默认设置）。
+它是跨版本最稳的来源，但需要 `Player → Score → ScoreInfo` 三个字段位移；本次没有
+采用，因为 `SelectedMods` 的字段布局已在活体上验证，且选歌界面（未开局）也要能显示。
+`MMA_LAZER_MODS_PROBE=1` 的探针仍可打印 `ScoreInfo.ModsJson`，留作后续对照。
 
-## 4. 探针用法
+## 6. 探针用法
 
-1. 用带探针的壳（本地 `cargo build --release` 或 CI 产物）启动 osu!lazer；
+1. 用带探针的壳启动 osu!lazer；
 2. 设置环境变量 `MMA_LAZER_MODS_PROBE=1` 后启动 `mma-shell.exe`；
-3. 在选歌界面配置 `DT` 自定义倍速（例如 1.2x）+ `DA` 自定义 OD（例如 8.5）：
-   此时每个 mod 对象会打印一次候选字段；进图后再看 `ScoreInfo.ModsJson` 行；
-4. 查看壳 exe 旁的 `logs/mma-shell-YYYYMMDD.log`，搜 `lazer mods probe`。
+3. 在选歌界面配置要验证的 mod；日志里搜 `lazer mods probe`；
+4. 每个 mod 对象只打印一次候选字段（`+0x10..+0x40` 的引用、bindable 类型、
+   `f64@0x40`、`f32@0x40`、`u8@0x40`）。
 
-成功时一行：
-
-```text
-[osu] lazer mods probe: screen=0x... score_offset=0x... score=0x... scoreinfo_offset=0x... scoreinfo=0x... mods=[DT:1.20x,DA:OD8.5] mods_json=[{"acronym":"DT","settings":{"speed_change":1.2}},...]
-```
-
-失败时：
+真实日志（本次验证）：
 
 ```text
-[osu] lazer mods probe: no ScoreInfo.ModsJson under screen=0x... (will retry)
+mod[0] type=osu.Game.Rulesets.Mania.Mods.ManiaModDoubleTime acronym=DT
+  +0x10 ptr=... type=osu.Framework.Bindables.BindableDouble ... f64@40=1.2
+mod[1] type=osu.Game.Rulesets.Mania.Mods.ManiaModDifficultyAdjust acronym=DA
+  +0x10 ptr=... type=osu.Game.Rulesets.Mods.DifficultyBindable ... cur_type=osu.Framework.Bindables.BindableFloat cur_f32@40=5.5
+  +0x20 ptr=... type=osu.Framework.Bindables.BindableBool ... u8@40=1
+  +0x28 ptr=... type=osu.Game.Rulesets.Mods.DifficultyBindable ... cur_type=osu.Framework.Bindables.BindableFloat cur_f32@40=15.0
 ```
 
-探针每个屏幕对象每秒最多扫一次；成功后不再重复。日志里只有 mod 配置，没有用户名/
-成绩/谱面标识。
+## 7. 维护与下一步
 
-同一次探针还会对 `SelectedMods` 里的每个 mod 对象打印一次候选字段（`+0x10..+0x40`
-的引用、bindable 运行时类型、`u8@+0x20`、`f32@+0x24`、`f64@+0x20`）：
+- 该布局是**构建相关**的：lazer 更新后若字段顺序变化，需要重新跑活体探针并更新
+  当前版本的 `offsets/lazer/*.json` 的 `mods` 段（以及 `manifest.json` 的签名）。
+  `tools/lazer-offsets-gen` 目前仍只生成 `types`/`runtime` 段；`results` 与 `mods`
+  都是活体探针段，生成器不会自动产出。
+- 已有 `AppData` 缓存的同版本表会优先于随包表；升级后若旧缓存没有 `mods` 段，
+  读侧会回落（DA 的 OD 为空），可删除/重新生成缓存。
+- 后续可把 `ScoreInfo.ModsJson` 固化进 `play` 段，覆盖 DT/HT 之外的所有 mod 设置；
+  当前实现只覆盖本次要求的倍速与 DA。
 
-```text
-[osu] lazer mod probe: type=osu.Game.Rulesets.Mania.Mods.ManiaModDifficultyAdjust acronym=DA fields: +0x10 -> 0x... type=osu.Game.Rulesets.Mods.DifficultyBindable u8@0x20=1 f32@0x24=8.5 f64@0x20=1.6e-...; ...
-```
+## 8. 红线
 
-它用来核对两件事：`SpeedChange`（`BindableNumber<double>`）的 `f64@+0x20` 是不是
-自定义倍速；`DifficultyBindable`（`Bindable<float?>`）的 `u8@+0x20`/`f32@+0x24`
-是不是"有值 + OD"，以及 `DrainRate` 与 `OverallDifficulty` 谁在前。
-
-## 5. 下一步
-
-- [ ] 用一次真机日志确认 `Score` / `ScoreInfo` 的可达性与位移；
-- [ ] 在偏移表增加 `play` 段（`score_offset`、`score_info_offset`、`mods_json_offset`），
-      校验规则与 `results` 段一致（范围、8 字节对齐、缺段降级）；
-- [ ] `read_lazer_mods` 优先读 `ModsJson`，`SelectedMods` 启发式只做兜底；
-- [ ] 反馈签名层的 `lazer_mods_and_rate` 改用同一份 mods（避免展示与签名口径分叉）；
-- [ ] 为 `ModsJson` 解析补一条跨版本快照测试（真实 JSON 样本进 `tests-local/`）。
-
-## 6. 红线
-
-- 探针与后续读取都**只读**：不写 `WriteProcessMemory`、不改游戏内存。
-- 任何一步读不到就降级/不发布，**绝不**用 0、默认值或上一帧占位。
-- `ModsJson` 为空串（无 mod）或解析失败时，不能把空列表当成"确定无 mod"发出去——
-  仍按现有 `SelectedMods` 路径兜底。
-- 偏移表新增段必须是纯数据 + 通过 `validation.rs` 的范围/对齐校验；不把扫描逻辑
-  藏进数据表。
+- 只读：不写 `WriteProcessMemory`、不改游戏内存。
+- 任一字段读不到就降级/不发布，**绝不**用 0、默认值或上一帧占位。
+- 表段必须是纯数据 + 通过 `validation.rs` 的范围/8 字节对齐/闭集校验。

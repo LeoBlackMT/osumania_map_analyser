@@ -72,7 +72,7 @@ desktop/src/
 │   │   ├── resolve.rs             # 站点到 GameBase 多跳解析与 L1 结构证明
 │   │   ├── table.rs               # 偏移表查找梯子与加载逻辑
 │   │   ├── results.rs             # 结算屏判定数链路（ResultsScreen → ScoreInfo）
-│   │   ├── mods.rs                # 预研：ScoreInfo.ModsJson 探针（自定义倍速 / DA OD）
+│   │   ├── mods.rs                # 模组自定义设置：mods 段读取与 ScoreInfo.ModsJson 探针
 │   │   └── frame.rs               # 逐帧读取、解引用链、L0 attach 与 read_tick
 │   ├── offsets.rs                 # 偏移表统一门面
 │   ├── offsets/                   # --- 偏移表子模块划分 ---

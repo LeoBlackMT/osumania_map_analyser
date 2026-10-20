@@ -116,6 +116,11 @@ temp/lazer-offsets-gen.exe live --json
 
 > 不在结算屏时：表的其余部分照常生成，`results` 段缺席（`"results":null`），读侧对 `resultsScreen.hits` 整段降级并给页面提示——**不会**用 0 或上一帧占位。完整 dump 链路（`extract → emit`）目前**不产出**这一段（`spec.rs` 的链还不支持数组元素步）。
 
+> `mods` 段（模组自定义设置）同样是**活体探针段**：`live` 也**不产出**它。当前 Lazer
+> 2026.1005 的 `mods` 段由 2026-10-20 的 `SelectedMods` 活体探针写入（DT 1.2x +
+> DA OD 15/HP 5.5 逐值验证），lazer 更新后需要用 `MMA_LAZER_MODS_PROBE=1` 的壳日志
+> 重新核对，见 `desktop/docs/lazer-mod-settings.md`。
+
 `live` 支持 `--out`（落点）、`--lazer-dir`（指定安装目录）、`--pid`（指定进程）三个选项，另有 `--json`（机器可读输出）与 `--dry-run`（只解析不落盘）。需要**跨版本 IL 差分**或**双见证 provenance 记录**时，仍应走完整的 `collect → extract → il → emit` 链路。
 
 ## 输出格式（Output format）
@@ -203,6 +208,9 @@ field	osu.Game.dll	osu.Game.OsuGameBase	<Storage>k__BackingField	instance	class	
   "player_offset", "witness"}`。前两个是读 `resultsScreen.hits` 的链路（`ResultsScreen.Score` →
   `ScoreInfo.<StatisticsJson>`），第三个只用来判"这是不是回放"。读侧在没有这一段时整段降级
   （`resultsScreen.hits:offsets-missing-results-section`）；`emit`（dump 链路）目前不产出它。
+- **`mods` 段**（可选；活体探针段）：`{"bindable_value", "difficulty_current", "settings"}`，
+  读 `SelectedMods` 里每个 mod 的自定义设置（倍速 / DA 的 OD、HP）。当前也不是 `emit`
+  产出的；布局与维护方式见 `desktop/docs/lazer-mod-settings.md`。
 
 ## 表落点与读取侧的回落梯（reader ladder）
 
