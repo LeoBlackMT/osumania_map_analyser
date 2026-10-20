@@ -78,7 +78,6 @@ let leavingTimer = 0;
 let lastPromptToken = "";
 let lastResultToken = "";
 let submitting = false;
-let infoShownFor = "";
 // 提交代际：离开结算屏/换图时 +1。慢请求（最长 6s）回来时代际已变，
 // 就不再改新结果屏的 UI，避免串台。
 let submitGeneration = 0;
@@ -299,24 +298,6 @@ function showStrip(context, stats) {
     scheduleHide(STRIP_TIMEOUT_MS);
 }
 
-/** 非交互提示（lazer 原生读取没有结算数据等）：一次结果屏只显示一次。 */
-function showInfoStrip(text) {
-    if (!stripEl || !questionEl) return;
-    const key = `${state.lastBeatmapIdentity || ""}|${state.speedRate}`;
-    if (infoShownFor === key) return;
-    infoShownFor = key;
-    clearTimers();
-    retryDeadline = 0;
-    activeContext = null;
-    activeStats = null;
-    questionEl.textContent = text;
-    buttonsEl.hidden = true;
-    hintEl.hidden = true;
-    presentStrip();
-    startCountdown(STRIP_TIMEOUT_MS);
-    scheduleHide(STRIP_TIMEOUT_MS, { resetToken: false });
-}
-
 /** 最近一次 gate 结果暴露到 window，便于在 devtools 里排查（`__MMAFeedbackLastGate`）。 */
 function rememberGate(result) {
     try {
@@ -511,7 +492,6 @@ export function noteFeedbackFrame(data) {
     }
     if (String(state.clientStateName || "") !== "resultscreen") {
         clickThroughFetched = false;
-        infoShownFor = "";
         // 离开结算屏：撤掉待显示/待重试的定时器（否则 1s 的 showTimer 会在选曲界面
         // 把上一局的条弹出来），并让在途提交的响应失效。
         clearTimers();
@@ -565,7 +545,8 @@ export function noteFeedbackFrame(data) {
         // lazer 的结算判定数来自偏移表的 `results` 段（生成器在结算屏上验证后写入）。
         // 只有**重试窗口过了**还没读到才提示，避免把"晚到一帧"误报成"这个构建不支持"。
         if (result.reason === "no_hits" && String(state.client || "") === "lazer") {
-            showInfoStrip("lazer result data isn't readable on this build yet — RC feedback will come back once the offset table covers the result screen.");
+            // 用户可见区域保持安静；壳日志已有 resultsScreen.hits 的逐字原因。
+            console.debug("[feedback] lazer resultScreen.hits unavailable; feedback skipped");
         }
         return;
     }
@@ -592,7 +573,6 @@ export function resetFeedbackStrip() {
     lastResultToken = "";
     lastPromptToken = "";
     retryDeadline = 0;
-    infoShownFor = "";
     submitGeneration += 1;
     hideStrip();
 }

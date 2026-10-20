@@ -63,7 +63,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 **采集边界（硬约束）**：
 
 - 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
-- **lazer（原生读取）的结算判定数**：来自 lazer 偏移表的 `results` 段（`ResultsScreen.Score → ScoreInfo`）。判定数有两个来源、读侧都支持：① `ScoreInfo.<StatisticsJson>`（入库过的成绩，如回放/历史成绩）；② `ScoreInfo.statistics` 字典（`Dictionary<HitResult,int>`，**刚打完、还没入库的活成绩只有它有值**——此时 JSON 是空串）。字典需要表里的 `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values`（枚举序号→判定名，来自 IL 声明顺序）。全部位移由生成器 `live` 在**结算屏上实测并自校验**后写表（见 `tools/lazer-offsets-gen/README.md`）。表里没有这一段（旧表，或 `live` 生成时游戏不在结算屏）⇒ 页面 gate 停在 `no_hits`，反馈条显示一条非交互提示而不是静默；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
+- **lazer（原生读取）的结算判定数**：来自 lazer 偏移表的 `results` 段（`ResultsScreen.Score → ScoreInfo`）。判定数有两个来源、读侧都支持：① `ScoreInfo.<StatisticsJson>`（入库过的成绩，如回放/历史成绩）；② `ScoreInfo.statistics` 字典（`Dictionary<HitResult,int>`，**刚打完、还没入库的活成绩只有它有值**——此时 JSON 是空串）。字典需要表里的 `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values`（枚举序号→判定名，来自 IL 声明顺序）。全部位移由生成器 `live` 在**结算屏上实测并自校验**后写表（见 `tools/lazer-offsets-gen/README.md`）。表里没有这一段（旧表，或 `live` 生成时游戏不在结算屏）⇒ 页面 gate 停在 `no_hits`，**用户界面保持安静**（不再显示提示条），壳日志以 `warn` 记录一次逐字原因；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
 - 仅 osu! 源、仅 osu!mania、仅 RC：`ln_ratio <= 0.15`、模式标签不是 `LN/Mix/HB`、显示值只有单槽位（`RC || LN` 双槽位直接不触发）。
 - 倍速只允许 `1.0 / 1.5 / 0.75`（对应 NM/MR、DT/NC、HT/DC）；其余倍速拒绝。
 - mod 白名单 `NM, MR, SD, PF, SV2, TD, CS, HD, FI, FL, DT, NC, HT, DC`；其余（`nK`、`HO`、`IN`、`RD`、`NF`、`AT/AU`、改 OD mod 等）一律拒绝。入库前 mods 会排序、去重，并把 `NC→DT`、`DC→HT` 归一（stable 的位掩码把 DT 合并成 NC，lazer 返回实际 DT；不归一会把同一局聚合成两行）。变速 mod 的记录按实际 rate 入库与去重。
