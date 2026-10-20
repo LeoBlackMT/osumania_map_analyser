@@ -1,0 +1,2 @@
+# The Linux packager runs inside Docker; a CRLF checkout breaks bash with `$'\r'`.
+desktop/build-linux.sh text eol=lf

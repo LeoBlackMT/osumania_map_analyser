@@ -45,6 +45,12 @@ pub fn read_f64(source: &dyn Source, addr: u64) -> Option<f64> {
     Some(f64::from_le_bytes(bytes.try_into().ok()?))
 }
 
+/// 4 字节小端读（float；`DifficultyBindable.CurrentNumber` 用）。
+pub fn read_f32(source: &dyn Source, addr: u64) -> Option<f32> {
+    let bytes = source.read(addr, 4)?;
+    Some(f32::from_le_bytes(bytes.try_into().ok()?))
+}
+
 /// 2 字节小端读（ushort；PE / CLI 元数据解析用）。
 pub fn read_u16(source: &dyn Source, addr: u64) -> Option<u16> {
     let bytes = source.read(addr, 2)?;

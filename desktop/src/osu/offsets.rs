@@ -37,6 +37,17 @@ mod tests {
 
         let lazer = default_lazer_table();
         assert!(validate_lazer_schema(&lazer).is_ok());
+        let mods = lazer.mods().expect("default table carries the mods section");
+        assert_eq!(
+            mods.settings_for("DA")
+                .and_then(|fields| fields.get("overall_difficulty")),
+            Some(&0x28)
+        );
+        assert_eq!(
+            mods.settings_for("DT")
+                .and_then(|fields| fields.get("speed_change")),
+            Some(&0x10)
+        );
     }
 
     #[test]

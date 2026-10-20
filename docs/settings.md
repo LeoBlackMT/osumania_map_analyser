@@ -25,7 +25,7 @@
     - **Live Generator**：生成 lazer 偏移表。
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
-    - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新。
+    - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
 
 ### 卡片设置
 
@@ -198,7 +198,7 @@
     - **Live Generator**: Generate lazer offset tables.
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
-    - **Check Remote Updates**: Check whether new offset tables are available on GitHub.
+    - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
 
 ### Card Settings
 

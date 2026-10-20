@@ -48,6 +48,9 @@ pub struct OffsetTable {
     /// 结算屏 → `ScoreInfo` 的字段位移（读侧只在 `state.name == resultScreen` 用）。
     #[serde(default)]
     pub results: Option<ResultsSection>,
+    /// `SelectedMods` 的 mod 对象 → 模组自定义设置（倍速 / DA 的 OD、HP）。
+    #[serde(default)]
+    pub mods: Option<ModsSection>,
     pub verified_build: String,
     pub evidence: String,
 }
@@ -104,6 +107,53 @@ impl ResultsSection {
             && self.statistics_offset.map_or(true, in_range)
             && self.statistics_dict_offset.map_or(true, in_range)
             && self.dict_entries_offset.map_or(true, in_range)
+    }
+}
+
+/// `SelectedMods` 的 mod 对象 → 模组自定义设置。
+///
+/// 读侧只处理表中列出的 acronym：字段名决定解码方式（见 `frame::read_mod_settings`）。
+/// 结构来自 2026-10-20 的活体探测（Lazer 2026.1005.0.0）：
+/// - DT `+0x10` → `BindableDouble`，`f64 @ +0x40` = 1.2；
+/// - DA `+0x10`（DrainRate）/ `+0x28`（Mania OverallDifficulty）→ `DifficultyBindable`，
+///   其 `+0x60` 是内部 `BindableFloat`，`f32 @ +0x40` = 5.5 / 15.0；
+/// - DA `+0x20` → `BindableBool`（ExtendedLimits），`u8 @ +0x40` = 1。
+///
+/// 这些是**列布局**，随 Lazer 构建变化；表里没有 `mods` 段时读侧回落到旧的
+/// 倍速启发式，并且不会猜 DA 的 OD。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ModsSection {
+    /// 普通 `Bindable<T>` 上 `Value` 的位移（本构建 `0x40`）。
+    pub bindable_value: i64,
+    /// `DifficultyBindable` 上内部 `BindableFloat CurrentNumber` 的位移（本构建 `0x60`）。
+    pub difficulty_current: i64,
+    /// acronym（大写）→ 设置名 → mod 对象上的字段位移。
+    pub settings: BTreeMap<String, BTreeMap<String, i64>>,
+}
+
+impl ModsSection {
+    /// 读侧认识的设置名；表里出现别的名字视为表损坏（避免"表里有、读侧悄悄忽略"）。
+    pub const KNOWN_SETTINGS: &[&str] = &[
+        "speed_change",
+        "adjust_pitch",
+        "drain_rate",
+        "overall_difficulty",
+        "extended_limits",
+    ];
+
+    /// 三个位移都在合理域且 8 字节对齐；至少要有一组设置。
+    pub fn usable(&self) -> bool {
+        let in_range = |offset: i64| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(&offset)
+                && offset % 8 == 0
+        };
+        in_range(self.bindable_value)
+            && in_range(self.difficulty_current)
+            && !self.settings.is_empty()
+    }
+
+    pub fn settings_for(&self, acronym: &str) -> Option<&BTreeMap<String, i64>> {
+        self.settings.get(acronym)
     }
 }
 
@@ -273,6 +323,11 @@ impl OffsetTable {
     /// `results` 段（位移越界/未对齐 ⇒ `None`，读侧按"表里没有结算段"降级）。
     pub fn results(&self) -> Option<&ResultsSection> {
         self.results.as_ref().filter(|section| section.usable())
+    }
+
+    /// `mods` 段（位移越界/未对齐 ⇒ `None`，读侧回落到旧倍速启发式）。
+    pub fn mods(&self) -> Option<&ModsSection> {
+        self.mods.as_ref().filter(|section| section.usable())
     }
 
     pub fn runtime_entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {

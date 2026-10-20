@@ -335,6 +335,53 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
         }
     }
 
+    if let Some(mods) = &table.mods {
+        check_results_offset("mods.bindable_value", mods.bindable_value)?;
+        check_results_offset("mods.difficulty_current", mods.difficulty_current)?;
+        if mods.settings.is_empty() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "mods.settings (empty)".to_string(),
+                0,
+            ));
+        }
+        for (acronym, fields) in &mods.settings {
+            check_string_safety("mods.settings.key", acronym)?;
+            if acronym.is_empty()
+                || acronym.len() > 8
+                || !acronym
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("mods.settings.{acronym}"),
+                    0,
+                ));
+            }
+            if fields.is_empty() {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("mods.settings.{acronym} (empty)"),
+                    0,
+                ));
+            }
+            for (name, offset) in fields {
+                check_string_safety("mods.settings.field", name)?;
+                if !super::lazer_table::ModsSection::KNOWN_SETTINGS.contains(&name.as_str()) {
+                    return Err(ValidationError::DisplacementOutOfRange(
+                        format!("mods.settings.{acronym}.{name}"),
+                        *offset,
+                    ));
+                }
+                check_results_offset(&format!("mods.settings.{acronym}.{name}"), *offset)?;
+            }
+        }
+        if !mods.usable() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "mods (unusable)".to_string(),
+                0,
+            ));
+        }
+    }
+
     Ok(())
 }
 

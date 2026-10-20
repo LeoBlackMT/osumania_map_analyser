@@ -1149,7 +1149,7 @@ fn log_results_diagnostic(snapshot: &Snapshot, gaps: &[String]) {
         return;
     }
     *last = Some(message.clone());
-    let level = if snapshot.result_hits.is_some() { "info" } else { "warn" };
+    let level = if snapshot.result_hits.is_some() { "debug" } else { "warn" };
     crate::server::log::log_at(level, &format!("osu: lazer {message}"));
 }
 

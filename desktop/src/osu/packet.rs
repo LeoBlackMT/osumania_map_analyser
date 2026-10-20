@@ -420,7 +420,8 @@ fn insert_mods(root: &mut Map<String, Value>, snapshot: &Snapshot) {
 /// - `acronym` 逐字来自内存里的 mod（大写化后原样发出，**不过已知码白名单**——
 ///   页面在 lazer 分支也是 `modCodes.add(acronym)`，见 `js/app/modData.js:164-167`）；
 /// - `settings.speed_change` / `settings.overall_difficulty` 是页面 `speedRate`/`odFlag`
-///   在 lazer 分支的**唯一**来源（`modData.js:150-180`）⇒ 有值就发；
+///   在 lazer 分支的**唯一**来源（`modData.js:150-180`）⇒ 有值就发；`drain_rate` /
+///   `extended_limits` / `adjust_pitch` 也按 tosu v2 的形状发出（页面当前不消费）；
 /// - `number` 由 acronym 反算**页面已知的那 6 位**（`keys::MOD_BIT_FLAGS`）：它只可能补出
 ///   acronym 已经表达过的码，不可能引入新码；`name` 是 acronym 的拼接（页面按已知码做前缀
 ///   匹配 ⇒ 码集与逐个 acronym 一致）；`rate` 取第一个 `speed_change`（页面不读它，仅供
@@ -446,6 +447,14 @@ pub fn lazer_mods_value(mods: &[LazerMod]) -> Value {
                     settings.insert("speed_change".to_string(), json!(speed_change));
                 }
             }
+            if let Some(adjust_pitch) = mod_.adjust_pitch {
+                settings.insert("adjust_pitch".to_string(), json!(adjust_pitch));
+            }
+            if let Some(drain_rate) = mod_.drain_rate {
+                if drain_rate.is_finite() {
+                    settings.insert("drain_rate".to_string(), json!(drain_rate));
+                }
+            }
             if let Some(overall_difficulty) = mod_.overall_difficulty {
                 if overall_difficulty.is_finite() {
                     settings.insert(
@@ -453,6 +462,9 @@ pub fn lazer_mods_value(mods: &[LazerMod]) -> Value {
                         json!(overall_difficulty),
                     );
                 }
+            }
+            if let Some(extended_limits) = mod_.extended_limits {
+                settings.insert("extended_limits".to_string(), json!(extended_limits));
             }
             if !settings.is_empty() {
                 item.insert("settings".to_string(), Value::Object(settings));

@@ -71,3 +71,42 @@ Method 2: Run `gen.exe`
 
 Method 3: Check for Remote Updates
 In the shell settings window under Memory Offsets Management, click Check Remote Updates to check for and download official updated tables.
+
+---
+
+## lazer 表的 `mods` 段（模组自定义设置）
+
+自 2026-10-20 起，lazer 表可以带一个可选的 `mods` 段，用于读取 `SelectedMods` 里每个
+mod 的自定义设置：
+
+```json
+"mods": {
+  "bindable_value": 64,
+  "difficulty_current": 96,
+  "settings": {
+    "DT": {"speed_change": 16, "adjust_pitch": 24},
+    "NC": {"speed_change": 16},
+    "HT": {"speed_change": 16, "adjust_pitch": 24},
+    "DC": {"speed_change": 16},
+    "DA": {"drain_rate": 16, "extended_limits": 32, "overall_difficulty": 40}
+  }
+}
+```
+
+- `bindable_value`：普通 `Bindable<T>.Value` 的位移（本构建 `0x40`）；
+- `difficulty_current`：`DifficultyBindable` 内部 `CurrentNumber` 的位移（本构建 `0x60`）；
+- `settings`：acronym → 设置名 → mod 对象字段位移；设置名是闭集，未知名字会被
+  `validation.rs` 拒绝。
+
+这一段与 `results` 段一样是**活体探针段**：`gen.exe` / Live Generator 的 `live` 在
+选歌/游玩界面、且同时有速度 mod 与 mania DA 时会现场读值并产出 `mods`（dump 链路的
+`emit` 不产出它）。lazer 更新后如果字段顺序变化，`live` 会校验失败而不写这一段——
+此时用 `MMA_LAZER_MODS_PROBE=1` 的壳日志核对字段位移，再更新当前版本的表与
+`manifest.json`（`cargo test test_master_keypair_and_manifest_generation` 会重签清单）。
+
+注意：`%APPDATA%\ManiaMapAnalyser\offsets\lazer\` 下的同版本表优先于随包表；如果
+升级后 DA 的 OD 变空，先确认这份缓存是否还缺 `mods` 段。
+
+The lazer table may carry an optional `mods` section (see above) to read per-mod custom
+settings from `SelectedMods`. It is a live-probed section like `results`: the generator
+does not emit it, so re-check it with `MMA_LAZER_MODS_PROBE=1` after a lazer update.

@@ -1,4 +1,4 @@
-use crate::osu::model::Snapshot;
+use crate::osu::model::{LazerMod, Snapshot};
 use crate::osu::offsets::{LookupError, OffsetTable};
 use super::fields::*;
 use super::source::StringLayout;
@@ -72,6 +72,10 @@ pub struct Attach {
     pub modules: Vec<(u64, String)>,
     pub marker_hits: usize,
     pub scan_ms: u128,
+    /// 最近一帧 play 状态的 `SelectedMods`（含 completeness）。结算屏上 lazer 会清空
+    /// `SelectedMods`，反馈签名需要沿用这局 play 的 mods；没有 play 帧就保持 `None`，
+    /// 由签名层 fail-closed。
+    pub last_lazer_mods: Option<(Vec<LazerMod>, bool)>,
 }
 
 /// 逐帧诊断。
