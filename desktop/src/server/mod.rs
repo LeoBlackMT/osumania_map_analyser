@@ -475,8 +475,12 @@ pub fn spawn_timers(shared: Arc<Shared>) {
         loop {
             let outcome = http::check_and_apply_remote_offsets(http::REMOTE_OFFSETS_MANIFEST);
             let updated = outcome.get("updated").and_then(serde_json::Value::as_u64).unwrap_or(0);
-            if updated > 0 {
-                log::log_at("info", &format!("offsets: daily check updated {updated} table(s)"));
+            let skipped = outcome.get("skipped").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            if updated > 0 || skipped > 0 {
+                log::log_at(
+                    "info",
+                    &format!("offsets: daily check updated {updated}, skipped {skipped} table(s)"),
+                );
             }
             thread::sleep(Duration::from_secs(24 * 60 * 60));
         }

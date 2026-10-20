@@ -726,6 +726,36 @@ fn create_curl_command() -> std::process::Command {
 pub const REMOTE_OFFSETS_MANIFEST: &str =
     "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
 
+fn local_table_version(client: &str, filename: &str) -> Option<String> {
+    let embedded = match client {
+        "lazer" => Some(crate::osu::offsets::default_lazer_table().lazer_version),
+        "stable" => Some(crate::osu::offsets::default_stable_table().version),
+        "ppysb" => Some(crate::osu::offsets::default_ppysb_table().version),
+        _ => None,
+    };
+    let installed = fs::read(crate::osu::offsets::remote_table_path(client, filename))
+        .ok()
+        .and_then(|bytes| match client {
+            "lazer" => crate::osu::offsets::OffsetTable::load(&bytes)
+                .ok()
+                .map(|table| table.lazer_version),
+            "stable" | "ppysb" => crate::osu::offsets::StableTable::load(&bytes)
+                .ok()
+                .map(|table| table.version),
+            _ => None,
+        });
+    match (embedded, installed) {
+        (Some(embedded), Some(installed)) => {
+            if crate::osu::offsets::version_is_newer(&installed, &embedded) {
+                Some(installed)
+            } else {
+                Some(embedded)
+            }
+        }
+        (embedded, installed) => installed.or(embedded),
+    }
+}
+
 pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     let mut cmd = create_curl_command();
     cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
@@ -756,6 +786,7 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     };
 
     let mut updated_count = 0;
+    let mut skipped_count = 0;
     for table in manifest.tables {
         let table_url = format!("{base_url}/{}/{}", table.client, table.filename);
         let mut t_cmd = create_curl_command();
@@ -774,13 +805,23 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
             continue;
         }
 
-        // Schema 校验门
-        if table.client == "stable" {
+        // Schema 校验门 + 版本门：远端表可能比本地/内嵌表更旧——只允许严格更新，
+        // 不允许把刚生成/随包的新表降级覆盖。
+        let remote_version = if table.client == "stable" {
             let Ok(stable_t) = crate::osu::offsets::StableTable::load(&content) else { continue };
             if crate::osu::offsets::validate_stable_schema(&stable_t).is_err() { continue };
+            stable_t.version
         } else if table.client == "lazer" {
             let Ok(lazer_t) = crate::osu::offsets::OffsetTable::load(&content) else { continue };
             if crate::osu::offsets::validate_lazer_schema(&lazer_t).is_err() { continue };
+            lazer_t.lazer_version
+        } else {
+            table.game_version.clone()
+        };
+        let local_version = local_table_version(&table.client, &table.filename).unwrap_or_default();
+        if !crate::osu::offsets::version_is_newer(&remote_version, &local_version) {
+            skipped_count += 1;
+            continue;
         }
 
         // 原子落盘
@@ -791,7 +832,11 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
 
     serde_json::json!({
         "status": "ok",
-        "message": format!("Offsets check complete: {updated_count} table(s) updated"),
-        "updated": updated_count
+        "message": format!(
+            "Offsets check complete: {updated_count} table(s) updated, {skipped_count} already current"
+        ),
+        "updated": updated_count,
+        "skipped": skipped_count
     })
 }
+

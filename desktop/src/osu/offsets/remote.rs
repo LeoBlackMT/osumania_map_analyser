@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use sha2::{Digest, Sha256};
 use ed25519_compact::{PublicKey, Signature};
 
+use super::lazer_table::normalize_version;
+
 /// ManiaMapAnalyser 远端表发布主公钥（Ed25519 32 字节）
 pub const ED25519_MASTER_PUBLIC_KEY: [u8; 32] = [
     206, 229, 44, 102, 228, 179, 117, 67, 18, 115, 220, 52, 238, 212, 17, 70,
@@ -100,12 +102,8 @@ fn decode_base64(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// 将已验签并通过 schema 校验的表原子落盘至本地缓存目录
-pub fn save_remote_table(
-    client: &str,
-    filename: &str,
-    content: &[u8],
-) -> Result<PathBuf, std::io::Error> {
+/// 本地缓存目录（与 `save_remote_table` 落点一致）。
+pub fn remote_offsets_dir(client: &str) -> PathBuf {
     let base_dir = if let Ok(appdata) = std::env::var("APPDATA") {
         PathBuf::from(appdata)
     } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
@@ -115,10 +113,51 @@ pub fn save_remote_table(
     } else {
         PathBuf::from(".")
     };
-    let target_dir = base_dir
+    base_dir
         .join("ManiaMapAnalyser")
         .join("offsets")
-        .join(client);
+        .join(client)
+}
+
+/// 已安装的远端表路径（客户端 + 文件名）。
+pub fn remote_table_path(client: &str, filename: &str) -> PathBuf {
+    remote_offsets_dir(client).join(filename)
+}
+
+/// 远端版本是否严格新于本地。相等或更旧都返回 false，避免“检查更新”把新表降级。
+///
+/// 版本比较复用 lazer 的 `normalize_version`（去掉 `-lazer` 后缀并裁掉尾部 `.0`），
+/// 因此 `2026.1005.0.0` 与 `2026.1005` 视为同一版本；非数字版本（如异常构建号）保守拒绝。
+pub fn version_is_newer(remote: &str, local: &str) -> bool {
+    let remote = normalize_version(remote);
+    let local = normalize_version(local);
+    if remote == local {
+        return false;
+    }
+    let parse = |value: &str| -> Option<Vec<u64>> {
+        value.split('.').map(|part| part.parse::<u64>().ok()).collect()
+    };
+    let (Some(remote_parts), Some(local_parts)) = (parse(&remote), parse(&local)) else {
+        return false;
+    };
+    let len = remote_parts.len().max(local_parts.len());
+    for index in 0..len {
+        let remote_part = remote_parts.get(index).copied().unwrap_or(0);
+        let local_part = local_parts.get(index).copied().unwrap_or(0);
+        if remote_part != local_part {
+            return remote_part > local_part;
+        }
+    }
+    false
+}
+
+/// 将已验签并通过 schema 校验的表原子落盘至本地缓存目录
+pub fn save_remote_table(
+    client: &str,
+    filename: &str,
+    content: &[u8],
+) -> Result<PathBuf, std::io::Error> {
+    let target_dir = remote_offsets_dir(client);
     std::fs::create_dir_all(&target_dir)?;
 
     let target_file = target_dir.join(filename);
@@ -127,4 +166,22 @@ pub fn save_remote_table(
     std::fs::rename(&temp_file, &target_file)?;
 
     Ok(target_file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_is_newer;
+
+    #[test]
+    fn remote_version_only_moves_forward() {
+        assert!(!version_is_newer("2026.1005", "2026.1005"));
+        assert!(!version_is_newer("2026.1005.0.0", "2026.1005"));
+        assert!(!version_is_newer("2026.921", "2026.1005"));
+        assert!(version_is_newer("2026.1006", "2026.1005"));
+        assert!(version_is_newer("2026.1005.1", "2026.1005"));
+        assert!(version_is_newer("2027-latest", "2026-latest"));
+        assert!(!version_is_newer("2026-latest", "2026-latest"));
+        assert!(!version_is_newer("not-a-version", "2026.1005"));
+        assert!(version_is_newer("2026.1005", ""));
+    }
 }

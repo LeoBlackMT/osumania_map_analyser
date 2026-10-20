@@ -79,7 +79,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 4. **Ed25519 签名远端表与静默离线回落**：
    - 壳内固化 Master 公钥（32 字节 Ed25519 公钥）。
    - 提供 `POST /offsets/update` 端点，从官方源获取 `manifest.json`，在本地用 Master 公钥验证每张表的数字签名与 SHA-256 哈希。
-   - 校验通过后原子写入本地缓存目录（`%APPDATA%\ManiaMapAnalyser\offsets\`）。若无网络或校验失败，静默使用随包或编译期内嵌表，零报错打扰用户。
+   - 校验通过后**先比较版本**：只有远端版本严格新于本地（AppData 缓存与内嵌表的较大者）才原子写入本地缓存目录（`%APPDATA%\ManiaMapAnalyser\offsets\`）；同版本或更旧的远端表只计为 `skipped`，不会把刚生成/随包的新表降级覆盖。若无网络或校验失败，静默使用随包或编译期内嵌表，零报错打扰用户。
 5. **stable 维护者专用探测生成器**：
    - `tools/stable-offsets-gen/main.rs`：针对 32 位 `osu!.exe` 执行签名扫描与自证验证，全自动导出符合 `mma-offset-v2` 格式的稳定版特征表。
 6. **L3 影子比对诊断面板（Topic 12）**：
