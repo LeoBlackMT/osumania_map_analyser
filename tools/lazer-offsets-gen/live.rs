@@ -37,14 +37,19 @@ pub fn run_live(options: &Options) -> i32 {
                 Some(results) => format!(r#","results":{results}"#),
                 None => r#","results":null"#.to_string(),
             };
+            let mods_json = match &info.mods {
+                Some(mods) => format!(r#","mods":{mods}"#),
+                None => r#","mods":null"#.to_string(),
+            };
             if json_output {
                 println!(
-                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}}}"#,
+                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}{}}}"#,
                     info.lazer_version,
                     info.runtime_version,
                     info.arch,
                     info.output_path.display().to_string().replace('\\', "\\\\"),
                     results_json,
+                    mods_json,
                 );
             } else {
                 println!("Live offset generation succeeded!");
@@ -54,6 +59,12 @@ pub fn run_live(options: &Options) -> i32 {
                     Some(results) => println!("  Results section: {results}"),
                     None => println!(
                         "  Results section: not captured (run `live` while the result screen is up)"
+                    ),
+                }
+                match &info.mods {
+                    Some(mods) => println!("  Mods section: {mods}"),
+                    None => println!(
+                        "  Mods section: not captured (select a speed mod + mania DA in song select)"
                     ),
                 }
                 println!("  Saved to: {}", info.output_path.display());
@@ -83,6 +94,9 @@ pub struct GenerationOutcome {
     /// 结算屏上捕获到的 `results` 段（JSON 对象文本）。`None` = 这次 `live` 时游戏不在
     /// 结算屏（表格的其余部分照常生成）。
     pub results: Option<String>,
+    /// 选歌/游玩界面捕获到的 `mods` 段（JSON 对象文本）。`None` = 没有同时看到速度 mod
+    /// 与 mania DA（例如 NM 选歌）。
+    pub mods: Option<String>,
 }
 
 pub struct LiveError {
@@ -198,7 +212,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     let resolver = EetypeResolver::new(handle, &inventory, &modules);
 
     // 6. 多跳解析并活体校验 GameBase
-    let mut verified_table: Option<(String, Option<ResultsOffsets>)> = None;
+    let mut verified_table: Option<(String, Option<ResultsOffsets>, Option<ModsOffsets>)> = None;
     let mut _verified_vtable: u64 = 0;
 
     for anchor in &anchor_hits {
@@ -243,7 +257,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         }
     }
 
-    let Some((table_json, results)) = verified_table else {
+    let Some((table_json, results, mods)) = verified_table else {
         return Err(LiveError::new(
             "live_validation_failed",
             "found candidate GameBase, but live validation checks (MD5Hash / ScreenStack / VTable) failed",
@@ -329,6 +343,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         arch,
         output_path: out_file,
         results: results.as_ref().map(|found| found.to_json()),
+        mods: mods.as_ref().map(|found| found.to_json()),
     })
 }
 
@@ -493,6 +508,36 @@ fn read_i32(handle: Handle, addr: u64) -> Option<i32> {
     let mut buf = [0u8; 4];
     if read_bytes(handle, addr, &mut buf) {
         Some(i32::from_le_bytes(buf))
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn read_u8(handle: Handle, addr: u64) -> Option<u8> {
+    let mut buf = [0u8; 1];
+    if read_bytes(handle, addr, &mut buf) {
+        Some(buf[0])
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn read_f32(handle: Handle, addr: u64) -> Option<f32> {
+    let mut buf = [0u8; 4];
+    if read_bytes(handle, addr, &mut buf) {
+        Some(f32::from_le_bytes(buf))
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn read_f64(handle: Handle, addr: u64) -> Option<f64> {
+    let mut buf = [0u8; 8];
+    if read_bytes(handle, addr, &mut buf) {
+        Some(f64::from_le_bytes(buf))
     } else {
         None
     }
@@ -751,6 +796,45 @@ impl ResultsOffsets {
         }
         out.push('}');
         out
+    }
+}
+
+/// `live` 在选歌/游玩界面从 `SelectedMods` 上测出的 `mods` 段。
+///
+/// 字段位移是**本构建的列布局**（与 `desktop/src/osu/lazer/frame.rs` 的读侧一致）：
+/// DT/HT/NC/DC `+0x10` -> `BindableDouble`，值 `f64@+0x40`；DA `+0x10` -> `DifficultyBindable`
+/// （HP）、`+0x28` -> `DifficultyBindable`（mania OD）、`+0x20` -> `BindableBool`（ExtendedLimits）。
+/// `DifficultyBindable` 的值在内部 `BindableFloat CurrentNumber`（`+0x60`）的 `f32@+0x40`。
+///
+/// 只有**同时**在活体上验证到一个速度 mod 与一个 mania DA 才写这一段；验证值只用于
+/// 自证与日志，不写进位移（位移是固定的表结构）。
+#[cfg(windows)]
+struct ModsOffsets {
+    speed_acronym: String,
+    speed_change: f64,
+    adjust_pitch: Option<bool>,
+    drain_rate: f32,
+    overall_difficulty: f32,
+    extended_limits: bool,
+}
+
+#[cfg(windows)]
+impl ModsOffsets {
+    fn witness(&self) -> String {
+        format!(
+            "live SelectedMods: {} speed_change={} adjust_pitch={:?}; DA drain_rate={} overall_difficulty={} extended_limits={}",
+            self.speed_acronym,
+            self.speed_change,
+            self.adjust_pitch,
+            self.drain_rate,
+            self.overall_difficulty,
+            self.extended_limits
+        )
+    }
+
+    /// 表里的 `mods` 段（与 `OffsetTable::mods` 同形；不含 witness）。
+    fn to_json(&self) -> String {
+        r#"{"bindable_value":64,"difficulty_current":96,"settings":{"DT":{"speed_change":16,"adjust_pitch":24},"NC":{"speed_change":16},"HT":{"speed_change":16,"adjust_pitch":24},"DC":{"speed_change":16},"DA":{"drain_rate":16,"extended_limits":32,"overall_difficulty":40}}}"#.to_string()
     }
 }
 
@@ -1240,6 +1324,122 @@ fn extract_lazer_version(inventory: &IlInventory, _lazer_dir: &Path) -> String {
 }
 
 #[cfg(windows)]
+fn read_difficulty_current(handle: Handle, bindable: u64) -> Option<f32> {
+    let bindable = read_ptr(handle, bindable).filter(|ptr| is_valid_ptr(*ptr))?;
+    let current = read_ptr(handle, bindable + 0x60).filter(|ptr| is_valid_ptr(*ptr))?;
+    read_f32(handle, current + 0x40)
+}
+
+/// 从 `SelectedMods` 读 `mods` 段需要的活体值。
+///
+/// 门禁：必须同时找到一个速度 mod（DT/NC/HT/DC）与一个 **mania** DA，且其值在合理域内；
+/// 否则不写 `mods` 段（读侧回落到旧倍速启发式）。这样生成器不会把未验证的列布局
+/// 写给未来的 lazer 构建。
+#[cfg(windows)]
+fn discover_mods(
+    handle: Handle,
+    resolver: &EetypeResolver<'_>,
+    game_base: u64,
+) -> Result<ModsOffsets, String> {
+    let bindable = read_ptr(handle, game_base + 1120)
+        .filter(|ptr| is_valid_ptr(*ptr))
+        .ok_or("SelectedMods missing")?;
+    let list_or_array = read_ptr(handle, bindable + 32)
+        .filter(|ptr| is_valid_ptr(*ptr))
+        .ok_or("SelectedMods value missing")?;
+    let val_at_8 = read_ptr(handle, list_or_array + 8).unwrap_or(0);
+    let (items, size) = if is_valid_ptr(val_at_8) {
+        (
+            val_at_8,
+            read_i32(handle, list_or_array + 16).ok_or("list size unreadable")?,
+        )
+    } else {
+        (
+            list_or_array,
+            read_i32(handle, list_or_array + 8).ok_or("array size unreadable")?,
+        )
+    };
+    if size <= 0 || size > 32 {
+        return Err(format!("SelectedMods has an implausible size {size}"));
+    }
+
+    let mut speed: Option<(String, f64, Option<bool>)> = None;
+    let mut da: Option<(f32, f32, bool)> = None;
+    for index in 0..size as u64 {
+        let Some(object) = read_ptr(handle, items + 16 + index * 8) else {
+            continue;
+        };
+        if !is_valid_ptr(object) {
+            continue;
+        }
+        let type_name = resolver.name(object).unwrap_or_default();
+        let speed_acronym = if type_name.contains("DoubleTime") {
+            Some("DT")
+        } else if type_name.contains("Nightcore") {
+            Some("NC")
+        } else if type_name.contains("HalfTime") {
+            Some("HT")
+        } else if type_name.contains("Daycore") {
+            Some("DC")
+        } else {
+            None
+        };
+        if let Some(acronym) = speed_acronym {
+            if speed.is_none() {
+                if let Some(bindable) = read_ptr(handle, object + 0x10) {
+                    if let Some(value) = read_f64(handle, bindable + 0x40) {
+                        if value.is_finite() && (0.25..=3.0).contains(&value) {
+                            let adjust_pitch = if acronym == "DT" || acronym == "HT" {
+                                read_ptr(handle, object + 0x18)
+                                    .and_then(|pitch| read_u8(handle, pitch + 0x40))
+                                    .map(|value| value == 1)
+                            } else {
+                                None
+                            };
+                            speed = Some((acronym.to_string(), value, adjust_pitch));
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if type_name.contains("DifficultyAdjust") && type_name.contains("Mania") && da.is_none() {
+            let Some(drain_rate) = read_difficulty_current(handle, object + 0x10) else {
+                continue;
+            };
+            let Some(overall_difficulty) = read_difficulty_current(handle, object + 0x28) else {
+                continue;
+            };
+            let Some(extended_limits) = read_ptr(handle, object + 0x20)
+                .and_then(|extended| read_u8(handle, extended + 0x40))
+            else {
+                continue;
+            };
+            if drain_rate.is_finite()
+                && overall_difficulty.is_finite()
+                && (0.0..=20.0).contains(&drain_rate)
+                && (0.0..=20.0).contains(&overall_difficulty)
+            {
+                da = Some((drain_rate, overall_difficulty, extended_limits == 1));
+            }
+        }
+    }
+
+    let (speed_acronym, speed_change, adjust_pitch) =
+        speed.ok_or("no speed-change mod in SelectedMods")?;
+    let (drain_rate, overall_difficulty, extended_limits) =
+        da.ok_or("no mania DifficultyAdjust in SelectedMods")?;
+    Ok(ModsOffsets {
+        speed_acronym,
+        speed_change,
+        adjust_pitch,
+        drain_rate,
+        overall_difficulty,
+        extended_limits,
+    })
+}
+
+#[cfg(windows)]
 fn validate_and_emit(
     handle: Handle,
     game_base: u64,
@@ -1249,7 +1449,7 @@ fn validate_and_emit(
     lazer_version: &str,
     runtime_version: &str,
     arch: &str,
-) -> Option<(String, Option<ResultsOffsets>)> {
+) -> Option<(String, Option<ResultsOffsets>, Option<ModsOffsets>)> {
     if !is_valid_ptr(vtable) || !is_valid_ptr(game_base) {
         return None;
     }
@@ -1365,6 +1565,19 @@ fn validate_and_emit(
         }
     };
 
+    // 活体验证 5（选歌/游玩）：测 `mods` 段。必须同时看到速度 mod 与 mania DA；
+    // 否则不写这一段（读侧回落到旧倍速启发式，DA 的 OD 留空）。
+    let mods = match discover_mods(handle, resolver, game_base) {
+        Ok(found) => {
+            eprintln!("[live] mods section captured: {}", found.witness());
+            Some(found)
+        }
+        Err(reason) => {
+            eprintln!("[live] mods section not captured: {reason}");
+            None
+        }
+    };
+
     // 组装已知经过活体校验的类型布局
     let json = serde_json_table(
         lazer_version,
@@ -1376,9 +1589,10 @@ fn validate_and_emit(
         &md5,
         rid,
         results.as_ref(),
+        mods.as_ref(),
     );
 
-    Some((json, results))
+    Some((json, results, mods))
 }
 
 #[cfg(windows)]
@@ -1392,6 +1606,7 @@ fn serde_json_table(
     sample_md5: &str,
     observed_rid: u32,
     results: Option<&ResultsOffsets>,
+    mods: Option<&ModsOffsets>,
 ) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -1532,6 +1747,13 @@ fn serde_json_table(
             escape_json(&found.witness())
         ));
         out.push_str("  },\n");
+    }
+
+    // 模组自定义设置（只有活体同时验证到速度 mod + mania DA 才写）。
+    if let Some(found) = mods {
+        out.push_str("  \"mods\": ");
+        out.push_str(&found.to_json());
+        out.push_str(",\n");
     }
 
     out.push_str("  \"runtime\": {\n");

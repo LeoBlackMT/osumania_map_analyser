@@ -114,8 +114,9 @@ mod[1] type=osu.Game.Rulesets.Mania.Mods.ManiaModDifficultyAdjust acronym=DA
 
 - 该布局是**构建相关**的：lazer 更新后若字段顺序变化，需要重新跑活体探针并更新
   当前版本的 `offsets/lazer/*.json` 的 `mods` 段（以及 `manifest.json` 的签名）。
-  `tools/lazer-offsets-gen` 目前仍只生成 `types`/`runtime` 段；`results` 与 `mods`
-  都是活体探针段，生成器不会自动产出。
+  `tools/lazer-offsets-gen` 的 `live` 现在会在选歌/游玩界面、且同时看到速度 mod 与
+  mania DA 时**现场读值并产出 `mods` 段**（`gen.exe` / Live Generator 同一路径）；
+  dump 链路的 `emit` 仍不产出它。`results` 只在结算屏由 `live` 产出。
 - 已有 `AppData` 缓存的同版本表会优先于随包表；升级后若旧缓存没有 `mods` 段，
   读侧会回落（DA 的 OD 为空），可删除/重新生成缓存。
 - 后续可把 `ScoreInfo.ModsJson` 固化进 `play` 段，覆盖 DT/HT 之外的所有 mod 设置；
