@@ -26,7 +26,7 @@
 
 - 估算器缺省行为逐位兼容（golden/基准回归不传参即可验证）；`marathonCorrection` 为纯增量可选参数。
 - 前置 Ett 仅作为段 9 的**复用优先**路径：`withEtterna=true` 时输出与独立计算逐位一致（smoke 验证 ettResult 复用一致）；失败时复用错误状态，不重复尝试。
-- 结果缓存键（当时为 `star-v2|算法|identity|modSignature`；当前版本串为 `star-v8`，见 `js/app/analysis.js`）不含修正参数——修正恒定应用（无开关），键语义稳定。
+- 结果缓存键（当时为 `star-v2|算法|identity|modSignature`；后续经多次变更已升到 `star-v12`，见 `js/app/analysis.js` 与 [pipeline/result-cache.md](../pipeline/result-cache.md) §5）不含修正参数——修正恒定应用（无开关），键语义稳定。
 
 ## 验证方式（Verification）
 
@@ -64,7 +64,7 @@ User architecture decision: the correction belongs to the estimator, whose outpu
 
 - Estimator default behavior is bit-compatible (golden/benchmark without the option). The option is purely additive.
 - Pre-Ett is a reuse-first path for stage 9: output identical to an independent computation (smoke-verified); failures reuse the error state without retry.
-- Result-cache key (then `star-v2|algorithm|identity|modSignature`; the current version tag is `star-v8`, see `js/app/analysis.js`) excludes the correction parameter — correction is unconditionally applied (no switch), key semantics stable.
+- Result-cache key (then `star-v2|algorithm|identity|modSignature`; later, separate changes have raised it to `star-v10`, see `js/app/analysis.js` and [pipeline/result-cache.md](../pipeline/result-cache.md) §5) excludes the correction parameter — correction is unconditionally applied (no switch), key semantics stable.
 
 ## Verification
 

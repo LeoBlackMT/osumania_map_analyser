@@ -47,6 +47,7 @@ export function normalizeEstimatorAlgorithmValue(value) {
     if (lowered === "rework") return "Sunny";
     if (lowered === "direct") return "Sunny";
     if (lowered === "daniel") return "Daniel";
+    if (lowered === "polaris") return "Polaris";
     if (lowered === "companella") return "Companella";
     if (lowered === "campanella") return "Companella";
     return null;

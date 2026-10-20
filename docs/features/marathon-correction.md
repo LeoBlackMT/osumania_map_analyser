@@ -82,7 +82,7 @@ tech    = Technical
 
 - 冒烟：本地冒烟脚本（不入库；纯函数 + pipeline 集成，Node 直跑）。
 - Benchmark（只读基准仓库；本地脚本，不入库）——
-  - 样本：`samples/data.csv` 中 `pattern == "course"` 的行（34 张，RC 天然；用户指定 course 分类 + RC 筛选）；
+  - 样本：基准仓库的 `samples/data.csv` 中 `pattern == "course"` 的行（34 张，RC 天然；用户指定 course 分类 + RC 筛选）；
   - 口径与 benchmark runner 对齐（got 优先 `numericDifficulty`；estDiff 含 `<`/`>` 的行不参与统计）；
   - baseline vs corrected 对比 MAE/RMSE/Bias/Exact/Close 与修正触发行数；
   - 排序检查：同一 pack 内按 expected 升序的相邻有效对，修正后 got 必须非降且不得新增倒挂（pack 按 name 的 ` [` 前缀分组，跨 pack 体系不可比不计入）。
