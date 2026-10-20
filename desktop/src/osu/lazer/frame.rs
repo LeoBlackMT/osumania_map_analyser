@@ -652,6 +652,7 @@ pub fn attach(
         modules,
         marker_hits,
         scan_ms,
+        last_lazer_mods: None,
     })
 }
 
@@ -705,8 +706,58 @@ pub fn read_tick(
             })?;
         }
     }
+    // lazer 在结算屏会清空 `SelectedMods`；反馈签名沿用这局 play 帧读到的 mods，
+    // 避免把 DT 签成 NM。没有 play 帧（例如壳启动时已在结算屏）就 fail-closed。
+    if carry_lazer_mods(
+        frame.snapshot.state_name.as_deref(),
+        &mut frame.snapshot.lazer_mods,
+        &mut frame.snapshot.lazer_mods_complete,
+        &mut attach.last_lazer_mods,
+    ) {
+        frame
+            .gaps
+            .push("resultsScreen.mods:no-play-frame".to_string());
+    }
     attach.game_base = frame.chain.game_base;
     Ok(frame)
+}
+
+/// 把 play 帧的 `SelectedMods` 带到结算屏（lazer 会在结算时清空它）。
+///
+/// 返回 `true` 表示结算屏且没有任何 play 帧可证明 mods，调用方补一条 gap。
+fn carry_lazer_mods(
+    state: Option<&str>,
+    mods: &mut Option<Vec<LazerMod>>,
+    complete: &mut bool,
+    last: &mut Option<(Vec<LazerMod>, bool)>,
+) -> bool {
+    match state {
+        Some("play") => {
+            if let Some(current) = mods.as_ref() {
+                *last = Some((current.clone(), *complete));
+            }
+            false
+        }
+        Some("resultScreen") => match last.as_ref() {
+            Some((cached, cached_complete)) => {
+                *mods = Some(cached.clone());
+                *complete = *cached_complete;
+                false
+            }
+            None => {
+                // 没有 play 帧就无法证明这局用了什么 mod；宁可让 /feedback 拒绝，
+                // 也不把结算屏残留/下一局预选的 SelectedMods 当成这局成绩。
+                if mods.as_ref().map_or(true, |mods| mods.is_empty()) {
+                    *mods = None;
+                    *complete = false;
+                    true
+                } else {
+                    false
+                }
+            }
+        },
+        _ => false,
+    }
 }
 
 /// 将已解析的类型名映射为 osu!mania / lazer 的 acronym 与默认速率。
@@ -1012,6 +1063,52 @@ pub fn read_tick(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn result_screen_reuses_the_play_frame_mods() {
+        let dt = LazerMod {
+            acronym: "DT".to_string(),
+            speed_change: Some(1.2),
+            adjust_pitch: Some(false),
+            drain_rate: None,
+            overall_difficulty: None,
+            extended_limits: None,
+        };
+        let mut last = None;
+        let mut play_mods = Some(vec![dt.clone()]);
+        let mut play_complete = true;
+        assert!(!carry_lazer_mods(
+            Some("play"),
+            &mut play_mods,
+            &mut play_complete,
+            &mut last,
+        ));
+
+        // 结算屏上 SelectedMods 为空 → 用 play 帧的 DT（不能变成 NM）。
+        let mut result_mods = Some(Vec::new());
+        let mut result_complete = true;
+        assert!(!carry_lazer_mods(
+            Some("resultScreen"),
+            &mut result_mods,
+            &mut result_complete,
+            &mut last,
+        ));
+        assert_eq!(result_mods, Some(vec![dt.clone()]));
+        assert!(result_complete);
+
+        // 没有 play 帧 → fail-closed（None + complete=false）。
+        let mut no_last = None;
+        let mut empty = None;
+        let mut empty_complete = true;
+        assert!(carry_lazer_mods(
+            Some("resultScreen"),
+            &mut empty,
+            &mut empty_complete,
+            &mut no_last,
+        ));
+        assert!(empty.is_none());
+        assert!(!empty_complete);
+    }
 
     #[test]
     fn test_mod_acronym_mappings() {

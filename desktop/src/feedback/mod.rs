@@ -270,7 +270,17 @@ fn lazer_mods_and_rate(snapshot: &Snapshot) -> Option<(Vec<String>, f64)> {
         .iter()
         .filter_map(|entry| entry.speed_change)
         .find(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(1.0);
+        .unwrap_or_else(|| {
+            // 旧表/ScoreInfo.ModsJson 可能只有 acronym 没有 settings；按标准倍速补，
+            // 不能默认 1.0（那会把 DT 签成 NM）。
+            if mods.iter().any(|code| code == "NC" || code == "DT") {
+                1.5
+            } else if mods.iter().any(|code| code == "HT" || code == "DC") {
+                0.75
+            } else {
+                1.0
+            }
+        });
     Some((mods, rate))
 }
 
@@ -634,6 +644,20 @@ mod tests {
         assert_eq!(
             lazer_mods_and_rate(&snapshot),
             Some((vec!["CL".to_string()], 0.75))
+        );
+
+        // 旧表 / ScoreInfo 只有 acronym 时，按 standard 倍速补，不能默认 1.0。
+        snapshot.lazer_mods = Some(vec![crate::osu::model::LazerMod {
+            acronym: "DT".to_string(),
+            speed_change: None,
+            adjust_pitch: None,
+            drain_rate: None,
+            overall_difficulty: None,
+            extended_limits: None,
+        }]);
+        assert_eq!(
+            lazer_mods_and_rate(&snapshot),
+            Some((vec!["DT".to_string()], 1.5))
         );
         snapshot.lazer_mods = None;
         assert!(lazer_mods_and_rate(&snapshot).is_none(), "原生读不到就不猜");

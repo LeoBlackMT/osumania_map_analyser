@@ -70,6 +70,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - 仅完整通关：页面按完成率 ≥0.85、总击打 ≥200、ScoreV1 准度 **90–100**（**不设 miss 上限**）门控；壳在签名载荷里写 `passed: true`——壳当前没有独立的结算 pass/fail 标记，服务端也不重算（已知限制，见 §7 末尾）。
 - **回放不算**：lazer 由结算屏 `ResultsScreen.<player>` 的运行时类型判定（`ReplayPlayer`）；stable 是闭源进程，改用结算成绩的玩家名与本机账号名比对（`osu!*.cfg` 里的 `Username = …`，见 `desktop/src/osu/stable.rs` 的 `local_player_names` / `replay_from_player_name`；cfg **文件名**是 Windows 账户名，不是 osu! 用户名；候选为空/看自己的回放不标记）。回放结果**静默跳过**，不弹任何提示（只在 `__MMAFeedbackLastGate` 留 `reason: "replay"`）。
 - **只对刚打完的一局提问**：进入本次结算屏前必须经过 play/pause 态（页面 `state.resultsFromPlay`，由 `socketHandlers.js` 的状态迁移计算）。从选曲/本地排行榜直接打开的结算屏（查看历史成绩）不是刚打出的成绩，直接跳过（`reason: "not_fresh_play"`）；壳在结算屏中途启动、没有 play 前态时同样不提问。
+- **lazer 的 mods 在结算屏沿用 play 帧**：lazer 进入结算屏会清空 `SelectedMods`；壳把 play 状态最后一次读全的 mods 缓存在 `Attach.last_lazer_mods`，结算时用它签名，避免把 DT 签成 NM。没有 play 帧时 `no_mods` 拒绝；DT/NC 无 `speed_change` 时按 1.5、HT/DC 按 0.75 兜底。
 - 本地联调：壳用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback` 启动即可把投票发到本地后端（`/shell-config` 的 `feedback.endpoint` 下发给页面，无需控制台）。需要在壳窗口里开控制台时，用 `cargo build --release --features devtools` 构建并设 `MMA_DEVTOOLS=1` 启动；默认发布构建不含 devtools。
 - 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
 - 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。

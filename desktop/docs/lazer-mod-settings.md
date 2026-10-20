@@ -72,6 +72,15 @@
 - DT/NC/HT/DC 仍走旧倍速启发式（可能是默认值）；
 - **DA 不再发 `overall_difficulty`**，避免把垃圾值当成 OD。
 
+### 结算屏
+
+lazer 进入结算屏后会清空 `SelectedMods`（实测 2026.1005；tosu 的
+`resultsScreen.mods.array` 同样为空）。壳在 `play` 帧把最后一次读全的 mods 缓存在
+`Attach.last_lazer_mods`，结算屏沿用这一份，反馈签名因此不会把 DT 签成 NM；壳启动时
+已经在结算屏、没有 play 帧时则 `lazer_mods_complete=false`，`/feedback` 直接拒绝
+（`no_mods`），不猜。壳侧标准倍速兜底：DT/NC=1.5、HT/DC=0.75；自定义倍速仍以
+`settings.speed_change` 为准。
+
 ## 4. 载荷形状
 
 `packet::lazer_mods_value` 现在发与 tosu v2 同形的 `settings`：
