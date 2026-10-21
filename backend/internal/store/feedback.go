@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS feedback_map_agg (
 	target_q25 REAL NOT NULL,
 	target_q75 REAL NOT NULL,
 	updated_at INTEGER NOT NULL,
-	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods)
+	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods, target_side)
 );
 
 CREATE TABLE IF NOT EXISTS feedback_feature_daily (
@@ -220,7 +220,65 @@ func OpenFeedback(path string) (*FeedbackStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureMapAggSidePrimaryKey(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &FeedbackStore{db: db, dbPath: path}, nil
+}
+
+// ensureMapAggSidePrimaryKey rebuilds the derived map aggregate table when it
+// predates per-side aggregation. The table is a cache and is rebuilt by RefreshAll.
+func ensureMapAggSidePrimaryKey(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(feedback_map_agg)`)
+	if err != nil {
+		return err
+	}
+	hasSidePK := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "target_side" && pk > 0 {
+			hasSidePK = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if hasSidePK {
+		return nil
+	}
+	if _, err := db.Exec(`DROP TABLE feedback_map_agg`); err != nil {
+		return err
+	}
+	_, err = db.Exec(`
+CREATE TABLE feedback_map_agg (
+	bid INTEGER NOT NULL,
+	checksum TEXT NOT NULL,
+	rate REAL NOT NULL,
+	actual_algorithm TEXT NOT NULL,
+	mods TEXT NOT NULL,
+	key_count INTEGER NOT NULL,
+	pattern TEXT NOT NULL,
+	ln_bucket TEXT NOT NULL,
+	target_side TEXT NOT NULL DEFAULT 'RC',
+	n INTEGER NOT NULL,
+	weight_sum REAL NOT NULL,
+	distinct_installs INTEGER NOT NULL,
+	target_median REAL NOT NULL,
+	target_q25 REAL NOT NULL,
+	target_q75 REAL NOT NULL,
+	updated_at INTEGER NOT NULL,
+	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods, target_side)
+)`)
+	return err
 }
 
 func (s *FeedbackStore) Close() error { return s.db.Close() }

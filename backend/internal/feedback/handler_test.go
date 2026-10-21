@@ -224,6 +224,16 @@ func TestHandlerAllowsBothSides(t *testing.T) {
 	if env.count(t) != 2 {
 		t.Fatalf("duplicate LN must not insert")
 	}
+	if err := RefreshAll(env.store, 1, 0); err != nil {
+		t.Fatalf("refresh aggregates: %v", err)
+	}
+	var aggRows int
+	if err := env.store.DB().QueryRow(`SELECT COUNT(*) FROM feedback_map_agg`).Scan(&aggRows); err != nil {
+		t.Fatalf("count agg rows: %v", err)
+	}
+	if aggRows != 2 {
+		t.Fatalf("expected RC and LN aggregate rows, got %d", aggRows)
+	}
 }
 
 func TestHandlerRejects(t *testing.T) {
