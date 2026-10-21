@@ -41,7 +41,7 @@
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
-| [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界；§7 为独立的 RC 难度反馈数据类别） |
+| [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界；§7 为独立的难度反馈数据类别：4K RC + 6K/7K） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v6**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
 | [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v6 端点下发与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |

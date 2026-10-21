@@ -265,13 +265,14 @@ function render(data) {
     { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
     { label: "algo" }, { label: "keys", num: true },
     { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "side", title: "asked side (RC/LN)" },
     { label: "N", num: true, title: "votes in this group" },
     { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
     { label: "median", num: true, title: "weighted median of target (trimmed)" },
     { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
   ], data.candidates, (r) => [
     r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern,
-    r.ln_bucket, r.n, r.distinct_installs, fmt(r.target_median), fmt(r.iqr),
+    r.ln_bucket, r.target_side, r.n, r.distinct_installs, fmt(r.target_median), fmt(r.iqr),
   ]);
 
   table($("maps"), [
@@ -280,6 +281,7 @@ function render(data) {
     { label: "mods", title: "normalised mods (sorted; NC→DT, DC→HT)" },
     { label: "algo" }, { label: "keys", num: true },
     { label: "pattern" }, { label: "LN", title: "LN ratio bucket" },
+    { label: "side", title: "asked side (RC/LN)" },
     { label: "N", num: true, title: "votes in this group" },
     { label: "weight", num: true, title: "Σ weight (accuracy curve v3, peak at 96%)" },
     { label: "distinct", num: true, title: "distinct installs (HMAC dedup tokens)" },
@@ -289,7 +291,7 @@ function render(data) {
     { label: "IQR", num: true, title: "Q75 − Q25 of target (unweighted)" },
   ], data.maps, (r) => [
     r.bid, rateText(r.rate), modsText(r.mods), r.actual_algorithm, r.key_count, r.pattern, r.ln_bucket,
-    r.n, fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
+    r.target_side, r.n, fmt(r.weight_sum, 3), r.distinct_installs, fmt(r.target_median),
     fmt(r.target_q25), fmt(r.target_q75), fmt(r.iqr),
   ]);
 

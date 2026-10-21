@@ -42,6 +42,10 @@ pub const ALLOWED_MODS: &[&str] = &[
     "MR", "SD", "PF", "SV2", "TD", "CS",
 ];
 
+/// 6K/7K 允许反馈的谱面类型；4K 仍固定为 RC。
+pub const ALLOWED_MODES_6K7K: &[&str] = &["RC", "LN", "Mix", "HB", "SV"];
+pub const ALLOWED_TARGET_SIDES: &[&str] = &["RC", "LN"];
+
 /// 旧版独立文件（其内容已合并进 `mma-shell-state.json`，仅用于一次性迁移）。
 pub const INSTALL_ID_FILE: &str = "mma-shell-feedback.json";
 
@@ -55,6 +59,7 @@ pub struct FeedbackPayload {
     pub ln_ratio: f64,
     pub pattern: String,
     pub mode_tag: String,
+    pub target_side: String,
     pub od: Option<f64>,
     pub actual_algorithm: String,
     pub selected_algorithm: String,
@@ -95,6 +100,8 @@ pub struct PageFeedback {
     pub ln_ratio: f64,
     pub pattern: String,
     pub mode_tag: String,
+    #[serde(default)]
+    pub target_side: String,
     pub od: Option<f64>,
     pub settings_hash: String,
 }
@@ -149,8 +156,14 @@ pub fn build_sign_string(payload: &FeedbackPayload) -> String {
         .od
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "-".to_string());
+    let (version, side_suffix) = if payload.target_side.trim().is_empty() {
+        ("v1", String::new())
+    } else {
+        ("v2", format!("|{}", payload.target_side.trim()))
+    };
     format!(
-        "v1|{}|{}|{:.3}|{}|{}|{:.4}|{}|{}|{}|{}|{}|{:.2}|{:.1}|{:.3}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{:.3}|{}|{}|{:.4}|{}|{}|{}|{}|{}|{:.2}|{:.1}|{:.3}|{}|{}|{}|{}|{}|{}|{}|{}|{}{}",
+        version,
         payload.bid,
         payload.checksum,
         payload.rate,
@@ -174,6 +187,7 @@ pub fn build_sign_string(payload: &FeedbackPayload) -> String {
         payload.install_id,
         payload.timestamp,
         payload.nonce,
+        side_suffix,
     )
 }
 
@@ -371,14 +385,36 @@ pub fn build_payload(
     if !is_allowed_selected(page.selected_algorithm.trim()) {
         return Err("bad_algorithm");
     }
-    if page.key_count != 4 && page.key_count != 6 && page.key_count != 7 {
+    let is_4k = page.key_count == 4;
+    if !matches!(page.key_count, 4 | 6 | 7) {
         return Err("bad_keycount");
     }
-    if !page.ln_ratio.is_finite() || page.ln_ratio < 0.0 || page.ln_ratio > RC_LN_MAX {
-        return Err("not_rc");
-    }
-    if page.mode_tag.trim() != "RC" {
-        return Err("not_rc");
+    let mode_tag = page.mode_tag.trim().to_string();
+    let target_side;
+    if is_4k {
+        // 4K 的既有条件不变：RC-only、LN 上限、单槽位由页面 gate 保证。
+        if !page.ln_ratio.is_finite() || !(0.0..=RC_LN_MAX).contains(&page.ln_ratio) {
+            return Err("not_rc");
+        }
+        if mode_tag != "RC" {
+            return Err("not_rc");
+        }
+        // Keep 4K on the v1 sign string: old deployed backends must continue to
+        // accept 4K feedback unchanged. The side is implicit RC.
+        target_side = String::new();
+    } else {
+        // 6K/7K：算法支持的所有类型都可问；target_side 由页面确定性选择。
+        if !ALLOWED_MODES_6K7K.contains(&mode_tag.as_str()) {
+            return Err("bad_mode");
+        }
+        if !page.ln_ratio.is_finite() || !(0.0..=1.0).contains(&page.ln_ratio) {
+            return Err("not_rc");
+        }
+        let side = page.target_side.trim().to_uppercase();
+        if !ALLOWED_TARGET_SIDES.contains(&side.as_str()) {
+            return Err("bad_side");
+        }
+        target_side = side;
     }
     // OD 是签名的客观字段：页面必须给出（页面从本地 .osu 解析）；缺失即拒绝，
     // 不用服务端 API 的值回填——否则 OD 校验失去意义。
@@ -408,7 +444,8 @@ pub fn build_payload(
             let text = sanitize_text(&page.pattern, 32);
             if text.is_empty() { "unknown".to_string() } else { text }
         },
-        mode_tag: "RC".to_string(),
+        mode_tag,
+        target_side,
         od: Some(od),
         actual_algorithm: page.actual_algorithm.trim().to_string(),
         selected_algorithm: page.selected_algorithm.trim().to_string(),
@@ -520,6 +557,7 @@ mod tests {
             ln_ratio: 0.015,
             pattern: "Jacks".to_string(),
             mode_tag: "RC".to_string(),
+            target_side: String::new(),
             od: Some(8.5),
             actual_algorithm: "Roxy".to_string(),
             selected_algorithm: "Mixed".to_string(),
@@ -545,6 +583,15 @@ mod tests {
             text,
             "v1|4182931|7c9e6679742540de944bbed07fc1f90a|1.000|MR|4|0.0150|Jacks|RC|8.50|Roxy|Mixed|12.20|0.5|0.995|3|1|stable|1|2.2.0|a1b2c3d4|6f1c2a9e6f1c2a9e6f1c2a9e6f1c2a9e|1760000000|a4f19c08e21b7d33"
         );
+    }
+
+    #[test]
+    fn sign_string_v2_appends_target_side() {
+        let mut payload = sample();
+        payload.target_side = "LN".to_string();
+        let text = build_sign_string(&payload);
+        assert!(text.starts_with("v2|"));
+        assert!(text.ends_with("|LN"));
     }
 
     #[test]

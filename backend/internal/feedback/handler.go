@@ -185,6 +185,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	actual, _ := spec.NormalizeActualAlgorithm(env.Payload.ActualAlgorithm)
 
 	modsJSON, _ := json.Marshal(normalizeMods(env.Payload.Mods))
+	targetSide := env.Payload.TargetSide
+	if targetSide == "" {
+		targetSide = "RC" // legacy v1 payload (4K)
+	}
 	event := store.FeedbackEvent{
 		Bid:               env.Payload.Bid,
 		Checksum:          strings.ToLower(env.Payload.Checksum),
@@ -195,6 +199,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		LnBucket:          lnBucket(env.Payload.LnRatio),
 		Pattern:           env.Payload.Pattern,
 		ModeTag:           env.Payload.ModeTag,
+		TargetSide:        targetSide,
 		OD:                sqlNullFloat(od),
 		ODBucket:          odBucket(od),
 		Star:              sqlNullFloat(finiteOrNil(star)),

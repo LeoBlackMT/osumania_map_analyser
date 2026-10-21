@@ -12,6 +12,11 @@ export const FEEDBACK_VOTES = Object.freeze([-1, -0.5, 0, 0.5, 1]);
 export const RC_LN_MAX = 0.15;
 export const NON_RC_MODE_TAGS = Object.freeze(["LN", "Mix", "HB"]);
 
+/** 6K/7K 的反馈范围：所有算法支持的类型都可以问，4K 仍只走 RC。 */
+export const SUPPORTED_FEEDBACK_KEYS = Object.freeze([4, 6, 7]);
+export const ALLOWED_MODE_TAGS_6K7K = Object.freeze(["RC", "LN", "Mix", "HB", "SV"]);
+export const ALLOWED_TARGET_SIDES = Object.freeze(["RC", "LN"]);
+
 /** 结算门槛。 */
 export const ACC_MIN = 90;
 export const ACC_MAX = 100;

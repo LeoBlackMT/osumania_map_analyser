@@ -156,8 +156,8 @@
     - **Anonymous Usage Statistics**: 是否向项目遥测服务器匿名上报使用统计。
         - 仅上报聚合属性（算法/键数/mod/模式/难度/耗时等），**不包含**用户名、玩家id、分数、谱面标识或 IP 地址。
         - 默认开启；关闭后不再上报。
-    - **Difficulty Feedback (Desktop Shell Only)**: 结算后为当前 RC 谱面的估算难度打五档分（简单一个段/半个段/刚好/难了半个段/一个段）。
-        - 仅在桌面壳中、且仅对 osu!mania 的 RC 谱面出现；浏览器页与 OBS 源不显示。
+    - **Difficulty Feedback (Desktop Shell Only)**: 结算后为当前谱面的估算难度打五档分（简单一个段/半个段/刚好/难了半个段/一个段）。
+        - 仅在桌面壳、且仅对 osu!mania 出现：4K 仅限 RC 谱面；6K/7K 支持 RC/LN/Mix/HB/SV（双标签时按稳定规则选一侧）。浏览器页与 OBS 源不显示。
         - 会上传谱面 ID、当前显示的估算值、你的评分，以及一个经过签名的权重；**不上传**准度、分数、用户名或安装 ID 原文。
         - 用于找出估算器系统性偏高/偏低的谱面，不会改变你或其他玩家看到的难度值。
         - 默认开启；可在设置里关闭。
@@ -329,8 +329,8 @@
     - **Anonymous Usage Statistics**: Whether to send anonymous usage statistics to the project's telemetry server.
         - Only aggregate attributes are sent (algorithm, key count, mods, mode, difficulty, duration, etc.) — **no** username, player id, scores, beatmap identity, or IP address.
         - Enabled by default; disable to opt out.
-    - **Difficulty Feedback (Desktop Shell Only)**: rate the estimated difficulty of the RC map you just finished on a five-point scale (much easier / easier / accurate / harder / much harder).
-        - Only appears in the desktop shell and only for osu!mania RC maps; browser pages and OBS sources never show it.
+    - **Difficulty Feedback (Desktop Shell Only)**: rate the estimated difficulty of the map you just finished on a five-point scale (much easier / easier / accurate / harder / much harder).
+        - Only appears in the desktop shell for osu!mania: 4K remains RC-only; 6K/7K support RC/LN/Mix/HB/SV (for two-label charts one side is chosen deterministically). Browser pages and OBS sources never show it.
         - Sends the beatmap ID, the displayed estimate, your rating, and a signed weight; it does **not** send accuracy, score, username, or the raw install ID.
         - Used to find maps the estimator systematically over- or under-rates. It never changes the difficulty shown to you or anyone else.
         - Enabled by default; turn it off in the settings to opt out.

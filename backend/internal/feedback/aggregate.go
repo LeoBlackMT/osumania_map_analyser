@@ -19,6 +19,7 @@ type MapAggRow struct {
 	KeyCount        int     `json:"key_count"`
 	Pattern         string  `json:"pattern"`
 	LnBucket        string  `json:"ln_bucket"`
+	TargetSide      string  `json:"target_side"`
 	N               int     `json:"n"`
 	WeightSum       float64 `json:"weight_sum"`
 	Distinct        int     `json:"distinct_installs"`
@@ -52,10 +53,10 @@ func RefreshAll(st *store.FeedbackStore, minN int, trim float64) error {
 
 func refreshMapAgg(st *store.FeedbackStore, minN int, trim float64) error {
 	rows, err := st.DB().Query(`
-SELECT bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket,
+SELECT bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket, target_side,
        target, weight, dedup_token
 FROM feedback_events
-ORDER BY bid, checksum, rate, actual_algorithm, mods`)
+ORDER BY bid, checksum, rate, actual_algorithm, mods, target_side`)
 	if err != nil {
 		return err
 	}
@@ -66,17 +67,17 @@ ORDER BY bid, checksum, rate, actual_algorithm, mods`)
 	for rows.Next() {
 		var (
 			bid, keyCount                         int64
-			checksum, algo, mods, pattern, bucket string
+			checksum, algo, mods, pattern, bucket, side string
 			rate, target, weight                  float64
 			token                                 string
 		)
 		if err := rows.Scan(&bid, &checksum, &rate, &algo, &mods, &keyCount, &pattern, &bucket,
-			&target, &weight, &token); err != nil {
+			&side, &target, &weight, &token); err != nil {
 			return err
 		}
 		// 分组键必须含 bid 与 rate：checksum 可能被两个不同 bid 共用，
 		// 同一张图的 NM / DT 也是两次不同的游玩（不能混成一个中位数）。
-		key := fmt.Sprintf("%d|%s|%s|%s|%.3f", bid, checksum, algo, mods, rate)
+		key := fmt.Sprintf("%d|%s|%s|%s|%.3f|%s", bid, checksum, algo, mods, rate, side)
 		group := groups[key]
 		if group == nil {
 			group = &mapGroup{
@@ -84,6 +85,7 @@ ORDER BY bid, checksum, rate, actual_algorithm, mods`)
 				row: MapAggRow{
 					Bid: bid, Checksum: checksum, Rate: rate, ActualAlgorithm: algo,
 					Mods: mods, KeyCount: int(keyCount), Pattern: pattern, LnBucket: bucket,
+					TargetSide: side,
 				},
 				seen: make(map[string]bool),
 			}
@@ -131,16 +133,16 @@ ORDER BY bid, checksum, rate, actual_algorithm, mods`)
 	}
 	stmt, err := tx.Prepare(`
 INSERT INTO feedback_map_agg(
-	bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket,
+	bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket, target_side,
 	n, weight_sum, distinct_installs, target_median, target_q25, target_q75, updated_at
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, row := range out {
 		if _, err := stmt.Exec(row.Bid, row.Checksum, row.Rate, row.ActualAlgorithm, row.Mods,
-			row.KeyCount, row.Pattern, row.LnBucket, row.N, row.WeightSum, row.Distinct,
+			row.KeyCount, row.Pattern, row.LnBucket, row.TargetSide, row.N, row.WeightSum, row.Distinct,
 			row.Median, row.Q25, row.Q75, row.UpdatedAt); err != nil {
 			return err
 		}
@@ -291,7 +293,7 @@ func quantile(sorted []float64, q float64) float64 {
 // MapAggRows loads the map aggregate (newest first) for the admin page.
 func MapAggRows(st *store.FeedbackStore, limit int) ([]MapAggRow, error) {
 	query := `
-SELECT bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket,
+SELECT bid, checksum, rate, actual_algorithm, mods, key_count, pattern, ln_bucket, target_side,
        n, weight_sum, distinct_installs, target_median, target_q25, target_q75, updated_at
 FROM feedback_map_agg
 ORDER BY n DESC, bid ASC`
@@ -309,7 +311,7 @@ ORDER BY n DESC, bid ASC`
 	for rows.Next() {
 		var row MapAggRow
 		if err := rows.Scan(&row.Bid, &row.Checksum, &row.Rate, &row.ActualAlgorithm, &row.Mods,
-			&row.KeyCount, &row.Pattern, &row.LnBucket, &row.N, &row.WeightSum, &row.Distinct,
+			&row.KeyCount, &row.Pattern, &row.LnBucket, &row.TargetSide, &row.N, &row.WeightSum, &row.Distinct,
 			&row.Median, &row.Q25, &row.Q75, &row.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -428,15 +430,15 @@ FROM feedback_feature_daily WHERE day>=? ORDER BY day DESC, n DESC`, sinceDay)
 // joins the most recent event for the same key.
 func CandidateRows(st *store.FeedbackStore, minN, minDistinct int, minDelta float64, limit int) ([]MapAggRow, error) {
 	query := `
-SELECT a.bid, a.checksum, a.rate, a.actual_algorithm, a.mods, a.key_count, a.pattern, a.ln_bucket,
+SELECT a.bid, a.checksum, a.rate, a.actual_algorithm, a.mods, a.key_count, a.pattern, a.ln_bucket, a.target_side,
        a.n, a.weight_sum, a.distinct_installs, a.target_median, a.target_q25, a.target_q75, a.updated_at
 FROM feedback_map_agg a
 JOIN (
-	SELECT bid, checksum, rate, actual_algorithm, mods, displayed_val,
-	       ROW_NUMBER() OVER (PARTITION BY bid, checksum, rate, actual_algorithm, mods ORDER BY created_at DESC) AS rn
+	SELECT bid, checksum, rate, actual_algorithm, mods, target_side, displayed_val,
+	       ROW_NUMBER() OVER (PARTITION BY bid, checksum, rate, actual_algorithm, mods, target_side ORDER BY created_at DESC) AS rn
 	FROM feedback_events
 ) e ON e.bid=a.bid AND e.checksum=a.checksum AND e.rate=a.rate
-     AND e.actual_algorithm=a.actual_algorithm AND e.mods=a.mods AND e.rn=1
+     AND e.actual_algorithm=a.actual_algorithm AND e.mods=a.mods AND e.target_side=a.target_side AND e.rn=1
 WHERE a.n>=? AND a.distinct_installs>=? AND ABS(a.target_median-e.displayed_val)>=?
 ORDER BY ABS(a.target_median-e.displayed_val) DESC, a.n DESC
 LIMIT ?`
@@ -449,7 +451,7 @@ LIMIT ?`
 	for rows.Next() {
 		var row MapAggRow
 		if err := rows.Scan(&row.Bid, &row.Checksum, &row.Rate, &row.ActualAlgorithm, &row.Mods,
-			&row.KeyCount, &row.Pattern, &row.LnBucket, &row.N, &row.WeightSum, &row.Distinct,
+			&row.KeyCount, &row.Pattern, &row.LnBucket, &row.TargetSide, &row.N, &row.WeightSum, &row.Distinct,
 			&row.Median, &row.Q25, &row.Q75, &row.UpdatedAt); err != nil {
 			return nil, err
 		}

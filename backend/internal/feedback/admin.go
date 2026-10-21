@@ -157,7 +157,7 @@ func (a *Admin) writeCSV(w http.ResponseWriter) {
 	defer writer.Flush()
 	_ = writer.Write([]string{
 		"bid", "checksum", "rate", "actual_algorithm", "mods", "key_count", "pattern",
-		"ln_bucket", "n", "weight_sum", "distinct_installs", "target_median",
+		"ln_bucket", "target_side", "n", "weight_sum", "distinct_installs", "target_median",
 		"target_q25", "target_q75", "iqr", "updated_at",
 	})
 	for _, row := range rows {
@@ -165,7 +165,7 @@ func (a *Admin) writeCSV(w http.ResponseWriter) {
 			csvSafe(strconv.FormatInt(row.Bid, 10)), csvSafe(row.Checksum),
 			csvSafe(fmt.Sprintf("%.3f", row.Rate)), csvSafe(row.ActualAlgorithm),
 			csvSafe(row.Mods), csvSafe(strconv.Itoa(row.KeyCount)), csvSafe(row.Pattern),
-			csvSafe(row.LnBucket), csvSafe(strconv.Itoa(row.N)),
+			csvSafe(row.LnBucket), csvSafe(row.TargetSide), csvSafe(strconv.Itoa(row.N)),
 			csvSafe(fmt.Sprintf("%.3f", row.WeightSum)), csvSafe(strconv.Itoa(row.Distinct)),
 			csvSafe(fmt.Sprintf("%.2f", row.Median)), csvSafe(fmt.Sprintf("%.2f", row.Q25)),
 			csvSafe(fmt.Sprintf("%.2f", row.Q75)), csvSafe(fmt.Sprintf("%.2f", row.IQR)),

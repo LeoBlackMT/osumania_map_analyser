@@ -437,7 +437,7 @@
 		"uniqueID": "enableDifficultyFeedback",
 		"type": "checkbox",
 		"title": "Difficulty Feedback (Desktop Shell Only)",
-		"description": "After finishing a non-LN osu!mania map in the desktop shell, show a five-point rating for the estimated difficulty. Ratings and the beatmap ID are sent to the project server to find maps the estimator gets wrong. No accuracy, score, or username is sent.",
+		"description": "After finishing an osu!mania map in the desktop shell, show a five-point rating for the estimated difficulty. 4K is RC-only; 6K/7K support RC/LN/Mix/HB/SV (two-label charts ask about one side). Ratings and the beatmap ID are sent to the project server to find maps the estimator gets wrong. No accuracy, score, or username is sent.",
 		"options": [],
 		"value": true
 	},
