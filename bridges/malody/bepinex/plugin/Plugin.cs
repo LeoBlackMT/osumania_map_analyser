@@ -499,7 +499,7 @@ public sealed class Plugin : BasePlugin
     /// still carries the fields that do not need it, and an unreadable field is
     /// published as null instead of being replaced by a default.
     /// </summary>
-    private Selection Frame(string path, double rate, string screen, string reason, string version, string hash)
+    private Selection Frame(string path, double rate, string screen, string reason, string version, string hash, string? cvt = null)
     {
         JudgeCapture? capture = judgeCapture;
         capture?.Refresh(judgePanel, reason, committed: false);
@@ -507,7 +507,8 @@ public sealed class Plugin : BasePlugin
         {
             judge_level = capture?.JudgeLevel,
             pro_judge = capture?.ProJudge,
-            turbo = capture?.Turbo
+            turbo = capture?.Turbo,
+            cvt = cvt
         };
     }
 
@@ -542,9 +543,11 @@ public sealed class Plugin : BasePlugin
             return;
         }
 
-        double rate = ReadAudioRate();
-        Trace($"Capture accepted path={path} reported-speed={rate}");
-        Selection next = Frame(path, rate, "selection", reason, Text(chart, "DisplayVersion"), Text(chart, "Hash"));
+        object? info = localPlayInfo!.Invoke(null, null);
+        double rate = ReadAudioRate(info);
+        string? cvt = ReadCvtMod(info);
+        Trace($"Capture accepted path={path} reported-speed={rate} cvt={cvt ?? "none"}");
+        Selection next = Frame(path, rate, "selection", reason, Text(chart, "DisplayVersion"), Text(chart, "Hash"), cvt);
         Publish(next, immediate: false);
         if (verbose) Log.LogInfo($"Selection {next.sequence}: {reason} | {path} | rate {rate:0.###}");
     }
@@ -629,6 +632,22 @@ public sealed class Plugin : BasePlugin
         return Math.Round(rate, 2, MidpointRounding.AwayFromZero);
     }
 
+    /// <summary>
+    /// Reads Malody V's Holds/Taps clip modifiers from the selected Mod mask.
+    /// Holds (bit 15) turns notes into holds → osu!lazer IN; Taps (bit 14)
+    /// turns holds into taps → HO. Neither bit set is a valid "no conversion"
+    /// (null), not an unknown value.
+    /// </summary>
+    private static string? ReadCvtMod(object? playInfo)
+    {
+        object? mod = playInfo == null ? null : Get(playInfo, "Mod");
+        if (mod == null || !mod.GetType().IsEnum) return null;
+        long mask = Convert.ToInt64(mod, CultureInfo.InvariantCulture);
+        if ((mask & 32768L) != 0) return "IN"; // Holds
+        if ((mask & 16384L) != 0) return "HO"; // Taps
+        return null;
+    }
+
     private PlayedChart ReadPlayedChart(object? playInfo, bool initialized)
     {
         if (playInfo == null || !localPlayInfo!.ReturnType.IsInstanceOfType(playInfo))
@@ -637,7 +656,7 @@ public sealed class Plugin : BasePlugin
         if (chart == null || !chartType!.IsInstanceOfType(chart) || Text(chart, "PlayMode") != "Key")
             throw new InvalidOperationException("The active player is not a supported Key chart.");
         string path = ResolveChartPath(chart) ?? throw new InvalidOperationException("Cannot resolve the active player's chart file.");
-        return new PlayedChart(path, ReadAudioRate(playInfo, initialized), Text(chart, "DisplayVersion"), Text(chart, "Hash"));
+        return new PlayedChart(path, ReadAudioRate(playInfo, initialized), Text(chart, "DisplayVersion"), Text(chart, "Hash"), ReadCvtMod(playInfo));
     }
 
     private void CaptureRun(object? playInfo, bool initialized, string reason)
@@ -661,7 +680,7 @@ public sealed class Plugin : BasePlugin
     {
         PlayedChart? chart = lifecycle.Run;
         Selection next = chart != null && lifecycle.Screen is "playing" or "result"
-            ? Frame(chart.Path, chart.Rate, lifecycle.Screen, reason, chart.Version, chart.Hash)
+            ? Frame(chart.Path, chart.Rate, lifecycle.Screen, reason, chart.Version, chart.Hash, chart.Cvt)
             : Selection.Hidden(++sequence, reason);
         Publish(next, immediate: true);
     }
@@ -670,12 +689,12 @@ public sealed class Plugin : BasePlugin
     {
         lock (stateLock)
         {
-            // A judge change alone is still a change: the companion's own content test
-            // treats Pro and Turbo as news, so the frame must be scheduled even while
-            // path, rate and screen stay as they are.
+            // A judge or clip-mod change alone is still a change: the companion's own
+            // content test treats judge/pro/turbo/cvt as news, so the frame must be
+            // scheduled even while path, rate and screen stay as they are.
             bool same = value.path == snapshot.path && Math.Abs(value.speed_rate - snapshot.speed_rate) < 0.00001 &&
                 value.screen == snapshot.screen && value.judge_level == snapshot.judge_level &&
-                value.pro_judge == snapshot.pro_judge && value.turbo == snapshot.turbo;
+                value.pro_judge == snapshot.pro_judge && value.turbo == snapshot.turbo && value.cvt == snapshot.cvt;
             snapshot = value;
             // Repeated game redraws must not postpone a selection indefinitely.
             if (!same) due = DateTime.UtcNow.AddSeconds(immediate ? 0 : debounceSeconds);
