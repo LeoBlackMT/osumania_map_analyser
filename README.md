@@ -61,7 +61,8 @@
 2. 难度估计算法虽然经过调整，但仍然可能存在不准确的情况，请仅将其作为参考。对于4K，一般情况下高难相对比较准确，整体误差不超过半个段位，低难相对没那么准确；在Minijack、Stamina和Anchor等键型中，估计结果可能会有较大的偏差。对于6K和7K，整体表现相对一般。建议玩家结合自己的实际游玩体验进行判断，不要过于依赖估计结果，将算法视为一个玩家给出的难度估计。
 3. 该插件的性能可能会受到谱面复杂度和所选功能的影响，在某些情况下可能会出现卡顿或延迟的情况，请根据实际情况调整设置以获得更好的体验。
 4. 当Lazer更新，内存无法正常读取且开发者尚未发布shell/偏移表更新时，在设置中点击Memory Offsets Management->Live Generator可快速根据当前运行的Lazer进程尝试生成偏移表。使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
-5. 如果存在问题欢迎提交issue。
+5. 端口占用情况：默认占用 24061（壳页面）、24062（osu! 原生读取兼容端点）、17653（Malody V 选曲桥）；tosu 使用 24050。若 24061 被其他程序占用，壳会提示端口被占用而无法启动，先用 `Get-NetTCPConnection -LocalPort 24061`（或 `netstat -ano | findstr :24061`）查 PID ，随后关闭占用程序。24062/17653 被占用时对应原生传输/桥功能会降级，其他功能仍可用。若修改了 tosu 端口，请在插件设置 `wsEndpoint` 中填写相同的 host:port。
+6. 如果存在问题欢迎提交issue。
 
 ## 难度估计算法基准测试
 - 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
