@@ -20,7 +20,7 @@
 desktop/src/
 ├── main.rs                        # 极简应用启动入口 (委派 app::run())
 ├── lib.rs                         # 核心导出与库入口
-├── frames.rs                      # 壳-页面桥帧定义与端口/时限常量 (CONTRACT_VERSION = 6)
+├── frames.rs                      # 壳-页面桥帧定义与端口/时限常量 (CONTRACT_VERSION = 7)
 ├── etterna.rs                     # Etterna 桥轮询 (2Hz 读 MmaBridge.txt / MmaGameplay.txt)
 ├── malodyv.rs                     # Malody V 编辑器文件通道轮询
 ├── settings_window.rs             # 设置窗口 (壳内第二个 OS 窗口，承载 settings.html)
@@ -107,7 +107,7 @@ desktop/src/
 │   ├── http.rs                    # 24061 单 listener (静态 /settings /cover) 与 WS 分发
 │   ├── post.rs                    # 24060 POST：Malody 编辑器分析入口 + resolve 通道
 │   ├── osu_compat.rs              # 24062 tosu 兼容子集 origin (/websocket/v2 + 两条文件路由)
-│   ├── osu_source.rs              # sources.osu (契约 v6) 组装：读取器健康位 + 壳配置 + 24062 绑定结果
+│   ├── osu_source.rs              # sources.osu (契约 v6/v7) 组装：读取器健康位 + 壳配置 + 24062 绑定结果
 │   ├── log.rs                     # 环形内存日志缓冲与按日滚动落盘
 │   └── mod.rs                     # 顶层服务聚合与生命周期
 ```
@@ -125,7 +125,7 @@ desktop/src/
 新增业务功能时，应直接在对应的子模块中定义并就近编写单元测试，仅在确实需要对外广泛公开时再提升至门面。
 
 ### 3.2 外部通信协议保持严格兼容
-前端页面与桌面壳的通信受到 [`desktop/docs/CONTRACT.md`](CONTRACT.md) v6 协议保护：
+前端页面与桌面壳的通信受到 [`desktop/docs/CONTRACT.md`](CONTRACT.md) v7 协议保护：
 - **24060 POST**：Malody 编辑器分析入口与 resolve 通道；
 - **24061 HTTP**：页面静态资源托管、`/shell-config` 读取与修改、`/offsets/generate` 与 `/offsets/update` 操作、以及 `/ws` 结构帧循环；
 - **24062 WS**：壳内 osu 原生读取器的 tosu 兼容子集 origin（`/websocket/v2` + `/files/beatmap/*`），仅在 `sources.osu.mode == "native"` 时被页面使用；

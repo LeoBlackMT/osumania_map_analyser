@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v6）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v7）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -117,7 +117,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:672-692`，`spawn_osu_compat` 的绑定失败分支）。
 - 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。
 
-## 5. 契约 v6：端点下发与页面切流
+## 5. 契约 v6/v7：端点下发与页面切流
 
 ### 5.1 壳侧下发
 
@@ -325,7 +325,7 @@ rustc --edition 2021 -O -A dead_code -o %TEMP%\lazer-offsets-gen.exe tools/lazer
 | 5 | 端点探针（HTTP） | `Invoke-WebRequest http://127.0.0.1:24062/files/beatmap/file -UseBasicParsing` | 200 + `Access-Control-Allow-Origin: *`；body = 当前谱面 `.osu`（`text/plain; charset=utf-8`） |
 | 6 | Host 门禁 | raw socket（或 `curl -H "Host: evil.example"`）请求 24062 | **403** `{"error":"forbidden host"}` 且带 ACAO；`127.0.0.1:24062` ⇒ 200 |
 | 7 | 端点探针（WS） | `node -e` 用内置 `WebSocket` 连 `ws://127.0.0.1:24062/websocket/v2`（Node 24 有全局 WebSocket） | 101；实时模式 ≈6.45 帧/s（真机 `avg_fps 6.45`）；回放模式（`MMA_OSU_COMPAT_REPLAY=1`）32 帧/5 s、帧间隔 153–158 ms；`/websocket/commands` 101 且 0 帧 |
-| 8 | 契约版本三处一致 | `grep`：`desktop/src/frames.rs`、页面 `js/app/sources/bridgeClient.js`、`desktop/docs/CONTRACT.md` | 三处都是 `6`，页面接受区间 `[3,6]` |
+| 8 | 契约版本三处一致 | `grep`：`desktop/src/frames.rs`、页面 `js/app/sources/bridgeClient.js`、`desktop/docs/CONTRACT.md` | 三处都是 `7`，页面接受区间 `[3,7]` |
 | 9 | 破坏性签名测试 | 按 §9 第 5 条复制源码到工作区外打补丁、编译、跑 | 变体 A ⇒ `signature-miss:statusPtr` + 0 伪造帧；变体 B ⇒ 冻结帧（带 `state.name`、无 `beatmap`）→ `unhealthy` 停帧，解除锚点到 unhealthy ≈1.4 s |
 | 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\offsets\lazer\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
 | 11 | 零写入审计 | `grep -rn "WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx" desktop/src/osu` | 0 命中 |

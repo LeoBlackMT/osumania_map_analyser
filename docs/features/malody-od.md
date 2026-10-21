@@ -100,6 +100,16 @@ Malody 的判定档（`A`~`E`）与 osu!mania 的 OD 是**两套互不相同的�
 - **未建模的其它因素**：判定档之外的 Malody 判定相关选项（若有）与音符类型差异都不在等效口径内；本表只回答"判定档 × 速率"。
 - **方法学的纪律**：误差分布模型或准确率口径一旦改动，**整张表必须重算**；**不得**为了对齐某张谱面的观感手改表值（表值是推导出来的，不是拟合出来的）。
 
+### 9.1 Malody V 的 Holds / Taps 转换 Mod
+
+Malody V 选曲界面的 `Holds`（bit 15，`0x8000`）和 `Taps`（bit 14，`0x4000`）会改变音符类型，属于**转换 Mod**，不改变判定档/Pro/倍率，因此不改变 §9 的 OD 表本身：
+
+- `Holds`：note → hold（长条），等价 osu!lazer `IN`（Invert）。原始 RC 谱面会按长条谱面重新估算，LN 比例与键型分析随之变化。
+- `Taps`：hold → tap（单点），等价 osu!lazer `HO`（Hold Off）。原始 LN 谱面会按纯 RC/米谱重新估算。
+- 两个位都未选中时 `cvtFlag = null`（无转换）；两个位同时置位时 **Holds 优先**。未知值不会被猜成“无转换”。
+- 数据链：插件读取 `Local.Play` 的 `Mod` 掩码 → `POST /selection` 的 `cvt`（`IN`/`HO`/`null`）→ 壳 `song.modData.cvtFlag` → 页面 `state.cvtFlag`。它进入 `state.modSignature` 的第 3 段，因此无转换 / Holds / Taps 各自使用独立的结果缓存，不会互相命中。
+- 该字段只影响谱面语义与缓存，不是 OD 输入；FAIR 等判定 Mod 的未建模限制仍见上一节。
+
 ## 10. 复算与校验
 
 `python tools/malody4-od-check/verify.py`（纯 stdlib，单文件，入库工装）做三件事：① 从窗口值重算 20 格并与 `judgeOdTable.js` 里的表逐值比对（容差 `≤ 0.005`，正则提取、不需要 Node）；② 断言 20 格残差 `≤ 0.05 ms`；③ 断言最外档三种口径给出同一张表。`--emit-md` 会打印与本文 §3/§4 同形的表格（含 σ\*），供重算后更新本文。故意改错 JS 表里任一个值，脚本会以非 0 退出并报出差异（负向验证，证明它不是永远绿的橡皮章）。
@@ -187,6 +197,16 @@ Before this, the PC/mobile story still applies to the 4.3.7 table below: the pre
 | E | 10.63 | 13.96 | 12.44 / 15.19 |
 
 Within a cell, Dash/Rush/Slow equal NM (see above). The whole table is recomputed and checked by `tools/malody-v-od-check/verify.py`: residuals ≤ 0.05 ms, Pro always above non-Pro, TURBO always above DASH at the same rate.
+
+### 9.1 Malody V Holds / Taps conversion mods
+
+Malody V's `Holds` (bit 15, `0x8000`) and `Taps` (bit 14, `0x4000`) are **conversion mods** that change note types; they do not change the judge level, Pro or rate, so they do not change the OD table itself:
+
+- `Holds`: note → hold, equivalent to osu!lazer `IN` (Invert). An RC chart is re-estimated as a hold-heavy chart, with LN ratio and pattern analysis updated.
+- `Taps`: hold → tap, equivalent to osu!lazer `HO` (Hold Off). An LN chart is re-estimated as pure RC/rice.
+- If neither bit is set, `cvtFlag = null` (no conversion); if both are set, **Holds wins**. Unknown values are never guessed as "no conversion".
+- Data path: the plugin reads the `Mod` mask from `Local.Play` → `POST /selection` `cvt` (`IN`/`HO`/`null`) → shell `song.modData.cvtFlag` → page `state.cvtFlag`. It is the third segment of `state.modSignature`, so no-conversion / Holds / Taps have independent result-cache entries.
+- This field affects chart semantics and caching only; it is not an OD input. The unmodelled FAIR limitation above still applies.
 
 ## 10. Recompute and check
 

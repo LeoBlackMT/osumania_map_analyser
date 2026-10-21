@@ -1,11 +1,12 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**6**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> 版本：**7**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
 > v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > v2→v3 变更：新增第四数据源 **Malody 4.3.7 原生客户端**（零注入只读观察通道）——新增 `malody4_selection` 帧（八型）；`source` 枚举新增 `"malody4"`；`requestId` 新增 `n{seq}` 前缀；`identity` 新增 `mdy4:{md5}`；`sources` 新增 `malody4{alive,playing,screen,reason?,judge?}`；`meta` 新增可选 `judge`（Malody 4 判定档字母）。
 > v3→v4 变更：Malody V 通道新增**游戏内选曲桥**（BepInEx 插件 `POST /selection` → 壳 17653）——`sources.malody` 由 `{alive}` 扩为 `{alive,transport,screen,playing,eventSeq,judge}`；`song` 帧新增 `screen` / `judge` / `winScale`（仅桥通道携带）；`requestId` 新增 `b{eventSeq}`（真实事件）与 `b{eventSeq}r{k}`（重连补发）前缀；`identity` 的桥通道带 `u` 后缀（`mdy:…:{contentMd5}u`）；新增端口 **17653**；详情见 §11。**注**：v4 当时装的是上游插件，v5 起改为本仓库自建的 fork（§12），上面的历史描述保留原样。
 > v4→v5 变更：Malody V 选曲桥的判定档/Pro/Turbo 三字段进入契约（`POST /selection` 11 字段、`song` 帧 `pro`/`turbo`、`sources.malody` 八字段、`winScale` 可为 `null`）；详情见 §12。
 > v5→v6 变更：新增 **osu 原生传输的端点下发**——`sources.osu` 进入 state 帧（`{alive, osuTransport:{mode,host,port,wsPath,filesPath}, gate?, client?, reason?, degradedFields?, phase?, notice?, progress?}`），页面据此在 **socket 层**运行时切换 osu 数据面（**不写 `wsEndpoint`**，故切换**不清结果缓存**）；新增端口 **24062**（壳内 tosu 兼容子集 origin）；壳主窗在 `osuTransport != "tosu"` 时一律落 24061 本地页；详情见 §14。`phase`/`notice`/`progress` 三项是 2026-09-29 的**向后兼容追加**（L0 扫描提示，**契约版本仍为 v6**，见 §8）。
+> v6→v7 变更：Malody V 桥通道新增 `cvt` / `cvtFlag`（Holds→`IN`、Taps→`HO`）——`POST /selection` 12 字段、`song.modData.cvtFlag`、内容判据扩为 **七元组**；详情见 §15。旧 6 字段/11 字段载荷仍按缺省 `null` 接受。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
@@ -30,7 +31,7 @@
 ## 1. song 帧 schema
 
 ```
-{ requestId, source, identity, modData, meta, cover, rawText, screen?, judge?, winScale? }
+{ requestId, source, identity, modData, meta, cover, rawText, screen?, judge?, pro?, turbo?, cvt?, winScale? }
 ```
 
 - `requestId`：壳为**每个 song 帧生成**——POST `m{seq}`、Malody 文件通道 `r{seq}`、Etterna 轮询 `e{seq}`、Malody 4 锚点轮询 `n{seq}`、Malody 选曲桥真实事件 `b{eventSeq}`、桥重连补发 `b{eventSeq}r{k}`（v4，见 §11）；页面 result 帧原样回带，供应答关联（生命周期见 §4）。
@@ -42,7 +43,7 @@
   `judge`：可选，Malody 4 源的判定档字母（`A`~`E`）；缺省表示未知（页面回落 C 档）。
 - `cover`：白名单封面文件相对路径与同帧 URL（见 §7）。
 - `rawText`：**源谱面原文（.sm/.ssc/.mc/.osu）**；**转换在页面侧**（.osu 直通，壳不转换），转换时机 = 页面缓存检查之后（命中快照短路免转换）；**体量上限：rawText 字节数 > 5MB 拒绝**（壳推送丢弃并经 state.errors 提示；POST 立即 504 PAYLOAD_TOO_LARGE；桥通道在读取前 stat，>5MB 立即 504 并留痕，见 §11）。
-- `screen` / `judge` / `winScale`（v4，**只有 Malody 选曲桥通道携带**）：见 §11。`screen` 缺省即"不是桥帧"——页面据此判定卡片归属，故其它源与 Lua 通道**绝不出这三个字段**。
+- `screen` / `judge` / `pro` / `turbo` / `cvt` / `winScale`（v4 起，**只有 Malody 选曲桥通道携带**）：见 §11/§15。`screen` 缺省即"不是桥帧"——页面据此判定卡片归属，故其它源与 Lua 通道**绝不出这些字段**。
 
 ## 2. result 帧 schema
 
@@ -166,7 +167,7 @@
 
 请求门禁顺序**固定**（任一不过即拒，插队会被上游误判为"没收到"）：`Host` 必须精确为 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653` 否则 **403** → `path != "/selection"` ⇒ **404** → 任意 `Origin` 头存在 ⇒ **403** → 非 `POST` ⇒ **405** → `Content-Type` 的 type 不是 `application/json` ⇒ **415** → body 长度不满足 `0 < len <= 16384` ⇒ **413** → JSON 解析失败 ⇒ **400**。成功一律 **202**（插件只看 2xx，`BridgeClient.cs:57`）。
 
-载荷 8 字段（全部按缺省容错）：`path` / `speed_rate` / `screen` / `sequence` / `event` / `version` / `chart_hash` / `source`。
+载荷 12 字段（v7；全部按缺省容错）：`path` / `speed_rate` / `screen` / `sequence` / `event` / `version` / `chart_hash` / `source` / `judge_level` / `pro_judge` / `turbo` / `cvt`。
 
 | 字段 | 处理 |
 |---|---|
@@ -174,15 +175,16 @@
 | `speed_rate` | 非有限值或 `< 0.05` / `> 10` ⇒ **整帧按 `other` 处理**并记 error 日志 |
 | `path` | `other` 时恒为空；其余场景必须过路径沙箱 |
 | `sequence` | **只**用于识别心跳与游戏重启，不用于判事件（见 11.4） |
+| `cvt` | Malody Holds/Taps：`Holds`（bit 15）⇒ `IN`，`Taps`（bit 14）⇒ `HO`；未选中/未知 ⇒ `null` |
 | `event` / `chart_hash` / `source` | 仅诊断，不进任何判据 |
 
 ### 11.3 路径沙箱（`screen ∈ {selection, playing, result}` 必过；`other` 跳过）
 
 `normalize_path` → `canonicalize`（失败即拒）→ 必须 `starts_with(canonicalize(malodyRoot)/chart/)` → 后缀 ∈ `{.mc, .osu}`（大小写不敏感）→ `is_file()` → `1 B <= len <= 50 MB`。任一不过 ⇒ **403** + 壳日志（逃逸类记录含 `path outside malodyRoot/chart`）。**前缀校验不得放宽**：这是"本地 HTTP 端点不得成为任意文件读取原语"的唯一保证。
 
-### 11.4 内容四元组去重 / 心跳 / 会话重置（唯一去重点）
+### 11.4 内容七元组去重 / 心跳 / 会话重置（唯一去重点）
 
-基线三项与展示字段同处 `Shared::malody_bridge`（`last_event` / `last_seq` / `event_seq` / `last_seen` / `screen` / `chart_path` / `rate_text`）。**事件判据 = 内容四元组 `(path, rate_text, screen, judge_text)` 的变化**，`rate_text = rate.toFixed(5)`，`judge_text` 为当前判定档（未采集到为 `none`）。
+基线三项与展示字段同处 `Shared::malody_bridge`（`last_event` / `last_seq` / `event_seq` / `last_seen` / `screen` / `chart_path` / `rate_text` / `cvt`）。**事件判据 = 内容七元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text, cvt_text)` 的变化**，`rate_text = rate.toFixed(5)`，`judge_text` 为当前判定档（未采集到为 `none`），`pro_text`/`turbo_text` 为三态，`cvt_text` 为 `IN`/`HO`/`none`。
 
 | 条件 | 分支 | 动作 |
 |---|---|---|
@@ -222,7 +224,7 @@
 新 WS 连接注册 sink 后（在 `hello` 之后）**只给这个连接**补发：
 
 1. **一帧 `state`**（无条件）。注册 sink 原本只发 `hello`，而 `state` 帧只由 30s 周期帧或真实桥事件触发（`spawn_timers` = 15s ping + 15s sleep ⇒ **周期 30s**）⇒ 页面刷新/壳重启发生在游玩中时，`song` 帧回来了、`state.malodyPlaying` 也置了真，但 `state.malodyAlive` 会一直是 `undefined`，页面 L1 门控 `malodyPlaying && malodyAlive` 不成立，路由最长 30s 内仍指向 osu/Etterna。
-2. **当前谱面的 `song` 帧**，触发条件钉死：`bridge_alive` **且** 已存 `screen ∈ {selection, playing, result}` **且** `chart_path` 非空。⚠️ 不能只判 `last_event.is_some()`——`screen=other` 的真实事件会把 `last_event` 覆盖成空 `path` 的四元组，那样会补发出一个空 `path` 的 song 帧，与 11.5 冲突。
+2. **当前谱面的 `song` 帧**，触发条件钉死：`bridge_alive` **且** 已存 `screen ∈ {selection, playing, result}` **且** `chart_path` 非空。⚠️ 不能只判 `last_event.is_some()`——`screen=other` 的真实事件会把 `last_event` 覆盖成空 `path` 的七元组，那样会补发出一个空 `path` 的 song 帧，与 11.5 冲突。
 
 补发**不是新事件**：不修改 `last_event` / `last_seq` / `event_seq`；内容按当前状态重算（重读谱面、重算 `contentMd5` 与 identity）；`requestId = b{eventSeq}r{k}`（`k` = 该连接的补发序号，当前每次注册只补发一次 ⇒ `k = 1`）。
 
@@ -236,9 +238,9 @@
 | `5` | 接受：`sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`（tosu 传输）；`sources.malody` 八字段齐全 |
 | `4` | 接受：`sources.malody` 无 `pro`/`turbo`，桥帧也无这两个字段；`winScale` 恒为数值（旧语义）。页面据此关闭动态 OD 并说明原因 |
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
-| `< 3` 或 `> 6` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
+| `< 3` 或 `> 7` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 6`，区间为 `[3,6]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 7`，区间为 `[3,7]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -269,7 +271,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **`CONTRACT_VERSION` 由 v6 起为 6**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v6 的升级来自 `/ws` 上的新字段（§14），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,6]`（§11.8）。
+> **`CONTRACT_VERSION` 由 v7 起为 7**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v7 的升级来自 `/ws` 上的新字段（§15），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,7]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。**唯一例外**是 `/feedback`：tosu 在线时页面由 tosu（24050）提供，跨源 POST 需要预检，故该端点显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
@@ -322,3 +324,27 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   行为逐字回到上面那条（冻结帧 + 404）；换图若**已对拍**（内存 md5 == 磁盘 `.osu` 的 md5）
   则立即发布新图，绝不跨图保持。文件路由只在"被供奉那份与正在发布的图**身份逐字一致**"
   且"距读者最后一次出帧仍在窗口内"时供奉。
+
+## 15. v6 → v7 差异（Malody V Holds/Taps 转换）
+
+变更动机：Malody V 的 `Holds` / `Taps` 是选曲界面的音型转换 Mod，直接影响谱面是“米”还是“条”：
+`Holds`（bit 15，`0x8000`）把 note 转成长条，等价 osu!lazer `IN`（Invert）；`Taps`（bit 14，
+`0x4000`）把长条转成 note，等价 `HO`（Hold Off）。此前 BepInEx 插件只上报倍率/判定，页面无法
+知道这两个 Mod，导致难度估计、LN 比例、键型分析与缓存全部按原始谱面计算。
+
+| 面 | v6 | v7 | 原因 |
+|---|---|---|---|
+| `CONTRACT_VERSION` / `hello.contract` / 帧信封 `v` | 6 | **7** | §10 规则 |
+| `POST /selection` 载荷 | 11 字段 | **12 字段**：+ `cvt`（`IN` / `HO` / `null`，`#[serde(default)]`） | 选择界面切换 Holds/Taps 时路径与倍率都不变 |
+| `song.modData` | `{speedRate}` | + **`cvtFlag`**（`IN` / `HO` / `null`） | 页面 `externalSource.js` 直接写 `state.cvtFlag`，并进入 `modSignature` |
+| 内容判据（真实事件） | 六元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text)` | **七元组**：+ `cvt_text`（`IN`/`HO`/`none`） | 切换 Holds/Taps 必须触发 song 帧与重算 |
+| 页面接受区间 | `[3,6]` | **`[3,7]`** | §11.8 |
+
+兼容性：
+- 旧 11 字段载荷缺少 `cvt` ⇒ `None`（无转换），仍返回 202；旧 `song` 帧无 `cvtFlag` ⇒ 页面按无转换处理。
+- `cvt` 只归一化 `IN` / `HO`；其他值（空串、未知、对象）一律视为 `null`，不猜测。
+- 三个 C# 字段（`judge_level` / `pro_judge` / `turbo`）和 `cvt` 都是**未知即 `null`**；`null` 不等于
+  “确认关闭”，页面据此保持 fail-closed（未知转换不冒充无转换）。
+- `cvt` 进入页面的 `modSignature`（第 3 段）⇒ `IN` / `HO` / 无转换各自独立缓存；结果缓存不会把
+  原始谱面的星数复用给转换后的谱面。
+
