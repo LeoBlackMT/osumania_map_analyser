@@ -15,15 +15,17 @@ namespace MalodyInsightBridge;
 ///   127.0.0.1 only, POST to the configured path (default port 17653);
 ///   no proxy, no redirects, 1.5 s timeout;
 ///   at most one POST in flight, so timer callbacks never pile up;
-///   a failing companion is reported at most once every 15 s.
+///   connection failures are edge-triggered: one startup notice, quiet
+///   debug ticks while waiting, and one warning if an established link drops.
 /// </summary>
 internal sealed class BridgeClient : IDisposable
 {
     private readonly HttpClient http;
     private readonly ManualLogSource log;
-    private DateTime lastNetworkWarning = DateTime.MinValue;
     private int sending;
+    private bool hasEverConnected;
     private bool networkConnected;
+    private bool startupNoticeLogged;
 
     public BridgeClient(int port, string route, ManualLogSource log)
     {
@@ -57,15 +59,37 @@ internal sealed class BridgeClient : IDisposable
             if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Companion returned HTTP {(int)response.StatusCode}.");
             if (!networkConnected) log.LogInfo("Companion service connected.");
             networkConnected = true;
+            hasEverConnected = true;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            bool wasConnected = networkConnected;
             networkConnected = false;
-            if ((DateTime.UtcNow - lastNetworkWarning).TotalSeconds >= 15)
+            // HttpClient timeout surfaces as TaskCanceledException/OperationCanceledException
+            // even though our own token was not cancelled. Do not expose that as "A task was canceled".
+            string reason = ex is OperationCanceledException && !token.IsCancellationRequested
+                ? "Connection timed out"
+                : ex.GetBaseException().Message;
+            if (wasConnected)
             {
-                lastNetworkWarning = DateTime.UtcNow;
-                log.LogWarning($"Companion unavailable at {Endpoint}: {ex.GetBaseException().Message}. Will retry.");
+                log.LogWarning($"Companion connection lost at {Endpoint}: {reason}. Standing by.");
+            }
+            else if (!hasEverConnected)
+            {
+                if (!startupNoticeLogged)
+                {
+                    startupNoticeLogged = true;
+                    log.LogInfo($"Companion unavailable at {Endpoint} ({reason}). Bridge is standing by quietly until companion starts.");
+                }
+                else
+                {
+                    log.LogDebug($"Companion still unavailable at {Endpoint} ({reason}).");
+                }
+            }
+            else
+            {
+                log.LogDebug($"Companion still unavailable at {Endpoint} ({reason}).");
             }
         }
         finally { Volatile.Write(ref sending, 0); }
