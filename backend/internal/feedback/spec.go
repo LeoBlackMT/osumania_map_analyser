@@ -17,8 +17,12 @@ import (
 	"osumania-telemetry/internal/spec"
 )
 
-// SignVersion is the first field of the canonical sign string.
-const SignVersion = "v1"
+// SignVersion is the legacy v1 sign string (4K clients without target_side).
+// SignVersionV2 appends the selected feedback side and is used by 6K/7K clients.
+const (
+	SignVersion   = "v1"
+	SignVersionV2 = "v2"
+)
 
 // RC-only bounds.
 const (
@@ -77,6 +81,8 @@ const (
 	ReasonConvert         = "convert"
 	ReasonNotRC           = "not_rc"
 	ReasonBadKeyCount     = "bad_keycount"
+	ReasonBadMode         = "bad_mode"
+	ReasonBadSide         = "bad_side"
 	ReasonBadClient       = "bad_client"
 	ReasonBadClassic      = "bad_classic"
 	ReasonBadVersion      = "bad_version"
@@ -107,6 +113,7 @@ type Payload struct {
 	LnRatio           float64  `json:"ln_ratio"`
 	Pattern           string   `json:"pattern"`
 	ModeTag           string   `json:"mode_tag"`
+	TargetSide        string   `json:"target_side,omitempty"`
 	OD                *float64 `json:"od"`
 	ActualAlgorithm   string   `json:"actual_algorithm"`
 	SelectedAlgorithm string   `json:"selected_algorithm"`
@@ -159,12 +166,18 @@ func CanonicalSignString(p Payload) string {
 	if p.Classic {
 		classic = 1
 	}
+	version := SignVersion
+	sideSuffix := ""
+	if p.TargetSide != "" {
+		version = SignVersionV2
+		sideSuffix = "|" + p.TargetSide
+	}
 	return fmt.Sprintf(
-		"%s|%d|%s|%.3f|%s|%d|%.4f|%s|%s|%s|%s|%s|%.2f|%.1f|%.3f|%d|%d|%s|%d|%s|%s|%s|%d|%s",
-		SignVersion, p.Bid, p.Checksum, p.Rate, mods, p.KeyCount, p.LnRatio, p.Pattern, p.ModeTag,
+		"%s|%d|%s|%.3f|%s|%d|%.4f|%s|%s|%s|%s|%s|%.2f|%.1f|%.3f|%d|%d|%s|%d|%s|%s|%s|%d|%s%s",
+		version, p.Bid, p.Checksum, p.Rate, mods, p.KeyCount, p.LnRatio, p.Pattern, p.ModeTag,
 		od, p.ActualAlgorithm, p.SelectedAlgorithm, p.DisplayedVal, p.Vote, p.Weight,
 		p.WeightVersion, passed, p.Client, classic, p.PluginVersion, p.SettingsHash,
-		p.InstallID, p.Timestamp, p.Nonce,
+		p.InstallID, p.Timestamp, p.Nonce, sideSuffix,
 	)
 }
 
@@ -210,14 +223,34 @@ func ValidateStatic(p Payload) string {
 			return ReasonUnknownMod
 		}
 	}
-	if p.ModeTag != "RC" {
-		return ReasonNotRC
-	}
-	if !isFinite(p.LnRatio) || p.LnRatio < 0 || p.LnRatio > RCLnMax {
-		return ReasonNotRC
-	}
 	if p.KeyCount != 4 && p.KeyCount != 6 && p.KeyCount != 7 {
 		return ReasonBadKeyCount
+	}
+	// 4K 保持旧条件：RC-only、LN <= 0.15；旧客户端没有 target_side，按 RC 处理。
+	// 6K/7K 允许算法支持的所有类型，但必须带明确的 target_side。
+	if p.KeyCount == 4 {
+		if p.ModeTag != "RC" {
+			return ReasonNotRC
+		}
+		if !isFinite(p.LnRatio) || p.LnRatio < 0 || p.LnRatio > RCLnMax {
+			return ReasonNotRC
+		}
+		if p.TargetSide != "" && p.TargetSide != "RC" {
+			return ReasonBadSide
+		}
+	} else {
+		if p.ModeTag != "RC" && p.ModeTag != "LN" && p.ModeTag != "Mix" && p.ModeTag != "HB" && p.ModeTag != "SV" {
+			return ReasonBadMode
+		}
+		if !isFinite(p.LnRatio) || p.LnRatio < 0 || p.LnRatio > 1 {
+			return ReasonNotRC
+		}
+		if p.TargetSide != "RC" && p.TargetSide != "LN" {
+			return ReasonBadSide
+		}
+	}
+	if p.TargetSide != "" && p.TargetSide != "RC" && p.TargetSide != "LN" {
+		return ReasonBadSide
 	}
 	if p.Client != "stable" && p.Client != "lazer" {
 		return ReasonBadClient

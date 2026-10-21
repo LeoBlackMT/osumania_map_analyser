@@ -17,6 +17,7 @@ import {
     WEIGHT_SIGMA_RIGHT,
     WEIGHT_SPAN,
 } from "./feedbackSpec.js";
+import { rcLabelToNumeric } from "../../estimator/rcDifficultyFormat.js";
 
 /** 六键计数 → 总 note 数（与 livePpCounts.totalCount 同义，但不依赖其导出顺序）。 */
 export function totalHits(counts) {
@@ -67,6 +68,30 @@ export function completionRatio(total, objectsTotal) {
 export function slotCount(estDiff) {
     if (typeof estDiff !== "string" || estDiff.length === 0) return 0;
     return estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0).length;
+}
+
+/** `estDiff` 拆成按顺序的标签；单标签也返回数组。 */
+export function splitDifficultyLabels(estDiff) {
+    if (typeof estDiff !== "string") return [];
+    return estDiff.split("||").map((part) => part.trim()).filter((part) => part.length > 0);
+}
+
+/** 单侧标签 → numeric；边界标签（`< ...` / `> ...`）返回 null。 */
+export function labelToNumeric(label) {
+    return rcLabelToNumeric(label);
+}
+
+/**
+ * 6K/7K 的确定性选侧：同一张图、同一倍速、同一键数永远选同一侧，避免重试时换题。
+ * 单标签时按标签/模式直接确定；双标签时用 FNV-1a 的奇偶选 RC/LN。
+ */
+export function chooseTargetSide({ beatmapId, rate, keyCount, labels, modeTag }) {
+    const parts = Array.isArray(labels) ? labels : [];
+    if (parts.length < 2) {
+        return parts.length === 1 && String(modeTag || "").toUpperCase() === "LN" ? "LN" : "RC";
+    }
+    const hash = fnv1aHex(`${Number(beatmapId) || 0}|${Number(rate).toFixed(3)}|${Number(keyCount) || 0}`);
+    return Number.parseInt(hash.slice(-1), 16) % 2 === 0 ? "RC" : "LN";
 }
 
 /** RC-only 判定：LN 占比、模式标签、单槽位。 */

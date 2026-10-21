@@ -418,7 +418,8 @@ async function submitVote(vote, button) {
 
     const payload = {
         vote,
-        displayed_val: Number(context.numericDifficulty),
+        displayed_val: Number(context.displayedVal),
+        target_side: String(context.targetSide || "RC"),
         actual_algorithm: String(context.actualAlgorithm || ""),
         selected_algorithm: String(context.selectedAlgorithm || ""),
         key_count: Number(context.keyCount) || 0,

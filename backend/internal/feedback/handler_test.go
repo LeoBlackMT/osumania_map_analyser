@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,12 @@ func TestCanonicalSignStringMatchesShell(t *testing.T) {
 	if got != want {
 		t.Fatalf("sign string mismatch:\n got %q\nwant %q", got, want)
 	}
+
+	payload.TargetSide = "LN"
+	v2 := CanonicalSignString(payload)
+	if !strings.HasPrefix(v2, "v2|") || !strings.HasSuffix(v2, "|LN") {
+		t.Fatalf("v2 sign string = %q", v2)
+	}
 }
 
 func TestValidateStatic(t *testing.T) {
@@ -70,6 +77,10 @@ func TestValidateStatic(t *testing.T) {
 		{"not rc", func(p *Payload) { p.ModeTag = "LN" }, ReasonNotRC},
 		{"ln ratio", func(p *Payload) { p.LnRatio = 0.2 }, ReasonNotRC},
 		{"keycount", func(p *Payload) { p.KeyCount = 5 }, ReasonBadKeyCount},
+		{"6k ln", func(p *Payload) { p.KeyCount = 6; p.ModeTag = "LN"; p.LnRatio = 0.8; p.TargetSide = "LN" }, ""},
+		{"6k no side", func(p *Payload) { p.KeyCount = 6; p.ModeTag = "LN"; p.LnRatio = 0.8 }, ReasonBadSide},
+		{"6k bad mode", func(p *Payload) { p.KeyCount = 6; p.ModeTag = "XX"; p.LnRatio = 0.8; p.TargetSide = "RC" }, ReasonBadMode},
+		{"4k wrong side", func(p *Payload) { p.TargetSide = "LN" }, ReasonBadSide},
 		{"client", func(p *Payload) { p.Client = "stable-x" }, ReasonBadClient},
 		{"version", func(p *Payload) { p.PluginVersion = "2.2.0-dev" }, ReasonBadVersion},
 		{"failed", func(p *Payload) { p.Passed = false }, ReasonNotPassed},

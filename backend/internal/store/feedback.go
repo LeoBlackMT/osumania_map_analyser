@@ -31,6 +31,7 @@ type FeedbackEvent struct {
 	LnBucket          string
 	Pattern           string
 	ModeTag           string
+	TargetSide        string
 	OD                sql.NullFloat64
 	ODBucket          string
 	Star              sql.NullFloat64
@@ -84,6 +85,7 @@ CREATE TABLE IF NOT EXISTS feedback_events (
 	ln_bucket TEXT NOT NULL,
 	pattern TEXT NOT NULL,
 	mode_tag TEXT NOT NULL,
+	target_side TEXT NOT NULL DEFAULT 'RC',
 	od REAL,
 	od_bucket TEXT,
 	star REAL,
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS feedback_map_agg (
 	key_count INTEGER NOT NULL,
 	pattern TEXT NOT NULL,
 	ln_bucket TEXT NOT NULL,
+	target_side TEXT NOT NULL DEFAULT 'RC',
 	n INTEGER NOT NULL,
 	weight_sum REAL NOT NULL,
 	distinct_installs INTEGER NOT NULL,
@@ -201,6 +204,18 @@ func OpenFeedback(path string) (*FeedbackStore, error) {
 		db.Close()
 		return nil, err
 	}
+	// Existing feedback.db files predate target_side. SQLite has no IF NOT EXISTS
+	// for ADD COLUMN; duplicate-column errors are the only expected failure here.
+	if _, err := db.Exec(`ALTER TABLE feedback_events ADD COLUMN target_side TEXT NOT NULL DEFAULT 'RC'`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`ALTER TABLE feedback_map_agg ADD COLUMN target_side TEXT NOT NULL DEFAULT 'RC'`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		db.Close()
+		return nil, err
+	}
 	return &FeedbackStore{db: db, dbPath: path}, nil
 }
 
@@ -262,13 +277,13 @@ func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, si
 func (s *FeedbackStore) InsertFeedback(ev FeedbackEvent) error {
 	_, err := s.db.Exec(`
 INSERT INTO feedback_events(
-	bid, checksum, rate, mods, key_count, ln_ratio, ln_bucket, pattern, mode_tag,
+	bid, checksum, rate, mods, key_count, ln_ratio, ln_bucket, pattern, mode_tag, target_side,
 	od, od_bucket, star, actual_algorithm, selected_algorithm, displayed_val, vote,
 	weight, weight_version, target, passed, client, classic, plugin_version,
 	settings_hash, dedup_token, key_id, nonce, timestamp, day, created_at
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		ev.Bid, ev.Checksum, ev.Rate, ev.Mods, ev.KeyCount, ev.LnRatio, ev.LnBucket,
-		ev.Pattern, ev.ModeTag, ev.OD, ev.ODBucket, ev.Star, ev.ActualAlgorithm,
+		ev.Pattern, ev.ModeTag, ev.TargetSide, ev.OD, ev.ODBucket, ev.Star, ev.ActualAlgorithm,
 		ev.SelectedAlgorithm, ev.DisplayedVal, ev.Vote, ev.Weight, ev.WeightVersion,
 		ev.Target, boolInt(ev.Passed), ev.Client, boolInt(ev.Classic), ev.PluginVersion,
 		ev.SettingsHash, ev.DedupToken, ev.KeyID, ev.Nonce, ev.Timestamp, ev.Day, ev.CreatedAt,

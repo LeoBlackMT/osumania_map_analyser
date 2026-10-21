@@ -5,8 +5,25 @@
 // 后端还会再校验一次，因此页面侧宁可严格。
 
 import { extractCounts } from "../livePpCounts.js";
-import { ALLOWED_MOD_CODES, ALLOWED_RATES, ACC_MAX, ACC_MIN, DEDUP_KEY_PREFIX, DEDUP_TTL_MS } from "./feedbackSpec.js";
-import { evaluatePlayStats, isRcChart, slotCount } from "./feedbackMath.js";
+import {
+    ALLOWED_MODE_TAGS_6K7K,
+    ALLOWED_MOD_CODES,
+    ALLOWED_RATES,
+    ALLOWED_TARGET_SIDES,
+    ACC_MAX,
+    ACC_MIN,
+    DEDUP_KEY_PREFIX,
+    DEDUP_TTL_MS,
+    SUPPORTED_FEEDBACK_KEYS,
+} from "./feedbackSpec.js";
+import {
+    chooseTargetSide,
+    evaluatePlayStats,
+    isRcChart,
+    labelToNumeric,
+    slotCount,
+    splitDifficultyLabels,
+} from "./feedbackMath.js";
 
 function normalizedStateName(state) {
     return String(state?.clientStateName || "").toLowerCase();
@@ -71,9 +88,6 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
     if (!context || context.beatmapKey !== state.lastBeatmapKey) {
         return { show: false, reason: "no_context" };
     }
-    if (!Number.isFinite(Number(context.numericDifficulty))) {
-        return { show: false, reason: "no_numeric" };
-    }
     if (!Number.isFinite(Number(context.lnRatio))) return { show: false, reason: "no_ln_ratio" };
     // OD 是签名的客观字段：必须是本地 .osu 解析出的数字（未知时不允许提问，
     // 否则用户点完只会被壳/后端拒绝）。
@@ -81,10 +95,50 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
         return { show: false, reason: "no_od" };
     }
 
+    const keyCount = Number(context.keyCount) || 0;
+    if (!SUPPORTED_FEEDBACK_KEYS.includes(keyCount)) {
+        return { show: false, reason: "bad_keycount" };
+    }
+    const numeric = Number(context.numericDifficulty);
+    // 4K 保持原判定顺序：numeric 缺失在 ln/模式判定之前拒绝。
+    if (keyCount === 4 && !Number.isFinite(numeric)) {
+        return { show: false, reason: "no_numeric" };
+    }
+    const labels = splitDifficultyLabels(context.estDiff);
     const slots = slotCount(context.estDiff);
-    if (slots !== 1) return { show: false, reason: "multi_slot" };
-    if (!isRcChart({ lnRatio: context.lnRatio, modeTag: context.modeTag, slots })) {
-        return { show: false, reason: "not_rc" };
+    let targetSide = "RC";
+    let displayedVal = null;
+
+    if (keyCount === 4) {
+        // 4K 的条件与限制保持不变：RC-only、单槽位、旧 numeric 语义。
+        if (slots !== 1) return { show: false, reason: "multi_slot" };
+        if (!isRcChart({ lnRatio: context.lnRatio, modeTag: context.modeTag, slots })) {
+            return { show: false, reason: "not_rc" };
+        }
+        displayedVal = Number(context.numericDifficulty);
+        if (!Number.isFinite(displayedVal)) return { show: false, reason: "no_numeric" };    } else {
+        // 6K/7K：算法支持的所有类型都可问；双标签时按确定性哈希选一侧。
+        if (!ALLOWED_MODE_TAGS_6K7K.includes(String(context.modeTag || "").toUpperCase())) {
+            return { show: false, reason: "bad_mode" };
+        }
+        if (slots < 1 || slots > 2) return { show: false, reason: "multi_slot" };
+        targetSide = chooseTargetSide({
+            beatmapId: state.currentBeatmapId,
+            rate: state.speedRate,
+            keyCount,
+            labels,
+            modeTag: context.modeTag,
+        });
+        if (!ALLOWED_TARGET_SIDES.includes(targetSide)) {
+            return { show: false, reason: "bad_side" };
+        }
+        const selectedLabel = targetSide === "LN" ? labels[labels.length - 1] : labels[0];
+        displayedVal = labelToNumeric(selectedLabel);
+        // 边界标签（`< ...` / `> ...`）没有 numeric；RC 侧可退回 context 的 numeric。
+        if (!Number.isFinite(displayedVal) && targetSide === "RC") {
+            displayedVal = Number(context.numericDifficulty);
+        }
+        if (!Number.isFinite(displayedVal)) return { show: false, reason: "no_numeric" };
     }
 
     if (!ALLOWED_RATES.includes(Number(state.speedRate))) return { show: false, reason: "rate" };
@@ -128,6 +182,8 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
             // 永远不命中、又被 NM 的键误伤。
             rate: Number(state.speedRate),
             keyCount: Number(context.keyCount) || 0,
+            targetSide,
+            displayedVal,
             modCodes: Array.isArray(state.modCodes) ? [...state.modCodes] : [],
             clickThrough: Boolean(shellClickThrough),
         },
