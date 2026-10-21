@@ -28,13 +28,20 @@
 
 ### 2.2 双标签与 target side
 
-`feedbackMath.js` 的 `splitDifficultyLabels()` 把 `"RC 标签 || LN 标签"` 拆成两段。双标签时通常对应 HB 谱面，按确定性哈希选一侧：
+`feedbackMath.js` 的 `splitDifficultyLabels()` 把 `"RC 标签 || LN 标签"` 拆成两段。双标签时通常对应 HB 谱面，候选侧为 **RC 和 LN 两侧**，每侧各问一次：
+
+1. 页面按本地去重记录计算已问过的侧；
+2. 优先选**尚未问过**的一侧；
+3. 如果两侧都未问过，用 `FNV-1a(beatmapId | rate | keyCount)` 的奇偶决定先问哪侧；
+4. 下次同一张图/倍速的结算会选另一侧；两侧都问过后不再提示。
+
+因此不是“同一张图永远固定一侧”。本地去重键在 6K/7K 为：
 
 ```text
-FNV-1a(beatmapId | rate | keyCount) 的奇偶 → RC / LN
+mma.feedback.v1.<bid>.<rate>.<target_side>
 ```
 
-同一张图、同一倍速、同一键数永远选同一侧，重试不会换题；本地去重键仍按 `beatmapId + rate`，每张图每倍速只问一次。
+4K 继续使用原有 `mma.feedback.v1.<bid>.<rate>` 键，已有去重记录不受影响。
 
 - `target_side = "RC" | "LN"`。
 - `displayed_val` 是**被选侧**的 numeric：
@@ -90,6 +97,8 @@ FNV-1a(beatmapId | rate | keyCount) 的奇偶 → RC / LN
 
 - **4K 老客户端**：不提交 `target_side`，壳/后端按 v1 和 RC 处理，签名与校验完全不变。
 - **新 4K 客户端**：页面可能提交 `target_side: "RC"`，壳对 4K 内部清空，仍签 v1；后端兼容。
+- **本地去重**：6K/7K 按 `bid + rate + side` 分侧记录；4K 继续用旧的 `bid + rate` 键。一次成功提交只标记当前侧，另一侧仍可被询问。
+- **服务端去重**：HMAC token 仍为 `install_id|bid|rate`，查询时额外带 `target_side`，因此同一安装的 RC 和 LN 各可各提交一次；同侧重复仍返回 204 且不落库。
 - **旧后端**：不认识 6K/7K 的 v2 载荷，会拒绝；6K/7K 上线需要先部署后端（或同时部署）。
 - **旧缓存**：反馈不进入结果缓存；无影响。
 
@@ -107,16 +116,17 @@ FNV-1a(beatmapId | rate | keyCount) 的奇偶 → RC / LN
   - 4K 双标签拒绝（`multi_slot`）；
   - 4K LN 拒绝（`not_rc`）；
   - 6K LN 显示且 target side = LN；
-  - 7K 双标签显示且两次选择同一侧。
+  - 7K 双标签先问一侧，标记该侧后下一次问另一侧；两侧都标记后返回 `dedup`；
+  - 本地去重按侧隔离，4K 旧键仍命中。
 - 壳：`build_sign_string` v1/v2 测试；v2 末尾 side；反馈 mods/rate 既有测试。
-- 后端：`ValidateStatic` 覆盖 4K 旧条件、6K LN、缺 side、坏 mode、4K 错 side；v2 sign string 测试。
+- 后端：`ValidateStatic` 覆盖 4K 旧条件、6K LN、缺 side、坏 mode、4K 错 side；v2 sign string 测试；同一安装的 RC + LN 两次提交均落库，同侧重复仍去重。
 - 目标：`cargo test --lib`、`go test -count=1 ./internal/feedback ./internal/store` 全绿；4K 载荷 byte-identical。
 
 ## 8. 维护
 
 - 新增键数支持时：同步 `SUPPORTED_FEEDBACK_KEYS`、壳/后端 key 校验、`ALLOWED_MODE_TAGS_6K7K`、`ALLOWED_TARGET_SIDES` 和本文档。
 - 新增算法时：只把它加入 `actualEstimatorAlgorithm` 白名单；不要改变 4K 的 RC gate。
-- side 选择算法若改变，必须同步页面/壳/文档，并保证同一局稳定；否则会重复提问。
+- side 选择算法若改变，必须同步页面/壳/文档，并保证同一次结算稳定、两侧都能被覆盖；否则会重复提问或永远漏掉一侧。
 - 后端新增字段必须同时更新 SQLite schema、迁移、`RefreshAll` 聚合、CSV/管理页和测试。
 
 ## 9. 不在本功能范围

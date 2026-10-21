@@ -188,6 +188,44 @@ func TestHandlerAcceptsAndDeduplicates(t *testing.T) {
 	}
 }
 
+func TestHandlerAllowsBothSides(t *testing.T) {
+	env := newTestEnv(t)
+
+	rc := basePayload()
+	rc.KeyCount = 6
+	rc.ModeTag = "RC"
+	rc.LnRatio = 0.10
+	rc.TargetSide = "RC"
+	rc.DisplayedVal = 12.2
+	if rec := env.post(t, rc, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("RC status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	ln := basePayload()
+	ln.KeyCount = 6
+	ln.ModeTag = "LN"
+	ln.LnRatio = 0.80
+	ln.TargetSide = "LN"
+	ln.DisplayedVal = 12.2
+	ln.Nonce = "bbbbbbbbbbbbbbbb"
+	if rec := env.post(t, ln, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("LN status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if env.count(t) != 2 {
+		t.Fatalf("expected RC and LN rows, got %d", env.count(t))
+	}
+
+	// Same side again is still deduplicated.
+	lnAgain := ln
+	lnAgain.Nonce = "cccccccccccccccc"
+	if rec := env.post(t, lnAgain, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("LN duplicate status = %d", rec.Code)
+	}
+	if env.count(t) != 2 {
+		t.Fatalf("duplicate LN must not insert")
+	}
+}
+
 func TestHandlerRejects(t *testing.T) {
 	env := newTestEnv(t)
 

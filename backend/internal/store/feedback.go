@@ -216,6 +216,10 @@ func OpenFeedback(path string) (*FeedbackStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_fb_dedup_side ON feedback_events(dedup_token, bid, rate, target_side, created_at)`); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &FeedbackStore{db: db, dbPath: path}, nil
 }
 
@@ -257,12 +261,12 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(text, "UNIQUE constraint failed") || strings.Contains(text, "constraint failed: UNIQUE")
 }
 
-// HasRecentDedup reports whether the token already rated this map/rate inside the window.
-func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, since int64) (bool, error) {
+// HasRecentDedup reports whether the token already rated this map/rate/side inside the window.
+func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, targetSide string, since int64) (bool, error) {
 	var one int
 	err := s.db.QueryRow(
-		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=? AND created_at>=? LIMIT 1",
-		token, bid, rate, since,
+		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=? AND target_side=? AND created_at>=? LIMIT 1",
+		token, bid, rate, targetSide, since,
 	).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

@@ -1,4 +1,4 @@
-// RC 难度反馈的纯函数（无 DOM、无网络）：ScoreV1 准度、weight 曲线、RC 判定、设置 hash。
+// 难度反馈的纯函数（无 DOM、无网络）：ScoreV1 准度、weight 曲线、范围判定、设置 hash。
 //
 // 这些函数是页面 gate 与 shell `/feedback` 的共同口径；两边任何一处改动都要同步。
 
@@ -82,16 +82,30 @@ export function labelToNumeric(label) {
 }
 
 /**
- * 6K/7K 的确定性选侧：同一张图、同一倍速、同一键数永远选同一侧，避免重试时换题。
- * 单标签时按标签/模式直接确定；双标签时用 FNV-1a 的奇偶选 RC/LN。
+ * 6K/7K 可反馈的侧：双标签 = 两侧都可问；单标签按模式/标签确定唯一侧。
+ * 同一张图/倍速的每一侧分别去重，因此两侧都有机会被问到。
  */
-export function chooseTargetSide({ beatmapId, rate, keyCount, labels, modeTag }) {
+export function candidateSides({ labels, modeTag } = {}) {
     const parts = Array.isArray(labels) ? labels : [];
-    if (parts.length < 2) {
-        return parts.length === 1 && String(modeTag || "").toUpperCase() === "LN" ? "LN" : "RC";
-    }
+    if (parts.length >= 2) return ["RC", "LN"];
+    if (parts.length === 1 && String(modeTag || "").toUpperCase() === "LN") return ["LN"];
+    return ["RC"];
+}
+
+/**
+ * 6K/7K 的选侧：优先选尚未反馈过的一侧；两侧都未反馈时用 FNV-1a 决定先问哪侧。
+ * `takenSides` 由页面按本地去重键逐侧计算，确保先问 RC、下次问 LN，而不是永远固定一侧。
+ * 所有候选侧都问过时返回 null（gate 以 `dedup` 拒绝）。
+ */
+export function chooseTargetSide({ beatmapId, rate, keyCount, labels, modeTag, takenSides = [] }) {
+    const candidates = candidateSides({ labels, modeTag });
+    const taken = new Set((Array.isArray(takenSides) ? takenSides : []).map((side) => String(side).toUpperCase()));
+    const untaken = candidates.filter((side) => !taken.has(side));
+    if (untaken.length === 0) return null;
+    if (untaken.length === 1) return untaken[0];
     const hash = fnv1aHex(`${Number(beatmapId) || 0}|${Number(rate).toFixed(3)}|${Number(keyCount) || 0}`);
-    return Number.parseInt(hash.slice(-1), 16) % 2 === 0 ? "RC" : "LN";
+    const preferred = Number.parseInt(hash.slice(-1), 16) % 2 === 0 ? "RC" : "LN";
+    return untaken.includes(preferred) ? preferred : untaken[0];
 }
 
 /** RC-only 判定：LN 占比、模式标签、单槽位。 */

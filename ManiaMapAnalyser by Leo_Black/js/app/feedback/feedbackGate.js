@@ -1,4 +1,4 @@
-// RC 反馈条的唯一准入判定（纯函数：不做 DOM、不发网络）。
+// 难度反馈条的唯一准入判定（纯函数：不做 DOM、不发网络）。
 //
 // 判定顺序与计划 §6.8 的 S1–S9 对齐；任何一步失败都不展示。
 // 注意：这里只是"该不该问"，真正的客观字段由 shell 从 native 快照重算并签名，
@@ -35,7 +35,13 @@ function modsAllowed(modCodes) {
 }
 
 function dedupKey(context) {
-    return `${DEDUP_KEY_PREFIX}${context.beatmapId}.${Number(context.rate).toFixed(2)}`;
+    const base = `${DEDUP_KEY_PREFIX}${context.beatmapId}.${Number(context.rate).toFixed(2)}`;
+    // 4K 保持旧键（已有用户的本地去重记录继续有效）；6K/7K 按侧分别去重，
+    // 这样同一张图/倍速的 RC 和 LN 都能各问一次。
+    const keyCount = Number(context.keyCount);
+    if (keyCount !== 6 && keyCount !== 7) return base;
+    const side = String(context.targetSide || "RC").toUpperCase() === "LN" ? "LN" : "RC";
+    return `${base}.${side}`;
 }
 
 /** 本地 30 天去重：命中即不再询问。 */
@@ -69,10 +75,11 @@ export function markLocallyDeduped(context, now, storage) {
  * @param {boolean} input.shellClickThrough 壳窗口是否鼠标穿透
  * @param {boolean} input.shellReplay 壳侧说"这一局来自回放"（`/shell-config` 的 feedback.replay）
  * @param {boolean} input.freshPlay 进入本次结算屏时是否从 play 态过来（刚打完的一局）
- * @param {boolean} input.deduped 本地是否已问过
+ * @param {boolean} input.deduped 4K 的本地是否已问过（旧键）
+ * @param {string[]} input.dedupedSides 6K/7K 已本地问过的侧（按侧去重）
  * @returns {{show: boolean, reason: string, stats?: object, context?: object}}
  */
-export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, shellReplay, freshPlay, deduped }) {
+export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough, shellReplay, freshPlay, deduped, dedupedSides = [] }) {
     if (!state || !state.enableDifficultyFeedback) return { show: false, reason: "disabled" };
     if (normalizedStateName(state) !== "resultscreen") return { show: false, reason: "not_result_screen" };
     if (String(state.activeSource || "") !== "osu") return { show: false, reason: "not_osu" };
@@ -116,8 +123,9 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
             return { show: false, reason: "not_rc" };
         }
         displayedVal = Number(context.numericDifficulty);
-        if (!Number.isFinite(displayedVal)) return { show: false, reason: "no_numeric" };    } else {
-        // 6K/7K：算法支持的所有类型都可问；双标签时按确定性哈希选一侧。
+        if (!Number.isFinite(displayedVal)) return { show: false, reason: "no_numeric" };
+    } else {
+        // 6K/7K：算法支持的所有类型都可问；双标签时先问未反馈过的一侧。
         if (!ALLOWED_MODE_TAGS_6K7K.includes(String(context.modeTag || "").toUpperCase())) {
             return { show: false, reason: "bad_mode" };
         }
@@ -128,7 +136,9 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
             keyCount,
             labels,
             modeTag: context.modeTag,
+            takenSides: dedupedSides,
         });
+        if (!targetSide) return { show: false, reason: "dedup" };
         if (!ALLOWED_TARGET_SIDES.includes(targetSide)) {
             return { show: false, reason: "bad_side" };
         }
