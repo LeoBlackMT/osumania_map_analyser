@@ -18,7 +18,7 @@ import {
     isShellRuntime,
 } from "./feedbackSpec.js";
 import { markLocallyDeduped, evaluateFeedbackCandidate, isLocallyDeduped } from "./feedbackGate.js";
-import { settingsHash } from "./feedbackMath.js";
+import { candidateSides, settingsHash, splitDifficultyLabels } from "./feedbackMath.js";
 
 const SHELL_FEEDBACK_URL = "http://127.0.0.1:24061/feedback";
 const SHELL_SETTINGS_URL = "http://127.0.0.1:24061/settings";
@@ -162,7 +162,7 @@ function stopClickPolling() {
 }
 
 function tokenFor(context, stats) {
-    return `${context.beatmapId}|${context.rate}|${stats.total}|${Number(stats.miss || 0).toFixed(0)}`;
+    return `${context.beatmapId}|${context.rate}|${String(context.targetSide || "RC")}|${stats.total}|${Number(stats.miss || 0).toFixed(0)}`;
 }
 
 function clearTimers() {
@@ -450,6 +450,8 @@ async function submitVote(vote, button) {
         markLocallyDeduped({
             beatmapId: context.beatmapId,
             rate: context.rate,
+            keyCount: context.keyCount,
+            targetSide: context.targetSide,
         }, Date.now());
         if (generation !== submitGeneration) {
             // 这一屏已经离开：去重记录照留（提交确实成功了），但不再改新屏的 UI。
@@ -509,10 +511,27 @@ export function noteFeedbackFrame(data) {
     }
 
     const now = Date.now();
-    const deduped = isLocallyDeduped({
+    const feedbackContext = state.feedbackContext;
+    const feedbackKeyCount = Number(feedbackContext?.keyCount) || 0;
+    const feedbackSides = feedbackKeyCount === 4
+        ? ["RC"]
+        : candidateSides({
+            labels: splitDifficultyLabels(feedbackContext?.estDiff),
+            modeTag: feedbackContext?.modeTag,
+        });
+    const dedupedSides = feedbackSides.filter((side) => isLocallyDeduped({
         beatmapId: state.currentBeatmapId,
         rate: state.speedRate,
-    }, now);
+        keyCount: feedbackKeyCount,
+        targetSide: side,
+    }, now));
+    const deduped = feedbackKeyCount === 4
+        ? isLocallyDeduped({
+            beatmapId: state.currentBeatmapId,
+            rate: state.speedRate,
+            keyCount: 4,
+        }, now)
+        : dedupedSides.length >= feedbackSides.length;
 
     const result = evaluateFeedbackCandidate({
         state,
@@ -522,6 +541,7 @@ export function noteFeedbackFrame(data) {
         shellReplay,
         freshPlay: state.resultsFromPlay === true,
         deduped,
+        dedupedSides,
     });
 
     if (!result.show) {

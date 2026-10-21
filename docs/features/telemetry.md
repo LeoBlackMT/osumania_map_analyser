@@ -64,7 +64,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 - 仅桌面壳（24061 页或壳在导航 URL 上追加的 `#mma-shell` 标记）；浏览器 tosu 页与 OBS 源不创建反馈条。
 - **lazer（原生读取）的结算判定数**：来自 lazer 偏移表的 `results` 段（`ResultsScreen.Score → ScoreInfo`）。判定数有两个来源、读侧都支持：① `ScoreInfo.<StatisticsJson>`（入库过的成绩，如回放/历史成绩）；② `ScoreInfo.statistics` 字典（`Dictionary<HitResult,int>`，**刚打完、还没入库的活成绩只有它有值**——此时 JSON 是空串）。字典需要表里的 `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values`（枚举序号→判定名，来自 IL 声明顺序）。全部位移由生成器 `live` 在**结算屏上实测并自校验**后写表（见 `tools/lazer-offsets-gen/README.md`）。表里没有这一段（旧表，或 `live` 生成时游戏不在结算屏）⇒ 页面 gate 停在 `no_hits`，**用户界面保持安静**（不再显示提示条），壳日志以 `warn` 记录一次逐字原因；gate 的最近一次结果暴露在 `window.__MMAFeedbackLastGate`（设 `window.__MMA_FEEDBACK_DEBUG=true` 可在 console 打印）。
-- 仅 osu! 源、仅 osu!mania；**4K 保持仅 RC**（`ln_ratio <= 0.15`、`mode_tag === "RC"`、单槽位）；**6K/7K 允许 RC/LN/Mix/HB/SV**，单/双标签均可，双标签按确定性哈希选一侧（`target_side` = RC/LN）后只问该侧。
+- 仅 osu! 源、仅 osu!mania；**4K 保持仅 RC**（`ln_ratio <= 0.15`、`mode_tag === "RC"`、单槽位）；**6K/7K 允许 RC/LN/Mix/HB/SV**，单/双标签均可；双标签按侧分别去重，先问未反馈的一侧，两侧都问过后停止（`target_side` = RC/LN）。
 - 倍速只允许 `1.0 / 1.5 / 0.75`（对应 NM/MR、DT/NC、HT/DC）；其余倍速拒绝。
 - mod 白名单 `NM, MR, SD, PF, SV2, TD, CS, HD, FI, FL, DT, NC, HT, DC`；其余（`nK`、`HO`、`IN`、`RD`、`NF`、`AT/AU`、改 OD mod 等）一律拒绝。入库前 mods 会排序、去重，并把 `NC→DT`、`DC→HT` 归一（stable 的位掩码把 DT 合并成 NC，lazer 返回实际 DT；不归一会把同一局聚合成两行）。变速 mod 的记录按实际 rate 入库与去重。
 - 仅完整通关：页面按完成率 ≥0.85、总击打 ≥200、ScoreV1 准度 **90–100**（**不设 miss 上限**）门控；壳在签名载荷里写 `passed: true`——壳当前没有独立的结算 pass/fail 标记，服务端也不重算（已知限制，见 §7 末尾）。
@@ -73,7 +73,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - **lazer 的 mods 在结算屏沿用 play 帧**：lazer 进入结算屏会清空 `SelectedMods`；壳把 play 状态最后一次读全的 mods 缓存在 `Attach.last_lazer_mods`，结算时用它签名，避免把 DT 签成 NM。没有 play 帧时 `no_mods` 拒绝；DT/NC 无 `speed_change` 时按 1.5、HT/DC 按 0.75 兜底。
 - 本地联调：壳用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback` 启动即可把投票发到本地后端（`/shell-config` 的 `feedback.endpoint` 下发给页面，无需控制台）。需要在壳窗口里开控制台时，用 `cargo build --release --features devtools` 构建并设 `MMA_DEVTOOLS=1` 启动；默认发布构建不含 devtools。
 - 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
-- 本地同一谱面同一倍速 30 天内只询问一次；服务端另有 HMAC 去重与 IP/每图限流。
+- 本地同一谱面同一倍速同一侧 30 天内只询问一次；6K/7K 的另一侧仍可被询问，两侧都问过后不再提示。服务端另有 HMAC 去重与 IP/每图限流。
 
 **字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`target_side`（6K/7K；4K 旧载荷为空=RC）、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
 
@@ -97,7 +97,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 **签名与密钥**：Ed25519，签名串 v1 为固定字段串；6K/7K 带 `target_side` 时使用 `v2` 并在末尾追加 `|target_side`（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
 
-**去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；服务端只存 token，30 天窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
+**去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；查询时同时匹配 `target_side`，因此同一安装的 RC 和 LN 各可提交一次，同侧 30 天窗口内重复仍拒绝。服务端只存 token，窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
 
 **存储与展示**：独立 `feedback.db`（`MMA_FEEDBACK_DB`），与 `telemetry.db` 同批备份为 `telemetry-*.db + feedback-*.db + manifest-*.json`（manifest 最后上传，按前缀分别裁剪）。原始事件保留 180 天（时间窗口一律按**毫秒**换算，见 `store.FeedbackStore.Prune`）；聚合表 `feedback_map_agg` / `feedback_feature_daily` 每 5 分钟重建（admin 页头显示这份聚合的生成时间，也可用"Rebuild aggregates"手动重建）。
 

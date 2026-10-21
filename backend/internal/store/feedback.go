@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS feedback_map_agg (
 	target_q25 REAL NOT NULL,
 	target_q75 REAL NOT NULL,
 	updated_at INTEGER NOT NULL,
-	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods)
+	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods, target_side)
 );
 
 CREATE TABLE IF NOT EXISTS feedback_feature_daily (
@@ -216,7 +216,69 @@ func OpenFeedback(path string) (*FeedbackStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_fb_dedup_side ON feedback_events(dedup_token, bid, rate, target_side, created_at)`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := ensureMapAggSidePrimaryKey(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &FeedbackStore{db: db, dbPath: path}, nil
+}
+
+// ensureMapAggSidePrimaryKey rebuilds the derived map aggregate table when it
+// predates per-side aggregation. The table is a cache and is rebuilt by RefreshAll.
+func ensureMapAggSidePrimaryKey(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(feedback_map_agg)`)
+	if err != nil {
+		return err
+	}
+	hasSidePK := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "target_side" && pk > 0 {
+			hasSidePK = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if hasSidePK {
+		return nil
+	}
+	if _, err := db.Exec(`DROP TABLE feedback_map_agg`); err != nil {
+		return err
+	}
+	_, err = db.Exec(`
+CREATE TABLE feedback_map_agg (
+	bid INTEGER NOT NULL,
+	checksum TEXT NOT NULL,
+	rate REAL NOT NULL,
+	actual_algorithm TEXT NOT NULL,
+	mods TEXT NOT NULL,
+	key_count INTEGER NOT NULL,
+	pattern TEXT NOT NULL,
+	ln_bucket TEXT NOT NULL,
+	target_side TEXT NOT NULL DEFAULT 'RC',
+	n INTEGER NOT NULL,
+	weight_sum REAL NOT NULL,
+	distinct_installs INTEGER NOT NULL,
+	target_median REAL NOT NULL,
+	target_q25 REAL NOT NULL,
+	target_q75 REAL NOT NULL,
+	updated_at INTEGER NOT NULL,
+	PRIMARY KEY (bid, checksum, rate, actual_algorithm, mods, target_side)
+)`)
+	return err
 }
 
 func (s *FeedbackStore) Close() error { return s.db.Close() }
@@ -257,12 +319,12 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(text, "UNIQUE constraint failed") || strings.Contains(text, "constraint failed: UNIQUE")
 }
 
-// HasRecentDedup reports whether the token already rated this map/rate inside the window.
-func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, since int64) (bool, error) {
+// HasRecentDedup reports whether the token already rated this map/rate/side inside the window.
+func (s *FeedbackStore) HasRecentDedup(token string, bid int64, rate float64, targetSide string, since int64) (bool, error) {
 	var one int
 	err := s.db.QueryRow(
-		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=? AND created_at>=? LIMIT 1",
-		token, bid, rate, since,
+		"SELECT 1 FROM feedback_events WHERE dedup_token=? AND bid=? AND rate=? AND target_side=? AND created_at>=? LIMIT 1",
+		token, bid, rate, targetSide, since,
 	).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

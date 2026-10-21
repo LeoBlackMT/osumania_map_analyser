@@ -164,9 +164,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetSide := env.Payload.TargetSide
+	if targetSide == "" {
+		targetSide = "RC" // legacy v1 payload (4K)
+	}
 	dedupToken := h.dedupToken(env.Payload.InstallID, env.Payload.Bid, env.Payload.Rate)
 	since := now.Add(-time.Duration(h.cfg.FeedbackDedupDays) * 24 * time.Hour).UnixMilli()
-	duplicate, err := h.store.HasRecentDedup(dedupToken, env.Payload.Bid, env.Payload.Rate, since)
+	duplicate, err := h.store.HasRecentDedup(dedupToken, env.Payload.Bid, env.Payload.Rate, targetSide, since)
 	if err != nil {
 		h.reject(w, day, ReasonAPIUnavailable, http.StatusServiceUnavailable)
 		return
@@ -185,10 +189,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	actual, _ := spec.NormalizeActualAlgorithm(env.Payload.ActualAlgorithm)
 
 	modsJSON, _ := json.Marshal(normalizeMods(env.Payload.Mods))
-	targetSide := env.Payload.TargetSide
-	if targetSide == "" {
-		targetSide = "RC" // legacy v1 payload (4K)
-	}
 	event := store.FeedbackEvent{
 		Bid:               env.Payload.Bid,
 		Checksum:          strings.ToLower(env.Payload.Checksum),
