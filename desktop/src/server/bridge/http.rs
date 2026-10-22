@@ -358,6 +358,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
         state.pro = pro;
         state.turbo = turbo;
         state.win_scale = win_scale;
+        state.cvt = normalized.cvt.clone();
         let content = content_key(&normalized, judge, pro, turbo);
         let outcome = classify(&mut state, content, payload.sequence, Instant::now());
         (outcome.kind, outcome.log, state.event_seq)
