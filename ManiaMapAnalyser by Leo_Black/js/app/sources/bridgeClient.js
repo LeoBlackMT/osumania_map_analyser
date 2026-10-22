@@ -8,7 +8,7 @@ import { state } from "../appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 6;
+const CONTRACT_VERSION = 7;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *
@@ -17,8 +17,9 @@ const CONTRACT_VERSION = 6;
  * 场景/清空/判定三段逻辑在字段缺省时一律不进入（见 shellState.js / externalSource.js）。
  * **v4** 壳有六个 `sources.malody` 字段、`winScale` 恒为数值；**v5** 起 `pro`/`turbo`
  * 随帧下发、`winScale` 可为 `null`（未知）；**v6** 新增 `sources.osu.osuTransport`
- * （原生传输的端点下发，缺省 ⇒ 页面继续用 `wsEndpoint`）。页面按字段**逐个存在性**降级，
- * 不按版本号分支。只有越界（< 3 或 > 6）才算不匹配。
+ * （原生传输的端点下发，缺省 ⇒ 页面继续用 `wsEndpoint`）；**v7** 增加桥通道
+ * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）。页面按字段**逐个存在性**降级，
+ * 不按版本号分支。只有越界（< 3 或 > 7）才算不匹配。
  *
  * ⚠️ 这个常量必须与壳侧 `desktop/src/frames.rs::CONTRACT_VERSION` 同步：壳升而页面不升，
  * `hello` 会被判为越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 不只数据帧不通，
@@ -156,9 +157,9 @@ function handleFrame(frame, handlers) {
     const payload = frame.payload || {};
     switch (frame.type) {
         case "hello": {
-            // 接受区间 [MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION]：v6 全功能；v5/v4 的
-            // `sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`；v3 接受但页面
-            // 不进入桥的场景/清空/判定路径（字段缺省）。仅越界才进终态。
+            // 接受区间 [MIN_ACCEPTED_CONTRACT, CONTRACT_VERSION]：v7 全功能；v6 的
+            // `cvtFlag` 缺席 ⇒ 页面按无转换处理；v5/v4 的 `sources.osu` 缺席 ⇒ 页面继续用
+            // `wsEndpoint`；v3 接受但页面不进入桥的场景/清空/判定路径（字段缺省）。仅越界才进终态。
             contractOk = Number.isInteger(payload.contract)
                 && payload.contract >= MIN_ACCEPTED_CONTRACT
                 && payload.contract <= CONTRACT_VERSION;

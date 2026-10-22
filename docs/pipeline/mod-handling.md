@@ -127,7 +127,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 ### cvtFlag（convert 转换标记，modData.js:210-216）
 
-**仅 lazer**：`IN` → `"IN"`、`HO` → `"HO"`，否则 `null`。stable 恒为 null（stable 无 IN/HO 概念）。
+**lazer 与 Malody V**：lazer 的 `IN`/`HO`、以及 Malody V 桥协议的 Holds/Taps 映射为 `IN` → `"IN"`、`HO` → `"HO"`，否则 `null`。stable 恒为 null（stable 无 IN/HO 概念）。
 
 - 语义是**把谱面按某 mod 的效果"转换"后再计算**，取值域 `null | "IN" | "HO"`：
   - `"IN"`：IN（Inverse）转换——`js/parser/osuFileParser.js:280 modIN()` 将同一列相邻 note 反转为 LN（modData 提取后由估算器内部触发）。
@@ -136,6 +136,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
   - **Sunny 系估算器**：`js/rework/sunnyAlgorithm.js:87 preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed)` 内 `String(cvtFlag).includes("IN")` → `pObj.modIN()`、`.includes("HO")` → `pObj.modHO()`（sunnyAlgorithm.js:107、:115）。`sunnyWindowAlgorithm.js:218 preprocessFile(..., enableAnalyzeLN, parsed)` 同构（sunnyWindowAlgorithm.js:232、:239；另见 :1115-1130 的第二处同构分支）。注意用 `includes` 判断，未来若出现组合值（如 `"IN|HO"`）也能命中。
   - **Interlude**：`cvtFlag` 作为第三参数传入（analysis.js:830）。
   - **Etterna**：`buildEtternaAnalyzeOptions` 的 `cvtFlag: state.cvtFlag`（analysis.js:203）。
+  - **Auto 显示档位同步**：`analysis.js:1211` 在 `state.cvtFlag` 激活时强制使用根据转换后 `lnRatio` 计算的 `fallbackModeTag`（而不是未转换文本的 `patternResult.report.ModeTag`），避免 Auto 档位在 RC/Pattern 间反复横跳重算震荡。
 - **azusaSunnyReferenceHo 关联**（调试设置）：Azusa 内部跑 Sunny 参考值时，`js/estimator/azusaEstimator.js:835 forceSunnyReferenceHo`（`options.forceSunnyReferenceHo !== false`）为真时强制给 Sunny 参考传入 `cvtFlag: "HO"`（azusaEstimator.js:922-923）——即参考值统一按"纯 RC 化"处理。设置值来自 `state.azusaSunnyReferenceHo`（appContext.js:181），经 `pipelineOptions.forceSunnyReferenceHo`（analysis.js:586）与 worker 透传（`js/app/worker/compute.worker.js:57` 默认 true）。**注意：这是独立于实际 mod 的强制转换，与 cvtFlag 本身是两回事**。
 
 ## 6. Etterna 版本回退

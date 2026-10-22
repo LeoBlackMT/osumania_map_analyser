@@ -75,6 +75,9 @@ pub struct BridgeSelection {
     /// Turbo 开关（v5 新增，插件权威）。**不得用 UI 开关判**：插件报的是已提交记录。
     #[serde(default, deserialize_with = "opt_bool")]
     pub turbo: Option<bool>,
+    /// Malody Holds/Taps 转换：`IN` / `HO`；缺省/未知即 `None`。
+    #[serde(default)]
+    pub cvt: Option<String>,
 }
 
 /// 归一化后的请求（门禁之后的唯一分支依据）。
@@ -83,6 +86,8 @@ pub struct Normalized {
     pub screen: String,
     pub path: String,
     pub rate_text: String,
+    /// `IN` / `HO`；未知为 `None`（不是空字符串）。
+    pub cvt: Option<String>,
 }
 
 /// `speed_rate` 有效性：非有限值或越界（`< 0.05` 或 `> 10`）即无效。
@@ -110,25 +115,37 @@ pub fn normalize(payload: &BridgeSelection) -> Normalized {
     } else {
         "other"
     };
+    let cvt = if screen == "other" {
+        None
+    } else {
+        payload.cvt.as_deref().and_then(|raw| match raw.trim().to_ascii_uppercase().as_str() {
+            "IN" => Some("IN".to_string()),
+            "HO" => Some("HO".to_string()),
+            _ => None,
+        })
+    };
     if screen == "other" {
         Normalized {
             screen: "other".to_string(),
             path: String::new(),
             rate_text: "1.00000".to_string(),
+            cvt,
         }
     } else {
         Normalized {
             screen: screen.to_string(),
             path: config::normalize_path(&payload.path),
             rate_text: format!("{:.5}", payload.speed_rate),
+            cvt,
         }
     }
 }
 
-/// 内容六元组（`last_event` 的唯一形态）。
+/// 内容七元组（`last_event` 的唯一形态）。
 ///
-/// 第 5/6 位（`pro_text` / `turbo_text`）不可省：选曲界面切换 Turbo 时倍率不变，若它们不在
-/// 元组里，这类帧会被判成"重复观察"而不广播 song 帧 ⇒ 页面 `winScale` 停在旧值。
+/// 第 5/6/7 位（`pro_text` / `turbo_text` / `cvt_text`）不可省：选曲界面切换 Turbo 时倍率不变、
+/// 切换 Holds/Taps 时路径与倍率也都不变；若它们不在元组里，这类帧会被判成"重复观察"而不
+/// 广播 song 帧 ⇒ 页面 `winScale` / `cvtFlag` 停在旧值。
 pub fn content_key(
     normalized: &Normalized,
     judge: Option<u8>,
@@ -142,6 +159,7 @@ pub fn content_key(
         judge_text(judge),
         flag_text(pro),
         flag_text(turbo),
+        normalized.cvt.clone().unwrap_or_else(|| "none".to_string()),
     )
 }
 
@@ -316,7 +334,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
     let normalized = normalize(payload);
     let rate = normalized.rate_text.parse::<f64>().unwrap_or(1.0);
 
-    // 判定/Pro/Turbo/窗口解析**必须先于去重**：它们都进内容六元组（第 4/5/6 位），若在去重之后
+    // 判定/Pro/Turbo/窗口解析**必须先于去重**：它们都进内容七元组（第 4/5/6 位），若在去重之后
     // 再解析，基线里的文本会与实际发布值分叉，逐字节重发的心跳会被误判成真实事件。
     let ResolvedSettings {
         judge,
@@ -340,6 +358,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
         state.pro = pro;
         state.turbo = turbo;
         state.win_scale = win_scale;
+        state.cvt = normalized.cvt.clone();
         let content = content_key(&normalized, judge, pro, turbo);
         let outcome = classify(&mut state, content, payload.sequence, Instant::now());
         (outcome.kind, outcome.log, state.event_seq)
@@ -362,6 +381,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
             state.screen = "other".to_string();
             state.chart_path.clear();
             state.rate_text = normalized.rate_text.clone();
+            state.cvt = None;
         }
         broadcast(shared, "state", Some(crate::server::state_frame(shared)));
         return (202, "{}".to_string());
@@ -427,6 +447,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
         state.screen = normalized.screen.clone();
         state.chart_path = chart.to_string_lossy().to_string();
         state.rate_text = normalized.rate_text.clone();
+        state.cvt = normalized.cvt.clone();
     }
     broadcast(
         shared,
@@ -441,6 +462,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
             judge,
             pro,
             turbo,
+            normalized.cvt.as_deref(),
             win_scale,
         )),
     );
@@ -465,7 +487,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
 ///
 /// 触发条件钉死：`bridge_alive` **且** 已存 `screen ∈ {selection, playing, result}` **且**
 /// `chart_path` 非空。⚠️ 不能只判 `last_event.is_some()`——`screen=other` 的真实事件会把
-/// `last_event` 覆盖成空 `path` 的六元组，那样会补发出一个空 `path` 的 song 帧，与
+/// `last_event` 覆盖成空 `path` 的七元组，那样会补发出一个空 `path` 的 song 帧，与
 /// "`screen=other` 不发 song 帧"直接冲突。
 ///
 /// 补发**不是新事件**：不修改 `last_event` / `last_seq` / `event_seq`，也不参与去重状态机。
@@ -478,7 +500,7 @@ fn handle_selection(shared: &Arc<Shared>, payload: &BridgeSelection) -> (u16, St
 /// `state.malodyAlive` 会一直是 `undefined` ⇒ 页面 L1 门控 `malodyPlaying && malodyAlive`
 /// 不成立，路由与源圆点在最长 30s 内仍指向 osu/Etterna。
 pub fn reconnect_messages(shared: &Shared) -> Vec<String> {
-    let (alive, screen, chart_path, rate_text, event_seq, judge, pro, turbo, win_scale) = {
+    let (alive, screen, chart_path, rate_text, event_seq, judge, pro, turbo, cvt, win_scale) = {
         let state = shared.malody_bridge.lock().unwrap();
         (
             bridge_alive(state.last_seen),
@@ -489,6 +511,7 @@ pub fn reconnect_messages(shared: &Shared) -> Vec<String> {
             state.judge,
             state.pro,
             state.turbo,
+            state.cvt.clone(),
             state.win_scale,
         )
     };
@@ -543,6 +566,7 @@ pub fn reconnect_messages(shared: &Shared) -> Vec<String> {
         judge,
         pro,
         turbo,
+        cvt.as_deref(),
         win_scale,
     );
     out.push(

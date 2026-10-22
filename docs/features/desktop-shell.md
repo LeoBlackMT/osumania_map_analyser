@@ -16,7 +16,7 @@
 4. **Malody 4.3.7 只读观察器**：200ms 一拍——从进程外读锚点身份键（`ReadProcessMemory`）、tail 游戏日志取场景、轮询 `config.json` 取变速位与判定档，广播 `malody4_selection` / song / state 帧。**不向游戏目录写入任何文件**、不注入、不 hook（详见 [multi-source.md](multi-source.md) 与 [malody4-source.md](malody4-source.md)）。
 5. **osu 原生读取器**（只读内存，250 ms 一拍）：`desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `malody4/{mod,anchor,library,gamelog,selection,config,model}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**）；契约 `desktop/docs/CONTRACT.md`（**v6**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `malody4/{mod,anchor,library,gamelog,selection,config,model}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**）；契约 `desktop/docs/CONTRACT.md`（**v7**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（app 模块 + config.rs）
 
@@ -28,7 +28,7 @@ probe_existing_instance()（24061，3×200ms 探测；命中本壳 → 原样带
 plugin_dir() 解析（env MMA_PLUGIN_DIR 覆盖 → exe 上溯 0..=3 层找
   含 index.html 的 "ManiaMapAnalyser by Leo_Black" → 兜底相对路径）
 probe_tosu_env()（exe 目录向上 ≤3 层找 tosu.env；MMA_SKIP_TOSU_PROBE 跳过）
-startup_url()（desktop/src/app/url.rs；契约 v6，DEC-21 ②）：
+startup_url()（desktop/src/app/url.rs；契约 v7，DEC-21 ②）：
   ├─ 壳配置 osuTransport != "tosu"（缺省 auto）→ url = http://127.0.0.1:24061/   ← 一律落壳页
   └─ 显式 "osuTransport": "tosu" → 命中且 tosu_online()（TCP connect 2s）⇒ http://{ip}:{port}/{插件目录 %20}/
                                     未命中/离线 ⇒ http://127.0.0.1:24061/
@@ -44,28 +44,28 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 - **Etterna 与 Malody V 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > **壳配置 `mma-shell-config.json`**（exe 旁，`{gameClient, etternaRoot, malodyRoot, malody4Root, hotkeys, logLevel}`，可直接编辑，30s 周期检测变化后重载并推送 settings 帧）> tosu 在线只读。无 tosu 用户无需下载 tosu 即可配置游戏路径。启发探测（Steam 库/常见路径）带**盘符就绪预检**——不存在的盘符（用户没有 D: 盘等）快速跳过、绝不 panic/阻塞；且探测结果 30s TTL 缓存，未配置根目录时轮询器不会每个周期都打注册表与盘符。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
-## 3. 契约 v6 帧
+## 3. 契约 v7 帧
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 6, tosuOnline}`；页面接受 `[3,6]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
+| hello | 壳→页 | `{contract: 7, tosuOnline}`；页面接受 `[3,7]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
 | state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?},**osu{alive,osuTransport{mode,host,port,wsPath,filesPath},gate?,client?,reason?,degradedFields?,phase?,notice?,progress?}**（v6 新增，见 §3d）} |
-| song | 壳→页 | requestId/source/identity/modData{rate,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`winScale`**（`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0） |
+| song | 壳→页 | requestId/source/identity/modData{rate,cvtFlag,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`cvtFlag`/`winScale`**（`cvtFlag`/`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0；`cvtFlag` = Malody Holds/Taps → IN/HO） |
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 设置 JSON（在线 = tosu 设置文件内容，离线 = 本地 `mma-settings.json`；壳在来源切换/文件变化/离线 POST 后主动推，设置页离线时另做 pull-on-notify，见 §3c） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
 
-> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 6**——v6 的升级来自 `/ws` 上新增的 `sources.osu`（§3d），页面接受区间 `[3,6]`（CONTRACT.md §10/§11.8）。
+> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 7**——v7 的升级来自 Malody `cvtFlag`（§3b），页面接受区间 `[3,7]`（CONTRACT.md §10/§11.8）。
 
 ## 3b. Malody V 选曲桥端点（`127.0.0.1:17653`）
 
 游戏侧是 BepInEx 6 IL2CPP 插件 `MMAMalodySelection.dll`（本仓库自建 fork，源码 `bridges/malody/bepinex/plugin/`），它 `POST /selection` 推送选曲/游玩/结算观察。壳侧实现 `server/bridge.rs`：
 
-- **载荷 11 字段**：上游 8 字段 + `judge_level`（0..4 ↔ A~E，`MAX` 不算档位）+ `pro_judge` + `turbo`。三者全部容错：缺失/`null`/类型错/越界一律视为"未知"，**绝不拒收**（旧插件仍可用）。
+- **载荷 12 字段**：上游 8 字段 + `judge_level`（0..4 ↔ A~E，`MAX` 不算档位）+ `pro_judge` + `turbo` + `cvt`（Holds/Taps → IN/HO）。四个字段全部容错：缺失/`null`/类型错/越界一律视为"未知"，**绝不拒收**（旧插件仍可用）。
 - **门禁顺序**：Host 白名单 → 路径沙箱（`canonicalize` 后必须落在 `{malodyRoot}/chart/` 内且后缀 `.mc`/`.osu`）→ **任何 Origin 头出现即 403** → 方法 → Content-Type → body 长度 → JSON。任一步不过都返回 JSON 错误体。
-- **真实事件判定 = 内容六元组**（`path, rate_text, screen, judge_text, pro_text, turbo_text`）；心跳与重复观察不产生帧、不续期。`turbo` 必须在元组里：选曲界面切 Turbo 时倍率不变，少了它会把它当成重复而静默停在上一个值。
+- **真实事件判定 = 内容七元组**（`path, rate_text, screen, judge_text, pro_text, turbo_text, cvt_text`）；心跳与重复观察不产生帧、不续期。`turbo`/`cvt` 必须在元组里：选曲界面切 Turbo 或 Holds/Taps 时倍率不变，少了它们会把它当成重复而静默停在上一个值。
 - **`winScale`**：只有"确认非 Turbo（`turbo == false`）且倍率命中名义值 1.2/1.5/0.8（±0.005）"才给 `1/名义值`；Turbo／未知／自定义倍率一律 `null`。**未知不得与"确认非 Turbo"混为一谈**——那正好会让 Dash/Rush/Slow 被当成 Turbo。
 - **判定档来源**：插件值优先；插件没给才回落 `{malodyRoot}/config.json` 的 `user_judge_level`，两者都有且不一致时用插件值并打**一条** info。Pro **永不**来自该文件。
 - **端口被占**：壳报"Malody 选曲桥端口 17653 被占用，游戏内选曲跟随不可用"，其余功能不受影响。
@@ -145,6 +145,6 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **壳检测不到 tosu 时页面照常分析（页面侧数据面）**：离线页（24061）的数据面门控加入两个页面侧信号——`state.tosuDataSeen`（`socketHandlers.js` 在 `applyBeatmapState` 里置位）与 `state.shellOsuNativeAlive`（契约 v6：原生端点覆盖真的生效）。页面自己的 tosu socket 收到过载荷、或壳的原生端点覆盖已激活，就放行（`analysis.js` 的两处离线门控与 `sourceManager.js:130,197`），因此"tosu 在跑、但壳没有 `tosu.env`（探测不到 `tosuOnline`）"的机器上卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；同时 1.2s 的延迟初始重算不再白等（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，tosu 载荷一到 `scheduleRecompute` 就清掉它并在 200ms 内计算）。
 
-**契约 v6 与版本号（当前状态）**：桥契约已升到 **v6**（v3→v4→v5→v6；v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d）。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `2.1.0`**——v6 升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）；若后续发布 bump 到 2.2.0，`_VERSION` 另经 `window.__MMA_VERSION`（`index.js:94`）进遥测与设置页显示。页面接受区间 `[3,6]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
+**契约 v7 与版本号（当前状态）**：桥契约已升到 **v7**（v3→v4→v5→v6→v7；v7 = Malody Holds/Taps 的 `cvtFlag`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `2.1.0`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）；若后续发布 bump 到 2.2.0，`_VERSION` 另经 `window.__MMA_VERSION`（`index.js:94`）进遥测与设置页显示。页面接受区间 `[3,7]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
 **本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时静默重试一次；④ lazer 目标上的 7 条字段缺口（mods/hits/背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-10 更新：lazer 的 mods 与 `resultsScreen.hits` 已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段；仍缺的是 `play.hits` 与背景/音频，见 osu-native-source.md §6.3。）

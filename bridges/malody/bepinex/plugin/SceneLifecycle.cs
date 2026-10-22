@@ -1,7 +1,7 @@
 namespace MalodyInsightBridge;
 
 /// <summary>Managed-only scene policy. A run never depends on later selection callbacks.</summary>
-internal sealed record PlayedChart(string Path, double Rate, string Version, string Hash);
+internal sealed record PlayedChart(string Path, double Rate, string Version, string Hash, string? Cvt = null);
 
 internal sealed class SceneLifecycle
 {

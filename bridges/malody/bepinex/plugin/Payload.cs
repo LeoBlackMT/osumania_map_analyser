@@ -12,11 +12,11 @@ namespace MalodyInsightBridge;
 /// tolerates a missing key for fields it declares optional, so any rename here
 /// needs a matching shell change.
 ///
-/// The frame carries exactly eleven keys:
+/// The frame carries exactly twelve keys:
 ///   path, speed_rate, screen, sequence, event, version, chart_hash, source,
-///   judge_level, pro_judge, turbo.
+///   judge_level, pro_judge, turbo, cvt.
 ///
-/// The last three are read by <see cref="JudgeCapture"/>. They are nullable on
+/// The last four are read from the play settings/records. They are nullable on
 /// purpose: a field no tier could read is published as JSON null, which the shell
 /// reads as "unknown". Null is a real answer and is never replaced by a default
 /// (the normal window group) or by a guess.
@@ -36,6 +36,9 @@ internal sealed record Selection(string path, double speed_rate, string screen, 
     /// <summary>The committed Turbo record is non-empty; null when it cannot be read. Never a switch position.</summary>
     public bool? turbo { get; init; }
 
-    /// <summary>The "nothing to show" frame. It still carries all eleven keys.</summary>
+    /// <summary>Hold conversion: Holds -> IN, Taps -> HO; null when neither is selected.</summary>
+    public string? cvt { get; init; }
+
+    /// <summary>The "nothing to show" frame. It still carries all twelve keys.</summary>
     public static Selection Hidden(long sequence, string reason) => new("", 1.0, "other", sequence, reason);
 }

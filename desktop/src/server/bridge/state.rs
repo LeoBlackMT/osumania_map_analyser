@@ -3,8 +3,8 @@
 use std::time::Instant;
 use crate::frames::{MalodyBridgeSource, BRIDGE_STALE_AFTER};
 
-/// 内容六元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text)`。
-pub type ContentKey = (String, String, String, String, String, String);
+/// 内容七元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text, cvt_text)`。
+pub type ContentKey = (String, String, String, String, String, String, String);
 
 /// 日志闸（纯状态）：同一"结论"只放行一次——`malody4/mod.rs` 的 `ReasonLog::due` 同形。
 /// 设置类日志的语义是"值变化时才打"：心跳每 2s 一次，逐帧打会把日志淹掉。
@@ -73,22 +73,25 @@ pub struct MalodyBridgeState {
     pub chart_path: String,
     /// 最近一次真实事件的倍率文本（`{:.5}`；补发 song 帧时还原 `modData.speedRate`）。
     pub rate_text: String,
-    /// 内容六元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text)`。
+    /// 内容七元组 `(path, rate_text, screen, judge_text, pro_text, turbo_text, cvt_text)`。
     pub last_event: Option<ContentKey>,
     /// 桥最近上报的 `sequence`（仅用于识别心跳与游戏重启）。
     pub last_seq: Option<i64>,
     /// 真实事件自增计数器（`state.sources.malody.eventSeq`）。
     pub event_seq: u64,
     /// 当前**发布给页面**的判定档（`0..=4` ↔ A~E；两处都取不到为 `None`）。
-    /// 插件值优先，`config.json` 仅在插件未上报时作 fallback。进内容六元组第 4 位：
+    /// 插件值优先，`config.json` 仅在插件未上报时作 fallback。进内容七元组第 4 位：
     /// 判定变化 = 真实事件 = 重发 song 帧（与 v4 的"当局冻结"语义无关，不再冻结）。
     pub judge: Option<u8>,
     /// 当前发布的 Pro（严格组）开关；插件未上报为 `None`（页面据此关闭动态 OD）。
-    /// **进内容六元组第 5 位**：只改 Pro 也是真实事件。
+    /// **进内容七元组第 5 位**：只改 Pro 也是真实事件。
     pub pro: Option<bool>,
-    /// 当前发布的 Turbo 开关；插件未上报为 `None`。**进内容六元组第 6 位**：
+    /// 当前发布的 Turbo 开关；插件未上报为 `None`。**进内容七元组第 6 位**：
     /// 选曲界面切换 Turbo（倍率不变）必须是真实事件，否则页面 `winScale` 停在旧值。
     pub turbo: Option<bool>,
+    /// 当前发布的 Holds/Taps 转换（`IN` / `HO`）；插件未上报为 `None`。
+    /// **进内容七元组第 7 位**：切换 Holds/Taps 时路径与倍率都不变，若不进键会被判成重复观察。
+    pub cvt: Option<String>,
     /// 窗口缩放因子：`Some(1/名义倍率)`（确认非 Turbo 且倍率命中名义值）或 `None`（未知）。
     /// **不是 `1.0` 兜底**——`None` 会原样进 song 帧的 `winScale: null`。
     pub win_scale: Option<f64>,
@@ -109,6 +112,7 @@ impl Default for MalodyBridgeState {
             judge: None,
             pro: None,
             turbo: None,
+            cvt: None,
             win_scale: None,
             log_gates: SettingsLogGates::default(),
         }
@@ -130,7 +134,7 @@ pub enum Dedupe {
     Heartbeat,
     /// 重复观察：同内容但 `sequence` 不同（JUDGE/Mod/滚速面板开关、重复重绘）。
     Duplicate,
-    /// 真实事件：内容六元组变化。
+    /// 真实事件：内容七元组变化。
     Event,
 }
 
@@ -144,14 +148,14 @@ pub struct DedupeOutcome {
     pub log: Option<(&'static str, String)>,
 }
 
-/// 判定档的文本形态（内容六元组第 4 位）：`none` = 尚未采集到。
+/// 判定档的文本形态（内容七元组第 4 位）：`none` = 尚未采集到。
 pub fn judge_text(judge: Option<u8>) -> String {
     judge
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
 }
 
-/// 三态布尔的文本形态（内容六元组第 5/6 位与日志共用）：`true` / `false` / `none`（未知）。
+/// 三态布尔的文本形态（内容七元组第 5/6 位与日志共用）：`true` / `false` / `none`（未知）。
 ///
 /// ⚠️ `none`（未知）**不是** `false`：把两者都当"确认非 Turbo"会让 Dash/Rush/Slow 被算成 Turbo。
 pub fn flag_text(value: Option<bool>) -> String {

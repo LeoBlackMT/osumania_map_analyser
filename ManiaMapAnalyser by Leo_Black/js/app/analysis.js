@@ -1208,7 +1208,11 @@ export async function fetchBeatmapFile(reason) {
         }
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
-        let resolvedModeTag = (activeContentBar === "None")
+        // cvtFlag（Invert/Hold Off 或 Malody Holds/Taps）会转换键型（全 LN 或全 RC），
+        // rework.lnRatio 反映转换后的真实模式；而 patternResult 直接解析未转换的 rawText，
+        // 若在此采纳 patternResult.ModeTag 会导致 Auto 档位在转换前后的模式间反复横跳震荡。
+        // 因此 cvtFlag 激活时必须以转换后的 fallbackModeTag 为准。
+        let resolvedModeTag = (activeContentBar === "None" || Boolean(state.cvtFlag))
             ? fallbackModeTag
             : (patternResult?.report?.ModeTag || fallbackModeTag);
         let shouldShowSvTag = false;

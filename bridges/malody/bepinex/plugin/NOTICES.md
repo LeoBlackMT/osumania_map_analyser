@@ -19,24 +19,24 @@
 
 | 文件 | 行数 | 与上游的关系 |
 | --- | --- | --- |
-| `Plugin.cs` | 719 | 上游 `Plugin.cs`（737 行）逐一删除全部游戏内卡片层接触点后的结果；T2 在此接上判定字段与载荷 |
+| `Plugin.cs` | 738 | 上游 `Plugin.cs`（737 行）逐一删除全部游戏内卡片层接触点后的结果；T2 在此接上判定字段与载荷 |
 | `SceneLifecycle.cs` | 122 | 上游原样（只把行尾统一为 CRLF） |
-| `BridgeClient.cs` | 75 | 由上游 `Plugin.cs` 抽出的 HTTP 客户端与发送循环 |
-| `Payload.cs` | 41 | 由上游 `Plugin.cs` 抽出的载荷记录 `Selection`；T2 扩到 11 字段 |
+| `BridgeClient.cs` | 99 | 由上游 `Plugin.cs` 抽出的 HTTP 客户端与发送循环 |
+| `Payload.cs` | 44 | 由上游 `Plugin.cs` 抽出的载荷记录 `Selection`；T2 扩到 11 字段，v7 扩到 12 字段 |
 | `JudgeCapture.cs` | 711 | **T2 新增，T2b 扩到面板无关的 Pro**：`pro_judge` / `judge_level` / `turbo` 的三级读取链、字段发现诊断、逐字段变更日志与三条纯函数日志行 |
 
 T2b 源码哈希（后续步骤改动这些文件后需重算）：
 
 | 文件 | 字节 | SHA256 |
 | --- | --- | --- |
-| `Plugin.cs` | 40,689 | `B4D5AE423E281C25F187F80938381B9C8F053E99B32E63D9CC9DB9CE7C7BC5A2` |
-| `SceneLifecycle.cs` | 4,814 | `F8483747D5CCE50C6FC621DC131B1D406DB10B9A603558AFC047A4E8CA649EF8` |
-| `BridgeClient.cs` | 3,406 | `5FC35DC5C77B2A83A9BCFAA4D523903B419FBF2AC0C4AF21484FC3745F3DAC57` |
-| `Payload.cs` | 2,143 | `AB6E6B3BD71D8DD9E5E31AE9F96ED13057D63F0B42CE3B5D39336B82D60D0147` |
+| `Plugin.cs` | 41,677 | `42A66DDC5DFBCC5CFA5FDFD81F89A5D705EFAAFA3F169BFD28EFF9637B12C885` |
+| `SceneLifecycle.cs` | 4,834 | `41DB1C7922FFDFBA729630CF956269AA4CE5C8226ADD3572D5E5920667CE2F21` |
+| `BridgeClient.cs` | 4,500 | `21D13D622C16216AA956C49822EFBDF3AB8C9055F45C566285D768407D59B7E1` |
+| `Payload.cs` | 2,290 | `6D6A987E0EE50E806B6546B2F19A8618938803DB02ADCB1F53185A007E93F291` |
 | `JudgeCapture.cs` | 32,235 | `7A98D9877C9300C99B6F3168510C6B9A70E3272DB4F26BFEEE66D292A53BF85B` |
-| `MMAMalodySelection.csproj` | 2,316 | `F22397612A79CD8481B33078FECBA2FB8D17B8900D26A373C782D61DB09043CA` |
+| `MMAMalodySelection.csproj` | 2,969 | `358566AB022BA4C40D356101292150969AA5A6F1573F71820DAB9861EB1F4FAF` |
 | `NuGet.Config` | 302 | `0D4D1B3C7892CB6FA84B1899AA5FF40D4E34AF0101D533AD3AF486BE9D41433D` |
-| `build.ps1` | 8,697 | `DE30864C7F8000E194290A51D279E74BC839B158986919B2DAA60C64C95A24B0` |
+| `build.ps1` | 9,370 | `359139818158640455F82057AFA470E4CF33544324ED7CDFBC3939057B67C983` |
 | `LICENSE` | 1,105 | `8D106A38B156260185AA8956111EDC283B06D2A3D274C8A57348379EDDFD0E1A` |
 
 ### 上游 `Plugin.cs` 里删掉了什么
@@ -95,16 +95,26 @@ pwsh -File bridges/malody/bepinex/plugin/build.ps1 `
 
 **脚本还会把产物复制成 `plugin/MMAMalodySelection.dll`（安装器读的就是这一份）**，并校验副本哈希与产物一致（不一致 ⇒ 退出码 7）。这一步不可省：`bin/` 是 gitignore 的，没有它的话新克隆的仓库会缺产物，安装器只能装到**上一版残留的 DLL**。若手改过产物请重新跑构建，不要只改副本。
 
+### 连接待机日志（v7）
+
+`BridgeClient` 的连接日志是**边沿触发**，不再按 15s 周期重复 warning：
+
+- 首次失败（从未连接过）：一条 `LogInfo`：`Companion unavailable at <endpoint> (Connection timed out). Bridge is standing by quietly until companion starts.`
+- 之后仍未连接：`LogDebug`，默认配置下不落日志。
+- 连接成功：一条 `LogInfo`：`Companion service connected.`
+- 已连接后掉线：仅一条 `LogWarning`：`Companion connection lost at <endpoint>: <reason>. Standing by.`
+- `HttpClient` 超时是 `TaskCanceledException`（`OperationCanceledException`）且本进程 token 未取消时，reason 统一显示 `Connection timed out`，不再显示 `A task was canceled.`。
+
 ### 可复现构建（为什么哈希是硬指标）
 
 `.csproj` 里同时设了 `Deterministic`（SDK 默认）、**`ContinuousIntegrationBuild=true`** 与 **`PathMap`**。三者缺一不可：
 
 - 只靠 `Deterministic=true` 时，编译器仍会把**构建机器的绝对源码/PDB 路径**写进程序集，且注入的 **MVID 每次构建都会变** —— 同一份源码两次构建得到**不同的 SHA256**，于是"产物与源码一致"只能是口头断言，无法核对。
-- 加上 `ContinuousIntegrationBuild=true` 与 `PathMap`（把项目目录映射成固定前缀）后，**同一份源码的干净构建是稳定的**：实测**连续五次**从清空的 `obj/`+`bin/` 重建（其中一次是在跑过离线断言工程之后）**得到同一哈希** —— **72,704 字节 / `36542CB095726B5F975ACB41A14BED7FF255971BD3581542BB67A40EB8B18DD9`**，且与仓库里那份 `plugin/MMAMalodySelection.dll` 逐字节相同。
+- 加上 `ContinuousIntegrationBuild=true` 与 `PathMap`（把项目目录映射成固定前缀）后，**同一份源码的干净构建是稳定的**：实测**连续五次**从清空的 `obj/`+`bin/` 重建（其中一次是在跑过离线断言工程之后）**得到同一哈希** —— **74,240 字节 / `3E6B5BEA9214B342E4D5569F4D313E102F88FCD42F40DFE72D33CFEDC23F4084`**，且与仓库里那份 `plugin/MMAMalodySelection.dll` 逐字节相同。
 
 所以核对方式很直接：清空 `obj/`、`bin/` 后重新构建，哈希应与下表一致；不一致即说明源码或构建环境变了。
 
-历史值（**均已不适用于当前源码**，留作记录）：T1 为 50,688 字节 / `DB9DAA598FF629390618311CE6CB9272C591E54E4BDC59468318458268A2DD57`（8 字段）；T2 为 71,168 字节 / `C3DD44165C5ECA19B041E93F27C2D4237F4A439E030294C28412ACDD977BF438`（11 字段）；T2b 为 72,704 字节 / `800DCDE39335DBB697F29E5C381F4C43CD40709D50382375E237230DEC5C8C99`（**这几次构建都在开启 `ContinuousIntegrationBuild` 之前，因此不可复现**）。<br>**当前（可复现）**：72,704 字节 / `36542CB095726B5F975ACB41A14BED7FF255971BD3581542BB67A40EB8B18DD9`。
+历史值（**均已不适用于当前源码**，留作记录）：T1 为 50,688 字节 / `DB9DAA598FF629390618311CE6CB9272C591E54E4BDC59468318458268A2DD57`（8 字段）；T2 为 71,168 字节 / `C3DD44165C5ECA19B041E93F27C2D4237F4A439E030294C28412ACDD977BF438`（11 字段）；T2b 为 72,704 字节 / `800DCDE39335DBB697F29E5C381F4C43CD40709D50382375E237230DEC5C8C99`（**这几次构建都在开启 `ContinuousIntegrationBuild` 之前，因此不可复现**）。<br>**当前（可复现）**：74,240 字节 / `3E6B5BEA9214B342E4D5569F4D313E102F88FCD42F40DFE72D33CFEDC23F4084`。
 
 ### 源码 → 产物一致性的复算方法
 
@@ -113,12 +123,12 @@ pwsh -File bridges/malody/bepinex/plugin/build.ps1 `
 3. **不依赖字节相等的交叉核对**（对产物做 IL/元数据与原始字符串扫描）：
    - 被删掉的那一族游戏内卡片层类型名（卡片视图类、私有字体光栅化类、卡片文字渲染类、卡片纹理探针类）——作为 TypeDef / TypeRef / MemberRef 与原始字符串都必须 0 命中；
    - `plugin/` 内不存在任何以卡片层一词命名的 `.cs` 源文件，且全树对卡片层相关字样（该词本身、其任意大小写、以及视图类的完整类型名）0 命中；
-   - 11 个载荷键名（`path` / `speed_rate` / `screen` / `sequence` / `event` / `version` / `chart_hash` / `source` / `judge_level` / `pro_judge` / `turbo`）必须各命中一次。
+   - 12 个载荷键名（`path` / `speed_rate` / `screen` / `sequence` / `event` / `version` / `chart_hash` / `source` / `judge_level` / `pro_judge` / `turbo` / `cvt`）必须各命中一次。
 4. **与上游二进制的关系**：上游 `v2.1` 的 `MalodyInsightBridge.dll`（159,744 字节）与本产物**不是同一版、也不等价**：它含游戏内卡片层与那三个 GDI+ 私有字体相关类型，本产物按设计全部没有。两者只能比"数据桥行为"，不能比字节。
 
 ### 离线断言（本地，不入库）
 
-`plugin/tests/` 用 `<Compile Include="../Plugin.cs" />` 直接编译 fork 的源码，跑纯托管断言。T1 实测 **160 条全绿**；T2 为 198 条；**T2b 实测 206 条全绿**，覆盖：11 字段载荷的键名逐一断言（含空帧仍带全部 11 键、三个判定字段读不到时是 `null` 而不是默认值）、`SceneLifecycle` 的场景分类（selection / playing / result / other 四态及其边界）、判定档取值范围与 `MAX` 排除、`config.json` fallback 的解析、**用同名字段的替身把三级读取链整体跑一遍**（面板记录优先于播放记录、值类型每次重读、面板 Pro 关但记录 Pro 开时报告面板值、无名控件 bool 不被当成 Pro、无 Pro 标志的记录 ⇒ `null`、Turbo 只认已提交记录、文件只供判定档），以及**三条日志行文本**（`TierLine` / `MissingLine` / `DisagreementLine`）的逐字断言。原生取值本身需要游戏，属 T7 实机矩阵，本步不伪造。该目录**不入库**：它引用本机 BepInEx / interop 路径，属开发期脚手架。两组软降级断言（致命组 / 特性组）属后续步骤，本步不伪造。
+`plugin/tests/` 用 `<Compile Include="../Plugin.cs" />` 直接编译 fork 的源码，跑纯托管断言。T1 实测 **160 条全绿**；T2 为 198 条；**T2b 扩展后实测 209 条全绿**，覆盖：12 字段载荷的键名逐一断言（含空帧仍带全部 12 键、四个判定/转换字段读不到时是 `null` 而不是默认值）、`SceneLifecycle` 的场景分类（selection / playing / result / other 四态及其边界）、判定档取值范围与 `MAX` 排除、`config.json` fallback 的解析、**用同名字段的替身把三级读取链整体跑一遍**（面板记录优先于播放记录、值类型每次重读、面板 Pro 关但记录 Pro 开时报告面板值、无名控件 bool 不被当成 Pro、无 Pro 标志的记录 ⇒ `null`、Turbo 只认已提交记录、文件只供判定档），以及**三条日志行文本**（`TierLine` / `MissingLine` / `DisagreementLine`）的逐字断言。原生取值本身需要游戏，属 T7 实机矩阵，本步不伪造。该目录**不入库**：它引用本机 BepInEx / interop 路径，属开发期脚手架。两组软降级断言（致命组 / 特性组）属后续步骤，本步不伪造。
 
 ## 5. 载荷字段来源与维护
 
@@ -137,6 +147,7 @@ pwsh -File bridges/malody/bepinex/plugin/build.ps1 `
 | `judge_level` | 判定档 A~E 记为 0~4（枚举里的 `MAX`=5 **永不**作为档位上报）。三级读取链：① 判定记录 `PanelJudge.del` 的 `level`；② 与面板无关的 `Malody.Play.boq.Level`；③ 面板判定控件的具名状态；④ `config.json` 的 `user_judge_level`（仅 fallback，选曲期滞后但至少有值）。都读不到 ⇒ `null` | `JudgeCapture.ReadLevel`（含 `ReadPlayInfoLevel` / `FindControl` / `ReadSettingsLevel`） |
 | `pro_judge` | Pro（严格组）开关，三级读取链：① 判定记录 `PanelJudge.del` 的 `proJudge`；② **与面板无关的播放设置记录 `Malody.Play.boq` 的 Pro 标志（`get_bcgh`）**，本局一次没开过面板也能读到；③ 面板 Pro 控件的**具名**状态访问器（控件只暴露无名 bool 时不取值——宁可为 `null` 也不猜）。**绝不来自 `config.json`**（文件里没有该键） | `JudgeCapture.ReadPro`（含 `ReadPlayInfoPro` / `FindControl`） |
 | `turbo` | **已提交的 Turbo 记录非空**：`PanelTurbo.SaveToPlayInfo` 的返回类型在 `localPlayInfo` 上的对应 getter（与倍率读取同源），返回 `null` 即非 Turbo。**不得用 UI 开关 bool 判定**（上游实测教训：那个标志不是 Turbo 启用位） | `JudgeCapture.ReadTurbo` |
+| `cvt` | Malody V 的 `Holds`（bit 15，`0x8000`）⇒ `"IN"`（note→hold，等价 lazer Invert）；`Taps`（bit 14，`0x4000`）⇒ `"HO"`（hold→tap，等价 lazer Hold Off）。两者都未选中 ⇒ `null`；两个位同时置位时 `Holds` 优先 | `Plugin.ReadCvtMod` |
 
 ### 实测字段与生效级别（T2 + T2 实机会话）
 
@@ -200,6 +211,6 @@ Judge level|pro records differ after the commit: the panel's judge record says <
 
 - 谱面原生属性改名 ⇒ 只改 `Plugin.cs` 里 `Text(chart, "<Property>")` 与结构发现处的 `get_*` 名字（判定字段不在此列，见上）；
 - 场景状态机行为 ⇒ 只改 `SceneLifecycle.cs`（纯托管，`plugin/tests/` 可直接断言）；
-- HTTP 目的地、超时、串行发送与告警节流 ⇒ 只改 `BridgeClient.cs`。
+- HTTP 目的地、超时、串行发送与连接状态日志 ⇒ 只改 `BridgeClient.cs`。连接日志是边沿触发的：首次失败一条 info，之后 debug；已连接后掉线一条 warning；超时统一显示为 `Connection timed out`。
 
-字段演进：T1 的载荷是 8 字段；T2 加入 `judge_level` / `pro_judge` / `turbo`，总数 **11**，全部可空（读不到就是 JSON `null`，壳侧三个字段都是 `#[serde(default)]` 的 `Option`）。
+字段演进：T1 的载荷是 8 字段；T2 加入 `judge_level` / `pro_judge` / `turbo`，v7 再加入 `cvt`，总数 **12**，全部可空（读不到就是 JSON `null`，壳侧四个字段都是 `#[serde(default)]` 的 `Option`）。

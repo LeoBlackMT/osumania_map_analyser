@@ -201,8 +201,8 @@ pub fn identity_of(fields: &ChartFields, content_md5: &str) -> String {
 
 /// `song` 帧构造（真实事件与重连补发**共用此唯一构造点**）。
 ///
-/// `judge` / `pro` / `turbo` / `winScale` 是 v5 的桥通道字段：**未知一律是 `null`**（不是省略、
-/// 不是 `1.0`）——页面按 `null` 关闭动态 OD 并在状态行说明原因。
+/// `judge` / `pro` / `turbo` / `cvt` / `winScale` 是桥通道字段：**未知一律是 `null`**（不是省略、
+/// 不是 `1.0`）——页面按 `null` 关闭动态 OD 并保持原转换语义。
 pub fn song_frame(
     request_id: &str,
     fields: &ChartFields,
@@ -213,6 +213,7 @@ pub fn song_frame(
     judge: Option<u8>,
     pro: Option<bool>,
     turbo: Option<bool>,
+    cvt: Option<&str>,
     win_scale: Option<f64>,
 ) -> serde_json::Value {
     let keys = if fields.keys > 0 { fields.keys } else { 4 };
@@ -220,7 +221,7 @@ pub fn song_frame(
         "requestId": request_id,
         "source": "malody",
         "identity": identity,
-        "modData": { "speedRate": rate_text },
+        "modData": { "speedRate": rate_text, "cvtFlag": cvt },
         "meta": {
             "title": fields.title,
             "artist": fields.artist,

@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 6 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 7 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 6;
+pub const CONTRACT_VERSION: u32 = 7;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
