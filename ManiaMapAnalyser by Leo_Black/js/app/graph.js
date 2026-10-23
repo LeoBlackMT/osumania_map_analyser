@@ -349,6 +349,7 @@ export function addPauseMarker(songTimeMs) {
 export function resetPauseRuntime(clearMarkers = false) {
     state.isPaused = false;
     state.pauseTimeMs = 0;
+    state.pauseFreezeStartRealMs = 0;
     state.frozenInterpMs = 0;
     state.hasSongTimeSample = false;
     if (clearMarkers) {

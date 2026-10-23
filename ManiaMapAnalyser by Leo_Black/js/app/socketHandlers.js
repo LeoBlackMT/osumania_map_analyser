@@ -3,6 +3,7 @@ import {
     MOD_BIT_FLAG_ENTRIES,
     NOTE_END_MARGIN_MS,
     PAUSE_DETECT_EPSILON_MS,
+    PAUSE_FALLBACK_THRESHOLD_MS,
     SONG_TIME_JUMP_THRESHOLD_MS,
     SORTED_KNOWN_MOD_CODES,
     socket,
@@ -106,10 +107,30 @@ function updateSongTimeState(data) {
     }
 
     if (state.pauseDetectionEnabled && state.isInPlayState) {
-        // 直接采用 tosu api_v2 的 game.paused 原生暂停标志，不再通过谱面时间
-        // 冻结来推断暂停——游戏卡顿导致的 time 停滞不再产生误判。旧版 tosu
-        // 无此字段时（undefined）一律视为未暂停，仅暂停检测不可用，不影响其余功能。
-        const gamePaused = data?.game?.paused === true;
+        let gamePaused = false;
+
+        if (typeof data?.game?.paused === "boolean") {
+            // 优先层：数据源有原生/推导标志（官方 tosu 或桌面壳 native 24062），零延迟响应且免除卡顿误判
+            gamePaused = data.game.paused;
+            state.pauseFreezeStartRealMs = 0;
+        } else {
+            // 兜底层：数据源无 game.paused 字段时（旧版 tosu 或缺失字段的数据源），以 500ms 谱面时间停滞推测
+            const isTimeFrozen = Math.abs(scaledLiveTimeMs - previousTime) <= PAUSE_DETECT_EPSILON_MS;
+            if (isTimeFrozen && !state.isPaused) {
+                if (!state.pauseFreezeStartRealMs) {
+                    state.pauseFreezeStartRealMs = now;
+                } else if ((now - state.pauseFreezeStartRealMs) >= PAUSE_FALLBACK_THRESHOLD_MS) {
+                    gamePaused = true;
+                }
+            } else if (!isTimeFrozen) {
+                state.pauseFreezeStartRealMs = 0;
+                gamePaused = false;
+            } else if (state.isPaused) {
+                // 已在暂停态且时间未前进，维持暂停
+                gamePaused = true;
+            }
+        }
+
         if (gamePaused && !state.isPaused) {
             // 仅在谱面时间线内记录暂停标记（开头之前 / 末尾缓冲带内不记）。
             const hasTimelineEnd = Number.isFinite(state.songEndMs);
@@ -125,10 +146,12 @@ function updateSongTimeState(data) {
         } else if (!gamePaused && state.isPaused) {
             state.isPaused = false;
             state.pauseTimeMs = 0;
+            state.pauseFreezeStartRealMs = 0;
         }
     } else {
         state.isPaused = false;
         state.pauseTimeMs = 0;
+        state.pauseFreezeStartRealMs = 0;
         state.frozenInterpMs = state.songTimeMs;
     }
 

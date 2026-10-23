@@ -116,6 +116,14 @@ pub fn held_packet_from(held: &Value, snapshot: &Snapshot) -> Value {
             root.remove("state");
         }
     }
+    match snapshot.paused {
+        Some(paused) => {
+            root.insert("game".to_string(), json!({ "paused": paused }));
+        }
+        None => {
+            root.remove("game");
+        }
+    }
     Value::Object(root)
 }
 

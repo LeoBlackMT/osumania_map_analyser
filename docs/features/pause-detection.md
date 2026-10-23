@@ -20,7 +20,9 @@
 
 1. 记录 `state.songStartMs` / `state.songEndMs`（谱面第一个/最后一个物件的谱面时间，按 `state.speedRate` 缩放），作为判定时间轴边界。该步**不依赖 live 时间**，位于 `liveTimeMs` 的 early-return 之前（`socketHandlers.js:52-70`）；时间线变化还会触发 `refreshGraphTimeline()` 重建难度图表（见 [graph-visualization.md](graph-visualization.md) §4.5）。
 2. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:72-76`）；无 live 时间的帧到此为止。
-3. 读取 **tosu api_v2 原生暂停标志** `data?.game?.paused`（`socketHandlers.js:111`）——游戏是否暂停由 tosu 直接上报，**不再**通过"谱面时间冻结 ≥ 阈值"来推断。
+3. 读取 **双层暂停判定**（优先原生标志，缺省时自动 500ms 停滞兜底，`socketHandlers.js:110-132`）：
+   - **优先层**：若数据源提供原生的 `typeof data?.game?.paused === "boolean"`（官方 tosu 或桌面壳 native 传输），优先采纳该标志，零延迟且完全不受掉帧卡顿影响。
+   - **兜底层**：若数据源缺失 `game.paused`（`undefined`），当游玩中谱面时间连续停滞达 `PAUSE_FALLBACK_THRESHOLD_MS`（500ms）时，自动推断进入暂停；时间重新推进时自动解除。
 
 ### 2.2 状态转移（socketHandlers.js:107-132）
 
@@ -37,7 +39,7 @@
 - **beforeStart**（`socketHandlers.js:117`）：`scaledLiveTimeMs < songStartMs`，时间线尚未到达谱面开头——不记录标记。
 - **atTimelineEnd**（`socketHandlers.js:116`）：`scaledLiveTimeMs >= songEndMs - NOTE_END_MARGIN_MS`，已进入谱面末尾 500ms 缓冲带——不记录标记。
 
-**兼容性**：旧版 tosu 的 api_v2 若无 `game.paused` 字段（undefined），一律视为未暂停——暂停检测静默不可用，不影响其余功能；无需任何回退启发式。
+**兼容性与兜底**：若数据源无 `game.paused` 字段（`undefined`），自动启用 500ms 谱面时间停滞兜底，确保在缺少原生暂停标志的环境下暂停检测依然可用，无需用户额外配置。
 
 ### 2.3 时间线回退清理（socketHandlers.js:78-88）
 
@@ -64,6 +66,7 @@
 | `state.pauseCount` | `0` | 暂停次数，恒等于 `pauseMarkerTimes.length`（`graph.js:344` 同步） |
 | `state.isPaused` | `false` | 当前是否处于暂停态（`game.paused` 的直接反映） |
 | `state.pauseTimeMs` | `0` | 最近一次暂停的谱面时间；解除暂停后归零（`socketHandlers.js:126`） |
+| `state.pauseFreezeStartRealMs` | `0` | 兜底层时间停滞起算的真实时间戳（ms）；仅在数据源缺失 `game.paused` 时生效 |
 | `state.frozenInterpMs` | `0` | 暂停期间图表光标使用的冻结谱面时间（等于暂停时刻的谱面时间） |
 
 控制开关：`state.pauseDetectionEnabled`（`appContext.js:184`）。相关状态位：`state.hasSongTimeSample`（`appContext.js:226`，是否已有首帧时间样本）、`state.isInPlayState`（`appContext.js:228`，由 `socketHandlers.js:152-169` 依据 tosu 状态名维护）。
@@ -113,6 +116,6 @@
 2. **仅在游玩状态工作**：`socketHandlers.js:107` 要求 `state.isInPlayState` 为真，结算界面/选图界面不检测。
 3. **时间线回退清标记**：谱面时间倒退到最早标记之前（重开本图等）触发 `resetPauseRuntime(true)` 清空标记与计数（`socketHandlers.js:78-88`）。
 4. **末尾缓冲**：进入谱面最后 500ms 后不再记录暂停标记（`atTimelineEnd`）；首物件之前同样不记录（`beforeStart`），避免谱面开始/结束的收尾帧产生无效标记。
-5. **旧版 tosu 兼容**：api_v2 无 `game.paused` 字段时（undefined）视为未暂停——暂停检测静默不可用，不报错、不影响其余功能。
+5. **旧版 tosu 兼容与兜底**：当数据源 api_v2 缺失 `game.paused` 字段时（undefined），自动启用内置的 500ms 谱面时间停滞兜底机制，避免暂停检测完全失效。
 6. **倍速归一化**：标记时间基于倍速缩放后的谱面时间（`socketHandlers.js:72-76`），DT/HT 下标记位置与谱面时间轴一致。
 7. **禁用即清理**：关闭 `enablePauseDetection` 会立即清空已收集的标记与计数（`settings.js:583-588`），此后暂停检测不再运行。
