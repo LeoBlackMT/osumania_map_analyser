@@ -235,6 +235,7 @@ export const state = {
     pauseCount: 0,
     isPaused: false,
     pauseTimeMs: 0,
+    pauseFreezeStartRealMs: 0,
     frozenInterpMs: 0,
     hasSongTimeSample: false,
     clientStateName: "",
@@ -286,6 +287,7 @@ export const GRAPH_LOADING_BASELINE_Y = GRAPH_VIEWBOX_HEIGHT - GRAPH_PADDING_BOT
 export const SONG_TIME_JUMP_THRESHOLD_MS = APP_CONFIG.timing.songTimeJumpThresholdMs;
 export const NOTE_END_MARGIN_MS = APP_CONFIG.timing.noteEndMarginMs;
 export const PAUSE_DETECT_EPSILON_MS = APP_CONFIG.timing.pauseDetectEpsilonMs;
+export const PAUSE_FALLBACK_THRESHOLD_MS = APP_CONFIG.timing.pauseFallbackThresholdMs;
 
 export const SOCKET_RECALC_LAZY_DELAY_MS = APP_CONFIG.timing.socketRecalcLazyDelayMs;
 export const SETTINGS_COMMAND_TIMEOUT_MS = APP_CONFIG.timing.settingsCommandTimeoutMs;

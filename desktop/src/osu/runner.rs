@@ -412,8 +412,12 @@ pub fn run(reader: Reader) {
                         None,
                     );
                     log_results_diagnostic(&frame.snapshot, &frame.gaps);
+                    let mut snapshot = frame.snapshot;
+                    if let Some(live) = snapshot.play_time {
+                        snapshot.paused = Some(stable::paused_from_previous(previous_live, Some(live)));
+                    }
                     FrameRead {
-                        snapshot: frame.snapshot,
+                        snapshot,
                         probe: None,
                         result: None,
                     }

@@ -74,6 +74,7 @@ export const APP_CONFIG = {
         socketRecalcLazyDelayMs: 200,
         settingsCommandTimeoutMs: 1500,
         pauseDetectEpsilonMs: 0,
+        pauseFallbackThresholdMs: 500,
     },
 
     defaults: {
