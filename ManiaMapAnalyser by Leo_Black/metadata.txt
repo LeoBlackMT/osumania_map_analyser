@@ -5,4 +5,4 @@ CompatibleWith: tosu
 Resolution: 520x680
 Version: 3.0.0
 authorLinks: https://github.com/LeoBlackMT/osumania_map_analyser
-Notes: Real-time VSRG overlay that estimated difficulty, RC/LN pattern analysis, multiple MSD version calculation, difficulty distribution, and other practical features for 4K, 6K, and 7K maps.
+Notes: Real-time VSRG overlay with difficulty estimation, RC/LN pattern analysis, multi-version MSD calculation, difficulty distribution and more, for 4K, 6K and 7K maps.

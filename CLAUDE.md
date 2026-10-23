@@ -19,19 +19,26 @@
 - backup/(本地私有): 用于存放本地备份的文件夹，仅在本地使用，远程仓库不存在。
 - temp/(本地私有): 用于存放本地临时文件的文件夹，仅在本地使用，远程仓库不存在。
 - ManiaMapAnalyser by Leo_Black/: 插件的源代码文件夹，包含插件的所有源代码文件。其路径携带空格，为tosu的命名要求。请在使用时注意。
-    - js/app/: 插件核心功能的js目录，包含插件的主要功能实现。
-    - js/app/worker/: 插件的worker目录，包含插件的worker线程实现。主要用于分离UI和计算逻辑，避免UI卡顿。
+    - js/app/: 插件核心功能的 js 目录（仅浏览器端运行）：主流程、显示、图表、设置、缓存。
+        - js/app/worker/: worker 线程（compute.worker.js + manager.js），把计算移出主线程，避免 UI 卡顿。
+        - js/app/sources/: 四数据源路由（sourceManager）、壳桥客户端、外部源注入。
+        - js/app/feedback/: 难度反馈的门控、评分条与协议。
+        - js/app/presets/: 预设系统（schema、存储、tosu/壳两种传输）。
+        - js/app/settingsPage/: 壳内设置页。
+    - js/pipeline/: runAnalysisPipeline.js——一次调用完成解析 → 估算 → 标准化 → 附属段的纯函数管线。
     - js/debug/: 插件的调试目录，包含插件的调试工具和调试代码。应当保留。
-    - js/estimator/: 难度估计模块的核心目录，包含难度估计算法的实现。
+    - js/estimator/: 七个难度估算算法的实现。
         - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。
         - js/estimator/intervals/: Sunny 难度估计算法的星数映射表。
     - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的六个版本WASM运行时。
     - js/interlude/: 插件集成的 Interlude 星数计算模块。
-    - js/parser/: 插件的解析模块，包含谱面解析器、键型解析器和设置解析器。
+    - js/parser/: 谱面解析、设置解析、判定档→OD 表，以及 sm/ssc/mc → .osu 转换器；第三方 simfile 解析器在 vendor/simfile-parser。
     - js/patterns/: 插件的键型分析模块，包含RC/LN键型分析器。其中RC键型分析器使用了Interlude的算法，并在其基础上新增了LN检测算法。
     - js/rework/: 插件集成的星数重算算法模块，主要包含 Sunny Rework 的算法实现。
     - styles/: 插件的样式目录，包含插件的CSS样式文件。
     - styles/fonts/: 插件的字体目录，包含插件的字体文件。
+    - presets/: 内置预设 JSON，index.json 为清单。
+    - presets.html: 预设管理页；settings.html: 壳内设置页入口。
     - config.js: 插件内部的配置文件，包含一些全局定义和常数。注意其options部分为tosu侧配置文件的枚举。
     - debug.html: 插件的调试页面，主要用于调试插件的估计算法和tosu api。
     - index.html: 插件的主页面，显示插件的核心功能。
