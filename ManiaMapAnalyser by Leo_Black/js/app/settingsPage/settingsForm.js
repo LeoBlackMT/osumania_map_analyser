@@ -12,6 +12,8 @@
  *   - every `change` commits immediately through the caller's onCommit.
  */
 
+import { t } from "../i18n/index.js";
+
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 
 /**
@@ -54,7 +56,7 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
                 if (pendingHeader) {
                     const title = document.createElement("h3");
                     title.className = "settings-group-title";
-                    title.textContent = pendingHeader.title;
+                    title.textContent = t(`settings.${pendingHeader.uniqueID}.title`, pendingHeader.title);
                     currentGroup.appendChild(title);
                     pendingHeader = null;
                 }
@@ -77,12 +79,12 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
         info.className = "settings-row-info";
         const title = document.createElement("span");
         title.className = "settings-row-title";
-        title.textContent = entry.title || key;
+        title.textContent = t(`settings.${key}.title`, entry.title || key);
         info.appendChild(title);
         if (entry.description) {
             const description = document.createElement("span");
             description.className = "settings-row-desc";
-            description.textContent = entry.description;
+            description.textContent = t(`settings.${key}.description`, entry.description);
             info.appendChild(description);
         }
 
@@ -110,7 +112,7 @@ export function createSettingsForm({ root, schema, initial = {}, onCommit }) {
                 for (const option of entry.options || []) {
                     const optionEl = document.createElement("option");
                     optionEl.value = option;
-                    optionEl.textContent = option;
+                    optionEl.textContent = t(`option.${option}`, option);
                     if (option === current) {
                         optionEl.selected = true;
                     }

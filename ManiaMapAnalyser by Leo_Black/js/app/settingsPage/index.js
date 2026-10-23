@@ -33,6 +33,7 @@ import { createShellPresetTransport } from "./shellTransport.js";
 import { createSettingsForm } from "./settingsForm.js";
 import { createSettingsLinks } from "./settingsLinks.js";
 import { createShellConfigPanel } from "./shellConfigPanel.js";
+import { applyStaticText, initLanguage, setLanguage, t } from "../i18n/index.js";
 
 /** Port the desktop shell serves the plugin directory on. */
 const SHELL_PORT = "24061";
@@ -48,6 +49,75 @@ const SHELL_ONLINE_NOTICE = "tosu is connected — settings are read-only here."
 const SHELL_ONLINE_PRESETS_NOTICE = "tosu is connected — settings are read-only here. "
     + "Manage presets from the Presets page of your tosu instance.";
 const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:24061/settings.html";
+
+// 语言设置：壳配置里的 language（auto/zh-CN/en-US）决定页面语言；
+// 首次渲染前先用 localStorage / 浏览器语言兜底，拿到壳配置后再重算一次。
+const LANGUAGE_OPTIONS = Object.freeze([
+    { value: "auto", labelKey: "ui.settings.language.auto", fallback: "Auto" },
+    { value: "zh-CN", label: "简体中文" },
+    { value: "en-US", label: "English" },
+]);
+let shellLanguageSetting = "";
+
+initLanguage();
+
+async function loadShellLanguage() {
+    try {
+        const response = await fetch("/shell-config", { cache: "no-store" });
+        if (!response.ok) {
+            return "";
+        }
+        const body = await response.json();
+        const value = body && body.config ? body.config.language : "";
+        return typeof value === "string" ? value : "";
+    } catch {
+        return "";
+    }
+}
+
+async function saveShellLanguage(value) {
+    try {
+        await fetch("/shell-config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ language: value }),
+        });
+    } catch {
+        // 壳不可达：只保留 localStorage 里的选择，刷新后依然生效。
+    }
+}
+
+function storedLanguage() {
+    try {
+        return window.localStorage.getItem("mma.lang") || "";
+    } catch {
+        return "";
+    }
+}
+
+function setupLanguageSelect() {
+    const select = document.getElementById("settings-language");
+    if (!select) {
+        return;
+    }
+    select.setAttribute("aria-label", t("ui.settings.language", "Language"));
+    select.textContent = "";
+    for (const option of LANGUAGE_OPTIONS) {
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.textContent = option.labelKey ? t(option.labelKey, option.fallback) : option.label;
+        select.appendChild(el);
+    }
+    select.value = shellLanguageSetting && shellLanguageSetting !== "auto"
+        ? shellLanguageSetting
+        : (storedLanguage() || "auto");
+    select.addEventListener("change", async () => {
+        const value = select.value;
+        setLanguage(value === "auto" ? (typeof navigator !== "undefined" ? navigator.language : "") : value);
+        await saveShellLanguage(value);
+        window.location.reload();
+    });
+}
 
 const statusBarEl = document.getElementById("settings-status");
 const linksRootEl = document.getElementById("settings-links-root");
@@ -104,12 +174,12 @@ function attachCopyButton(container, getText) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "settings-copy-btn";
-    button.textContent = "Copy";
+    button.textContent = t("ui.settings.copy", "Copy");
     button.addEventListener("click", async () => {
         const ok = await copyText(String(getText() || ""));
-        button.textContent = ok ? "Copied" : "Copy failed";
+        button.textContent = ok ? t("ui.settings.copied", "Copied") : t("ui.settings.copyFailed", "Copy failed");
         setTimeout(() => {
-            button.textContent = "Copy";
+            button.textContent = t("ui.settings.copy", "Copy");
         }, 1500);
     });
     container.appendChild(button);
@@ -188,12 +258,12 @@ function isShellOrigin() {
 function renderOriginNotice() {
     const notice = document.createElement("p");
     notice.className = "settings-origin-notice";
-    notice.textContent = ORIGIN_NOTICE;
+    notice.textContent = t("ui.settings.notice.origin", ORIGIN_NOTICE);
     if (settingsRootEl) {
         settingsRootEl.appendChild(notice);
     }
-    setStatus(ORIGIN_NOTICE, "error");
-    document.title = "Mania Map Analyser — Settings (desktop shell only)";
+    setStatus(t("ui.settings.notice.origin", ORIGIN_NOTICE), "error");
+    document.title = t("ui.settings.titleDesktopOnly", "Mania Map Analyser — Settings (desktop shell only)");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,13 +283,14 @@ function buildLayout() {
     section.className = "settings-panel";
 
     const title = document.createElement("h2");
-    title.textContent = "Card Settings";
+    title.textContent = t("ui.settings.panel.cardTitle", "Card Settings");
     section.appendChild(title);
 
     const sub = document.createElement("p");
     sub.className = "settings-panel-sub";
-    sub.textContent = "The desktop shell keeps these values in mma-settings.json while tosu is offline; "
-        + "the overlay picks up every change immediately.";
+    sub.textContent = t("ui.settings.panel.cardSub",
+        "The desktop shell keeps these values in mma-settings.json while tosu is offline; "
+        + "the overlay picks up every change immediately.");
     section.appendChild(sub);
 
     settingsFormEl = document.createElement("div");
@@ -230,17 +301,22 @@ function buildLayout() {
 }
 
 function populateNav(nav) {
+    // 语言下拉是 settings.html 里的静态节点，重建导航时必须保留。
+    const languageSelect = nav.querySelector("#settings-language");
     nav.textContent = "";
     for (const [href, label] of [
-        ["#shell-config-section", "Shell Configuration"],
-        ["#settings-form-section", "Card Settings"],
-        ["#presets-app", "Presets Manager"],
+        ["#shell-config-section", t("ui.settings.nav.shell", "Shell Configuration")],
+        ["#settings-form-section", t("ui.settings.nav.card", "Card Settings")],
+        ["#presets-app", t("ui.settings.nav.presets", "Presets Manager")],
     ]) {
         const link = document.createElement("a");
         link.className = "settings-nav-link";
         link.href = href;
         link.textContent = label;
         nav.appendChild(link);
+    }
+    if (languageSelect) {
+        nav.appendChild(languageSelect);
     }
     setupNavScrollspy(nav);
 }
@@ -291,14 +367,14 @@ function buildReadOnlyView() {
 
     const message = document.createElement("p");
     message.className = "settings-readonly-message";
-    message.textContent = SHELL_ONLINE_NOTICE;
+    message.textContent = t("ui.settings.notice.tosuOnline", SHELL_ONLINE_NOTICE);
     banner.appendChild(message);
 
     const row = document.createElement("div");
     row.className = "settings-readonly-url";
     const label = document.createElement("span");
     label.className = "settings-readonly-label";
-    label.textContent = "tosu dashboard:";
+    label.textContent = t("ui.settings.readonlyDashboard", "tosu dashboard:");
     dashboardUrlEl = document.createElement("code");
     dashboardUrlEl.className = "settings-url";
     dashboardUrlEl.textContent = dashboardUrl();
@@ -370,7 +446,7 @@ function showPresetsNotice() {
 
     const text = document.createElement("p");
     text.className = "settings-presets-notice-text";
-    text.textContent = SHELL_ONLINE_PRESETS_NOTICE;
+    text.textContent = t("ui.settings.notice.tosuOnlinePresets", SHELL_ONLINE_PRESETS_NOTICE);
     notice.appendChild(text);
 
     const url = presetsPageUrl();
@@ -436,7 +512,7 @@ async function commitSetting(key, value, previous) {
         return;
     }
     pendingWrites.set(key, { value, previous });
-    setStatus("Saving…", "saving");
+    setStatus(t("ui.settings.status.saving", "Saving…"), "saving");
     try {
         // quiet: this page has no overlay DOM, so missing-element failures are
         // expected here and must not surface as console errors.
@@ -464,7 +540,7 @@ function confirmPendingWrites(values) {
         }
     }
     if (pendingWrites.size === 0) {
-        setStatus("Saved", "ok");
+        setStatus(t("ui.settings.status.saved", "Saved"), "ok");
     }
 }
 
@@ -477,11 +553,11 @@ function handleWriteError(error) {
         // expected answer there (no user action failed).
         const wasWritable = state.shellTosuOnline !== true;
         pendingWrites.clear();
-        setStatus(wasWritable ? `Save failed: ${message}` : SHELL_ONLINE_NOTICE, "error");
+        setStatus(wasWritable ? `${t("ui.settings.status.saveFailed", "Save failed")}: ${message}` : t("ui.settings.notice.tosuOnline", SHELL_ONLINE_NOTICE), "error");
         setReadOnly(true);
         return;
     }
-    setStatus(`Save failed: ${message}`, "error");
+    setStatus(`${t("ui.settings.status.saveFailed", "Save failed")}: ${message}`, "error");
     for (const [key, entry] of [...pendingWrites]) {
         pendingWrites.delete(key);
         if (entry.previous === undefined) {
@@ -534,12 +610,17 @@ async function runShellPage() {
         onMalody4Selection: () => {},
     });
 
-    setStatus("Loading settings…", "loading");
+    shellLanguageSetting = await loadShellLanguage();
+    initLanguage({ shellLanguage: shellLanguageSetting });
+    applyStaticText();
+    setupLanguageSelect();
+
+    setStatus(t("ui.settings.status.loadingSettings", "Loading settings…"), "loading");
 
     // 4) current settings → state → UI.
     const values = await pageTransport.readValues();
     if (!values) {
-        setStatus(SHELL_UNAVAILABLE_NOTICE, "error");
+        setStatus(t("ui.settings.notice.shellUnavailable", SHELL_UNAVAILABLE_NOTICE), "error");
         return;
     }
     await applySnapshot(values, { quiet: true });
@@ -581,7 +662,7 @@ async function runShellPage() {
         // notice carries the PresetsButton URL, so re-render it now.
         showPresetsNotice();
     }
-    setStatus("Ready", "ok");
+    setStatus(t("ui.settings.status.ready", "Ready"), "ok");
 
     // 5) presets.
     initPresets();
@@ -601,7 +682,7 @@ async function bootstrap() {
         await runShellPage();
     } catch (error) {
         console.error("[settings] initialization failed:", error);
-        setStatus(`Initialization failed: ${error && error.message ? error.message : error}`, "error");
+        setStatus(`${t("ui.settings.status.initFailed", "Initialization failed")}: ${error && error.message ? error.message : error}`, "error");
     }
 }
 

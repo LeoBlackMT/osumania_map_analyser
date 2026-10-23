@@ -117,7 +117,16 @@ Malody V 有两个互不影响的通道，按需选择：
 
 壳运行日志写在 exe 旁的 `logs/` 目录：`logs/mma-shell-YYYYMMDD.log`（按日轮转，保留 7 天）。排查问题时将 `logLevel` 设为 `debug`，把最新日志发到 [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues) 即可；遇到问题请先确认日志内容。
 
-## 六、常见问题/已知问题
+## 六、界面语言
+
+设置窗口导航栏右侧有语言下拉，可选 **自动 / 简体中文 / English**：
+
+- **自动**（默认）：跟随系统语言，中文系统显示中文，其他显示英文。
+- 选择会写进壳配置文件 `mma-shell-config.json` 的 `language` 字段（`auto` / `zh-CN` / `en-US`），重启后保留；也可以在文件里直接改。
+- 只影响壳自己的页面（设置页、预设管理器）。**tosu 自带的设置面板始终是英文**，因为 tosu 不支持中文设置标题。
+- 中文使用系统字体显示（微软雅黑 / 苹方 / Noto Sans CJK），不需要额外安装字体。
+
+## 七、常见问题/已知问题
 
 - **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装、壳在运行。
 - **端口 17653 被占用**：卡片不动且壳日志提示端口被占。关掉多余的 `mma-shell` 实例（同时只能有一个），或重启壳。
@@ -249,7 +258,16 @@ Malody V offers two independent channels; choose as needed:
 
 Shell runtime logs are written to the `logs/` directory next to the executable: `logs/mma-shell-YYYYMMDD.log` (rotated daily, kept for 7 days). When troubleshooting, set `logLevel` to `debug` and attach the latest log to [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues). Always check log contents first when encountering issues.
 
-## 6. Troubleshooting / Known Issues
+## 6. Interface Language
+
+The language dropdown at the right of the settings navigation offers **Auto / 简体中文 / English**:
+
+- **Auto** (default): follows the system language — Chinese systems get Chinese, everything else gets English.
+- The choice is stored in `language` inside `mma-shell-config.json` (`auto` / `zh-CN` / `en-US`) and survives restarts; you can also edit that file directly.
+- It only affects the shell's own pages (settings page, presets manager). **tosu's built-in settings panel stays English**, because tosu does not support Chinese setting titles.
+- Chinese text uses system fonts (Microsoft YaHei / PingFang / Noto Sans CJK); no extra font installation is needed.
+
+## 7. Troubleshooting / Known Issues
 
 - **Hollow grey dot / Card frozen**: Confirm the game is running, bridges are installed, and the shell is running.
 - **Port 17653 in use**: Card does not move and shell log indicates the port is occupied. Close extra `mma-shell` instances (only one can run at a time) or restart the shell.

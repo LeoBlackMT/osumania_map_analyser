@@ -12,6 +12,8 @@
  * shell with a mix of old and new bindings).
  */
 
+import { t } from "../i18n/index.js";
+
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
 export const OFFSETS_STATUS_URL = "/offsets/status";
@@ -28,30 +30,30 @@ const LOG_LEVEL_OPTIONS = ["debug", "info", "warn", "error", "off"];
 const ROOT_FIELDS = [
     {
         key: "etternaRoot",
-        title: "Etterna root",
-        description: "Folder that holds the Etterna install. Empty = let the shell detect it.",
+        title: t("ui.shell.field.etternaRoot.title", "Etterna root"),
+        description: t("ui.shell.field.etternaRoot.description", "Folder that holds the Etterna install. Empty = let the shell detect it."),
     },
     {
         key: "malodyRoot",
-        title: "Malody V root",
-        description: "Folder that holds the Malody V install. Empty = let the shell detect it.",
+        title: t("ui.shell.field.malodyRoot.title", "Malody V root"),
+        description: t("ui.shell.field.malodyRoot.description", "Folder that holds the Malody V install. Empty = let the shell detect it."),
     },
     {
         key: "malody4Root",
-        title: "Malody 4.3.7 root",
-        description: "Folder that holds the Malody 4.3.7 install. Empty = let the shell detect it.",
+        title: t("ui.shell.field.malody4Root.title", "Malody 4.3.7 root"),
+        description: t("ui.shell.field.malody4Root.description", "Folder that holds the Malody 4.3.7 install. Empty = let the shell detect it."),
     },
 ];
 
 const HOTKEY_FIELDS = [
-    { key: "topmost", title: "Toggle topmost" },
-    { key: "clickThrough", title: "Toggle click-through" },
-    { key: "close", title: "Close overlay" },
-    { key: "settings", title: "Open settings window" },
+    { key: "topmost", title: t("ui.shell.hotkey.topmost", "Toggle topmost") },
+    { key: "clickThrough", title: t("ui.shell.hotkey.clickThrough", "Toggle click-through") },
+    { key: "close", title: t("ui.shell.hotkey.close", "Close overlay") },
+    { key: "settings", title: t("ui.shell.hotkey.settings", "Open settings window") },
 ];
 
-const HOTKEY_HINT = "Restart the shell to apply hotkey changes.";
-const UNREADABLE_NOTICE = "Shell config unreadable (mma-shell-config.json) — editing is unavailable here.";
+const HOTKEY_HINT = t("ui.shell.hotkey.hint", "Restart the shell to apply hotkey changes.");
+const UNREADABLE_NOTICE = t("ui.shell.status.unreadable", "Shell config unreadable (mma-shell-config.json) — editing is unavailable here.");
 
 /**
  * @param {object} options
@@ -105,16 +107,16 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     }
 
     async function generateOffsets() {
-        offsetsActionMsg = "Scanning running osu! and generating offsets…";
+        offsetsActionMsg = t("ui.shell.offsets.scanning", "Scanning running osu! and generating offsets…");
         offsetsActionKind = "saving";
         render();
         const result = await requestJson(OFFSETS_GENERATE_URL, { method: "POST" });
         if (!result.ok) {
             const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
-            offsetsActionMsg = `Generation failed: ${detail}`;
+            offsetsActionMsg = `${t("ui.shell.offsets.generateFailed", "Generation failed")}: ${detail}`;
             offsetsActionKind = "error";
         } else {
-            const msg = result.body && result.body.message ? result.body.message : "Offsets generated and verified successfully.";
+            const msg = result.body && result.body.message ? result.body.message : t("ui.shell.offsets.generated", "Offsets generated and verified successfully.");
             offsetsActionMsg = msg;
             offsetsActionKind = "ok";
         }
@@ -123,17 +125,17 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     }
 
     async function updateOffsets() {
-        offsetsActionMsg = "Checking remote manifest and verifying signatures…";
+        offsetsActionMsg = t("ui.shell.offsets.checking", "Checking remote manifest and verifying signatures…");
         offsetsActionKind = "saving";
         render();
         const result = await requestJson(OFFSETS_UPDATE_URL, { method: "POST" });
         if (!result.ok) {
             const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
-            offsetsActionMsg = `Update failed: ${detail}`;
+            offsetsActionMsg = `${t("ui.shell.offsets.updateFailed", "Update failed")}: ${detail}`;
             offsetsActionKind = "error";
         } else {
             const updated = result.body && typeof result.body.updated === "number" ? result.body.updated : 0;
-            const msg = result.body && result.body.message ? result.body.message : (updated > 0 ? `Updated ${updated} table(s) successfully.` : "Offsets are up to date.");
+            const msg = result.body && result.body.message ? result.body.message : (updated > 0 ? `${t("ui.shell.offsets.updatedCount", "Updated")} ${updated} ${t("ui.shell.offsets.tables", "table(s)")}` : t("ui.shell.offsets.upToDate", "Offsets are up to date."));
             offsetsActionMsg = msg;
             offsetsActionKind = "ok";
         }
@@ -158,7 +160,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             setStatus(
                 result.status === 400
                     ? UNREADABLE_NOTICE
-                    : `Cannot read the shell config (HTTP ${result.status || "?"}).`,
+                    : `${t("ui.shell.offsets.unreadableHttp", "Cannot read the shell config")} (HTTP ${result.status || "?"}).`,
                 "error",
             );
             render();
@@ -176,7 +178,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
     /** POST a patch; re-render from the response (400 = nothing was written). */
     async function write(patch, { refreshResolvedAfter = false } = {}) {
-        setStatus("Saving…", "saving");
+        setStatus(t("ui.shell.status.saving", "Saving…"), "saving");
         saveHint = "";
         render();
         const result = await requestJson(SHELL_CONFIG_URL, {
@@ -186,10 +188,10 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         if (!result.ok) {
             if (result.status === 400) {
-                setStatus(`${UNREADABLE_NOTICE} (nothing was written)`, "error");
+                setStatus(`${UNREADABLE_NOTICE} (${t("ui.shell.status.nothingWritten", "nothing was written")})`, "error");
             } else {
                 const detail = result.error && result.error.message ? result.error.message : `HTTP ${result.status || "?"}`;
-                setStatus(`Save failed: ${detail}`, "error");
+                setStatus(`${t("ui.shell.status.saveFailed", "Save failed")}: ${detail}`, "error");
             }
             render();
             return false;
@@ -204,8 +206,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
                 windowState = result.body.window;
             }
         }
-        setStatus("Saved.", "ok");
-        saveHint = refreshResolvedAfter ? "Refreshing the adopted paths…" : "";
+        setStatus(t("ui.shell.status.saved", "Saved."), "ok");
+        saveHint = refreshResolvedAfter ? t("ui.shell.status.refreshing", "Refreshing the adopted paths…") : "";
         render();
         if (refreshResolvedAfter) {
             await refreshResolved();
@@ -232,12 +234,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         section.className = "settings-panel";
 
         const title = document.createElement("h2");
-        title.textContent = "Shell Configuration";
+        title.textContent = t("ui.shell.sectionTitle", "Shell Configuration");
         section.appendChild(title);
 
         const sub = document.createElement("p");
         sub.className = "settings-panel-sub";
-        sub.textContent = "Only the desktop shell reads these values (mma-shell-config.json, next to mma-shell.exe).";
+        sub.textContent = t("ui.shell.sectionSub", "Only the desktop shell reads these values (mma-shell-config.json, next to mma-shell.exe).");
         section.appendChild(sub);
 
         const status = document.createElement("p");
@@ -315,7 +317,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         for (const option of GAME_CLIENT_OPTIONS) {
             const optionEl = document.createElement("option");
             optionEl.value = option;
-            optionEl.textContent = option;
+            optionEl.textContent = t(`option.${option}`, option);
             optionEl.selected = option === current;
             select.appendChild(optionEl);
         }
@@ -325,8 +327,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "gameClient",
-            "Game client",
-            "Auto picks the active source; a fixed value forces that source.",
+            t("ui.shell.field.gameClient.title", "Game client"),
+            t("ui.shell.field.gameClient.description", "Auto picks the active source; a fixed value forces that source."),
             select,
         );
     }
@@ -348,7 +350,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const readout = document.createElement("span");
         readout.className = "shell-config-resolved";
         readout.dataset.resolvedKey = field.key;
-        readout.textContent = `adopted: ${adopted || "not detected"}`;
+        readout.textContent = `${t("ui.shell.resolved.adopted", "adopted")}: ${adopted || t("ui.shell.resolved.notDetected", "not detected")}`;
         wrap.appendChild(readout);
 
         return buildRow(field.key, field.title, field.description, wrap);
@@ -364,8 +366,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "topmost",
-            "Always on Top",
-            "Keep the overlay window above all other windows.",
+            t("ui.shell.field.topmost.title", "Always on Top"),
+            t("ui.shell.field.topmost.description", "Keep the overlay window above all other windows."),
             input,
         );
     }
@@ -380,8 +382,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         return buildRow(
             "clickThrough",
-            "Click-Through",
-            "Pass mouse clicks through the overlay window to the game or desktop.",
+            t("ui.shell.field.clickThrough.title", "Click-Through"),
+            t("ui.shell.field.clickThrough.description", "Pass mouse clicks through the overlay window to the game or desktop."),
             input,
         );
     }
@@ -420,7 +422,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         hint.textContent = HOTKEY_HINT;
         wrap.appendChild(hint);
 
-        return buildRow("hotkeys", "Hotkeys", "Shell-wide shortcuts.", wrap);
+        return buildRow("hotkeys", t("ui.shell.field.hotkeys.title", "Hotkeys"), t("ui.shell.field.hotkeys.description", "Shell-wide shortcuts."), wrap);
     }
 
     function buildLogLevelRow() {
@@ -438,7 +440,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         select.addEventListener("change", () => {
             write({ logLevel: select.value });
         });
-        return buildRow("logLevel", "Log level", "Takes effect immediately.", select);
+        return buildRow("logLevel", t("ui.shell.field.logLevel.title", "Log level"), t("ui.shell.field.logLevel.description", "Takes effect immediately."), select);
     }
 
     function buildOffsetsSection() {
@@ -447,26 +449,26 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const header = document.createElement("h3");
         header.className = "settings-group-title";
-        header.textContent = "Memory Offsets Management";
+        header.textContent = t("ui.shell.offsets.title", "Memory Offsets Management");
         wrap.appendChild(header);
 
         const stableInfo = offsetsInfo.stable || {};
         const stableDesc = stableInfo.loaded
-            ? `Active (${stableInfo.anchors_count || 7} anchors verified, arch: ${stableInfo.arch || "x86"})`
-            : "Fallback table active";
+            ? `${t("ui.shell.offsets.active", "Active")} (${stableInfo.anchors_count || 7} ${t("ui.shell.offsets.anchors", "anchors")}, ${stableInfo.arch || "x86"})`
+            : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
         const stableBadge = document.createElement("span");
         stableBadge.className = `shell-config-badge ${stableInfo.loaded ? "badge-ok" : "badge-warn"}`;
-        stableBadge.textContent = stableInfo.loaded ? "Active" : "Fallback";
-        wrap.appendChild(buildRow("offsetsStable", "osu!stable Offsets", stableDesc, stableBadge));
+        stableBadge.textContent = stableInfo.loaded ? t("ui.shell.offsets.active", "Active") : t("ui.shell.offsets.fallback", "Fallback");
+        wrap.appendChild(buildRow("offsetsStable", t("ui.shell.offsets.stableTitle", "osu!stable Offsets"), stableDesc, stableBadge));
 
         const lazerInfo = offsetsInfo.lazer || {};
         const lazerDesc = lazerInfo.loaded
             ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)`
-            : "Fallback table active";
+            : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
-        lazerBadge.textContent = lazerInfo.loaded ? "Active" : "Fallback";
-        wrap.appendChild(buildRow("offsetsLazer", "osu!lazer Offsets", lazerDesc, lazerBadge));
+        lazerBadge.textContent = lazerInfo.loaded ? t("ui.shell.offsets.active", "Active") : t("ui.shell.offsets.fallback", "Fallback");
+        wrap.appendChild(buildRow("offsetsLazer", t("ui.shell.offsets.lazerTitle", "osu!lazer Offsets"), lazerDesc, lazerBadge));
 
         const actionsWrap = document.createElement("div");
         actionsWrap.className = "shell-config-actions";
@@ -474,10 +476,10 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const genBtn = document.createElement("button");
         genBtn.type = "button";
         genBtn.className = "settings-action-btn";
-        genBtn.textContent = "Live Generator";
+        genBtn.textContent = t("ui.shell.offsets.generate", "Live Generator");
         genBtn.title = offsetsInfo.generator_ready
-            ? "Extract offsets from running osu! with zero .NET SDK"
-            : "gen.exe not detected";
+            ? t("ui.shell.offsets.generateHint", "Extract offsets from running osu! with zero .NET SDK")
+            : t("ui.shell.offsets.generateMissing", "gen.exe not detected");
         genBtn.disabled = !offsetsInfo.generator_ready;
         genBtn.addEventListener("click", () => generateOffsets());
         actionsWrap.appendChild(genBtn);
@@ -485,8 +487,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const updateBtn = document.createElement("button");
         updateBtn.type = "button";
         updateBtn.className = "settings-action-btn";
-        updateBtn.textContent = "Check Remote Updates";
-        updateBtn.title = "Verify Ed25519 signed manifest and sync updated tables";
+        updateBtn.textContent = t("ui.shell.offsets.update", "Check Remote Updates");
+        updateBtn.title = t("ui.shell.offsets.updateHint", "Verify Ed25519 signed manifest and sync updated tables");
         updateBtn.addEventListener("click", () => updateOffsets());
         actionsWrap.appendChild(updateBtn);
 
@@ -497,7 +499,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             actionsWrap.appendChild(statusEl);
         }
 
-        wrap.appendChild(buildRow("offsetsActions", "Offsets Actions", "Update or generate memory layout tables for osu! clients.", actionsWrap));
+        wrap.appendChild(buildRow("offsetsActions", t("ui.shell.offsets.actionsTitle", "Offsets Actions"), t("ui.shell.offsets.actionsDescription", "Update or generate memory layout tables for osu! clients."), actionsWrap));
 
         return wrap;
     }
@@ -508,7 +510,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const header = document.createElement("h3");
         header.className = "settings-group-title";
-        header.textContent = "Shadow Diagnostics (Native vs Tosu)";
+        header.textContent = t("ui.shell.shadow.title", "Shadow Diagnostics (Native vs Tosu)");
         wrap.appendChild(header);
 
         const shadow = offsetsInfo.shadow || {};
@@ -519,30 +521,30 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const desc = total === 0
             ? (shadow.tosu_connected
-                ? "tosu connected — awaiting compared frames"
-                : "Waiting for concurrent tosu and native data streams…")
-            : `${total} frames compared: ${matches} matched (${rate}%), ${mismatches} mismatched`;
+                ? t("ui.shell.shadow.tosuConnected", "tosu connected — awaiting compared frames")
+                : t("ui.shell.shadow.waiting", "Waiting for concurrent tosu and native data streams…"))
+            : `${total} ${t("ui.shell.shadow.framesCompared", "frames compared")}: ${matches} ${t("ui.shell.shadow.matched", "matched")} (${rate}%), ${mismatches} ${t("ui.shell.shadow.mismatched", "mismatched")}`;
 
         const badge = document.createElement("span");
         if (total === 0) {
             badge.className = "shell-config-badge badge-idle";
-            badge.textContent = "Idle";
+            badge.textContent = t("ui.shell.shadow.idle", "Idle");
         } else if (mismatches === 0) {
             badge.className = "shell-config-badge badge-ok";
-            badge.textContent = "100% Match";
+            badge.textContent = t("ui.shell.shadow.fullMatch", "100% Match");
         } else {
             badge.className = "shell-config-badge badge-error";
-            badge.textContent = `${mismatches} Differ`;
+            badge.textContent = `${mismatches} ${t("ui.shell.shadow.differ", "Differ")}`;
         }
 
-        wrap.appendChild(buildRow("shadowStatus", "Comparison Status", desc, badge));
+        wrap.appendChild(buildRow("shadowStatus", t("ui.shell.shadow.statusTitle", "Comparison Status"), desc, badge));
 
         if (mismatches > 0 && Array.isArray(shadow.last_mismatches) && shadow.last_mismatches.length > 0) {
-            const diffDesc = `Last differing fields: ${shadow.last_mismatches.join(", ")}`;
+            const diffDesc = `${t("ui.shell.shadow.lastDiffs", "Last differing fields")}: ${shadow.last_mismatches.join(", ")}`;
             const diffTag = document.createElement("span");
             diffTag.className = "shell-config-diff-tag";
             diffTag.textContent = shadow.last_mismatches.join(", ");
-            wrap.appendChild(buildRow("shadowDiffs", "Discrepancy Details", diffDesc, diffTag));
+            wrap.appendChild(buildRow("shadowDiffs", t("ui.shell.shadow.diffTitle", "Discrepancy Details"), diffDesc, diffTag));
         }
 
         const actionsWrap = document.createElement("div");
@@ -551,7 +553,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const refreshBtn = document.createElement("button");
         refreshBtn.type = "button";
         refreshBtn.className = "settings-action-btn";
-        refreshBtn.textContent = "Refresh Stats";
+        refreshBtn.textContent = t("ui.shell.shadow.refresh", "Refresh Stats");
         refreshBtn.addEventListener("click", async () => {
             await fetchOffsetsStatus();
             render();
@@ -561,11 +563,11 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const resetBtn = document.createElement("button");
         resetBtn.type = "button";
         resetBtn.className = "settings-action-btn";
-        resetBtn.textContent = "Reset Counts";
+        resetBtn.textContent = t("ui.shell.shadow.reset", "Reset Counts");
         resetBtn.addEventListener("click", () => resetShadow());
         actionsWrap.appendChild(resetBtn);
 
-        wrap.appendChild(buildRow("shadowActions", "Diagnostics Controls", "Manage shadow verification metrics.", actionsWrap));
+        wrap.appendChild(buildRow("shadowActions", t("ui.shell.shadow.actionsTitle", "Diagnostics Controls"), t("ui.shell.shadow.actionsDescription", "Manage shadow verification metrics."), actionsWrap));
 
         return wrap;
     }
