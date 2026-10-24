@@ -124,7 +124,6 @@ export default {
     "ui.settings.readonlyDashboard": "tosu 面板：",
     "ui.settings.panel.cardTitle": "卡片设置",
     "ui.settings.panel.cardSub": "调整卡片本体的设置。当 tosu 离线时，保存在 mma-settings.json 中；修改后会立即生效。",
-    "ui.settings.language": "语言",
     "ui.settings.language.auto": "自动",
     "ui.shell.sectionTitle": "壳设置",
     "ui.shell.sectionSub": "调整桌面壳的设置。这些值保存在 mma-shell-config.json 中。",
@@ -270,5 +269,13 @@ export default {
     "ui.presets.action.apply": "应用",
     "ui.presets.action.export": "导出",
     "ui.presets.action.rename": "重命名",
-    "ui.presets.action.delete": "删除"
+    "ui.presets.action.delete": "删除",
+    "settings.GuideButton.title": "设置说明",
+    "settings.PresetGuideButton.title": "预设说明",
+    "settings.IssueButton.title": "反馈问题",
+    "settings.BenchmarkButton.title": "基准测试结果",
+    "settings.PresetButton.title": "预设管理页面",
+    "settings.DebugButton.title": "调试页面",
+    "ui.shell.field.language.title": "界面语言",
+    "ui.shell.field.language.description": "只影响壳自己的页面（设置、预设管理）。tosu 自带的设置面板固定为英文。"
 };

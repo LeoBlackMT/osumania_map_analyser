@@ -119,7 +119,7 @@ Malody V 有两个互不影响的通道，按需选择：
 
 ## 六、界面语言
 
-设置窗口导航栏右侧有语言下拉，可选 **自动 / 简体中文 / English**：
+壳设置面板的第一行是**界面语言**下拉，可选 **自动 / 简体中文 / English**：
 
 - **自动**（默认）：跟随系统语言，中文系统显示中文，其他显示英文。
 - 选择会写进壳配置文件 `mma-shell-config.json` 的 `language` 字段（`auto` / `zh-CN` / `en-US`），重启后保留；也可以在文件里直接改。
@@ -260,7 +260,7 @@ Shell runtime logs are written to the `logs/` directory next to the executable: 
 
 ## 6. Interface Language
 
-The language dropdown at the right of the settings navigation offers **Auto / 简体中文 / English**:
+The first row of the shell settings panel is an **interface language** dropdown: **Auto / 简体中文 / English**:
 
 - **Auto** (default): follows the system language — Chinese systems get Chinese, everything else gets English.
 - The choice is stored in `language` inside `mma-shell-config.json` (`auto` / `zh-CN` / `en-US`) and survives restarts; you can also edit that file directly.

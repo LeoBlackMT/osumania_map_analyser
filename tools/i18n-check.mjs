@@ -29,13 +29,16 @@ const expected = new Set();
 
 for (const entry of settings) {
     const key = entry.uniqueID;
-    if (!key || entry.type === "button") {
+    if (!key) {
         continue;
     }
     const titleKey = "settings." + key + ".title";
     expected.add(titleKey);
     if (!dict[titleKey]) {
         missing.push(titleKey);
+    }
+    if (entry.type === "button") {
+        continue;
     }
     if (entry.description) {
         const descKey = "settings." + key + ".description";

@@ -162,4 +162,7 @@ export function applyStaticText(root = typeof document !== "undefined" ? documen
     for (const el of root.querySelectorAll("[data-i18n-aria]")) {
         el.setAttribute("aria-label", t(el.dataset.i18nAria, el.getAttribute("aria-label") || ""));
     }
+    for (const el of root.querySelectorAll("[data-i18n-placeholder]")) {
+        el.placeholder = t(el.dataset.i18nPlaceholder, el.placeholder);
+    }
 }

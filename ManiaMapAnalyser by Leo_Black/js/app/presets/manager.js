@@ -836,6 +836,9 @@ function subscribeLiveValueSync() {
 async function init() {
     // 独立打开 presets.html 时也按已保存的语言渲染。
     initLanguage();
+    // 先订阅再渲染：库装载完成的通知可能早于下面的首次渲染，晚订阅会把它丢掉，
+    // 「我的预设」就永远停在「正在加载预设…」。
+    onPresetsChanged(() => renderList());
     // Register the settings-stream listener and load the preset library.
     // (index.html does this via index.js; the manager page must do it itself.)
     initPresets();
@@ -859,7 +862,9 @@ async function init() {
     form.renderForm();
 
     listEl.addEventListener("click", guarded(handleListClick));
-    onPresetsChanged(() => renderList());
+
+    // 上面的 await 期间库可能已经装载完成，收尾再渲染一次。
+    renderList();
 
     // Live value sync from the settings stream (skip focused controls).
     subscribeLiveValueSync();

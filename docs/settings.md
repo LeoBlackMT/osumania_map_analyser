@@ -6,7 +6,7 @@
 
 ### 壳设置
 
-- **界面语言**：设置窗口导航栏右侧的下拉可切换 自动 / 简体中文 / English，默认跟随系统语言。
+- **界面语言**：壳设置的第一行，可切换 自动 / 简体中文 / English，默认跟随系统语言。
   - 选择会写进 `mma-shell-config.json` 的 `language` 字段并保留。
   - 只影响壳自己的页面（设置页、预设管理器）；tosu 自带的设置面板固定为英文。
 - **常规设置**：
@@ -182,7 +182,7 @@
 
 ### Shell Settings
 
-- **Interface language**: The dropdown at the right of the settings navigation switches Auto / 简体中文 / English; the default follows the system language.
+- **Interface language**: The first row of the shell settings switches Auto / 简体中文 / English; the default follows the system language.
   - The choice is written to `language` in `mma-shell-config.json` and kept across restarts.
   - It only affects the shell's own pages (settings, presets manager); tosu's built-in settings panel stays English.
 - **General Settings**:

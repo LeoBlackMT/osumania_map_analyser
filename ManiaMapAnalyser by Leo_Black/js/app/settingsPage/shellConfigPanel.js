@@ -27,6 +27,13 @@ const GAME_CLIENT_OPTIONS = ["Auto", "osu!", "Etterna", "Malody", "Malody 4"];
 /** Matches config::log_level()'s accepted values. */
 const LOG_LEVEL_OPTIONS = ["debug", "info", "warn", "error", "off"];
 
+// 语言下拉的取值与壳配置 `language` 字段一致。
+const LANGUAGE_OPTIONS = [
+    { value: "auto", labelKey: "ui.settings.language.auto", fallback: "Auto" },
+    { value: "zh-CN", label: "简体中文" },
+    { value: "en-US", label: "English" },
+];
+
 const ROOT_FIELDS = [
     {
         key: "etternaRoot",
@@ -249,6 +256,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         section.appendChild(status);
 
         if (config) {
+            section.appendChild(buildLanguageRow());
             section.appendChild(buildGameClientRow());
             for (const field of ROOT_FIELDS) {
                 section.appendChild(buildRootRow(field));
@@ -309,6 +317,31 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         row.appendChild(info);
         row.appendChild(controlWrap);
         return row;
+    }
+
+    function buildLanguageRow() {
+        const select = document.createElement("select");
+        select.dataset.shellKey = "language";
+        const current = String(config.language || "auto");
+        for (const option of LANGUAGE_OPTIONS) {
+            const optionEl = document.createElement("option");
+            optionEl.value = option.value;
+            optionEl.textContent = option.labelKey ? t(option.labelKey, option.fallback) : option.label;
+            optionEl.selected = option.value === current;
+            select.appendChild(optionEl);
+        }
+        select.value = current;
+        select.addEventListener("change", async () => {
+            await write({ language: select.value });
+            // 语言变了要整页重渲染：重载最省事，数据都在配置文件里。
+            window.location.reload();
+        });
+        return buildRow(
+            "language",
+            t("ui.shell.field.language.title", "Interface language"),
+            t("ui.shell.field.language.description", "Only affects the shell's own pages; tosu's settings panel stays English."),
+            select,
+        );
     }
 
     function buildGameClientRow() {

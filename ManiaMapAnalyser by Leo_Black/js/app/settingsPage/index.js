@@ -33,7 +33,7 @@ import { createShellPresetTransport } from "./shellTransport.js";
 import { createSettingsForm } from "./settingsForm.js";
 import { createSettingsLinks } from "./settingsLinks.js";
 import { createShellConfigPanel } from "./shellConfigPanel.js";
-import { applyStaticText, initLanguage, setLanguage, t } from "../i18n/index.js";
+import { applyStaticText, initLanguage, t } from "../i18n/index.js";
 
 /** Port the desktop shell serves the plugin directory on. */
 const SHELL_PORT = "24061";
@@ -50,13 +50,8 @@ const SHELL_ONLINE_PRESETS_NOTICE = "tosu is connected — settings are read-onl
     + "Manage presets from the Presets page of your tosu instance.";
 const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:24061/settings.html";
 
-// 语言设置：壳配置里的 language（auto/zh-CN/en-US）决定页面语言；
-// 首次渲染前先用 localStorage / 浏览器语言兜底，拿到壳配置后再重算一次。
-const LANGUAGE_OPTIONS = Object.freeze([
-    { value: "auto", labelKey: "ui.settings.language.auto", fallback: "Auto" },
-    { value: "zh-CN", label: "简体中文" },
-    { value: "en-US", label: "English" },
-]);
+// 语言设置：壳配置里的 language（auto/zh-CN/en-US）决定页面语言，
+// 由壳设置面板的第一行「界面语言」写入；这里只负责启动时读一次。
 let shellLanguageSetting = "";
 
 initLanguage();
@@ -73,50 +68,6 @@ async function loadShellLanguage() {
     } catch {
         return "";
     }
-}
-
-async function saveShellLanguage(value) {
-    try {
-        await fetch("/shell-config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ language: value }),
-        });
-    } catch {
-        // 壳不可达：只保留 localStorage 里的选择，刷新后依然生效。
-    }
-}
-
-function storedLanguage() {
-    try {
-        return window.localStorage.getItem("mma.lang") || "";
-    } catch {
-        return "";
-    }
-}
-
-function setupLanguageSelect() {
-    const select = document.getElementById("settings-language");
-    if (!select) {
-        return;
-    }
-    select.setAttribute("aria-label", t("ui.settings.language", "Language"));
-    select.textContent = "";
-    for (const option of LANGUAGE_OPTIONS) {
-        const el = document.createElement("option");
-        el.value = option.value;
-        el.textContent = option.labelKey ? t(option.labelKey, option.fallback) : option.label;
-        select.appendChild(el);
-    }
-    select.value = shellLanguageSetting && shellLanguageSetting !== "auto"
-        ? shellLanguageSetting
-        : (storedLanguage() || "auto");
-    select.addEventListener("change", async () => {
-        const value = select.value;
-        setLanguage(value === "auto" ? (typeof navigator !== "undefined" ? navigator.language : "") : value);
-        await saveShellLanguage(value);
-        window.location.reload();
-    });
 }
 
 const statusBarEl = document.getElementById("settings-status");
@@ -301,8 +252,6 @@ function buildLayout() {
 }
 
 function populateNav(nav) {
-    // 语言下拉是 settings.html 里的静态节点，重建导航时必须保留。
-    const languageSelect = nav.querySelector("#settings-language");
     nav.textContent = "";
     for (const [href, label] of [
         ["#shell-config-section", t("ui.settings.nav.shell", "Shell Configuration")],
@@ -314,9 +263,6 @@ function populateNav(nav) {
         link.href = href;
         link.textContent = label;
         nav.appendChild(link);
-    }
-    if (languageSelect) {
-        nav.appendChild(languageSelect);
     }
     setupNavScrollspy(nav);
 }
@@ -613,7 +559,6 @@ async function runShellPage() {
     shellLanguageSetting = await loadShellLanguage();
     initLanguage({ shellLanguage: shellLanguageSetting });
     applyStaticText();
-    setupLanguageSelect();
 
     setStatus(t("ui.settings.status.loadingSettings", "Loading settings…"), "loading");
 

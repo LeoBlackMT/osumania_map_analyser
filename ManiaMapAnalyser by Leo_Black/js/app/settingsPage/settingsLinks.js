@@ -70,7 +70,7 @@ export function createSettingsLinks({ root, entries, urlFor, onCopied }) {
         const link = document.createElement("a");
         link.className = "settings-link";
         link.dataset.settingsLink = entry.uniqueID;
-        link.textContent = entry.title || entry.text || entry.uniqueID;
+        link.textContent = t(`settings.${entry.uniqueID}.title`, entry.title || entry.text || entry.uniqueID);
         if (url) {
             link.href = url;
             link.title = url;

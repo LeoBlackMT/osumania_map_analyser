@@ -498,6 +498,10 @@ function applyLoadedStore(store, raw) {
         } else {
             persistLibrary();
         }
+    }).catch((error) => {
+        console.error("[presets] store apply failed:", error);
+    }).finally(() => {
+        // 无论成功失败都要收尾：标志不复位会卡死后续 apply，通知不发 UI 会一直是「加载中」。
         storeApplyInFlight = false;
         notifyChanged();
     });
@@ -813,6 +817,8 @@ export function initPresets() {
         if (result !== null) {
             applyLoadedStore(result.store, result.raw);
         } else {
+            // 源离线：按空库起步（不覆盖 presetStorage），UI 不该一直停在「加载中」。
+            libraryLoaded = true;
             ensureDefaultCustomSlots();
             notifyChanged();
         }
