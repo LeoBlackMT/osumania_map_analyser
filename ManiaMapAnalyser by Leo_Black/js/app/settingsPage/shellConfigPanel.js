@@ -12,7 +12,7 @@
  * shell with a mix of old and new bindings).
  */
 
-import { t } from "../i18n/index.js";
+import { setLanguage, t } from "../i18n/index.js";
 
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
@@ -69,7 +69,7 @@ const UNREADABLE_NOTICE = "Shell config unreadable (mma-shell-config.json) — e
  * @param {(url: string, init?: object) => Promise<object>} [options.fetchImpl]
  *        fetch implementation (defaults to the global fetch).
  */
-export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(url, init) }) {
+export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(url, init), onLanguageChange = null }) {
     let config = null;
     let resolved = {};
     let windowState = { topmost: true, clickThrough: false };
@@ -332,8 +332,18 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         }
         select.value = current;
         select.addEventListener("change", async () => {
-            await write({ language: select.value });
-            // 语言变了要整页重渲染：重载最省事，数据都在配置文件里。
+            const value = select.value;
+            // 先切内存里的语言（并写 localStorage），再落盘：即便写盘失败，本次会话也对。
+            setLanguage(value === "auto" ? (typeof navigator !== "undefined" ? navigator.language : "") : value);
+            await write({ language: value });
+            if (typeof onLanguageChange === "function") {
+                try {
+                    onLanguageChange(value);
+                } catch (error) {
+                    console.error("[shell-config] language change handler failed:", error);
+                }
+            }
+            // 整页重载最彻底（预设面板等由各自 init 重建）；重载失效时上面的就地重渲染已兜底。
             window.location.reload();
         });
         return buildRow(

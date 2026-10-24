@@ -216,7 +216,6 @@ export default {
     "ui.presets.descPlaceholder": "这个预设是做什么的？",
     "ui.presets.myPresets": "我的预设",
     "ui.presets.system": "系统预设",
-    "ui.presets.loadingPresets": "正在加载预设…",
     "ui.presets.emptyList": "还没有自定义预设。配置好后点击保存。",
     "ui.presets.defaultDesc": "恢复默认配置（settings.json 里的值）。",
     "ui.presets.autoSaveDesc": "自动保存你最近一次手动修改后的配置。",

@@ -8,14 +8,16 @@
 //     `settings.<uniqueID>.title|description` 覆盖显示，缺译时自动回落英文；
 //   - 当前语言可从 ?lang= / 壳配置（mma-shell-config.json 的 language）/ localStorage /
 //     浏览器语言依次推导。
+import enUS from "./en-US.js";
 import zhCN from "./zh-CN.js";
 
 const STORAGE_KEY = "mma.lang";
 const HTML_LANG = Object.freeze({ "en-US": "en", "zh-CN": "zh-CN" });
-const DICTS = Object.freeze({ "zh-CN": zhCN });
+const DICTS = Object.freeze({ "en-US": enUS, "zh-CN": zhCN });
 const listeners = new Set();
 
 let current = "en-US";
+let initialized = false;
 
 export function supportedLanguages() {
     return ["en-US", "zh-CN"];
@@ -45,6 +47,10 @@ export function resolveLanguage(candidates = []) {
         }
     }
     return "en-US";
+}
+
+export function isLanguageInitialized() {
+    return initialized;
 }
 
 export function getLanguage() {
@@ -86,13 +92,14 @@ function applyDocumentLanguage() {
 }
 
 /** 启动时调用：确定初始语言（不再通知订阅者）。 */
-export function initLanguage({ shellLanguage = "" } = {}) {
+export function initLanguage({ shellLanguage = "", useStored = true } = {}) {
     current = resolveLanguage([
         readQueryOverride(),
         shellLanguage,
-        readStored(),
+        useStored ? readStored() : "",
         typeof navigator !== "undefined" ? navigator.language : "",
     ]);
+    initialized = true;
     applyDocumentLanguage();
     return current;
 }

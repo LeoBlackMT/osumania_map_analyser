@@ -251,6 +251,22 @@ function buildLayout() {
     settingsRootEl.appendChild(section);
 }
 
+/** 切换语言后不重载也能把已渲染的部分换成新语言（重载失效时的兜底）。 */
+function rerenderLocalized() {
+    applyStaticText();
+    if (navRootEl) {
+        populateNav(navRootEl);
+    }
+    if (links) {
+        links.render();
+    }
+    if (form) {
+        form.render();
+        form.setReadOnly(state.shellTosuOnline === true);
+    }
+    setStatus(t("ui.settings.status.ready", "Ready"), "ok");
+}
+
 function populateNav(nav) {
     nav.textContent = "";
     for (const [href, label] of [
@@ -557,7 +573,12 @@ async function runShellPage() {
     });
 
     shellLanguageSetting = await loadShellLanguage();
-    initLanguage({ shellLanguage: shellLanguageSetting });
+    // 「自动」= 跟随系统语言，不吃 localStorage 里上一次的手动选择。
+    const autoLanguage = /^auto$/i.test(shellLanguageSetting);
+    initLanguage({
+        shellLanguage: autoLanguage ? "" : shellLanguageSetting,
+        useStored: !autoLanguage,
+    });
     applyStaticText();
 
     setStatus(t("ui.settings.status.loadingSettings", "Loading settings…"), "loading");
@@ -598,7 +619,7 @@ async function runShellPage() {
     });
     links.render();
 
-    shellConfigPanel = createShellConfigPanel({ root: shellConfigRootEl });
+    shellConfigPanel = createShellConfigPanel({ root: shellConfigRootEl, onLanguageChange: rerenderLocalized });
     await shellConfigPanel.load();
 
     refreshReadOnlyView();

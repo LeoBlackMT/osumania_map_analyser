@@ -6,7 +6,7 @@
  * All destructive actions require a confirmation modal; feedback uses toasts.
  */
 
-import { applyStaticText, initLanguage, t, tf } from "../i18n/index.js";
+import { applyStaticText, initLanguage, isLanguageInitialized, t, tf } from "../i18n/index.js";
 import {
     getCustomPresets,
     getBuiltinPresets,
@@ -21,6 +21,7 @@ import {
     updatePresetMetadata,
     deleteCustomPreset,
     captureCurrentSettings,
+    ensureLibraryLoaded,
     initPresets,
 } from "./core.js";
 import {
@@ -554,14 +555,11 @@ function renderList() {
     if (userPresets.length === 0) {
         const empty = document.createElement("div");
         empty.className = "presets-empty";
-        if (!isLibraryLoaded()) {
-            // Library still streaming in — do not claim there are no presets.
-            empty.textContent = isReadOnlyTransport()
-                ? t("ui.presets.readonly", "tosu owns the settings file — manage presets on tosu's Presets page.")
-                : t("ui.presets.loadingPresets", "Loading presets…");
-        } else {
-            empty.textContent = t("ui.presets.emptyList", "No custom presets yet. Configure the form and click Save.");
-        }
+        // 不再有「加载中」占位：挂载前已经主动拉过一次库，拉不到就直接说没有，
+        // 免得任何时序问题把列表永久钉在「正在加载预设…」。
+        empty.textContent = isReadOnlyTransport()
+            ? t("ui.presets.readonly", "tosu owns the settings file — manage presets on tosu's Presets page.")
+            : t("ui.presets.emptyList", "No custom presets yet. Configure the form and click Save.");
         listEl.appendChild(empty);
     } else {
         for (const preset of userPresets) {
@@ -834,14 +832,20 @@ function subscribeLiveValueSync() {
 // ---------------------------------------------------------------------------
 
 async function init() {
-    // 独立打开 presets.html 时也按已保存的语言渲染。
-    initLanguage();
+    // 独立打开 presets.html 时才自己解析语言；设置页已经解析过，再调会把它覆盖掉
+    // （例如按 localStorage/系统语言重算，配置里的 language 就失效了）。
+    if (!isLanguageInitialized()) {
+        initLanguage();
+    }
     // 先订阅再渲染：库装载完成的通知可能早于下面的首次渲染，晚订阅会把它丢掉，
     // 「我的预设」就永远停在「正在加载预设…」。
     onPresetsChanged(() => renderList());
     // Register the settings-stream listener and load the preset library.
     // (index.html does this via index.js; the manager page must do it itself.)
     initPresets();
+
+    // 主动拉一次库：不依赖设置流/定时器是否已经跑过，挂载时就有数据。
+    await ensureLibraryLoaded();
 
     schema = await loadSettingsSchema();
     entries = schema.entries;

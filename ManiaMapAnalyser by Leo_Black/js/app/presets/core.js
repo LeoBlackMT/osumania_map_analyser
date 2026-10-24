@@ -469,6 +469,22 @@ function fetchStoreFromTosu() {
 }
 
 /**
+ * Pulls the library once when nothing has adopted it yet (manager mount path).
+ * @returns {Promise<boolean>} true when a library is available afterwards.
+ */
+export async function ensureLibraryLoaded() {
+    if (libraryLoaded) {
+        return true;
+    }
+    const result = await fetchStoreFromTosu();
+    if (result === null) {
+        return false;
+    }
+    applyLoadedStore(result.store, result.raw);
+    return true;
+}
+
+/**
  * Applies a freshly loaded store into module state and self-heals historical
  * pollution: when the raw store (as it lives in tosu) differs from the cleaned
  * in-memory store, exactly one write-back is forced to shrink values.json.
