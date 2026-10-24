@@ -6,13 +6,13 @@
  * All destructive actions require a confirmation modal; feedback uses toasts.
  */
 
+import { applyStaticText, initLanguage, isLanguageInitialized, t, tf } from "../i18n/index.js";
 import {
     getCustomPresets,
     getBuiltinPresets,
     getBuiltinSettings,
     getCurrentPreset,
     getPresetTransport,
-    isLibraryLoaded,
     onPresetsChanged,
     applyPresetByName,
     applyCustomSnapshot,
@@ -20,6 +20,9 @@ import {
     updatePresetMetadata,
     deleteCustomPreset,
     captureCurrentSettings,
+    ensureDefaultCustomSlots,
+    ensureLibraryLoaded,
+    didLastPersistFail,
     initPresets,
 } from "./core.js";
 import {
@@ -106,7 +109,7 @@ function showToast(message, type = "info", duration = 3500) {
 // Confirmation modal (async)
 // ---------------------------------------------------------------------------
 
-function confirmDialog(message, { title = "Please confirm", danger = false } = {}) {
+function confirmDialog(message, { title = t("ui.presets.pleaseConfirm", "Please confirm"), danger = false } = {}) {
     return new Promise((resolve) => {
         modalRoot.textContent = "";
         modalRoot.hidden = false;
@@ -128,7 +131,7 @@ function confirmDialog(message, { title = "Please confirm", danger = false } = {
         const cancelBtn = document.createElement("button");
         cancelBtn.type = "button";
         cancelBtn.className = "presets-btn";
-        cancelBtn.textContent = "Cancel";
+        cancelBtn.textContent = t("ui.presets.cancel", "Cancel");
         cancelBtn.addEventListener("click", () => {
             modalRoot.hidden = true;
             resolve(false);
@@ -137,7 +140,7 @@ function confirmDialog(message, { title = "Please confirm", danger = false } = {
         const okBtn = document.createElement("button");
         okBtn.type = "button";
         okBtn.className = `presets-btn ${danger ? "presets-btn-danger" : "presets-btn-primary"}`;
-        okBtn.textContent = "Confirm";
+        okBtn.textContent = t("ui.presets.confirm", "Confirm");
         okBtn.addEventListener("click", () => {
             modalRoot.hidden = true;
             resolve(true);
@@ -160,7 +163,7 @@ function guarded(action) {
             await action(...args);
         } catch (error) {
             console.error("[presets] action failed:", error);
-            showToast(`Unexpected error: ${error?.message || error}`, "error", 6000);
+            showToast(`${t("ui.presets.unexpected", "Unexpected error")}: ${error?.message || error}`, "error", 6000);
         }
     };
 }
@@ -188,34 +191,36 @@ function buildLayout() {
     header.className = "presets-header";
     header.innerHTML = `
         <div class="presets-header-info">
-            <h1>Presets Manager</h1>
-            <p class="presets-header-sub">Create, edit, apply, export and import preset configurations for the Mania Map Analyser overlay.</p>
+            <h1 data-i18n="ui.presets.headerTitle">Presets Manager</h1>
+            <p class="presets-header-sub" data-i18n="ui.presets.headerSub">Create, edit, apply, export and import preset configurations for the Mania Map Analyser overlay.</p>
         </div>
     `;
+    applyStaticText(header);
     root.appendChild(header);
 
     const actionBar = document.createElement("div");
     actionBar.className = "presets-actionbar";
     actionBar.innerHTML = `
-        <button id="act-new" class="presets-btn" type="button">New</button>
-        <button id="act-save" class="presets-btn presets-btn-primary" type="button">Save</button>
-        <button id="act-apply" class="presets-btn presets-btn-primary" type="button">Apply Checked</button>
-        <button id="act-load-current" class="presets-btn" type="button">Load Current</button>
+        <button id="act-new" class="presets-btn" type="button" data-i18n="ui.presets.new">New</button>
+        <button id="act-save" class="presets-btn presets-btn-primary" type="button" data-i18n="ui.presets.save">Save</button>
+        <button id="act-apply" class="presets-btn presets-btn-primary" type="button" data-i18n="ui.presets.applyChecked">Apply Checked</button>
+        <button id="act-load-current" class="presets-btn" type="button" data-i18n="ui.presets.loadCurrent">Load Current</button>
         <span class="presets-actionbar-sep"></span>
-        <button id="act-select-all" class="presets-btn" type="button">Select All</button>
-        <button id="act-invert" class="presets-btn" type="button">Invert</button>
-        <button id="act-clear" class="presets-btn" type="button">Clear Selection</button>
+        <button id="act-select-all" class="presets-btn" type="button" data-i18n="ui.presets.selectAll">Select All</button>
+        <button id="act-invert" class="presets-btn" type="button" data-i18n="ui.presets.invert">Invert</button>
+        <button id="act-clear" class="presets-btn" type="button" data-i18n="ui.presets.clearSelection">Clear Selection</button>
         <span class="presets-actionbar-sep"></span>
-        <button id="act-export-current" class="presets-btn" type="button">Export Current</button>
-        <button id="act-export-all" class="presets-btn" type="button">Export All</button>
-        <button id="act-import" class="presets-btn" type="button">Import</button>
+        <button id="act-export-current" class="presets-btn" type="button" data-i18n="ui.presets.exportCurrent">Export Current</button>
+        <button id="act-export-all" class="presets-btn" type="button" data-i18n="ui.presets.exportAll">Export All</button>
+        <button id="act-import" class="presets-btn" type="button" data-i18n="ui.presets.import">Import</button>
         <input id="preset-import-file" type="file" accept="application/json,.json" hidden>
         <span class="presets-actionbar-sep"></span>
         <a id="act-guide" class="presets-btn presets-btn-guide" href="https://github.com/LeoBlackMT/osumania_map_analyser/blob/main/docs/presets-guide.md"
             target="_blank" rel="noopener noreferrer" role="button">
-            Guide
+            <span data-i18n="ui.presets.guide">Guide</span>
         </a>
     `;
+    applyStaticText(actionBar);
     root.appendChild(actionBar);
 
     const main = document.createElement("main");
@@ -231,28 +236,29 @@ function buildLayout() {
     const meta = document.createElement("div");
     meta.className = "presets-meta";
     meta.innerHTML = `
-        <div class="presets-meta-title">Preset Info</div>
+        <div class="presets-meta-title" data-i18n="ui.presets.metaTitle">Preset Info</div>
         <label class="presets-meta-field">
-            <span>Name</span>
+            <span data-i18n="ui.presets.name">Name</span>
             <input id="meta-name" type="text" maxlength="40" placeholder="my_preset">
-            <small>English letters, digits, _ and - only, max 40 chars.</small>
+            <small data-i18n="ui.presets.nameHint">English letters, digits, _ and - only, max 40 chars.</small>
         </label>
         <label class="presets-meta-field">
-            <span>Description</span>
-            <input id="meta-desc" type="text" maxlength="200" placeholder="What is this preset for?">
+            <span data-i18n="ui.presets.description">Description</span>
+            <input id="meta-desc" type="text" maxlength="200" placeholder="What is this preset for?" data-i18n-placeholder="ui.presets.descPlaceholder">
         </label>
         <div class="presets-meta-row">
             <label class="presets-meta-field">
-                <span>Version</span>
+                <span data-i18n="ui.presets.version">Version</span>
                 <input id="meta-version" type="number" min="1" step="1" value="1">
-                <small>Whole number; higher = newer.</small>
+                <small data-i18n="ui.presets.versionHint">Whole number; higher = newer.</small>
             </label>
             <label class="presets-meta-field">
-                <span>ID (auto)</span>
+                <span data-i18n="ui.presets.id">ID (auto)</span>
                 <input id="meta-id" type="text" readonly>
             </label>
         </div>
     `;
+    applyStaticText(meta);
     editorWrap.appendChild(meta);
 
     editorEl = document.createElement("div");
@@ -282,12 +288,12 @@ function buildLayout() {
 
 function wireActions(actionBar) {
     actionBar.querySelector("#act-new").addEventListener("click", guarded(async () => {
-        const reset = await confirmDialog("Clear the editor and start a new preset?", { title: "New preset" });
+        const reset = await confirmDialog(t("ui.presets.clearEditorTitle", "Clear the editor and start a new preset?"), { title: t("ui.presets.newPreset", "New preset") });
         if (!reset) {
             return;
         }
         resetEditor();
-        showToast("Editor cleared — configure the form and save as a new preset.", "info");
+        showToast(t("ui.presets.cleared", "Editor cleared — configure the form and save as a new preset."), "info");
     }));
 
     actionBar.querySelector("#act-save").addEventListener("click", guarded(() => saveCurrentPreset()));
@@ -295,18 +301,18 @@ function wireActions(actionBar) {
     actionBar.querySelector("#act-apply").addEventListener("click", guarded(async () => {
         const snapshot = form.collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
-            showToast("Nothing is checked to apply.", "error");
+            showToast(t("ui.presets.nothingCheckedApply", "Nothing is checked to apply."), "error");
             return;
         }
         const ok = await confirmDialog(
-            `Apply the checked settings (${Object.keys(snapshot).length} fields) to the overlay now?`,
-            { title: "Apply settings" },
+            tf("ui.presets.applyCheckedConfirm", { count: Object.keys(snapshot).length }, `Apply the checked settings (${Object.keys(snapshot).length} fields) to the overlay now?`),
+            { title: t("ui.presets.applySettings", "Apply settings") },
         );
         if (!ok) {
             return;
         }
         await applyCustomSnapshot(snapshot);
-        showToast("Checked settings applied.", "success");
+        showToast(t("ui.presets.applied", "Checked settings applied."), "success");
     }));
 
     actionBar.querySelector("#act-load-current").addEventListener("click", guarded(async () => {
@@ -317,48 +323,52 @@ function wireActions(actionBar) {
             }
         }
         form.syncFormControls();
-        showToast("Form values loaded from the current overlay settings.", "success");
+        showToast(t("ui.presets.loadedCurrent", "Form values loaded from the current overlay settings."), "success");
     }));
 
     actionBar.querySelector("#act-select-all").addEventListener("click", () => {
         form.selectAllCheckboxes(true);
-        showToast("All settings selected.", "info", 1800);
+        showToast(t("ui.presets.allSelected", "All settings selected."), "info", 1800);
     });
 
     actionBar.querySelector("#act-invert").addEventListener("click", () => {
         form.invertCheckboxes();
-        showToast("Selection inverted.", "info", 1800);
+        showToast(t("ui.presets.inverted", "Selection inverted."), "info", 1800);
     });
 
     actionBar.querySelector("#act-clear").addEventListener("click", () => {
         form.selectAllCheckboxes(false);
-        showToast("Selection cleared.", "info", 1800);
+        showToast(t("ui.presets.clearedSelection", "Selection cleared."), "info", 1800);
     });
 
-    actionBar.querySelector("#act-export-current").addEventListener("click", () => {
+    actionBar.querySelector("#act-export-current").addEventListener("click", async () => {
         const name = metaNameInput.value.trim();
         if (!PRESET_NAME_RE.test(name)) {
-            showToast("Enter a valid preset name first (letters, digits, _ or -; import needs it).", "error");
+            showToast(t("ui.presets.nameInvalidShort", "Enter a valid preset name first (letters, digits, _ or -; import needs it)."), "error");
             return;
         }
         const snapshot = form.collectCheckedSnapshot();
         if (Object.keys(snapshot).length === 0) {
-            showToast("Nothing checked to export.", "error");
+            showToast(t("ui.presets.nothingToExport", "Nothing checked to export."), "error");
             return;
         }
         const version = Number(metaVersionInput.value);
-        exportCurrentToFile(name, metaDescInput.value.trim(), version, snapshot);
-        showToast("Current editor state exported.", "success");
+        const exported = await exportCurrentToFile(name, metaDescInput.value.trim(), version, snapshot);
+        if (exported) {
+            showToast(t("ui.presets.exportedCurrent", "Current editor state exported."), "success");
+        }
     });
 
-    actionBar.querySelector("#act-export-all").addEventListener("click", () => {
+    actionBar.querySelector("#act-export-all").addEventListener("click", async () => {
         const count = getCustomPresets().filter((p) => p.name !== AUTO_SAVE_PRESET_NAME).length;
         if (count === 0) {
-            showToast("No custom presets to export.", "error");
+            showToast(t("ui.presets.noCustomToExport", "No custom presets to export."), "error");
             return;
         }
-        exportLibraryToFile();
-        showToast(`Exported ${count} presets.`, "success");
+        const saved = await exportLibraryToFile();
+        if (saved) {
+            showToast(tf("ui.presets.exportedCount", { count }, `Exported ${count} presets.`), "success");
+        }
     });
 
     const importBtn = actionBar.querySelector("#act-import");
@@ -384,7 +394,7 @@ function wireActions(actionBar) {
         }
         openExternalLink(guideLink.href).then((opened) => {
             if (!opened) {
-                showToast(LINK_COPIED_NOTICE, "info", 6000);
+                showToast(t("ui.settings.linkCopied", LINK_COPIED_NOTICE), "info", 6000);
             }
         });
     });
@@ -424,7 +434,7 @@ async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = fal
     form.syncFormControls();
     syncIncludeCheckboxes();
     highlightActiveRow(preset.name);
-    showToast(`"${preset.name}" loaded into the editor. Uncheck fields to exclude them.`, "info", 2500);
+    showToast(tf("ui.presets.loadedEditor", { name: preset.name }, `"${preset.name}" loaded into the editor. Uncheck fields to exclude them.`), "info", 2500);
 }
 
 /** Syncs the include-checkbox DOM to the formIncluded state. */
@@ -444,49 +454,57 @@ function syncIncludeCheckboxes() {
 async function saveCurrentPreset() {
     const name = metaNameInput.value.trim();
     if (!name) {
-        showToast("Enter a preset name first.", "error");
+        showToast(t("ui.presets.nameRequired", "Enter a preset name first."), "error");
         return;
     }
     if (!PRESET_NAME_RE.test(name)) {
-        showToast("Name must be English letters, digits, _ or - (max 40 chars).", "error", 5000);
+        showToast(t("ui.presets.nameInvalid", "Name must be English letters, digits, _ or - (max 40 chars)."), "error", 5000);
         return;
     }
     const description = metaDescInput.value.trim();
     const version = Number(metaVersionInput.value);
     const snapshot = form.collectCheckedSnapshot();
     if (Object.keys(snapshot).length === 0) {
-        showToast("Nothing is checked — the preset would be empty.", "error");
+        showToast(t("ui.presets.emptyPreset", "Nothing is checked — the preset would be empty."), "error");
         return;
     }
 
     const existing = getCustomPresets().find((preset) => preset.name === name);
     if (existing) {
         const ok = await confirmDialog(
-            `Preset "${name}" already exists. Overwrite it?`,
-            { title: "Overwrite preset", danger: true },
+            tf("ui.presets.existsOverwrite", { name }, `Preset "${name}" already exists. Overwrite it?`),
+            { title: t("ui.presets.overwrite", "Overwrite preset"), danger: true },
         );
         if (!ok) {
             return;
         }
         const updated = createCustomPreset(name, snapshot, { description, version });
         if (!updated) {
-            showToast("Preset could not be created (reserved or duplicate system name).", "error");
+            showToast(t("ui.presets.createFailed", "Preset could not be created (reserved or duplicate system name)."), "error");
             return;
         }
         editingId = updated.id;
         metaIdReadout.value = updated.id;
-        showToast(`Preset "${name}" updated.`, "success");
+        if (didLastPersistFail()) {
+            showToast(t("ui.presets.persistFailed", "Preset kept in memory only — the settings file could not be written."), "error", 6000);
+        } else {
+            showToast(tf("ui.presets.updated", { name }, `Preset "${name}" updated.`), "success");
+        }
         return;
     }
 
     const created = createCustomPreset(name, snapshot, { description, version });
     if (!created) {
-        showToast("Preset could not be created (reserved or duplicate system name).", "error");
+        showToast(t("ui.presets.createFailed", "Preset could not be created (reserved or duplicate system name)."), "error");
         return;
     }
     editingId = created.id;
     metaIdReadout.value = created.id;
-    showToast(`Preset "${name}" saved.`, "success");
+    if (didLastPersistFail()) {
+        showToast(t("ui.presets.persistFailed", "Preset kept in memory only — the settings file could not be written."), "error", 6000);
+    } else {
+        showToast(tf("ui.presets.saved", { name }, `Preset "${name}" saved.`), "success");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -505,18 +523,29 @@ function buildPresetRow(preset, { isSystem = false, active = false, actions = []
     const actionsHtml = actions.length > 0
         ? `<div class="presets-item-actions">${actions.map((action) => {
             const className = action === "apply" ? "presets-btn-apply" : action === "delete" ? "presets-btn-danger" : "";
-            return `<button type="button" class="presets-btn ${className}" data-action="${action}">${action[0].toUpperCase()}${action.slice(1)}</button>`;
+            const label = t(`ui.presets.action.${action}`, action[0].toUpperCase() + action.slice(1));
+            return `<button type="button" class="presets-btn ${className}" data-action="${action}">${escapeHtml(label)}</button>`;
         }).join("")}</div>`
         : "";
 
     row.innerHTML = `
         <div class="presets-item-info">
-            <div class="presets-item-name">${name}${isSystem ? '<span class="presets-item-badge">System</span>' : ""}${version ? `<span class="presets-item-version">${escapeHtml(version)}</span>` : ""}</div>
+            <div class="presets-item-name">${name}${isSystem ? `<span class="presets-item-badge">${escapeHtml(t("ui.presets.systemBadge", "System"))}</span>` : ""}${version ? `<span class="presets-item-version">${escapeHtml(version)}</span>` : ""}</div>
             <div class="presets-item-desc"${preset.description ? ` title="${escapeHtml(preset.description)}"` : ""}>${desc}</div>
         </div>
         ${actionsHtml}
     `;
     return row;
+}
+
+/** 只读传输（tosu 在线）下无法交付库，别把占位文案写成「正在加载」。 */
+function isReadOnlyTransport() {
+    try {
+        const transport = getPresetTransport();
+        return Boolean(transport && typeof transport.isReadOnly === "function" && transport.isReadOnly());
+    } catch {
+        return false;
+    }
 }
 
 function renderList() {
@@ -529,7 +558,7 @@ function renderList() {
     // Custom presets come first (they are the user's own).
     const customSection = document.createElement("div");
     customSection.className = "presets-section";
-    customSection.textContent = "My Presets";
+    customSection.textContent = t("ui.presets.myPresets", "My Presets");
     listEl.appendChild(customSection);
 
     const userPresets = getCustomPresets()
@@ -539,12 +568,11 @@ function renderList() {
     if (userPresets.length === 0) {
         const empty = document.createElement("div");
         empty.className = "presets-empty";
-        if (!isLibraryLoaded()) {
-            // Library still streaming in — do not claim there are no presets.
-            empty.textContent = "Loading presets…";
-        } else {
-            empty.textContent = "No custom presets yet. Configure the form and click Save.";
-        }
+        // 不再有「加载中」占位：挂载前已经主动拉过一次库，拉不到就直接说没有，
+        // 免得任何时序问题把列表永久钉在「正在加载预设…」。
+        empty.textContent = isReadOnlyTransport()
+            ? t("ui.presets.readonly", "tosu owns the settings file — manage presets on tosu's Presets page.")
+            : t("ui.presets.emptyList", "No custom presets yet. Configure the form and click Save.");
         listEl.appendChild(empty);
     } else {
         for (const preset of userPresets) {
@@ -562,13 +590,13 @@ function renderList() {
     // System presets (Default first, then built-ins).
     const systemSection = document.createElement("div");
     systemSection.className = "presets-section";
-    systemSection.textContent = "System";
+    systemSection.textContent = t("ui.presets.system", "System");
     listEl.appendChild(systemSection);
 
     listEl.appendChild(buildPresetRow(
         {
             name: "Default",
-            description: "Reset to the factory default configuration (values from settings.json).",
+            description: t("ui.presets.defaultDesc", "Reset to the factory default configuration (values from settings.json)."),
             version: 1,
         },
         {
@@ -590,7 +618,7 @@ function renderList() {
         listEl.appendChild(buildPresetRow(
             {
                 name: AUTO_SAVE_PRESET_NAME,
-                description: "Automatically keeps the latest manual configuration after you change settings.",
+                description: t("ui.presets.autoSaveDesc", "Automatically keeps the latest manual configuration after you change settings."),
             },
             { isSystem: true, active: activeName === AUTO_SAVE_PRESET_NAME, actions: [] },
         ));
@@ -633,12 +661,12 @@ function startRename(row) {
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
     confirmBtn.className = "presets-btn";
-    confirmBtn.textContent = "Save";
+    confirmBtn.textContent = t("ui.presets.save", "Save");
     confirmBtn.dataset.action = "rename-confirm";
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "presets-btn";
-    cancelBtn.textContent = "Cancel";
+    cancelBtn.textContent = t("ui.presets.cancel", "Cancel");
     cancelBtn.dataset.action = "rename-cancel";
     actions.appendChild(confirmBtn);
     actions.appendChild(cancelBtn);
@@ -658,11 +686,11 @@ function finishRename(row) {
         return;
     }
     if (!updatePresetMetadata(preset.id, { name: input.value })) {
-        showToast("Invalid or duplicate name.", "error");
+        showToast(t("ui.presets.renameInvalid", "Invalid or duplicate name."), "error");
         renderList();
         return;
     }
-    showToast("Preset renamed.", "success");
+    showToast(t("ui.presets.renamed", "Preset renamed."), "success");
 }
 
 /** Loads any preset (Default / built-in / custom) into the editor. */
@@ -671,7 +699,7 @@ async function loadPresetByName(name) {
         const defaults = await buildDefaultSnapshot();
         await loadPresetIntoEditor({
             name: "Default",
-            description: "Factory default configuration.",
+            description: t("ui.presets.factoryDefault", "Factory default configuration."),
             version: 1,
             settings: defaults,
         }, { isDefault: true });
@@ -712,17 +740,17 @@ async function handleListClick(event) {
         }
         case "apply": {
             if (name === AUTO_SAVE_PRESET_NAME) {
-                showToast("LastSavedPreset keeps following your manual changes.", "info");
+                showToast(t("ui.presets.autoSaveFollow", "LastSavedPreset keeps following your manual changes."), "info");
                 return;
             }
-            const ok = await confirmDialog(`Apply preset "${name}" now?`, { title: "Apply preset" });
+            const ok = await confirmDialog(tf("ui.presets.applyConfirm", { name }, `Apply preset "${name}" now?`), { title: t("ui.presets.applyPreset", "Apply preset") });
             if (!ok) {
                 return;
             }
             if (await applyPresetByName(name)) {
-                showToast(`Preset "${name}" applied.`, "success");
+                showToast(tf("ui.presets.appliedNamed", { name }, `Preset "${name}" applied.`), "success");
             } else {
-                showToast(`Preset "${name}" not found.`, "error");
+                showToast(tf("ui.presets.notFound", { name }, `Preset "${name}" not found.`), "error");
             }
             break;
         }
@@ -741,23 +769,25 @@ async function handleListClick(event) {
                 return;
             }
             const ok = await confirmDialog(
-                `Delete preset "${preset.name}"? This cannot be undone.`,
-                { title: "Delete preset", danger: true },
+                tf("ui.presets.deleteConfirm", { name: preset.name }, `Delete preset "${preset.name}"? This cannot be undone.`),
+                { title: t("ui.presets.deletePreset", "Delete preset"), danger: true },
             );
             if (ok) {
                 deleteCustomPreset(preset.id);
                 if (editingId === preset.id) {
                     resetEditor();
                 }
-                showToast("Preset deleted.", "success");
+                showToast(t("ui.presets.deleted", "Preset deleted."), "success");
             }
             break;
         }
         case "export": {
             const preset = getCustomPresets().find((item) => item.name === name);
             if (preset) {
-                exportPresetToFile(preset);
-                showToast(`Preset "${preset.name}" exported.`, "success");
+                const saved = await exportPresetToFile(preset);
+                if (saved) {
+                    showToast(tf("ui.presets.exportedNamed", { name: preset.name }, `Preset "${preset.name}" exported.`), "success");
+                }
             }
             break;
         }
@@ -817,9 +847,24 @@ function subscribeLiveValueSync() {
 // ---------------------------------------------------------------------------
 
 async function init() {
+    // 独立打开 presets.html 时才自己解析语言；设置页已经解析过，再调会把它覆盖掉
+    // （例如按 localStorage/系统语言重算，配置里的 language 就失效了）。
+    if (!isLanguageInitialized()) {
+        initLanguage();
+    }
+    // 先订阅再渲染：库装载完成的通知可能早于下面的首次渲染，晚订阅会把它丢掉，
+    // 「我的预设」就永远停在「正在加载预设…」。
+    onPresetsChanged(() => renderList());
     // Register the settings-stream listener and load the preset library.
     // (index.html does this via index.js; the manager page must do it itself.)
     initPresets();
+
+    // 主动拉一次库：不依赖设置流/定时器是否已经跑过，挂载时就有数据。
+    await ensureLibraryLoaded();
+    // 默认锚点槽 Custom1..3 必须在首屏之前就位（它们不允许删除/重命名，
+    // 是「应用即捕获当前配置」的入口）。ensureDefaultCustomSlots 是幂等的：
+    // 只补缺失的槽，已有槽原样保留。
+    await ensureDefaultCustomSlots();
 
     schema = await loadSettingsSchema();
     entries = schema.entries;
@@ -840,7 +885,9 @@ async function init() {
     form.renderForm();
 
     listEl.addEventListener("click", guarded(handleListClick));
-    onPresetsChanged(() => renderList());
+
+    // 上面的 await 期间库可能已经装载完成，收尾再渲染一次。
+    renderList();
 
     // Live value sync from the settings stream (skip focused controls).
     subscribeLiveValueSync();

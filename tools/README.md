@@ -209,3 +209,22 @@ Rebuild with the command above whenever the version table in `desktop/src/malody
 - `--find-md5` looks for the **identity string** `<md5>_<slot>`, not for a bare 32-hex string: to ask whether some md5 exists regardless of the slot, compare against the full list printed by `--scan-identity`.
 - `temp/malody4-anchor-check.exe` is a scratch artifact: delete it after acceptance per CLAUDE.md, never commit it.
 - The tool is read-only: no injection, no file writes, no administrator rights needed (same user as the game is enough).
+
+## i18n-check.mjs（中文词典覆盖率检查）
+
+### 这个脚本是做什么的（What it does）
+
+检查壳内页面（`settings.html` / 预设管理器）的中文词典是否齐全：`settings.json` 的每个设置项与分组是否都有 `zh-CN` 译文、源码里 `t()` / `tf()` / `data-i18n` 用到的键是否都在词典里、词典里是否有已失效的多余键。
+
+Checks the Chinese dictionary coverage of the shell pages: every `settings.json` entry and group must have a `zh-CN` string, every key used by `t()` / `tf()` / `data-i18n` must exist, and stale keys are reported.
+
+### 使用方法（Usage）
+
+```bash
+node tools/i18n-check.mjs
+```
+
+退出码 0 = 设置项与 `t()` 键全部有译文；非 0 = 有缺失（会逐条列出）。发版前跑一次即可。
+
+Exit code 0 means every setting title/description and every `t()` key is translated; non-zero lists what is missing. Run it before a release.
+

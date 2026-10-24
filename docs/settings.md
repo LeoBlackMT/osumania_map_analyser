@@ -6,6 +6,9 @@
 
 ### 壳设置
 
+- **界面语言**：壳设置的第一行，可切换 自动 / 简体中文 / English，默认跟随系统语言。
+  - 选择会写进 `mma-shell-config.json` 的 `language` 字段并保留。
+  - 只影响壳自己的页面（设置页、预设管理器）；tosu 自带的设置面板固定为英文。
 - **常规设置**：
   - **Game client**：选择需要使用的数据源。
     - Auto：自动选择目前活跃的来源。优先级：游玩中 > 近期活动 > osu! > Etterna > Malody 4 > Malody
@@ -179,6 +182,9 @@
 
 ### Shell Settings
 
+- **Interface language**: The first row of the shell settings switches Auto / 简体中文 / English; the default follows the system language.
+  - The choice is written to `language` in `mma-shell-config.json` and kept across restarts.
+  - It only affects the shell's own pages (settings, presets manager); tosu's built-in settings panel stays English.
 - **General Settings**:
   - **Game client**: Select the data source to use.
     - Auto: Automatically selects the currently active source. Priority: Playing > Recent activity > osu! > Etterna > Malody 4 > Malody.

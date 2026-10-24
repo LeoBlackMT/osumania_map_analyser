@@ -5,6 +5,8 @@
  * manager.js stays the single owner of page state.
  */
 
+import { t } from "../i18n/index.js";
+
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 
 /**
@@ -49,7 +51,7 @@ export function createForm(api) {
                 if (pendingHeader) {
                     const title = document.createElement("h2");
                     title.className = "presets-group-title";
-                    title.textContent = pendingHeader.title;
+                    title.textContent = t(`settings.${pendingHeader.uniqueID}.title`, pendingHeader.title);
                     currentGroup.appendChild(title);
                     pendingHeader = null;
                 }
@@ -79,8 +81,8 @@ export function createForm(api) {
 
         const info = document.createElement("span");
         info.className = "presets-setting-info";
-        info.innerHTML = `<span class="presets-setting-title">${escapeHtml(entry.title)}</span>`
-            + (entry.description ? `<span class="presets-setting-desc">${escapeHtml(entry.description)}</span>` : "");
+        info.innerHTML = `<span class="presets-setting-title">${escapeHtml(t(`settings.${key}.title`, entry.title))}</span>`
+            + (entry.description ? `<span class="presets-setting-desc">${escapeHtml(t(`settings.${key}.description`, entry.description))}</span>` : "");
 
         const control = buildControl(entry, key);
 
@@ -113,7 +115,7 @@ export function createForm(api) {
                 for (const option of entry.options || []) {
                     const optionEl = document.createElement("option");
                     optionEl.value = option;
-                    optionEl.textContent = option;
+                    optionEl.textContent = t(`option.${option}`, option);
                     if (option === current) {
                         optionEl.selected = true;
                     }

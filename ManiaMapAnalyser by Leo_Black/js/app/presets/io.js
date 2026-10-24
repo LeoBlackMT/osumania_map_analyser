@@ -23,8 +23,31 @@ function safeFileName(name) {
         .slice(0, 60);
 }
 
-function download(text, fileName) {
+/**
+ * 保存 JSON 到用户选定的位置。
+ * 优先用 File System Access API（WebView2 / Chromium 都支持）弹出「另存为」，
+ * 用户不选就不落盘；不支持或调用失败时回落到普通下载（浏览器/CEF 的下载目录）。
+ * @returns {Promise<boolean>} true = 已保存，false = 用户取消
+ */
+async function download(text, fileName) {
     const blob = new Blob([text], { type: "application/json" });
+    if (typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: fileName,
+                types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return true;
+        } catch (error) {
+            if (error && error.name === "AbortError") {
+                return false; // 用户在对话框里点了取消
+            }
+            // 其他失败（权限、不支持的类型等）：继续走下面的普通下载
+        }
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -33,6 +56,7 @@ function download(text, fileName) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    return true;
 }
 
 function singlePayload(name, description, version, settings) {
@@ -51,7 +75,7 @@ function singlePayload(name, description, version, settings) {
 
 /** Exports one custom preset as a downloadable json file. */
 export function exportPresetToFile(preset) {
-    download(
+    return download(
         JSON.stringify(singlePayload(preset.name, preset.description, preset.version, preset.settings), null, 2),
         `${safeFileName(preset.name)}.json`,
     );
@@ -59,7 +83,7 @@ export function exportPresetToFile(preset) {
 
 /** Exports the currently edited (unsaved) preset as a downloadable json file. */
 export function exportCurrentToFile(name, description, version, settings) {
-    download(
+    return download(
         JSON.stringify(singlePayload(name, description, version, settings), null, 2),
         `${safeFileName(name || "preset")}.json`,
     );
@@ -81,7 +105,7 @@ export function exportLibraryToFile() {
             })),
         exportedAt: new Date().toISOString(),
     };
-    download(JSON.stringify(data, null, 2), "mma-presets.json");
+    return download(JSON.stringify(data, null, 2), "mma-presets.json");
 }
 
 function importSingle(name, description, version, settings) {

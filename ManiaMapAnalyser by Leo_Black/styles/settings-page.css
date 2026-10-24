@@ -30,7 +30,8 @@ body {
     padding: 0 0 48px;
     background: var(--settings-bg);
     color: var(--settings-text);
-    font-family: "Segoe UI", system-ui, sans-serif;
+    /* 中文界面需要 CJK 字体兜底：Segoe UI 本身不含中文字形，Windows/Linux 各取系统可用项。 */
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", system-ui, sans-serif;
     font-size: 14px;
     line-height: 1.5;
 }
