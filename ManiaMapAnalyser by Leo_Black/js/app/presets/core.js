@@ -93,6 +93,7 @@ export function getCurrentPreset() {
 let libraryLoaded = false;
 /** 真正从文件/流里读到了库（空库兜底不算），写回时据此避免覆盖已有内容。 */
 let storeAdopted = false;
+let lastPersistFailed = false;
 
 export function isLibraryLoaded() {
     return libraryLoaded;
@@ -433,22 +434,38 @@ function currentStoreFingerprint() {
     return storeFingerprint(customPresets, lastWritten);
 }
 
+/**
+ * 把内存里的库写回设置文件。
+ * 不依赖“设置流已到达”：真正的前置条件是传输层有可用的合并基准（内部 base），
+ * 没有基准时 writeLibrary() 会直接拒绝，所以这里只按它的返回值记账。
+ * @returns {boolean} true = 已派发写入
+ */
 function persistLibrary() {
-    // Never write before the authoritative store arrived from the settings
-    // stream: persisting the not-yet-loaded (empty) library would overwrite an
-    // existing one in values.json.
-    if (!storeAdopted) {
-        return;
+    // 传输层已经有合并基准 = 至少成功读过一次设置文件，此时写回不会丢未知键；
+    // 否则必须等库真正装载过（storeAdopted），避免拿空库覆盖用户已有内容。
+    const hasBase = typeof transport.hasBase === "function" && transport.hasBase();
+    if (!storeAdopted && !hasBase) {
+        lastPersistFailed = true;
+        return false;
     }
     const fingerprint = currentStoreFingerprint();
     if (fingerprint === lastPersistedFingerprint) {
         // Content unchanged — nothing to persist. Avoids the write-back echo
         // loop where each page re-POSTs what it just received.
-        return;
+        lastPersistFailed = false;
+        return false;
     }
-    if (writeLibraryToTosu()) {
+    const accepted = writeLibraryToTosu();
+    lastPersistFailed = !accepted;
+    if (accepted) {
         lastPersistedFingerprint = fingerprint;
     }
+    return accepted;
+}
+
+/** 上一次 persistLibrary() 是否被拒绝（供 UI 提示，避免“存了但没落盘”的无声失败）。 */
+export function didLastPersistFail() {
+    return lastPersistFailed;
 }
 
 /**

@@ -273,6 +273,8 @@ export function createShellTransport({
     return {
         mode: "shell",
         isAvailable,
+        /** 是否已经成功 GET 过一次（拿到合并基准）。写了才不会覆盖未知键。 */
+        hasBase: () => base !== null,
         readStore,
         writeLibrary,
         writeBack,

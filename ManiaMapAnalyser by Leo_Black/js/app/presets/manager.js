@@ -22,6 +22,7 @@ import {
     deleteCustomPreset,
     captureCurrentSettings,
     ensureLibraryLoaded,
+    didLastPersistFail,
     initPresets,
 } from "./core.js";
 import {
@@ -484,7 +485,11 @@ async function saveCurrentPreset() {
         }
         editingId = updated.id;
         metaIdReadout.value = updated.id;
-        showToast(tf("ui.presets.updated", { name }, `Preset "${name}" updated.`), "success");
+        if (didLastPersistFail()) {
+            showToast(t("ui.presets.persistFailed", "Preset kept in memory only — the settings file could not be written."), "error", 6000);
+        } else {
+            showToast(tf("ui.presets.updated", { name }, `Preset "${name}" updated.`), "success");
+        }
         return;
     }
 
@@ -495,7 +500,11 @@ async function saveCurrentPreset() {
     }
     editingId = created.id;
     metaIdReadout.value = created.id;
-    showToast(tf("ui.presets.saved", { name }, `Preset "${name}" saved.`), "success");
+    if (didLastPersistFail()) {
+        showToast(t("ui.presets.persistFailed", "Preset kept in memory only — the settings file could not be written."), "error", 6000);
+    } else {
+        showToast(tf("ui.presets.saved", { name }, `Preset "${name}" saved.`), "success");
+    }
 }
 
 // ---------------------------------------------------------------------------
