@@ -21,6 +21,7 @@ import {
     updatePresetMetadata,
     deleteCustomPreset,
     captureCurrentSettings,
+    ensureDefaultCustomSlots,
     ensureLibraryLoaded,
     didLastPersistFail,
     initPresets,
@@ -861,6 +862,10 @@ async function init() {
 
     // 主动拉一次库：不依赖设置流/定时器是否已经跑过，挂载时就有数据。
     await ensureLibraryLoaded();
+    // 默认锚点槽 Custom1..3 必须在首屏之前就位（它们不允许删除/重命名，
+    // 是「应用即捕获当前配置」的入口）。ensureDefaultCustomSlots 是幂等的：
+    // 只补缺失的槽，已有槽原样保留。
+    await ensureDefaultCustomSlots();
 
     schema = await loadSettingsSchema();
     entries = schema.entries;
