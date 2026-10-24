@@ -119,6 +119,8 @@ export function createShellPresetTransport({
     return {
         mode: "shell",
         isAvailable: () => store.isAvailable(),
+        // 转发给 core.persistLibrary()：判断写回是否安全。
+        hasBase: () => (typeof store.hasBase === "function" ? store.hasBase() : true),
         readStore: () => store.readStore(),
         readValues: () => store.readValues(),
         writeLibrary: (serialized) => store.writeLibrary(serialized),

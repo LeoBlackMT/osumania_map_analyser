@@ -492,7 +492,9 @@ function fetchStoreFromTosu() {
  * @returns {Promise<boolean>} true when a library is available afterwards.
  */
 export async function ensureLibraryLoaded() {
-    if (libraryLoaded) {
+    // 只有真正装载过库才算数：libraryLoaded 可能被「空库兜底」置真，
+    // 那种状态写回仍然是被禁止的（会覆盖用户已有内容）。
+    if (storeAdopted) {
         return true;
     }
     const result = await fetchStoreFromTosu();
@@ -500,7 +502,7 @@ export async function ensureLibraryLoaded() {
         return false;
     }
     applyLoadedStore(result.store, result.raw);
-    return true;
+    return storeAdopted;
 }
 
 /**
