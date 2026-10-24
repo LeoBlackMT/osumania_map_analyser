@@ -64,7 +64,8 @@ Global shortcuts remain active even when the window is unfocused or click-throug
 3. Performance may be affected by beatmap complexity and enabled features; lag or delay may occur in some scenarios. Adjust settings according to your system for a smoother experience.
 4. When osu!(lazer) updates and memory reading fails before a new shell or offset table is released, click Memory Offsets Management -> Live Generator in settings to quickly generate an offset table from the running lazer process. Lazer must remain running during generation. You can also run `offsets/gen.exe` directly.
 5. Port occupied: It uses 24061 (shell page), 24062 (osu! native-read compatibility origin), and 17653 (Malody V selection bridge); tosu uses 24050. If 24061 is occupied by another program, the shell reports the conflict and cannot start; find the PID with `Get-NetTCPConnection -LocalPort 24061` (or `netstat -ano | findstr :24061`) and close that program. If 24062/17653 is occupied, the corresponding native transport/bridge degrades while other features keep working. If you change tosu's port, set the same host:port in the plugin's `wsEndpoint` setting.
-6. Feel free to submit an issue if you encounter problems.
+6. If you cannot open the settings page with `Ctrl + Shift + S`, check if another program is using that shortcut, or manually edit the `mma-shell-config.json` file to change the `openSettings` key in `hotkeys` to a different combination.
+7. Feel free to submit an issue if you encounter problems.
 
 ## Estimator Algorithm Benchmark
 - Benchmarks have been migrated to the standalone repository [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark), and results can be viewed [here](https://benchmark.leoblack.top/). Tests cover multiple algorithms across various beatmap categories to help players find what fits them best.

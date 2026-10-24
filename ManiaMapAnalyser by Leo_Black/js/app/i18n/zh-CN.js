@@ -65,7 +65,7 @@ export default {
     "settings.extendedEstimationRange.description": "仅在部分情况下对 Sunny 算法生效。估计结果范围大幅扩展，估计准确性低。",
     "settings.forceSunnyWindow.title": "改进 Sunny LN 估计",
     "settings.forceSunnyWindow.description": "分析前剔除纯米部分与低密度 LN 部分，改善 Sunny 的 LN 估计。",
-    "settings.enableAnalyzeLN.title": "按 LN 分析谱面成分",
+    "settings.enableAnalyzeLN.title": "分析谱面 LN 成分",
     "settings.enableAnalyzeLN.description": "【需要「改进 Sunny LN 估计」】统计谱面中 LN/HB/Mix/RC 各部分所占比例。",
     "settings.estimatorAlgorithm.title": "估计算法",
     "settings.estimatorAlgorithm.description": "选择用于难度估计的算法。",
