@@ -91,6 +91,8 @@ export function getCurrentPreset() {
  * ever seeing a settings packet, which left the manager on "Loading presets…".
  */
 let libraryLoaded = false;
+/** 真正从文件/流里读到了库（空库兜底不算），写回时据此避免覆盖已有内容。 */
+let storeAdopted = false;
 
 export function isLibraryLoaded() {
     return libraryLoaded;
@@ -435,7 +437,7 @@ function persistLibrary() {
     // Never write before the authoritative store arrived from the settings
     // stream: persisting the not-yet-loaded (empty) library would overwrite an
     // existing one in values.json.
-    if (lastValues === null) {
+    if (!storeAdopted) {
         return;
     }
     const fingerprint = currentStoreFingerprint();
@@ -500,6 +502,7 @@ function applyLoadedStore(store, raw) {
     }
     storeApplyInFlight = true;
     libraryLoaded = true;
+    storeAdopted = true;
     customPresets = normalizeLibrary(store.presets);
     lastWritten = store.lastWritten;
     ensureDefaultCustomSlots().then(() => {
@@ -624,6 +627,7 @@ async function handleSettingsPacket(packet) {
         }
         lastValues = snapshotOf(payload);
         libraryLoaded = true;
+        storeAdopted = true;
         const rawStore = rawStoreFromPayload(payload);
         const store = storeFromPayload(payload);
         customPresets = normalizeLibrary(store ? store.presets : []);

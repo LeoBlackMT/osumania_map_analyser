@@ -276,5 +276,6 @@ export default {
     "settings.PresetButton.title": "预设管理页面",
     "settings.DebugButton.title": "调试页面",
     "ui.shell.field.language.title": "界面语言",
-    "ui.shell.field.language.description": "只影响壳自己的页面（设置、预设管理）。tosu 自带的设置面板固定为英文。"
+    "ui.shell.field.language.description": "只影响壳自己的页面（设置、预设管理）。tosu 自带的设置面板固定为英文。",
+    "ui.settings.linkCopied": "链接已复制 —— 请在浏览器中打开。"
 };

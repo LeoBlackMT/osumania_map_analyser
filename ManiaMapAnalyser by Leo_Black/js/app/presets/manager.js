@@ -340,7 +340,7 @@ function wireActions(actionBar) {
         showToast(t("ui.presets.clearedSelection", "Selection cleared."), "info", 1800);
     });
 
-    actionBar.querySelector("#act-export-current").addEventListener("click", () => {
+    actionBar.querySelector("#act-export-current").addEventListener("click", async () => {
         const name = metaNameInput.value.trim();
         if (!PRESET_NAME_RE.test(name)) {
             showToast(t("ui.presets.nameInvalidShort", "Enter a valid preset name first (letters, digits, _ or -; import needs it)."), "error");
@@ -352,18 +352,22 @@ function wireActions(actionBar) {
             return;
         }
         const version = Number(metaVersionInput.value);
-        exportCurrentToFile(name, metaDescInput.value.trim(), version, snapshot);
-        showToast(t("ui.presets.exportedCurrent", "Current editor state exported."), "success");
+        const exported = await exportCurrentToFile(name, metaDescInput.value.trim(), version, snapshot);
+        if (exported) {
+            showToast(t("ui.presets.exportedCurrent", "Current editor state exported."), "success");
+        }
     });
 
-    actionBar.querySelector("#act-export-all").addEventListener("click", () => {
+    actionBar.querySelector("#act-export-all").addEventListener("click", async () => {
         const count = getCustomPresets().filter((p) => p.name !== AUTO_SAVE_PRESET_NAME).length;
         if (count === 0) {
             showToast(t("ui.presets.noCustomToExport", "No custom presets to export."), "error");
             return;
         }
-        exportLibraryToFile();
-        showToast(tf("ui.presets.exportedCount", { count }, `Exported ${count} presets.`), "success");
+        const saved = await exportLibraryToFile();
+        if (saved) {
+            showToast(tf("ui.presets.exportedCount", { count }, `Exported ${count} presets.`), "success");
+        }
     });
 
     const importBtn = actionBar.querySelector("#act-import");
@@ -389,7 +393,7 @@ function wireActions(actionBar) {
         }
         openExternalLink(guideLink.href).then((opened) => {
             if (!opened) {
-                showToast(LINK_COPIED_NOTICE, "info", 6000);
+                showToast(t("ui.settings.linkCopied", LINK_COPIED_NOTICE), "info", 6000);
             }
         });
     });
@@ -771,8 +775,10 @@ async function handleListClick(event) {
         case "export": {
             const preset = getCustomPresets().find((item) => item.name === name);
             if (preset) {
-                exportPresetToFile(preset);
-                showToast(tf("ui.presets.exportedNamed", { name: preset.name }, `Preset "${preset.name}" exported.`), "success");
+                const saved = await exportPresetToFile(preset);
+                if (saved) {
+                    showToast(tf("ui.presets.exportedNamed", { name: preset.name }, `Preset "${preset.name}" exported.`), "success");
+                }
             }
             break;
         }

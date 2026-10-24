@@ -615,7 +615,7 @@ async function runShellPage() {
         root: linksRootEl,
         entries: schema.entries,
         urlFor: buttonUrl,
-        onCopied: () => showToast(LINK_COPIED_NOTICE),
+        onCopied: () => showToast(t("ui.settings.linkCopied", LINK_COPIED_NOTICE)),
     });
     links.render();
 
