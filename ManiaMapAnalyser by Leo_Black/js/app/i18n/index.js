@@ -14,17 +14,12 @@ import zhCN from "./zh-CN.js";
 const STORAGE_KEY = "mma.lang";
 const HTML_LANG = Object.freeze({ "en-US": "en", "zh-CN": "zh-CN" });
 const DICTS = Object.freeze({ "en-US": enUS, "zh-CN": zhCN });
-const listeners = new Set();
 
 let current = "en-US";
 let initialized = false;
 
-export function supportedLanguages() {
-    return ["en-US", "zh-CN"];
-}
-
 /** "zh", "zh-CN", "zh_CN", "en-GB" → 受支持的语言；"auto"/空/未知 → ""。 */
-export function normalizeLanguage(value) {
+function normalizeLanguage(value) {
     const text = String(value ?? "").trim().toLowerCase();
     if (!text || text === "auto") {
         return "";
@@ -39,7 +34,7 @@ export function normalizeLanguage(value) {
 }
 
 /** 按优先级推导语言：URL 覆盖 > 壳配置 > 本地存储 > 浏览器语言。 */
-export function resolveLanguage(candidates = []) {
+function resolveLanguage(candidates = []) {
     for (const candidate of candidates) {
         const normalized = normalizeLanguage(candidate);
         if (normalized) {
@@ -49,12 +44,9 @@ export function resolveLanguage(candidates = []) {
     return "en-US";
 }
 
+/** 语言是否已经由本页解析过（设置页解析后，预设面板不该再覆盖它）。 */
 export function isLanguageInitialized() {
     return initialized;
-}
-
-export function getLanguage() {
-    return current;
 }
 
 function readQueryOverride() {
@@ -91,7 +83,12 @@ function applyDocumentLanguage() {
     }
 }
 
-/** 启动时调用：确定初始语言（不再通知订阅者）。 */
+/**
+ * 启动时调用：确定初始语言。
+ * @param {object} [options]
+ * @param {string} [options.shellLanguage] 壳配置里的 language（"auto" 由调用方转成 ""）。
+ * @param {boolean} [options.useStored] 是否参考 localStorage 里的上次选择（"自动"时传 false）。
+ */
 export function initLanguage({ shellLanguage = "", useStored = true } = {}) {
     current = resolveLanguage([
         readQueryOverride(),
@@ -104,7 +101,7 @@ export function initLanguage({ shellLanguage = "", useStored = true } = {}) {
     return current;
 }
 
-/** 切换语言：写 localStorage 并通知订阅者重渲染。 */
+/** 切换语言：写 localStorage，页面自己负责重渲染。 */
 export function setLanguage(language) {
     const next = normalizeLanguage(language) || "en-US";
     if (next === current) {
@@ -113,33 +110,18 @@ export function setLanguage(language) {
     current = next;
     writeStored(next);
     applyDocumentLanguage();
-    for (const listener of listeners) {
-        try {
-            listener(next);
-        } catch (error) {
-            console.error("i18n listener failed", error);
-        }
-    }
     return current;
 }
 
-export function onLanguageChange(listener) {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-}
-
 /**
- * 取词：中文词典命中则用中文，否则用调用处传入的英文原文。
+ * 取词：词典命中则用译文，否则用调用处传入的英文原文。
  * @param {string} key
  * @param {string} [fallback] 英文原文（缺省时返回 key 本身，便于发现漏配）
  */
 export function t(key, fallback) {
     const dict = DICTS[current];
     const hit = dict && Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : "";
-    if (hit) {
-        return hit;
-    }
-    return fallback ?? key;
+    return hit || fallback || key;
 }
 
 /**
@@ -154,20 +136,13 @@ export function tf(key, params, fallback) {
     ));
 }
 
-/** 把带 data-i18n / data-i18n-title / data-i18n-aria 的静态节点刷成当前语言。 */
+/** 把带 data-i18n / data-i18n-placeholder 的静态节点刷成当前语言。 */
 export function applyStaticText(root = typeof document !== "undefined" ? document : null) {
     if (!root || typeof root.querySelectorAll !== "function") {
         return;
     }
     for (const el of root.querySelectorAll("[data-i18n]")) {
-        const key = el.dataset.i18n;
-        el.textContent = t(key, el.dataset.i18nFallback || el.textContent);
-    }
-    for (const el of root.querySelectorAll("[data-i18n-title]")) {
-        el.title = t(el.dataset.i18nTitle, el.dataset.i18nTitleFallback || el.title);
-    }
-    for (const el of root.querySelectorAll("[data-i18n-aria]")) {
-        el.setAttribute("aria-label", t(el.dataset.i18nAria, el.getAttribute("aria-label") || ""));
+        el.textContent = t(el.dataset.i18n, el.dataset.i18nFallback || el.textContent);
     }
     for (const el of root.querySelectorAll("[data-i18n-placeholder]")) {
         el.placeholder = t(el.dataset.i18nPlaceholder, el.placeholder);

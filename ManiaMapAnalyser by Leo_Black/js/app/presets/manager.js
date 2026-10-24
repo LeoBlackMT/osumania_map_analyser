@@ -13,7 +13,6 @@ import {
     getBuiltinSettings,
     getCurrentPreset,
     getPresetTransport,
-    isLibraryLoaded,
     onPresetsChanged,
     applyPresetByName,
     applyCustomSnapshot,

@@ -52,8 +52,6 @@ const ORIGIN_NOTICE = "Open this page from the desktop shell: http://127.0.0.1:2
 
 // 语言设置：壳配置里的 language（auto/zh-CN/en-US）决定页面语言，
 // 由壳设置面板的第一行「界面语言」写入；这里只负责启动时读一次。
-let shellLanguageSetting = "";
-
 initLanguage();
 
 async function loadShellLanguage() {
@@ -572,7 +570,7 @@ async function runShellPage() {
         onMalody4Selection: () => {},
     });
 
-    shellLanguageSetting = await loadShellLanguage();
+    const shellLanguageSetting = await loadShellLanguage();
     // 「自动」= 跟随系统语言，不吃 localStorage 里上一次的手动选择。
     const autoLanguage = /^auto$/i.test(shellLanguageSetting);
     initLanguage({

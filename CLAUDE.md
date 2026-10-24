@@ -21,6 +21,7 @@
 - ManiaMapAnalyser by Leo_Black/: 插件的源代码文件夹，包含插件的所有源代码文件。其路径携带空格，为tosu的命名要求。请在使用时注意。
     - js/app/: 插件核心功能的js目录，包含插件的主要功能实现。
     - js/app/worker/: 插件的worker目录，包含插件的worker线程实现。主要用于分离UI和计算逻辑，避免UI卡顿。
+    - js/app/i18n/: 壳内页面（设置页、预设管理）的词典与取词模块（t/tf）。settings.json 保持英文，翻译只作用于壳自己的页面显示。
     - js/debug/: 插件的调试目录，包含插件的调试工具和调试代码。应当保留。
     - js/estimator/: 难度估计模块的核心目录，包含难度估计算法的实现。
         - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。

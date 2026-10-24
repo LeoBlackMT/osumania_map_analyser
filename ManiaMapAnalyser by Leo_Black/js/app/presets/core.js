@@ -85,19 +85,9 @@ export function getCurrentPreset() {
     return currentPreset;
 }
 
-/**
- * True once a library was adopted (settings stream OR the HTTP pull fallback).
- * `lastValues` alone cannot answer this: the pull path applies the store without
- * ever seeing a settings packet, which left the manager on "Loading presets…".
- */
-let libraryLoaded = false;
 /** 真正从文件/流里读到了库（空库兜底不算），写回时据此避免覆盖已有内容。 */
 let storeAdopted = false;
 let lastPersistFailed = false;
-
-export function isLibraryLoaded() {
-    return libraryLoaded;
-}
 
 /** Registers a UI listener, returns an unsubscribe function. */
 export function onPresetsChanged(callback) {
@@ -520,7 +510,6 @@ function applyLoadedStore(store, raw) {
         return;
     }
     storeApplyInFlight = true;
-    libraryLoaded = true;
     storeAdopted = true;
     customPresets = normalizeLibrary(store.presets);
     lastWritten = store.lastWritten;
@@ -645,7 +634,6 @@ async function handleSettingsPacket(packet) {
             return;
         }
         lastValues = snapshotOf(payload);
-        libraryLoaded = true;
         storeAdopted = true;
         const rawStore = rawStoreFromPayload(payload);
         const store = storeFromPayload(payload);
@@ -856,8 +844,7 @@ export function initPresets() {
         if (result !== null) {
             applyLoadedStore(result.store, result.raw);
         } else {
-            // 源离线：按空库起步（不覆盖 presetStorage），UI 不该一直停在「加载中」。
-            libraryLoaded = true;
+            // 源离线：按空库起步（不覆盖 presetStorage）。
             ensureDefaultCustomSlots();
             notifyChanged();
         }

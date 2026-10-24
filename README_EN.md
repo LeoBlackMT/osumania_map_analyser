@@ -24,7 +24,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 - **Difficulty Estimation**: Estimates difficulty based on beatmap data and provides detailed analysis results with multiple difficulty estimation algorithms. Compatible with 4/6/7K LN and RC Dans.
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand beatmap difficulty distributions.
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution to help players understand beatmap structures.
-- **Rework PP**: Provides the Sunny Rework PP panel, displaying detailed metrics that update in real time.
+- **Low Memory Usage**: When running with the desktop shell, it uses only ~10MB of memory and does not affect game performance.
 - **Preset System**: Provides system and custom presets to apply or save the full configuration in one click, supporting automatic following of manual changes.
 - **Highly Customizable**: Offers rich customization options to meet different player preferences.
 
@@ -64,7 +64,7 @@ Global shortcuts remain active even when the window is unfocused or click-throug
 3. Performance may be affected by beatmap complexity and enabled features; lag or delay may occur in some scenarios. Adjust settings according to your system for a smoother experience.
 4. When osu!(lazer) updates and memory reading fails before a new shell or offset table is released, click Memory Offsets Management -> Live Generator in settings to quickly generate an offset table from the running lazer process. Lazer must remain running during generation. You can also run `offsets/gen.exe` directly.
 5. Port occupied: It uses 24061 (shell page), 24062 (osu! native-read compatibility origin), and 17653 (Malody V selection bridge); tosu uses 24050. If 24061 is occupied by another program, the shell reports the conflict and cannot start; find the PID with `Get-NetTCPConnection -LocalPort 24061` (or `netstat -ano | findstr :24061`) and close that program. If 24062/17653 is occupied, the corresponding native transport/bridge degrades while other features keep working. If you change tosu's port, set the same host:port in the plugin's `wsEndpoint` setting.
-6. If you cannot open the settings page with `Ctrl + Shift + S`, check if another program is using that shortcut, or manually edit the `mma-shell-config.json` file to change the `openSettings` key in `hotkeys` to a different combination.
+6. If you cannot open the settings page with `Ctrl + Shift + S`, check if another program is using that shortcut, or manually edit the `mma-shell-config.json` file to change the `settings` key in `hotkeys` to a different combination (e.g. `"settings": "Ctrl+Alt+S"`).
 7. Feel free to submit an issue if you encounter problems.
 
 ## Estimator Algorithm Benchmark
