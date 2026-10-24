@@ -26,6 +26,8 @@ import { openExternalLink } from "../externalLink.js";
  * notice still points at the tosu Presets page (settingsPage/index.js
  * `presetsPageUrl()`, which reads that same entry).
  */
+import { t } from "../i18n/index.js";
+
 const EXCLUDED_LINK_IDS = new Set(["PresetButton", "DebugButton"]);
 
 /**
@@ -51,7 +53,7 @@ export function createSettingsLinks({ root, entries, urlFor, onCopied }) {
 
         const title = document.createElement("h3");
         title.className = "settings-group-title";
-        title.textContent = "Links";
+        title.textContent = t("settings.hLinks.title", "Links");
         group.appendChild(title);
 
         const row = document.createElement("div");

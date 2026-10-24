@@ -261,5 +261,14 @@ export default {
     "ui.presets.deleteConfirm": "删除预设 {name} ？此操作无法撤销。",
     "ui.presets.deleted": "预设已删除。",
     "ui.presets.exportedNamed": "已导出预设 {name} 。",
-    "ui.presets.unexpected": "发生意外错误"
+    "ui.presets.unexpected": "发生意外错误",
+    "ui.presets.headerTitle": "预设管理",
+    "ui.presets.headerSub": "创建、编辑、应用、导入导出预设配置。",
+    "ui.presets.systemBadge": "系统",
+    "ui.presets.readonly": "tosu 已连接，请在 tosu 的 Presets 页面管理预设。",
+    "ui.presets.action.edit": "编辑",
+    "ui.presets.action.apply": "应用",
+    "ui.presets.action.export": "导出",
+    "ui.presets.action.rename": "重命名",
+    "ui.presets.action.delete": "删除"
 };

@@ -30,30 +30,31 @@ const LOG_LEVEL_OPTIONS = ["debug", "info", "warn", "error", "off"];
 const ROOT_FIELDS = [
     {
         key: "etternaRoot",
-        title: t("ui.shell.field.etternaRoot.title", "Etterna root"),
-        description: t("ui.shell.field.etternaRoot.description", "Folder that holds the Etterna install. Empty = let the shell detect it."),
+        title: "Etterna root",
+        description: "Folder that holds the Etterna install. Empty = let the shell detect it.",
     },
     {
         key: "malodyRoot",
-        title: t("ui.shell.field.malodyRoot.title", "Malody V root"),
-        description: t("ui.shell.field.malodyRoot.description", "Folder that holds the Malody V install. Empty = let the shell detect it."),
+        title: "Malody V root",
+        description: "Folder that holds the Malody V install. Empty = let the shell detect it.",
     },
     {
         key: "malody4Root",
-        title: t("ui.shell.field.malody4Root.title", "Malody 4.3.7 root"),
-        description: t("ui.shell.field.malody4Root.description", "Folder that holds the Malody 4.3.7 install. Empty = let the shell detect it."),
+        title: "Malody 4.3.7 root",
+        description: "Folder that holds the Malody 4.3.7 install. Empty = let the shell detect it.",
     },
 ];
 
 const HOTKEY_FIELDS = [
-    { key: "topmost", title: t("ui.shell.hotkey.topmost", "Toggle topmost") },
-    { key: "clickThrough", title: t("ui.shell.hotkey.clickThrough", "Toggle click-through") },
-    { key: "close", title: t("ui.shell.hotkey.close", "Close overlay") },
-    { key: "settings", title: t("ui.shell.hotkey.settings", "Open settings window") },
+    { key: "topmost", title: "Toggle topmost" },
+    { key: "clickThrough", title: "Toggle click-through" },
+    { key: "close", title: "Close overlay" },
+    { key: "settings", title: "Open settings window" },
 ];
 
-const HOTKEY_HINT = t("ui.shell.hotkey.hint", "Restart the shell to apply hotkey changes.");
-const UNREADABLE_NOTICE = t("ui.shell.status.unreadable", "Shell config unreadable (mma-shell-config.json) — editing is unavailable here.");
+// 下面的常量保持英文：模块加载时语言还没确定，t() 必须在渲染时调用。
+const HOTKEY_HINT = "Restart the shell to apply hotkey changes.";
+const UNREADABLE_NOTICE = "Shell config unreadable (mma-shell-config.json) — editing is unavailable here.";
 
 /**
  * @param {object} options
@@ -159,7 +160,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             saveHint = "";
             setStatus(
                 result.status === 400
-                    ? UNREADABLE_NOTICE
+                    ? t("ui.shell.status.unreadable", UNREADABLE_NOTICE)
                     : `${t("ui.shell.offsets.unreadableHttp", "Cannot read the shell config")} (HTTP ${result.status || "?"}).`,
                 "error",
             );
@@ -188,7 +189,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         });
         if (!result.ok) {
             if (result.status === 400) {
-                setStatus(`${UNREADABLE_NOTICE} (${t("ui.shell.status.nothingWritten", "nothing was written")})`, "error");
+                setStatus(`${t("ui.shell.status.unreadable", UNREADABLE_NOTICE)} (${t("ui.shell.status.nothingWritten", "nothing was written")})`, "error");
             } else {
                 const detail = result.error && result.error.message ? result.error.message : `HTTP ${result.status || "?"}`;
                 setStatus(`${t("ui.shell.status.saveFailed", "Save failed")}: ${detail}`, "error");
@@ -353,7 +354,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         readout.textContent = `${t("ui.shell.resolved.adopted", "adopted")}: ${adopted || t("ui.shell.resolved.notDetected", "not detected")}`;
         wrap.appendChild(readout);
 
-        return buildRow(field.key, field.title, field.description, wrap);
+        return buildRow(
+            field.key,
+            t(`ui.shell.field.${field.key}.title`, field.title),
+            t(`ui.shell.field.${field.key}.description`, field.description),
+            wrap,
+        );
     }
 
     function buildWindowTopmostRow() {
@@ -399,7 +405,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             fieldWrap.className = "shell-config-hotkey";
             const label = document.createElement("span");
             label.className = "shell-config-hotkey-label";
-            label.textContent = field.title;
+            label.textContent = t(`ui.shell.hotkey.${field.key}`, field.title);
             const input = document.createElement("input");
             input.type = "text";
             input.dataset.shellKey = field.key;
@@ -419,7 +425,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const hint = document.createElement("span");
         hint.className = "shell-config-hint";
-        hint.textContent = HOTKEY_HINT;
+        hint.textContent = t("ui.shell.hotkey.hint", HOTKEY_HINT);
         wrap.appendChild(hint);
 
         return buildRow("hotkeys", t("ui.shell.field.hotkeys.title", "Hotkeys"), t("ui.shell.field.hotkeys.description", "Shell-wide shortcuts."), wrap);

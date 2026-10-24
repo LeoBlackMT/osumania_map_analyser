@@ -85,9 +85,15 @@ export function getCurrentPreset() {
     return currentPreset;
 }
 
-/** True once the settings stream delivered the authoritative library. */
+/**
+ * True once a library was adopted (settings stream OR the HTTP pull fallback).
+ * `lastValues` alone cannot answer this: the pull path applies the store without
+ * ever seeing a settings packet, which left the manager on "Loading presets…".
+ */
+let libraryLoaded = false;
+
 export function isLibraryLoaded() {
-    return lastValues !== null;
+    return libraryLoaded;
 }
 
 /** Registers a UI listener, returns an unsubscribe function. */
@@ -477,6 +483,7 @@ function applyLoadedStore(store, raw) {
         return;
     }
     storeApplyInFlight = true;
+    libraryLoaded = true;
     customPresets = normalizeLibrary(store.presets);
     lastWritten = store.lastWritten;
     ensureDefaultCustomSlots().then(() => {
@@ -596,6 +603,7 @@ async function handleSettingsPacket(packet) {
             return;
         }
         lastValues = snapshotOf(payload);
+        libraryLoaded = true;
         const rawStore = rawStoreFromPayload(payload);
         const store = storeFromPayload(payload);
         customPresets = normalizeLibrary(store ? store.presets : []);

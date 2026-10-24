@@ -15,9 +15,9 @@ const SCAN = [
     "js/app/settingsPage/index.js",
     "js/app/settingsPage/settingsForm.js",
     "js/app/settingsPage/shellConfigPanel.js",
+    "js/app/settingsPage/settingsLinks.js",
     "js/app/presets/manager.js",
     "js/app/presets/form.js",
-    "js/app/i18n/index.js",
 ];
 const SCAN_HTML = ["settings.html"];
 
@@ -72,10 +72,14 @@ for (const text of texts) {
     }
 }
 
-const usedMissing = [...used].filter((key) => key !== "option.<dynamic>" && !dict[key]);
-const extra = Object.keys(dict).filter((key) => (
-    !expected.has(key) && !used.has(key) && !key.startsWith("option.")
+// 动态键族：源码里出现 t(`<前缀>${...}`) 时，整族都算「已使用」。
+const DYNAMIC_PREFIXES = ["option.", "ui.presets.action.", "ui.shell.field.", "ui.shell.hotkey."];
+const dynamicFamilies = DYNAMIC_PREFIXES.filter((prefix) => (
+    texts.some((text) => text.includes("t(`" + prefix + "${"))
 ));
+const isUsed = (key) => used.has(key) || dynamicFamilies.some((prefix) => key.startsWith(prefix));
+const usedMissing = [...used].filter((key) => !key.includes("<dynamic>") && !dict[key]);
+const extra = Object.keys(dict).filter((key) => !expected.has(key) && !isUsed(key));
 
 console.log("settings entries checked: " + expected.size);
 console.log("dictionary keys: " + Object.keys(dict).length);

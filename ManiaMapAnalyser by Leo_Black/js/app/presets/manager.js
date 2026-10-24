@@ -189,10 +189,11 @@ function buildLayout() {
     header.className = "presets-header";
     header.innerHTML = `
         <div class="presets-header-info">
-            <h1>Presets Manager</h1>
-            <p class="presets-header-sub">Create, edit, apply, export and import preset configurations for the Mania Map Analyser overlay.</p>
+            <h1 data-i18n="ui.presets.headerTitle">Presets Manager</h1>
+            <p class="presets-header-sub" data-i18n="ui.presets.headerSub">Create, edit, apply, export and import preset configurations for the Mania Map Analyser overlay.</p>
         </div>
     `;
+    applyStaticText(header);
     root.appendChild(header);
 
     const actionBar = document.createElement("div");
@@ -508,18 +509,29 @@ function buildPresetRow(preset, { isSystem = false, active = false, actions = []
     const actionsHtml = actions.length > 0
         ? `<div class="presets-item-actions">${actions.map((action) => {
             const className = action === "apply" ? "presets-btn-apply" : action === "delete" ? "presets-btn-danger" : "";
-            return `<button type="button" class="presets-btn ${className}" data-action="${action}">${action[0].toUpperCase()}${action.slice(1)}</button>`;
+            const label = t(`ui.presets.action.${action}`, action[0].toUpperCase() + action.slice(1));
+            return `<button type="button" class="presets-btn ${className}" data-action="${action}">${escapeHtml(label)}</button>`;
         }).join("")}</div>`
         : "";
 
     row.innerHTML = `
         <div class="presets-item-info">
-            <div class="presets-item-name">${name}${isSystem ? '<span class="presets-item-badge">System</span>' : ""}${version ? `<span class="presets-item-version">${escapeHtml(version)}</span>` : ""}</div>
+            <div class="presets-item-name">${name}${isSystem ? `<span class="presets-item-badge">${escapeHtml(t("ui.presets.systemBadge", "System"))}</span>` : ""}${version ? `<span class="presets-item-version">${escapeHtml(version)}</span>` : ""}</div>
             <div class="presets-item-desc"${preset.description ? ` title="${escapeHtml(preset.description)}"` : ""}>${desc}</div>
         </div>
         ${actionsHtml}
     `;
     return row;
+}
+
+/** 只读传输（tosu 在线）下无法交付库，别把占位文案写成「正在加载」。 */
+function isReadOnlyTransport() {
+    try {
+        const transport = getPresetTransport();
+        return Boolean(transport && typeof transport.isReadOnly === "function" && transport.isReadOnly());
+    } catch {
+        return false;
+    }
 }
 
 function renderList() {
@@ -544,7 +556,9 @@ function renderList() {
         empty.className = "presets-empty";
         if (!isLibraryLoaded()) {
             // Library still streaming in — do not claim there are no presets.
-            empty.textContent = t("ui.presets.loadingPresets", "Loading presets…");
+            empty.textContent = isReadOnlyTransport()
+                ? t("ui.presets.readonly", "tosu owns the settings file — manage presets on tosu's Presets page.")
+                : t("ui.presets.loadingPresets", "Loading presets…");
         } else {
             empty.textContent = t("ui.presets.emptyList", "No custom presets yet. Configure the form and click Save.");
         }
