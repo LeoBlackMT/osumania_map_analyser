@@ -12,7 +12,9 @@ export function normalizeContentBarValue(value) {
     if (lowered === "pattern") return "Pattern";
     if (lowered === "etterna") return "Etterna";
     if (lowered === "graph") return "Graph";
-    if (lowered === "full") return "Full";
+    // 旧版 contentBar 的 "Full" 已移除：桌面壳改用 combinedMode；tosu 侧
+    // 静默降级为 Auto，避免旧配置继续把多模块塞进叠加层。
+    if (lowered === "full") return "Auto";
     if (lowered === "none") return "None";
     if (lowered === "reworkpp") return "ReworkPP";
     return null;

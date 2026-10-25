@@ -3,7 +3,7 @@ export const APP_CONFIG = {
     socketHost: "localhost:24050",
 
     options: {
-        contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "ReworkPP", "Full"],
+        contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "ReworkPP"],
         srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR", "ReworkPP"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
         estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Polaris", "Daniel", "Companella"],
