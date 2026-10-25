@@ -22,6 +22,7 @@ import { applyShellState, applyMalody4Selection } from "./sources/shellState.js"
 import { initSourceManager } from "./sources/sourceManager.js";
 import { setupSocketListener, resumeBufferedOsuState } from "./socketHandlers.js";
 import { initFeedback } from "./feedback/feedbackStrip.js";
+import { initGraphSection } from "./graphSection/index.js";
 
 setRecomputeHandler(fetchBeatmapFile);
 
@@ -33,6 +34,8 @@ export async function initialize() {
     startTelemetryHeartbeat();
     // 仅壳窗口（24061 或壳的 hash 标记）会真的建出反馈条；浏览器/OBS 无 DOM。
     initFeedback();
+    // 图表选区交互同理：非壳环境内部直接 return，不挂任何监听。
+    initGraphSection();
     updateModeTagVisibility();
     updatePauseCountVisibility();
     updateCardPlayVisibility();

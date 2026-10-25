@@ -35,6 +35,7 @@ import { isOsuSuppressed } from "./sources/sourceManager.js";
 import { notifySourceEvent } from "./sources/sourceManager.js";
 import { noteOsuScanPayloadArrival } from "./sources/osuScanHint.js";
 import { noteFeedbackFrame, resetFeedbackStrip } from "./feedback/feedbackStrip.js";
+import { clearSection } from "./graphSection/index.js";
 
 
 function getModData(data) {
@@ -190,11 +191,18 @@ export function applySignalState(data) {
             // 不允许反馈；页面启动时已在结算屏（壳中途重启）也判为不确定。
             if (nextIsResultScreen && !wasResultScreen) {
                 state.resultsFromPlay = leftPlayState;
+                // 结算屏不保留选区（D2）：复位后由重算把卡片恢复成整图口径。
+                clearSection("results", { recompute: true });
             } else if (!nextIsResultScreen) {
                 state.resultsFromPlay = false;
             }
 
             updateCardPlayVisibility();
+
+            if (enteredPlayState) {
+                // 游玩态优先保障实时指标/进度线：选区退出并恢复整图分析。
+                clearSection("play", { recompute: true });
+            }
 
             if (enteredPlayState || (leftPlayState && !nextIsResultScreen)) {
                 resetPauseRuntime(true);
@@ -344,6 +352,12 @@ export function applyBeatmapState(data) {
             previousSongKey,
             nextSongKey,
         });
+
+        // 切图（谱面身份变化）→ 复位选区；仅改 mod（含 DT/HT 速率）不复位：
+        // 选区按物理时间保存，速率变化时遮罩不动、切片区间不变（见 graphSection 注释）。
+        if (nextBeatmapIdentity !== previousBeatmapIdentity) {
+            clearSection("beatmap", { recompute: false });
+        }
 
         state.lastBeatmapIdentity = nextBeatmapIdentity;
         // 换图/换 mod：旧分析结果不再对应当前显示值，反馈条立即作废。
