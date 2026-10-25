@@ -126,7 +126,14 @@ Malody V 有两个互不影响的通道，按需选择：
 - 只影响壳自己的页面（设置页、预设管理器）。**tosu 自带的设置面板始终是英文**，因为 tosu 不支持中文设置标题。
 - 中文使用系统字体显示（微软雅黑 / 苹方 / Noto Sans CJK），不需要额外安装字体。
 
-## 七、常见问题/已知问题
+## 七、组合模式与 Tab
+
+- **组合模式（Combined）**：设置页 `Shell Configuration` → “组合模式”，打开开关后勾选要显示的模块，并用每行右侧的 ↑/↓ 调整顺序。至少保留一个模块；卡片高度随勾选数量自然增长，适合谱师审谱或 OBS 投屏。
+- **Tab 胶囊栏**：桌面壳的紧凑卡片顶部会出现 Pattern / Etterna / Graph / PP 四枚小胶囊。左键单击只切换当前谱面的展示模块，不会改全局设置；点击当前已激活的胶囊会重新计算一次。
+- Tab 只在桌面壳显示；`contentBar=None` 或组合模式开启时不显示。切歌、换难度或切换 IN/HO 后会自动回到 `contentBar` 设置的模块。
+- 旧版 tosu 设置里的 `Full` 已移除，旧值会自动按 `Auto` 处理；需要多模块请看组合模式。
+
+## 八、常见问题/已知问题
 
 - **圆点灰空心 / 卡片不动**：确认对应游戏已开、桥已装、壳在运行。
 - **端口 17653 被占用**：卡片不动且壳日志提示端口被占。关掉多余的 `mma-shell` 实例（同时只能有一个），或重启壳。
@@ -267,7 +274,14 @@ The first row of the shell settings panel is an **interface language** dropdown:
 - It only affects the shell's own pages (settings page, presets manager). **tosu's built-in settings panel stays English**, because tosu does not support Chinese setting titles.
 - Chinese text uses system fonts (Microsoft YaHei / PingFang / Noto Sans CJK); no extra font installation is needed.
 
-## 7. Troubleshooting / Known Issues
+## 7. Combined Mode and Tabs
+
+- **Combined mode**: Settings → `Shell Configuration` → “Combined”. Turn it on, check the sections to show, and use the ↑/↓ buttons on each row to reorder them. At least one section is required; the card grows with the number of checked sections, which is useful for chart review or OBS.
+- **Tab capsule bar**: compact cards in the desktop shell show four small capsules (Pattern / Etterna / Graph / PP). A left click switches only the current beatmap's section without changing global settings; clicking the already-active capsule recomputes once.
+- Tabs are shell-only. They are hidden when `contentBar=None` or Combined mode is on. A song/difficulty change or an IN/HO switch resets the card to the `contentBar` setting.
+- The old tosu `Full` option is gone; legacy values are treated as `Auto`. Use Combined mode for multiple sections.
+
+## 8. Troubleshooting / Known Issues
 
 - **Hollow grey dot / Card frozen**: Confirm the game is running, bridges are installed, and the shell is running.
 - **Port 17653 in use**: Card does not move and shell log indicates the port is occupied. Close extra `mma-shell` instances (only one can run at a time) or restart the shell.

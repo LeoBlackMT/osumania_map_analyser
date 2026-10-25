@@ -51,8 +51,8 @@
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
         - ReworkPP: 显示最大/实时 Rework PP 及其相关参数。
-        - Full: 显示完整内容，包括键型分析、难度图表和Etterna分数。不推荐日常使用，可能会比较拥挤。
         - 注：非 4/6/7K 谱面的卡片主体遵循内容设置（不按键数强制回退）；Graph 为 estimator 星数序列，任意键数均可渲染。
+        - 注：原 `Full` 选项已移除。旧配置里的 `Full` 会自动按 `Auto` 处理；桌面壳用户如需同时显示多个模块，请在 `Shell Configuration` 的“组合模式（Combined）”中勾选并排序。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
         - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
@@ -227,8 +227,8 @@
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
         - ReworkPP: Displays the max/live Rework PP performance and related parameters.
-        - Full: Displays full content including pattern analysis, difficulty graph, and Etterna scores. Not recommended for daily use — may feel crowded.
         - Note: For non-4/6/7K beatmaps, the card body follows the content bar setting (no forced fallback by keycount); the Graph is the estimator star series and renders for any keycount.
+        - Note: The old `Full` option has been removed. Legacy `Full` values are treated as `Auto`; desktop-shell users who want several sections at once should use “Combined” under `Shell Configuration`.
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.
         - ReworkSR: Displays [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth) star rating.

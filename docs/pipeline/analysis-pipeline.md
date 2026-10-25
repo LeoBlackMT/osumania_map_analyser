@@ -44,7 +44,7 @@ main.js:25 setRecomputeHandler(fetchBeatmapFile) → analysis.js:377 fetchBeatma
        │     ├─ display.js：renderPatternClusters :739 / renderEtternaSkillBars :772 / showNumericStarValue :424 ...
        │     ├─ graph.js：renderDiffGraph :609 / updateGraphCursor :499 / setNumericDifficultyValue :818 ...
        │     ├─ hud.js：setModeTag :142 / setModeTagAdvanced :170 / setStatus :126 / showOverlay :389 ...
-       │     └─ analysis.js:1279 renderRightCapsule / :1287 renderFullModeSeparators
+       │     └─ analysis.js renderRightCapsule / renderCombinedModeSeparators
        └─ [9] 收尾：analysis.js:1297-1312 状态行（formatMetadataStatus display.js:1031）；finally 移除 loading
 ```
 
@@ -191,7 +191,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 **analysis.js 主线程不再解析谱面**：旧的 `parseMetadataFromBeatmap`（独立 `OsuFileParser` 二次解析）已删除。解析只在 pipeline 内完成一次（worker 内或同步回退的主线程），pipeline 返回 `parsedSummary {metadata, lnRatio, columnCount}`（runAnalysisPipeline.js:380），供谱面级 override（:511-526）、display6kLevel、LN%/Keys 显示、fallback mode tag 使用。估算器/归一化/SunnyWindow/Interlude 共享同一 parser 实例；pattern 保留独立 patternOsuParser 解析、ett 保留自身解析（WASM 行构建需要，且 loader/WASM 调用方式不改）。
 
-随后 `analysis.js:511-526 applyContentBarOverride(parsedSummary.columnCount)`：keycount 不受支持（原先的 `GRAPH_SUPPORTED_KEY_SET = {4,6,7}` 常量已移除，见 appContext.js:282 注释；现由 estimator/graph 数据驱动判定）且非 None/Full 模式时，`setEffectiveContentBarForMap("Pattern")` 把主体降级为 Pattern（谱面级 override，存 `state.effectiveContentBar`）。缓存命中分支同样用 `cached.parsedInfo` 的 columnCount 做 override（:525-526）。
+随后 `analysis.js:511-526 applyContentBarOverride(parsedSummary.columnCount)`：keycount 不受支持（原先的 `GRAPH_SUPPORTED_KEY_SET = {4,6,7}` 常量已移除，见 appContext.js:282 注释；现由 estimator/graph 数据驱动判定）且非 None/组合模式（Combined）时，`setEffectiveContentBarForMap("Pattern")` 把主体降级为 Pattern（谱面级 override，存 `state.effectiveContentBar`）。缓存命中分支同样用 `cached.parsedInfo` 的 columnCount 做 override（:525-526）。
 
 ### 7.4 全链路 pipeline（runAnalysisPipeline：worker 一次往返）
 
@@ -267,7 +267,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | :987 `renderEtternaSkillBars(ettResult.values, columnCount)` | display.js:772 `renderEtternaSkillBars` | Etterna 技能条 |
 | :1219/:1223/:1227/:1238/:1268 `show6KConstValue` / `showCategoryValue` / `showInterludeValue` / `showMsdValue` / `showNumericStarValue` | display.js:437/:573/:611/:597/:424 | 左侧胶囊按 `state.srText` 分支（:1218-1272） |
 | :1279 `renderRightCapsule(...)` | display.js:665 `renderRightCapsule` | 右侧胶囊 |
-| :1287 `renderFullModeSeparators(overallValue)` | display.js:1020 `renderFullModeSeparators` | Full 模式分隔线 |
+| `renderCombinedModeSeparators(overallValue)` | `display.js` `renderCombinedModeSeparators` | 组合模式（Combined）分隔线（Etterna Overall 文本） |
 | :794 `playStarBlockEntranceOnce()`（:430-436 封装） | display.js:411 `playStarBlockEntrance(changeKind)` | 入场动画（用 §4.3 的 activeChangeKind） |
 | :657 `renderContentSkeleton()` | display.js:383 `renderContentSkeleton` | 展开动画期间的骨架屏 |
 | :862/:870 `mergeDuplicateClusters(allClusters)` | display.js:309 `mergeDuplicateClusters` | cluster 合并（数据转换，非渲染） |

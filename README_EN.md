@@ -13,7 +13,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 <summary>Screenshots</summary>
 <img src="img/themeLN.jpg" alt="LN" width="400">
 <img src="img/themeRC.jpg" alt="RC" width="400">
-<img src="img/full.jpg" alt="Full" width="400">
+<img src="img/full.jpg" alt="Combined" width="400">
 </details>
 
 ## Key Features
@@ -24,6 +24,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 - **Difficulty Estimation**: Estimates difficulty based on beatmap data and provides detailed analysis results with multiple difficulty estimation algorithms. Compatible with 4/6/7K LN and RC Dans.
 - **Graph Visualization**: Provides difficulty variation graphs to help players better understand beatmap difficulty distributions.
 - **Time-range Analysis (Desktop Shell)**: Drag a time range on the difficulty graph to inspect its star rating, patterns and MSD; the graph still shows the whole map.
+- **Card Tabs & Combined Mode (Desktop Shell)**: Compact cards have one-click tabs for patterns, skills, graph and PP; Combined mode lets you pick several sections and reorder them, useful for chart review or OBS.
 - **Pattern Analysis**: Analyzes RC/LN pattern distribution to help players understand beatmap structures.
 - **Low Memory Usage**: When running with the desktop shell, it uses only ~10MB of memory and does not affect game performance.
 - **Preset System**: Provides system and custom presets to apply or save the full configuration in one click, supporting automatic following of manual changes.
