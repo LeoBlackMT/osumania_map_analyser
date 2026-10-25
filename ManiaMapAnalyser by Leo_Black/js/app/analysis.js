@@ -88,6 +88,16 @@ import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
 // 24062 的 `/files/beatmap/file` 404）静默重试一次，不让状态行出现 `Request failed with 404`。
 // tosu 通道不重试（判据在模块内，见 `shouldRetryNativeBeatmapFetch`）。
 import { fetchBeatmapTextWithRetry } from "./sources/beatmapFetchRetry.js";
+// 区间分析（Graph Section Analysis）：选区状态、全谱原文缓存、切片器。
+// 只在桌面壳里会有非 null 的 getSectionRange()；浏览器模式下恒为 null（零行为变化）。
+import {
+    clearSection,
+    getFullChartText,
+    getSectionRange,
+    notifySectionAnalysis,
+    rememberFullChartText,
+} from "./graphSection/index.js";
+import { sliceOsuTextByTimeRange } from "../parser/osuTimeSlice.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -281,10 +291,15 @@ function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar
     return targetMinHeight > baseline + 1;
 }
 
-export function resetReworkDisplay() {
+export function resetReworkDisplay(options = {}) {
+    // keepGraph：区间跑批失败时保留全谱曲线/暂停标记/反馈上下文——否则一次空选区
+    // 就把整张图清成 "Graph unavailable"，用户连重新拖拽的坐标系都没了。
+    const { keepGraph = false } = options || {};
     state.actualEstimatorAlgorithm = state.estimatorAlgorithm;
     state.ppMetrics = null;
-    state.feedbackContext = null;
+    if (!keepGraph) {
+        state.feedbackContext = null;
+    }
     clearReworkPpBody();
     resetLivePp();
     setNumericDifficultyValue(null);
@@ -300,10 +315,12 @@ export function resetReworkDisplay() {
         reworkRightCapsuleEl.style.color = "#f6fbff";
         reworkRightCapsuleEl.style.textShadow = "none";
     }
-    clearDiffGraph();
-    clearAllPauseMarkers();
+    if (!keepGraph) {
+        clearDiffGraph();
+        clearAllPauseMarkers();
+    }
     setEffectiveContentBarForMap(null);
-    if (state.diffText === "Graph" || contentBarShows("Graph")) {
+    if (!keepGraph && (state.diffText === "Graph" || contentBarShows("Graph"))) {
         showDiffGraphError("Graph unavailable");
     }
     reworkMetaEl.innerHTML = "LN%: -<br/>Keys: -";
@@ -371,6 +388,8 @@ export function setCardClearHandler(fn) {
  */
 export function invokeCardClear() {
     resetSourceContext();
+    // 清卡 = 换源/换图的极简路径：选区一并复位（不派发重算，调用方本就无图可算）。
+    clearSection("card-clear", { recompute: false });
     cardClearHandler();
 }
 
@@ -379,6 +398,11 @@ export { toTelemetryActualAlgorithm } from "./telemetrySpec.js";
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    // 区间分析（Graph Section Analysis）：本次跑批是否使用选区切片。
+    // ⚠️ 这个布尔量只允许出现在 §3.7 的 12 个守卫点（docs/features/graph-section-analysis.md）；
+    // 新增任何副作用前先问「区间模式是否允许」，不允许就加守卫。
+    const sectionRange = getSectionRange();
+    const isSectionRun = Boolean(sectionRange);
     // 离线圈模式守卫：仅当页面本身就是壳离线页（端口 24061）且无 tosu 数据面
     // 时才跳过 osu 抓取（避免 "Failed to fetch" 噪声）。浏览器 tosu 页
     // （其他端口）即使壳开着也绝不挡——否则首图/背景/切图会被吞。
@@ -393,10 +417,14 @@ export async function fetchBeatmapFile(reason) {
     }
     const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
     // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
-    const sourceRequestId = state.pendingSourceRequestId;
-    const sourceActive = state.pendingSourceActive;
-    state.pendingSourceRequestId = null;
-    state.pendingSourceActive = null;
+    // ⚠️ 区间跑批不消费 pendingSource*：那份文本/请求号属于外部源帧自己的跑批，
+    // 消费会让区间结果被当成壳应答（result 帧）回给桌面壳。
+    const sourceRequestId = isSectionRun ? null : state.pendingSourceRequestId;
+    const sourceActive = isSectionRun ? null : state.pendingSourceActive;
+    if (!isSectionRun) {
+        state.pendingSourceRequestId = null;
+        state.pendingSourceActive = null;
+    }
     // 函数级错误收集（try 块内声明的 const 对 finally 不可见——result 帧 finally 汇合需要它）。
     let errors = [];
     const genAtStart = resultCacheGeneration();
@@ -440,7 +468,14 @@ export async function fetchBeatmapFile(reason) {
     setStatus(`Loading beatmap file (${reason})...`, "loading");
     hideOverlay();
 
-    if (state.diffText === "Graph" || contentBarShows("Graph")) {
+    if (isSectionRun) {
+        // 区间跑批绝不碰图表：保留全谱曲线与 graphSeriesSource（否则拖一次就变成区间形状）。
+        // 若曲线已被别处清空（例如中途关闭过 Graph 显示），选区失去坐标系 → 复位，由全谱跑批重建。
+        if (!state.graphSeries) {
+            clearSection("graph-missing", { recompute: true });
+            return;
+        }
+    } else if (state.diffText === "Graph" || contentBarShows("Graph")) {
         setGraphLoading(true);
     } else {
         clearDiffGraph();
@@ -467,7 +502,8 @@ export async function fetchBeatmapFile(reason) {
             // Companella/Mixed 算法仍需 Ett 输入（classifyCompanellaDifficulty 依赖 MSD），
             // 否则 Companella 无 MSD 输入 → 输出严重偏离 + 主体 No data。
             || ((currentEstimatorAlgorithm() === "Companella" || currentEstimatorAlgorithm() === "Mixed")),
-        graph: state.diffText === "Graph" || contentBarShows("Graph"),
+        // 区间跑批不产图（图表保持全谱），省一次 Sunny graph 计算。
+        graph: !isSectionRun && (state.diffText === "Graph" || contentBarShows("Graph")),
         interlude: state.srText === "InterludeSR"
             || state.diffText === "InterludeSR"
             || currentEstimatorAlgorithm() === "Companella"
@@ -508,7 +544,8 @@ export async function fetchBeatmapFile(reason) {
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
-    if (state.enableResultCache && state.lastBeatmapIdentity) {
+    // ⚠️ 区间跑批不读缓存（且不读 enableResultCache）：短路顺序保证该设置项完全不被求值。
+    if (!isSectionRun && state.enableResultCache && state.lastBeatmapIdentity) {
         const snapshot = resultCache.get(cacheKey);
         if (snapshot
             && snapshot.computed.graph === needComputed.graph
@@ -538,11 +575,22 @@ export async function fetchBeatmapFile(reason) {
         // 旧写法只在非缓存分支消费——缓存命中的那轮会把文本留在槽里，下一张图
         // （含切回 osu）可能误用上一张图的外部文本。externalText 同时作为"本轮补跑
         // 可复用的本地文本"，供下方 auto profile 段回填（见那里的注释）。
-        const externalText = state.pendingSourceText;
-        state.pendingSourceText = null;
+        // ⚠️ 区间跑批不消费待用文本：那份文本属于外部源帧自己的跑批（见文件开头）。
+        const externalText = isSectionRun ? null : state.pendingSourceText;
+        if (!isSectionRun) {
+            state.pendingSourceText = null;
+        }
         if (cached) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
+        } else if (isSectionRun) {
+            // 区间分析：只复用上一次全谱跑批的原文（外部源没有可重抓的端点）。
+            rawText = getFullChartText();
+            if (!rawText) {
+                // 原文缺失/身份不匹配：复位选区，交给复位后的全谱跑批重建。
+                clearSection("text-missing", { recompute: true });
+                return;
+            }
         } else if (externalText) {
             // 文本已由 externalSource 转换并注入，跳过 tosu 抓取。
             rawText = externalText;
@@ -574,6 +622,20 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty beatmap content.");
             }
             // parse-once：解析在 pipeline 内完成一次，parsedSummary 回传后（下方）才做 override。
+        }
+
+        // 全谱跑批成功后留存原文：区间跑批切片要用（外部源无端点可重抓）。
+        // 缓存命中的那轮 rawText 为 null：绝不能拿 null 覆盖已有原文。
+        if (!isSectionRun && rawText) {
+            rememberFullChartText(rawText);
+        }
+        // 区间跑批：把整谱文本截成 [start, end] 片段后再进管线（唯一的输入变换）。
+        if (isSectionRun) {
+            const sliced = sliceOsuTextByTimeRange(rawText, sectionRange.startMs, sectionRange.endMs);
+            if (sliced.objectCount === 0) {
+                console.warn("[graph-section] no hit objects in selection", sectionRange);
+            }
+            rawText = sliced.text;
         }
 
         // 估算分派 + 附属段（pattern/ett/interlude/Companella 二次 Ett）收敛为一次 pipeline
@@ -639,8 +701,8 @@ export async function fetchBeatmapFile(reason) {
                     : "";
                 errors.push(`Rework failed: ${error.message}${diagSuffix}`);
                 if (isStaleRequest()) return;
-                resetReworkDisplay();
-                if (state.diffText === "Graph" || contentBarShows("Graph")) {
+                resetReworkDisplay({ keepGraph: isSectionRun });
+                if (!isSectionRun && (state.diffText === "Graph" || contentBarShows("Graph"))) {
                     showDiffGraphError("Graph unavailable");
                 }
                 // 失败路径回退：pipeline 抛错（估算器失败）未返回 parsedSummary——用最小元信息解析补齐，
@@ -863,18 +925,21 @@ export async function fetchBeatmapFile(reason) {
                 showNumericStarValue(rework.star);
             }
             updateDiffTextVisibility();
+            // 选区遮罩主题色跟随当前星级色阶（非选区时只更新 CSS 变量，无可见影响）。
+            notifySectionAnalysis(Number(rework.star));
 
-            if (state.diffText === "Graph" || showsGraph) {
-                // Graph 数据 = estimator 的 star 序列，对任意键数均可用
-                // （Sunny 核心为键数无关算法）；渲染失败才提示。
-                {
+            // 区间跑批绝不重画图表：图表要一直显示全谱波形，只叠加选区遮罩。
+            if (!isSectionRun) {
+                if (state.diffText === "Graph" || showsGraph) {
+                    // Graph 数据 = estimator 的 star 序列，对任意键数均可用
+                    // （Sunny 核心为键数无关算法）；渲染失败才提示。
                     const ok = renderDiffGraph(rework.graph);
                     if (!ok) {
                         showDiffGraphError("Graph unavailable");
                     }
+                } else {
+                    clearDiffGraph();
                 }
-            } else {
-                clearDiffGraph();
             }
 
             const lnPercent = `${(rework.lnRatio * 100).toFixed(1)}%`;
@@ -1156,7 +1221,8 @@ export async function fetchBeatmapFile(reason) {
 
             // 写缓存：companella 完成后、SV/auto-profile 段之前。
             // 门控：miss && 开关开 && 全成功 && generation 未变（防 clear 后旧分析写回）。
-            if (!cached && state.enableResultCache && state.lastBeatmapIdentity
+            // ⚠️ 区间跑批既不读也不写缓存（局部结果绝不能污染全谱快照）。
+            if (!isSectionRun && !cached && state.enableResultCache && state.lastBeatmapIdentity
                 && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
@@ -1243,22 +1309,25 @@ export async function fetchBeatmapFile(reason) {
             setNumericDifficultyValue(cappedDiff, cappedHint);
 
             // 反馈上下文：只在这里（分析完成、显示值已定）写入；换图/清卡时置 null。
-            state.feedbackContext = {
-                beatmapKey: state.lastBeatmapKey,
-                numericDifficulty: Number.isFinite(state.numericDifficulty) ? state.numericDifficulty : null,
-                estDiff: typeof resolvedEstDiff === "string" ? resolvedEstDiff : "",
-                slotCount: slotCount(resolvedEstDiff),
-                actualAlgorithm: state.actualEstimatorAlgorithm,
-                selectedAlgorithm: state.estimatorAlgorithm,
-                modeTag: resolvedModeTag,
-                pattern: feedbackPattern,
-                lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
-                keyCount: Number(rework.columnCount),
-                od: typeof parsedInfo.od === "number" && Number.isFinite(parsedInfo.od) && parsedInfo.od >= 0
-                    ? parsedInfo.od
-                    : null,
-                settingsHash: settingsHash(state),
-            };
+            // ⚠️ 区间跑批不写：局部结果绝不能成为 RC 反馈签名依据（保留上一轮全谱值）。
+            if (!isSectionRun) {
+                state.feedbackContext = {
+                    beatmapKey: state.lastBeatmapKey,
+                    numericDifficulty: Number.isFinite(state.numericDifficulty) ? state.numericDifficulty : null,
+                    estDiff: typeof resolvedEstDiff === "string" ? resolvedEstDiff : "",
+                    slotCount: slotCount(resolvedEstDiff),
+                    actualAlgorithm: state.actualEstimatorAlgorithm,
+                    selectedAlgorithm: state.estimatorAlgorithm,
+                    modeTag: resolvedModeTag,
+                    pattern: feedbackPattern,
+                    lnRatio: Number(rework.lnRatio ?? parsedInfo.lnRatio),
+                    keyCount: Number(rework.columnCount),
+                    od: typeof parsedInfo.od === "number" && Number.isFinite(parsedInfo.od) && parsedInfo.od >= 0
+                        ? parsedInfo.od
+                        : null,
+                    settingsHash: settingsHash(state),
+                };
+            }
         }
 
         setForceHideNumericDifficulty(isVibroMap);
@@ -1386,7 +1455,8 @@ export async function fetchBeatmapFile(reason) {
             hideOverlay();
         }
 
-        if (rework && metadataErrors.length === 0 && !isStaleRequest()) {
+        // ⚠️ 区间跑批不上报遥测（连 payload 都不构造）：局部结果不是整图样本。
+        if (!isSectionRun && rework && metadataErrors.length === 0 && !isStaleRequest()) {
             // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy/Polaris 的原生值已是
             // 标准尺度，直接用；其余算法（Sunny/Companella/Daniel——Daniel 的
             // 原生值是其 DP 尺度，比标准约高 0.5）用 estDiff 标签反向换算。
@@ -1429,14 +1499,14 @@ export async function fetchBeatmapFile(reason) {
             && String(window.location.port) === "24061";
         if (isShellOfflinePage && !state.shellTosuOnline && !isRuntimeOsuOverrideActive()) {
             setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
-            resetReworkDisplay();
+            resetReworkDisplay({ keepGraph: isSectionRun });
             patternClustersEl.innerHTML = "";
             ettSkillBarsEl.innerHTML = "";
             ppBarsEl.innerHTML = "";
             return;
         }
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
-        resetReworkDisplay();
+        resetReworkDisplay({ keepGraph: isSectionRun });
         patternClustersEl.innerHTML = contentBarShows("Pattern")
             ? "<li class=\"cluster-item empty\">No data</li>"
             : "";
