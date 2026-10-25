@@ -29,7 +29,7 @@ const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";
 const GRAPH_TIME_EPSILON_MS = 1e-3;
 
-function getGraphLineVerticalBounds(view) {
+export function getGraphLineVerticalBounds(view) {
     const yTop = GRAPH_PADDING_TOP;
     const yBottom = GRAPH_VIEWBOX_HEIGHT - GRAPH_PADDING_BOTTOM;
     if (!view || view.key !== "body") return { yTop, yBottom };

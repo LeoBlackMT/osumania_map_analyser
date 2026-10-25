@@ -133,3 +133,47 @@ export function interpolateSeriesValue(times, values, targetTime) {
     const t = (targetTime - x0) / (x1 - x0);
     return y0 + t * (y1 - y0);
 }
+
+/**
+ * 客户端像素 X → SVG viewBox X（纯函数，可 Node 单测）。
+ *
+ * 两处图表的 preserveAspectRatio 不同：header 是 `none`（拉伸填满），body 是
+ * `xMidYMid meet`（比例不符时留黑边）。因此不能按「容器宽度等比」硬算，必须按
+ * 实际渲染宽度与居中偏移换算。
+ *
+ * 用 getBoundingClientRect 与 event.clientX 做比例（两者同域，CSS zoom 的缩放因子
+ * 在比值里自然抵消），比 getScreenCTM 在不同 WebView 下更稳。
+ *
+ * @param {{clientX:number, rect:{left:number,width:number,height:number},
+ *   viewBoxWidth:number, viewBoxHeight:number, parAlign:string, parSlice:string}} input
+ * @returns {number|null} viewBox 坐标；容器不可见（宽/高为 0）时返回 null
+ */
+export function clientXToViewBoxX({
+    clientX,
+    rect,
+    viewBoxWidth,
+    viewBoxHeight,
+    parAlign = "xMidYMid",
+    parSlice = "meet",
+}) {
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return null;
+    }
+    if (!(viewBoxWidth > 0) || !(viewBoxHeight > 0)) {
+        return null;
+    }
+    if (parAlign === "none") {
+        return ((clientX - rect.left) / rect.width) * viewBoxWidth;
+    }
+
+    const sx = rect.width / viewBoxWidth;
+    const sy = rect.height / viewBoxHeight;
+    const scale = parSlice === "slice" ? Math.max(sx, sy) : Math.min(sx, sy);
+    if (!(scale > 0)) {
+        return null;
+    }
+
+    const renderedWidth = viewBoxWidth * scale;
+    const offsetX = (rect.width - renderedWidth) / 2;
+    return (clientX - rect.left - offsetX) / scale;
+}

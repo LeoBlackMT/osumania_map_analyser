@@ -220,3 +220,48 @@
     opacity: 0.96;
     stroke-linecap: round;
 }
+
+/* ── 选区模式（Graph Section Analysis，仅桌面壳） ──────────────────────── */
+/* 遮罩组用 class 控制显隐：SVG 节点上单写 hidden 不可靠（见 graph.js 游标实现）。 */
+.graph-section-overlay { pointer-events: none; }
+.graph-section-overlay.is-hidden { display: none; }
+
+.graph-section-mask {
+    fill: var(--graph-section-accent, #a6e0ff);
+    fill-opacity: 0.18;
+}
+
+.graph-section-edge {
+    stroke: var(--graph-section-accent, #a6e0ff);
+    stroke-width: 1.4;
+    stroke-opacity: 0.95;
+    stroke-linecap: round;
+}
+
+.star-graph-wrap.graph-section-armed,
+.body-graph-wrap.graph-section-armed {
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    border-color: color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 55%, transparent);
+    animation: graph-section-breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes graph-section-breathe {
+    0%, 100% {
+        box-shadow:
+            inset 0 0 0 1px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 45%, transparent),
+            0 0 6px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 30%, transparent);
+    }
+    50% {
+        box-shadow:
+            inset 0 0 0 1px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 75%, transparent),
+            0 0 16px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 55%, transparent);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .star-graph-wrap.graph-section-armed,
+    .body-graph-wrap.graph-section-armed { animation: none; }
+}
