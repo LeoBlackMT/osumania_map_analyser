@@ -142,6 +142,56 @@ function contrastRatio(hexA, hexB) {
     return (bright + 0.05) / (dark + 0.05);
 }
 
+function normalizeHexColor(value) {
+    const text = typeof value === "string" ? value.trim() : "";
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text)) {
+        return text.toLowerCase();
+    }
+    // 兼容 getComputedStyle 可能返回的 rgb()/rgba() 形式。
+    const rgbMatch = text.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+    if (rgbMatch) {
+        return rgbToHex(Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3]));
+    }
+    return null;
+}
+
+function mixHexColor(fromHex, toHex, t) {
+    const a = hexToRgb(fromHex);
+    const b = hexToRgb(toHex);
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    const ratio = clamp(t);
+    return rgbToHex(
+        Math.round(a.r + (b.r - a.r) * ratio),
+        Math.round(a.g + (b.g - a.g) * ratio),
+        Math.round(a.b + (b.b - a.b) * ratio),
+    );
+}
+
+/**
+ * 把任意主题色调整到在指定背景上「看得清」：保留色相，不够亮就逐步混白，直到对比度达标。
+ * 供图表选区高亮等「必须一眼可见」的 UI 元素使用（普通文字请用 pickReadableTextColor）。
+ *
+ * @param {string} color 候选颜色（#rgb / #rrggbb；非法值回落浅蓝）
+ * @param {string} background 背景色（#rgb / #rrggbb）
+ * @param {number} minRatio 最低对比度（默认 3：UI 图形元素可读门槛）
+ * @returns {string} 可读的十六进制颜色
+ */
+export function ensureContrastColor(color, background, minRatio = 3) {
+    const base = normalizeHexColor(color) || "#a6e0ff";
+    const bg = normalizeHexColor(background) || "#0d1220";
+    const target = Number.isFinite(minRatio) && minRatio > 1 ? Number(minRatio) : 3;
+    if (contrastRatio(base, bg) >= target) {
+        return base;
+    }
+    for (let step = 1; step <= 12; step += 1) {
+        const mixed = mixHexColor(base, "#ffffff", step * 0.08);
+        if (contrastRatio(mixed, bg) >= target) {
+            return mixed;
+        }
+    }
+    return "#ffffff";
+}
+
 function pickReadableTextColor(starValue, bgColor, preferredColor) {
     if (Number.isFinite(starValue) && starValue > 12) {
         return "#6563de";

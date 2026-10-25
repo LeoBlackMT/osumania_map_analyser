@@ -1,5 +1,8 @@
-// 选区遮罩层：把 { mode, selection, accentStar } 画到两张图上，并同步状态行时间胶囊。
+// 选区遮罩层：把 { mode, selection } 画到两张图上，并同步状态行时间胶囊。
 // 纯渲染模块：不持有状态、不派发重算（状态机在 ./index.js）。
+//
+// 高亮颜色 = 当前卡片主题色（--ma-accent），再经 ensureContrastColor 保证在深色图表背景上
+// 有足够对比度——高星/深色封面主题直接拿来用会看不清。
 
 import {
     GRAPH_PADDING_X,
@@ -10,9 +13,12 @@ import {
     state,
 } from "../appContext.js";
 import { getGraphLineVerticalBounds } from "../graph.js";
-import { starColorFor } from "../display.js";
+import { ensureContrastColor } from "../display.js";
 
 const PLOT_WIDTH = GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X;
+/** 图表容器深色渐变起点（styles/graph.css `.star-graph-wrap`），用于计算对比度。 */
+const GRAPH_BACKGROUND = "#0d1220";
+const FALLBACK_ACCENT = "#a6e0ff";
 
 /** 毫秒 → mm:ss（不设上限：75 分钟显示 75:03）。 */
 export function formatClock(ms) {
@@ -22,15 +28,18 @@ export function formatClock(ms) {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function applyAccent(accentStar) {
+/** 当前主题色（coverTheme / 自定义背景写进 --ma-accent），并保证图表背景上的辨识度。 */
+function resolveThemeAccent() {
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    const raw = root ? getComputedStyle(root).getPropertyValue("--ma-accent").trim() : "";
+    return ensureContrastColor(raw || FALLBACK_ACCENT, GRAPH_BACKGROUND, 3);
+}
+
+function applyAccent() {
     if (!mainCardEl) {
         return;
     }
-    if (Number.isFinite(accentStar)) {
-        mainCardEl.style.setProperty("--graph-section-accent", starColorFor(accentStar));
-    } else {
-        mainCardEl.style.removeProperty("--graph-section-accent");
-    }
+    mainCardEl.style.setProperty("--graph-section-accent", resolveThemeAccent());
 }
 
 function paintView(view, mode, selection) {
@@ -90,11 +99,10 @@ function updateCapsule(mode, selection) {
 
 /**
  * 重画双图遮罩 + 胶囊 + 主题色。
- * @param {{mode:"idle"|"armed", selection:{u0:number,u1:number,startMs:number,endMs:number}|null,
- *   accentStar:number}} snapshot
+ * @param {{mode:"idle"|"armed", selection:{u0:number,u1:number,startMs:number,endMs:number}|null}} snapshot
  */
-export function paintSectionOverlay({ mode, selection, accentStar }) {
-    applyAccent(accentStar);
+export function paintSectionOverlay({ mode, selection }) {
+    applyAccent();
     forEachGraphView((view) => paintView(view, mode, selection));
     updateCapsule(mode, selection);
 }

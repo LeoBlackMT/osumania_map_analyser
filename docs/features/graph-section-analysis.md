@@ -63,6 +63,23 @@
 
 **为什么补前导绿线**：`sunnyWindowAlgorithm.js parseTimingsAndDetectSV()` 用绿线累计「非 1.0x 速度持续时长」判 `isSV`；区间开始正处于 SV 段内时，缺前一条绿线会丢失 `inSV` 起点。
 
+### 4.1 四类数据源的速率口径（自查表）
+
+图表 `times` 与 `songTimeMs` 同域，恒等式 `物理 = 显示 × rate` 对四个源都成立：
+
+| 源 | `state.speedRate` 来源 | 图表 times | 选区换算 |
+|---|---|---|---|
+| osu!stable（tosu / 壳原生内存） | `modData.js`：DT/NC=1.5、HT/DC=0.75，其余 1（`desktop/src/osu/keys.rs` 同规则） | `原始时间 / rate` | `× rate` |
+| osu!lazer | `modData.js`：优先 `settings.speed_change`（含自定义 Rate），否则同 stable 的 DT/NC/HT/DC 规则 | 同上 | 同上 |
+| Etterna | Lua 桥 `currentRate()` → 壳 `modData.speedRate` | 同上 | 同上 |
+| Malody V（选曲桥） | 桥 `speed_rate` → 壳 `modData.speedRate`；`state.analysisRate` 在桥帧里与它同值 | 同上 | 同上 |
+| Malody 4.3.7 | 进程外读 `ModFlags.speed_rate` → 壳 `modData.speedRate` | 同上 | 同上 |
+
+补充事实：
+- 管线输入用 `state.analysisRate ?? state.speedRate`；`analysisRate` 只在 Malody 选曲桥帧被写且等于 `speedRate`，因此四个源的图表倍速与 `state.speedRate` 一致。
+- 转换器（sm/ssc/mc → osu）**只烘焙 STOPS/DELAYS，不烘焙倍率**，切片拿到的仍是 1.0× 谱面时间。
+- **选区存物理毫秒**，所以速率变化时切片区间不变；图表由 `graph.js syncGraphSeriesRate()` 用 `graphSeriesSource` 等比重画（像素形状不变），游标/暂停标记立刻回到新时间轴；胶囊按 `物理 / 新速率` 更新。
+
 ## 5. 分析管线接线（`analysis.js`）
 
 ### 5.1 全谱原文缓存
@@ -88,7 +105,7 @@
 | H8 | 渲染段 | 区间不调用 `renderDiffGraph` / `clearDiffGraph` |
 | H9 | 写缓存 | 区间不写 |
 | H10 | `feedbackContext` / 遥测 | 区间都不写/不构造 payload |
-| H11 | `if (rework)` 末尾 | `notifySectionAnalysis(rework.star)` 刷新遮罩主题色与胶囊 |
+| H11 | `if (rework)` 末尾 | `notifySectionAnalysis()` 刷新遮罩主题色与胶囊 |
 | H12 | 两处 `resetReworkDisplay()` | 传 `{ keepGraph: isSectionRun }`，失败时保留全谱曲线/暂停标记/反馈上下文 |
 
 ### 5.3 图表为什么不能重画
@@ -112,7 +129,7 @@
 
 - 状态行时间胶囊：`index.html` `#section-time`（`.title-icon` 右侧），文本 `mm:ss - mm:ss`（不设上限，75 分钟显示 `75:03`），样式在 `styles/status.css .section-time`。
 - 遮罩图层：两个 SVG 内各一组 `<g class="graph-section-overlay is-hidden">`（`rect.graph-section-mask` + 两条 `line.graph-section-edge-*`），位于暂停标记之后、游标之前；显隐用 **class**（SVG 上单写 `hidden` 不可靠）。
-- 颜色：`--graph-section-accent` 由 `starColorFor(rework.star)` 写到卡片根，遮罩 `fill-opacity: .22`，边界线 2.0。
+- 颜色：`--graph-section-accent` = **当前卡片主题色** `--ma-accent`，再经 `display.js ensureContrastColor(raw, "#0d1220", 3)` 提亮到在深色图表背景上可辨（高星/深色封面不再看不清）；遮罩 `fill-opacity: .22`，边界线 2.0。
 - 呼吸描边：`.star-graph-wrap.graph-section-armed` / `.body-graph-wrap.graph-section-armed`——1px 边框改主题色 + 2px 外环 `box-shadow` + `outline` 1px（offset 2），`graph-section-breathe` 1.8s 呼吸；`prefers-reduced-motion` 下关闭动画。
 
 ## 8. 生命周期

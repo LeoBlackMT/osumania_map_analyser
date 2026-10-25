@@ -942,7 +942,7 @@ export async function fetchBeatmapFile(reason) {
             }
             updateDiffTextVisibility();
             // 选区遮罩主题色跟随当前星级色阶（非选区时只更新 CSS 变量，无可见影响）。
-            notifySectionAnalysis(Number(rework.star));
+            notifySectionAnalysis();
 
             // 区间跑批绝不重画图表：图表要一直显示全谱波形，只叠加选区遮罩。
             if (!isSectionRun) {

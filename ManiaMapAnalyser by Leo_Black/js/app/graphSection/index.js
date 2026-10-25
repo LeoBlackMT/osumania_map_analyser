@@ -35,7 +35,6 @@ let drag = null; // { pointerId, anchorU, moved, prevSelection, view, axis }
 // identity → 全谱原文（LRU，最多 4 张）：换图后再切回来时结果缓存命中、拿不到原文，仍要能切片。
 const fullChartTexts = new Map();
 const MAX_STORED_TEXTS = 4;
-let accentStar = Number.NaN;
 let lastCommitAt = 0;
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
@@ -62,6 +61,8 @@ function getAxis() {
     if (!Number.isFinite(minTime) || !Number.isFinite(maxTime) || !(maxTime - minTime > 1)) {
         return null;
     }
+    // 四个源的图表倍速都等于 state.speedRate（analysisRate 只在桥帧写且与它同值），
+    // 见 docs/features/graph-section-analysis.md §4.1 自查表。
     const rate = Number.isFinite(state.speedRate) && state.speedRate > 0 ? Number(state.speedRate) : 1;
     return { minTime, maxTime, rate };
 }
@@ -135,7 +136,7 @@ function canArm() {
 }
 
 function paint() {
-    paintSectionOverlay({ mode, selection, accentStar });
+    paintSectionOverlay({ mode, selection });
 }
 
 function commitSelection() {
@@ -358,14 +359,10 @@ export function clearSection(reason, options = {}) {
     return true;
 }
 
-/** 分析完成后刷新遮罩主题色（跟随当前星级色阶）与胶囊时间。 */
-export function notifySectionAnalysis(star) {
+/** 分析完成后刷新遮罩主题色（当前卡片主题色）与胶囊时间。 */
+export function notifySectionAnalysis() {
     if (!isShellRuntime()) {
         return;
-    }
-    const value = Number(star);
-    if (Number.isFinite(value) && value > 0) {
-        accentStar = value;
     }
     paint();
 }

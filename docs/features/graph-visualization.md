@@ -187,4 +187,4 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 - **图层**：两个 SVG 内各有一组 `<g class="graph-section-overlay is-hidden">`（`rect.graph-section-mask` + `line.graph-section-edge-start/end`），位于 `*-pause-markers` 之后、`-cursor` 之前——遮罩压住曲线/暂停线，进度游标仍在最上层。显隐用 class 控制（SVG 节点单写 `hidden` 不可靠，参见 `setCursorElementVisibility` 同时写 `hidden` 与 `style.display` 的做法）。
 - **坐标系**：遮罩直接使用 viewBox 单位；x = `GRAPH_PADDING_X + u * (GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X)`，`u ∈ [0,1]` 是选区在绘图带内的比例。指针 → viewBox 的换算在 `graphMath.js clientXToViewBoxX()`，按各图 `preserveAspectRatio`（header=`none`、body=`xMidYMid meet`）解算。
 - **不重画**：区间分析跑批时 `analysis.js` 跳过 `setGraphLoading(true)` 与 `renderDiffGraph`，`state.graphSeries` / `state.graphSeriesSource` 保持不变；因此在选区期间图表始终是全谱波形。若曲线被别处清空（如中途关闭 Graph 显示），`clearDiffGraph` / `showDiffGraphError` 会经 `setGraphClearedHandler` 立即复位选区，不会留下「空白图 + 遮罩」的幽灵选区。
-- **主题色**：遮罩颜色来自 `--graph-section-accent`（由 `starColorFor(当前 star)` 写到卡片根），外框呼吸动画为 `.graph-section-armed`。
+- **主题色**：遮罩颜色来自 `--graph-section-accent`——取卡片主题色 `--ma-accent`，经 `display.js ensureContrastColor(..., "#0d1220", 3)` 保证深色图表背景上的辨识度；外框呼吸动画为 `.graph-section-armed`。
