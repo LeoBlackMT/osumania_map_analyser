@@ -6,7 +6,6 @@
 //     由 isShellConfigPayload() 辨别后直接应用，不额外轮询。
 // 浏览器/OBS 页面不会调用这里（调用方先判 isShellRuntime）。
 
-import { normalizeCombinedMode } from "./combinedMode.js";
 import { isShellRuntime } from "./feedback/feedbackSpec.js";
 
 export const SHELL_CONFIG_URL = "http://127.0.0.1:24061/shell-config";
@@ -64,9 +63,4 @@ export function isShellConfigPayload(payload) {
         Object.prototype.hasOwnProperty.call(payload, key),
     );
     return Boolean(hasCombinedMode && hasShellMarker);
-}
-
-/** 从 /shell-config 的 config 中取归一化后的 combinedMode。 */
-export function combinedModeFromConfig(config) {
-    return normalizeCombinedMode(config && config.combinedMode);
 }
