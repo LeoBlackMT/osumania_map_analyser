@@ -6,12 +6,31 @@
 
 export const COMBINED_MODE_MODULES = Object.freeze(["Pattern", "Etterna", "Graph", "ReworkPP"]);
 
+// 显示名只被设置页的模块列表使用（t() 的英文 fallback）；卡片 Tab 胶囊的
+// 短标签写在 index.html 里，不经过这里。
 export const COMBINED_MODE_LABELS = Object.freeze({
     Pattern: "Pattern",
-    Etterna: "Etterna",
+    Etterna: "Etterna Skillsets",
     Graph: "Graph",
     ReworkPP: "PP",
 });
+
+/** 把逗号/空白分隔的模块串解析成规范 token 数组（去重保序，空串回落默认四模块）。 */
+export function parseCombinedModeModuleList(text) {
+    const parts = typeof text === "string" ? text.split(/[\s,;，；]+/) : [];
+    const modules = [];
+    for (const part of parts) {
+        if (!part) {
+            continue;
+        }
+        const lowered = part.trim().toLowerCase();
+        const matched = COMBINED_MODE_MODULES.find((module) => module.toLowerCase() === lowered);
+        if (matched && !modules.includes(matched)) {
+            modules.push(matched);
+        }
+    }
+    return modules.length > 0 ? modules : [...COMBINED_MODE_MODULES];
+}
 
 export function isCombinedModeModule(value) {
     if (typeof value !== "string") {

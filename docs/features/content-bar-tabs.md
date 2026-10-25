@@ -53,7 +53,7 @@ contentBarShows(section) =
 
 ## 4. 点击语义
 
-`js/app/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / 键盘 / 拖拽）：
+`js/app/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / `键盘` / `拖拽`；闲置淡化用的 `pointerenter/move/down` 只做可见性恢复，不参与点击判定）：
 
 ```js
 contentBarTabsEl.addEventListener("click", (event) => {
@@ -90,6 +90,14 @@ contentBarTabsEl.addEventListener("click", (event) => {
 - Combined 开启：清空覆盖；
 - `resetContentBarTabOverride()` 同时清 `tabForceRecompute`。
 
+### 4.4 闲置淡化
+
+卡片 3 秒无指针 hover/操作时，胶囊栏通过 `is-idle` 类淡化至隐藏（`opacity→0` + `pointer-events:none`，CSS 0.45s 过渡）。恢复信号：卡片上的 `pointerenter/pointermove/pointerdown`、Tab 栏 `focusin`（键盘可达性：`:focus-within` 期间保持可见）、每次 Tab 点击。`syncContentBarTabs()` 把栏切到隐藏时同时清掉闲置计时与 `is-idle` 类。闲置监听只在壳内挂载；浏览器/OBS 页面零监听。
+
+### 4.5 图表选区与 Tab 切换
+
+用户在 Graph 上进入选区待命态（双击）后切走 Tab（或 Combined 模块变化/contentBar 设置变更把图表藏起来）时，`updateContentBarVisibility()` 统一调用 `clearSectionIfGraphHidden()`：所有图表视图不可见即退出待命态、清空选区与遮罩（`recompute:false`，调用方自带重算路径，清除后的重算自然回到全谱口径）。判定以**视图真实可见性**为准——`diffText=Graph` 的头部图表仍可见时不复位。切回 Graph 后是 idle 态，需重新双击进入。
+
 ## 5. 组合模式配置
 
 `mma-shell-config.json`：
@@ -106,6 +114,15 @@ contentBarTabsEl.addEventListener("click", (event) => {
 - UI 禁止取消最后一个已勾选模块；
 - 设置页写入整对象 `{enabled, modules}`，避免 `merge_json` 递归合并残留旧数组；
 - 旧 `contentBar: "Full"` 只按 §1 降级为 Auto；组合模式使用独立的新键 `combinedMode`。
+
+设置页 `Shell Configuration` 中该区块位于「内存偏移表管理」（及其影子诊断子区块）之后；模块列表显示名为 键型 / Etterna技能组（Etterna Skillsets）/ 曲线 / PP。
+
+### 5.1 预设支持（shell 专属键）
+
+- 预设快照可携带 `combinedMode: {enabled, modules}`；`captureCurrentSettings()` 仅在壳窗口采集真实值，浏览器页面永不采集；
+- 预设管理页表单顶部有「桌面壳专属」组（组合模式开关 + 模块顺序文本，逗号分隔），仅壳内渲染，浏览器不显示；勾选的字段合并为一个 `combinedMode` 对象，未勾选字段回落当前卡片 state；
+- 应用预设：`applySnapshot()` 对 `combinedMode` 走 `applyCombinedModeSetting()`（浏览器内 enabled 被强制 false，等价 no-op）+ 壳内 fire-and-forget `POST /shell-config` 持久化；该键不进入 tosu 设置回写（`writeBackToTosu` 过滤 `SHELL_ONLY_SNAPSHOT_KEYS`）；
+- 浏览器导入含 `combinedMode` 的预设文件：自动剥离该键并在导入结果消息中提示；壳内导入原样保留；导出不做任何处理。
 
 ## 6. 传输链路
 
@@ -150,7 +167,10 @@ contentBarTabsEl.addEventListener("click", (event) => {
 - [ ] 左键点击只切换一个模块；滚轮/右键/中键/触摸不切换；
 - [ ] 点击已激活 Tab 触发一次强制重算（跳过缓存一次）；
 - [ ] 换歌/换难度/IN·HO 后 Tab 复位；
+- [ ] 卡片闲置 3 秒后胶囊栏淡化至隐藏；指针活动/键盘焦点立即恢复；
+- [ ] Graph 选区待命态下切走 Tab：选区退出、遮罩清除；切回后为 idle 态；
 - [ ] Combined 开启时 Tab 隐藏，模块按配置顺序渲染，分隔条成对移动；
 - [ ] 空 `modules` 归一化默认四模块；设置页最后一个复选框禁用；
 - [ ] 卡片高度自然生长，无内嵌滚动条；
-- [ ] 旧 `contentBar: "Full"` 解析为 `"Auto"`。
+- [ ] 旧 `contentBar: "Full"` 解析为 `"Auto"`；
+- [ ] 壳内预设表单显示「桌面壳专属」组并随快照导出/应用；浏览器导入自动剥离并提示。

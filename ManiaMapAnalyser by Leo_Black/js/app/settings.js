@@ -87,6 +87,7 @@ import { clearResultCache } from "./resultCache.js";
 import { setTelemetryConfig } from "./telemetry.js";
 import { isCombinedModeModule, normalizeCombinedMode } from "./combinedMode.js";
 import { syncContentBarTabs } from "./contentBarTabs.js";
+import { clearSectionIfGraphHidden } from "./graphSection/index.js";
 import { isShellRuntime } from "./feedback/feedbackSpec.js";
 
 function isAutoDisplayEnabled() {
@@ -166,6 +167,9 @@ function updateContentBarVisibility() {
             sep.hidden = !(isCombined && contentBarShows(section));
         }
     }
+    // Tab 临时切换/Combined 模块变化/contentBar 设置把 Graph 藏起来时，退出
+    // 图表选区模式（内部按视图真实可见性判断，diffText=Graph 的头部图表不算隐藏）。
+    clearSectionIfGraphHidden("content bar visibility");
     applyCombinedModeOrder();
     syncContentBarTabs();
 }

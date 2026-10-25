@@ -11,11 +11,30 @@ import {
     createCustomPreset,
     slugify,
 } from "./core.js";
-import { AUTO_SAVE_PRESET_NAME } from "./storage.js";
+import { AUTO_SAVE_PRESET_NAME, SHELL_ONLY_SNAPSHOT_KEYS } from "./storage.js";
+import { isShellRuntime } from "../feedback/feedbackSpec.js";
 
 const FORMAT_SINGLE = "mma-preset";
 const FORMAT_COLLECTION = "mma-preset-collection";
 const PRESET_NAME_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+/**
+ * 浏览器/OBS 页面无法应用（也无处显示）shell 专属键：导入时剥离并告知。
+ * 桌面壳内导入原样保留。返回被剥离的键名（无则空数组）。
+ */
+function stripShellOnlySettings(settings) {
+    if (isShellRuntime() || !settings || typeof settings !== "object") {
+        return [];
+    }
+    const stripped = [];
+    for (const key of SHELL_ONLY_SNAPSHOT_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(settings, key)) {
+            delete settings[key];
+            stripped.push(key);
+        }
+    }
+    return stripped;
+}
 
 function safeFileName(name) {
     return String(name || "preset")
@@ -144,18 +163,31 @@ export async function importPresetFromFile(file) {
             if (parsed.presets.length === 0) {
                 return { ok: false, message: "The collection is empty." };
             }
+            const strippedKeys = new Set();
             const names = parsed.presets.map((item) => {
                 const p = item?.preset || item;
+                for (const key of stripShellOnlySettings(p.settings)) {
+                    strippedKeys.add(key);
+                }
                 return importSingle(p.name, p.description, p.version, p.settings);
             });
-            return { ok: true, message: `Imported ${names.length} presets: ${names.join(", ")}.` };
+            let message = `Imported ${names.length} presets: ${names.join(", ")}.`;
+            if (strippedKeys.size > 0) {
+                message += ` Shell-only items excluded (desktop shell only): ${[...strippedKeys].join(", ")}.`;
+            }
+            return { ok: true, message };
         }
 
         // Single preset (v2 wraps in .preset; v1 has fields at top level).
         if (parsed?.format === FORMAT_SINGLE) {
             const p = parsed.preset || parsed;
+            const stripped = stripShellOnlySettings(p.settings);
             const name = importSingle(p.name, p.description, p.version, p.settings);
-            return { ok: true, message: `Preset "${name}" imported.` };
+            let message = `Preset "${name}" imported.`;
+            if (stripped.length > 0) {
+                message += ` Shell-only items excluded (desktop shell only): ${stripped.join(", ")}.`;
+            }
+            return { ok: true, message };
         }
 
         return { ok: false, message: "Unrecognized preset file format." };

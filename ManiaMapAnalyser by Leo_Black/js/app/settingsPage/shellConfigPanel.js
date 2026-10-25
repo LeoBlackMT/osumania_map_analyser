@@ -269,7 +269,6 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             section.appendChild(buildWindowTopmostRow());
             section.appendChild(buildWindowClickThroughRow());
             section.appendChild(buildHotkeysRow());
-            section.appendChild(buildCombinedModeSection());
             section.appendChild(buildLogLevelRow());
             if (offsetsInfo) {
                 section.appendChild(buildOffsetsSection());
@@ -277,6 +276,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
                     section.appendChild(buildShadowSection());
                 }
             }
+            // 组合模式区块在「内存偏移表管理」（及其影子诊断子区块）之后。
+            section.appendChild(buildCombinedModeSection());
         }
         root.appendChild(section);
     }

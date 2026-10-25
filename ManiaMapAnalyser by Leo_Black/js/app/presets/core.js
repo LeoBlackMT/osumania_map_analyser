@@ -15,6 +15,7 @@ import {
     DEFAULT_SLOT_NAMES,
     PRESET_STORAGE_SETTING,
     SYSTEM_SNAPSHOT_KEYS,
+    SHELL_ONLY_SNAPSHOT_KEYS,
     storeFromPayload,
     rawStoreFingerprint,
     serializeStore,
@@ -540,7 +541,9 @@ function applyLoadedStore(store, raw) {
 
 function writeBackToTosu(presetName, snapshot) {
     const values = Object.keys(snapshot)
-        .filter((key) => key !== "wsEndpoint" && !SYSTEM_SNAPSHOT_KEYS.has(key))
+        .filter((key) => key !== "wsEndpoint"
+            && !SYSTEM_SNAPSHOT_KEYS.has(key)
+            && !SHELL_ONLY_SNAPSHOT_KEYS.has(key))
         .map((key) => ({
             uniqueID: key,
             value: snapshot[key],

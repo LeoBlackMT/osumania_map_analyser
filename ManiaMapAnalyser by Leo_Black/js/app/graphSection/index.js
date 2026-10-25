@@ -359,6 +359,34 @@ export function clearSection(reason, options = {}) {
     return true;
 }
 
+/**
+ * 图表全部不可见时退出选区并清空遮罩（Tab 临时切换 / Combined 模块变化 /
+ * contentBar 设置变更把 Graph 藏起来的统一复位口）。
+ *
+ * 以图表视图的真实可见性为准（而不是 contentBarShows）：diffText=Graph 的
+ * 头部图表也算可见——那种情况下选区仍可交互，不该被复位。recompute 恒为
+ * false：每个调用方（Tab 点击 / 设置应用 / Combined 切换）各自已带重算路径，
+ * 选区清除后的那次重算自然回到全谱口径。
+ *
+ * @param {string} reason
+ * @returns {boolean} 是否真的复位了
+ */
+export function clearSectionIfGraphHidden(reason) {
+    if (mode === "idle" && selection == null && drag == null) {
+        return false;
+    }
+    let anyVisible = false;
+    forEachGraphView((view) => {
+        if (isViewVisible(view)) {
+            anyVisible = true;
+        }
+    });
+    if (anyVisible) {
+        return false;
+    }
+    return clearSection(reason, { recompute: false });
+}
+
 /** 分析完成后刷新遮罩主题色（当前卡片主题色）与胶囊时间。 */
 export function notifySectionAnalysis() {
     if (!isShellRuntime()) {

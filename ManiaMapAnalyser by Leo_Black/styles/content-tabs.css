@@ -9,10 +9,22 @@
     margin: 2px 4px 0;
     padding: 0 2px;
     overflow: visible;
+    transition: opacity 0.45s ease;
 }
 
 .content-bar-tabs[hidden] {
     display: none;
+}
+
+/* 卡片闲置（无 hover/操作）时淡化至隐藏；键盘焦点在栏内时保持可见。 */
+.content-bar-tabs.is-idle {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.content-bar-tabs.is-idle:focus-within {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .content-tab {

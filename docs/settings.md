@@ -6,10 +6,9 @@
 
 ### 壳设置
 
-- **界面语言**：壳设置的第一行，可切换 自动 / 简体中文 / English，默认跟随系统语言。
-  - 选择会写进 `mma-shell-config.json` 的 `language` 字段并保留。
-  - 只影响壳自己的页面（设置页、预设管理器）；tosu 自带的设置面板固定为英文。
-- **常规设置**：
+- **常规设置**
+  - **Interface language**：界面语言，默认跟随系统语言。
+    - 只影响壳自己的页面（设置页、预设管理器）；tosu 自带的设置面板固定为英文。
   - **Game client**：选择需要使用的数据源。
     - Auto：自动选择目前活跃的来源。优先级：游玩中 > 近期活动 > osu! > Etterna > Malody 4 > Malody
     - 可锁定为某个来源（Osu! / Etterna / Malody / Malody 4）
@@ -29,6 +28,10 @@
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
     - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
+- **壳专属卡片配置**
+  - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
+    - 启用后可以调整模块数量，显示顺序。在复选框中勾选所需模块。至少需要勾选一个模块。
+    - 右侧可以使用上下箭头调整模块显示顺序。
 
 ### 卡片设置
 
@@ -41,7 +44,7 @@
         - TheLimitDoesNotExist / DanielLike: 面向高难与特殊玩法的配置。
         - Custom1 / Custom2 / Custom3: 自定义预设槽位，可在预设管理器页面管理。随后可以快速在 tosu 设置页应用，无需前往预设管理器手动应用。
         - LastSavedPreset: 自动跟随手动修改，修改会自动保存到其中。
-    - **自定义预设管理**: 在浏览器中打开管理页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。
+    - **自定义预设管理**: 在浏览器中打开管理页面 `presets.html`（位于插件目录，地址形如 `http://localhost:24050/<插件目录名>/presets.html`）。页面自动列出全部设置项，可勾选部分字段保存为预设、应用、重命名、删除，以及导出/导入预设文件与朋友分享。如果你使用的是桌面壳，直接进入设置页面即可快捷修改预设。
     - **预设指南**： 请前往 [docs/presets-guide.md](presets-guide.md) 查看预设使用说明和更多信息。
 - **模块设定**：
     - **Card Body Content**：选择在卡片主体显示的内容。
@@ -51,8 +54,7 @@
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
         - ReworkPP: 显示最大/实时 Rework PP 及其相关参数。
-        - 注：非 4/6/7K 谱面的卡片主体遵循内容设置（不按键数强制回退）；Graph 为 estimator 星数序列，任意键数均可渲染。
-        - 注：原 `Full` 选项已移除。旧配置里的 `Full` 会自动按 `Auto` 处理；桌面壳用户如需同时显示多个模块，请在 `Shell Configuration` 的“组合模式（Combined）”中勾选并排序。
+        - 注：原Full选项已移除。旧配置里的Full会自动按Auto处理；桌面壳用户如需同时显示多个模块，请在“组合模式”中勾选并排序。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
         - ReworkSR: 显示[Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth)星数。
@@ -182,10 +184,9 @@
 
 ### Shell Settings
 
-- **Interface language**: The first row of the shell settings switches Auto / 简体中文 / English; the default follows the system language.
-  - The choice is written to `language` in `mma-shell-config.json` and kept across restarts.
-  - It only affects the shell's own pages (settings, presets manager); tosu's built-in settings panel stays English.
 - **General Settings**:
+  - **Interface language**: Select the interface language. Default: Auto (follows system language).
+    - Only affects the shell's own pages (settings page, presets manager); tosu's built-in settings panel remains in English.
   - **Game client**: Select the data source to use.
     - Auto: Automatically selects the currently active source. Priority: Playing > Recent activity > osu! > Etterna > Malody 4 > Malody.
     - Can be locked to a specific source (Osu! / Etterna / Malody / Malody 4).
@@ -205,6 +206,10 @@
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
     - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
+- **Shell-exclusive Card Configuration**:
+  - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
+    - Once enabled, you can adjust the number of modules and their display order. Check the boxes for the desired modules. At least one module must be selected.
+    - Use the up and down arrows on the right to adjust the display order of the modules.
 
 ### Card Settings
 
@@ -217,7 +222,7 @@
         - TheLimitDoesNotExist / DanielLike: configurations for high-difficulty and niche play styles.
         - Custom1 / Custom2 / Custom3: custom preset slots, manageable on the management page in a browser. They can be quickly applied in the tosu settings page without going to the management page.
         - LastSavedPreset: automatically follows your manual changes; changes are saved into it automatically.
-    - **Custom preset management**: Open the management page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends.
+    - **Custom preset management**: Open the management page `presets.html` in a browser (located in the plugin folder, e.g. `http://localhost:24050/<plugin folder name>/presets.html`). The page lists every setting automatically — check the fields you want, save as a preset, apply, rename, delete, or export/import preset files to share with friends. If you are using the desktop shell, you can directly access the settings page for quick preset modifications.
     - **Presets Guide**: Please refer to [docs/presets-guide.md](presets-guide.md) for instructions on using presets and more information.
 - **Module Settings**:
     - **Card Body Content**: Select what to display in the main body of the card.
@@ -227,8 +232,7 @@
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
         - ReworkPP: Displays the max/live Rework PP performance and related parameters.
-        - Note: For non-4/6/7K beatmaps, the card body follows the content bar setting (no forced fallback by keycount); the Graph is the estimator star series and renders for any keycount.
-        - Note: The old `Full` option has been removed. Legacy `Full` values are treated as `Auto`; desktop-shell users who want several sections at once should use “Combined” under `Shell Configuration`.
+        - Note: The original Full option has been removed. Old configurations with Full will automatically be treated as Auto; desktop shell users who want to display multiple modules simultaneously should check and sort them in "Combined Mode".
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.
         - ReworkSR: Displays [Sunny Rework](https://github.com/sunnyxxy/Star-Rating-Rebirth) star rating.

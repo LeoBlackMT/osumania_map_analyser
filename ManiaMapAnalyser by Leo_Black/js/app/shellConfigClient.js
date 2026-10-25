@@ -64,3 +64,29 @@ export function isShellConfigPayload(payload) {
     );
     return Boolean(hasCombinedMode && hasShellMarker);
 }
+
+/**
+ * 把一个壳配置 patch POST 到 /shell-config（预设应用 combinedMode 时持久化用）。
+ * fire-and-forget：失败只返回 false，不抛错——运行时效果已由
+ * applyCombinedModeSetting 生效，落盘失败不该打断预设应用。
+ * 非壳环境直接 false；24050#mma-shell 跨源 POST 无 CORS 时同样静默失败。
+ *
+ * @param {object} patch
+ * @returns {Promise<boolean>}
+ */
+export async function postShellConfigPatch(patch) {
+    if (!isShellRuntime() || !patch || typeof patch !== "object") {
+        return false;
+    }
+    try {
+        const response = await fetch(SHELL_CONFIG_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+            cache: "no-store",
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}

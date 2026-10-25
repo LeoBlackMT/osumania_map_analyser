@@ -94,6 +94,8 @@
 
 表单值会跟随 tosu 的实时广播自动刷新（正在输入的那一项除外）。
 
+**桌面壳专属设置**：在桌面壳里打开管理器时，表单最顶部（“模块自定义”之前）会多出“桌面壳专属”组，包含**组合模式开关**与**组合模块顺序**（逗号分隔，如 `Graph, Pattern`）。勾选后预设会携带 `combinedMode`，应用时同时写入卡片与 `mma-shell-config.json`。浏览器 / tosu 页面不支持这些字段：管理器不显示该组；导入携带它们的预设文件时会自动剥离并在结果提示里注明。
+
 ## 6. 顶部操作栏
 
 | 按钮 | 作用 | 注意事项 |
@@ -220,6 +222,8 @@ This is the "partial preset" feature: check only what you want to manage.
 > Note: the internal `Preset` and `Preset Storage` settings are hidden from the form; `WebSocket Endpoint` is shown but unchecked by default (it is a connection parameter).
 
 Form values auto-refresh from tosu's live broadcast (except the field you are typing in).
+
+**Desktop-shell-only settings**: when the manager is opened inside the desktop shell, an extra "Desktop Shell Only" group appears at the very top of the form (before "Modules Customization") with **Combined mode** and **Combined sections order** (comma-separated, e.g. `Graph, Pattern`). Checked rows make the preset carry `combinedMode`; applying it updates both the card and `mma-shell-config.json`. Browser / tosu pages do not support these fields: the group is hidden there, and importing a preset file that carries them strips them automatically (the import notice says so).
 
 ## 6. Top action bar
 
