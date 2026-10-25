@@ -49,7 +49,7 @@ import {
     showNumericStarValue,
     show6KConstValue,
     showReworkPpValue,
-    renderFullModeSeparators,
+    renderCombinedModeSeparators,
 } from "./display.js";
 import { getLatestPpValue, resetLivePp } from "./livePp.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
@@ -279,7 +279,9 @@ function shouldShowBodySkeletonDuringExpand(previousCardHeight, activeContentBar
         return false;
     }
 
-    if (activeContentBar !== "Pattern" && activeContentBar !== "Etterna" && activeContentBar !== "Full") {
+    if (!state.combinedModeEnabled
+        && activeContentBar !== "Pattern"
+        && activeContentBar !== "Etterna") {
         return false;
     }
 
@@ -398,6 +400,10 @@ export { toTelemetryActualAlgorithm } from "./telemetrySpec.js";
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    // 点击已激活 Tab = 手动重算：本次跳过结果缓存一次。入口立即清零，避免
+    // 早退/失败/下一次分析被这个一次性标志污染。
+    const forceRecompute = state.tabForceRecompute === true;
+    state.tabForceRecompute = false;
     // 区间分析（Graph Section Analysis）：本次跑批是否使用选区切片。
     // ⚠️ 这个布尔量只允许出现在 §3.7 的 12 个守卫点（docs/features/graph-section-analysis.md）；
     // 新增任何副作用前先问「区间模式是否允许」，不允许就加守卫。
@@ -545,7 +551,7 @@ export async function fetchBeatmapFile(reason) {
     const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
     let cached = null;
     // ⚠️ 区间跑批不读缓存（且不读 enableResultCache）：短路顺序保证该设置项完全不被求值。
-    if (!isSectionRun && state.enableResultCache && state.lastBeatmapIdentity) {
+    if (!isSectionRun && state.enableResultCache && state.lastBeatmapIdentity && !forceRecompute) {
         const snapshot = resultCache.get(cacheKey);
         if (snapshot
             && snapshot.computed.graph === needComputed.graph
@@ -615,27 +621,32 @@ export async function fetchBeatmapFile(reason) {
                 throw new Error("Empty external beatmap content.");
             }
         } else {
-            // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
-            if (isShellOfflinePage
-                && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive() && !state.pendingSourceText) {
-                setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
-                return;
-            }
-            const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
-                // 只有壳原生端点（24062）值得这一次静默重试：tosu 通道行为逐字节不变。
-                native: isRuntimeOsuOverrideActive(),
-                isStale: isStaleRequest,
-            });
-            if (isStaleRequest() || response === null) return;
+            // 同图重算（Tab 切换/设置变更）优先复用上次全谱跑批留下的原文：外部源没有
+            // 可重抓的端点；osu 也省一次整谱抓取。原文按 identity 存 LRU，换图不会串。
+            rawText = getFullChartText();
+            if (!rawText) {
+                // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
+                if (isShellOfflinePage
+                    && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive() && !state.pendingSourceText) {
+                    setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
+                    return;
+                }
+                const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
+                    // 只有壳原生端点（24062）值得这一次静默重试：tosu 通道行为逐字节不变。
+                    native: isRuntimeOsuOverrideActive(),
+                    isStale: isStaleRequest,
+                });
+                if (isStaleRequest() || response === null) return;
 
-            if (!response.ok) {
-                throw new Error(`Request failed with status ${response.status}`);
-            }
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
 
-            rawText = await response.text();
-            if (isStaleRequest()) return;
-            if (!rawText || !rawText.trim()) {
-                throw new Error("Empty beatmap content.");
+                rawText = await response.text();
+                if (isStaleRequest()) return;
+                if (!rawText || !rawText.trim()) {
+                    throw new Error("Empty beatmap content.");
+                }
             }
             // parse-once：解析在 pipeline 内完成一次，parsedSummary 回传后（下方）才做 override。
         }
@@ -1294,7 +1305,7 @@ export async function fetchBeatmapFile(reason) {
         // rework.lnRatio 反映转换后的真实模式；而 patternResult 直接解析未转换的 rawText，
         // 若在此采纳 patternResult.ModeTag 会导致 Auto 档位在转换前后的模式间反复横跳震荡。
         // 因此 cvtFlag 激活时必须以转换后的 fallbackModeTag 为准。
-        let resolvedModeTag = (activeContentBar === "None" || Boolean(state.cvtFlag))
+        let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))
             ? fallbackModeTag
             : (patternResult?.report?.ModeTag || fallbackModeTag);
         let shouldShowSvTag = false;
@@ -1444,7 +1455,7 @@ export async function fetchBeatmapFile(reason) {
             Number(interludeStar),
         );
 
-        renderFullModeSeparators(ettOverallValue);
+        renderCombinedModeSeparators(ettOverallValue);
 
         if (isVibroMap && state.diffText === "Difficulty") {
             setEstimateDifficultyText("VIBRO");

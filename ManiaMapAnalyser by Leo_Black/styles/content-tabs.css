@@ -1,0 +1,51 @@
+/* 壳内卡片主体的迷你 Tab 胶囊栏。
+   4 枚胶囊在 475px 固定宽度内平铺；不换行、不滚动，绝不出现原生滚动条。 */
+
+.content-bar-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 18px;
+    margin: 2px 4px 0;
+    padding: 0 2px;
+    overflow: visible;
+}
+
+.content-bar-tabs[hidden] {
+    display: none;
+}
+
+.content-tab {
+    appearance: none;
+    flex: 0 0 auto;
+    height: 18px;
+    padding: 0 8px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 999px;
+    background: rgba(30, 41, 59, 0.42);
+    color: var(--text-soft);
+    font-family: "Outfit", sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.content-tab:hover {
+    border-color: color-mix(in srgb, var(--ma-accent) 42%, rgba(148, 163, 184, 0.24));
+    color: var(--text-primary);
+}
+
+.content-tab.is-active {
+    border-color: color-mix(in srgb, var(--ma-accent) 58%, transparent);
+    background: color-mix(in srgb, var(--ma-accent) 22%, transparent);
+    color: var(--text-primary);
+}
+
+.content-tab:focus-visible {
+    outline: 2px solid var(--ma-accent);
+    outline-offset: 1px;
+}

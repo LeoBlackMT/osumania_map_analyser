@@ -364,9 +364,9 @@ html.shell-mode .status-row {
     color: #ff9f9f;
 }
 
-/* Full mode: slight upward shift to avoid graph overlap */
-.main-card.bars-full .mode-tag-group,
-.main-card.bars-full .pause-count {
+/* Combined mode: slight upward shift to avoid graph overlap */
+.main-card.bars-combined .mode-tag-group,
+.main-card.bars-combined .pause-count {
     bottom: 12px;
 }
 

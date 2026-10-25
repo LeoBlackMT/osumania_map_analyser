@@ -2,6 +2,7 @@ import WebSocketManager from "./socket.js";
 import { DISPLAY_SKILLSET_ORDER } from "../ett/index.js";
 import { APP_CONFIG } from "../../config.js";
 import { createSettingsParsers } from "../parser/settingsParser.js";
+import { COMBINED_MODE_MODULES } from "./combinedMode.js";
 
 export { APP_CONFIG };
 
@@ -136,7 +137,11 @@ export const patternClustersEl = document.getElementById("pattern-clusters");
 export const ettSkillBarsEl = document.getElementById("ett-skill-bars");
 export const pauseCountEl = document.getElementById("pause-count");
 export const ppBarsEl = document.getElementById("pp-bars");
+export const sepPatternEl = document.getElementById("sep-pattern");
+export const sepEtternaEl = document.getElementById("sep-etterna");
 export const sepPpEl = document.getElementById("sep-pp");
+export const sepGraphEl = document.getElementById("sep-graph");
+export const contentBarTabsEl = document.getElementById("content-bar-tabs");
 export const overlayEl = document.getElementById("card-overlay");
 export const overlaySpinnerEl = document.getElementById("overlay-spinner");
 export const overlayTitleEl = document.getElementById("overlay-title");
@@ -168,6 +173,13 @@ export const state = {
     classicMod: false,
     contentBar: APP_CONFIG.defaults.contentBar,
     effectiveContentBar: null,
+    // 壳内 Tab 胶囊的会话级覆盖：null = 跟随 contentBar；切歌/换难度/IN·HO 时清空。
+    tabContentBar: null,
+    // 本次 Tab 点击是否强制跳过结果缓存一次（点击已激活 Tab = 手动重算）。
+    tabForceRecompute: false,
+    // 桌面壳组合模式：只能由 applyCombinedModeSetting() 写入；浏览器页面恒 false。
+    combinedModeEnabled: false,
+    combinedModeModules: [...COMBINED_MODE_MODULES],
     srText: APP_CONFIG.defaults.srText,
     userContentBar: APP_CONFIG.defaults.contentBar,
     userSrText: APP_CONFIG.defaults.srText,
@@ -347,12 +359,14 @@ export const {
 } = createSettingsParsers(APP_CONFIG);
 
 export function getActiveContentBar() {
-    return state.effectiveContentBar || state.contentBar;
+    return state.tabContentBar || state.effectiveContentBar || state.contentBar;
 }
 
 export function contentBarShows(section) {
-    const active = getActiveContentBar();
-    return active === section || active === "Full";
+    if (state.combinedModeEnabled) {
+        return state.combinedModeModules.includes(section);
+    }
+    return getActiveContentBar() === section;
 }
 
 export const GRAPH_VIEW_DEFS = [

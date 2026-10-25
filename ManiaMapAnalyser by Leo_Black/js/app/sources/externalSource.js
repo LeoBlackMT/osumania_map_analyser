@@ -19,6 +19,7 @@
 
 import { state } from "../appContext.js";
 import { scheduleRecompute } from "../scheduler.js";
+import { resetContentBarTabOverride } from "../settings.js";
 import { convertSmSscToOsuText } from "../../parser/smSscToOsuConverter.js";
 import { convertMcToOsuText } from "../../parser/mcToOsuConverter.js";
 import { computeOd } from "../../parser/judgeOdTable.js";
@@ -209,8 +210,10 @@ export function handleSongFrame(payload) {
     // （与基线一致；"none" 字符串会被估算器 parseFloat 成 NaN）。
     // 切图（身份变化）→ 复位选区；同一张图重复上报（身份不变）不复位。
     const previousBeatmapIdentity = state.lastBeatmapIdentity;
+    const previousCvtFlag = state.cvtFlag;
     state.lastBeatmapIdentity = String(payload.identity || "");
-    if (!isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity)) {
+    const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity);
+    if (identityChanged) {
         clearSection("beatmap", { recompute: false });
     }
     state.pendingSourceText = osuText;
@@ -225,6 +228,10 @@ export function handleSongFrame(payload) {
     const normFlag = (v) => (v == null || v === "" || v === "none" ? null : v);
     state.odFlag = normFlag(mod.odFlag);
     state.cvtFlag = normFlag(mod.cvtFlag);
+    // 换图/换难度或 IN·HO 转换改变谱面结构：清掉 Tab 临时覆盖，回到 contentBar 设置。
+    if (identityChanged || state.cvtFlag !== previousCvtFlag) {
+        resetContentBarTabOverride();
+    }
     // 外部源 modSignature 直构（不走 modData 派生、与 client 无关）；
     // 签名文本保持 "none" 稳定（缓存键用，与 state 数值语义分离）；
     // 第 5 段 = 判定（malody4 = 判定档字母 A~E；桥通道 = 判定档数值 0..4 / "?"）；

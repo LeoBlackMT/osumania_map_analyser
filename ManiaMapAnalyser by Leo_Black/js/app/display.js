@@ -1067,7 +1067,7 @@ export function formatDiffForDisplay(diffText) {
     return String(diffText).split("||").map((part) => part.trim()).join("\n");
 }
 
-export function renderFullModeSeparators(ettOverallValue) {
+export function renderCombinedModeSeparators(ettOverallValue) {
     const sepEtterna = document.getElementById("sep-etterna");
     if (!sepEtterna) return;
 
