@@ -102,8 +102,9 @@ pub fn respond_json(stream: &mut TcpStream, code: u16, body: &str) {
     write_response(stream, code, "application/json", body.as_bytes());
 }
 
-/// `/feedback` 允许的页面来源：壳自己的 24061 与 tosu 页面 24050（tosu 在线时壳加载 tosu 页面）。
-const FEEDBACK_ORIGINS: &[&str] = &[
+/// 壳页面允许的来源：壳自己的 24061 与 tosu 页面 24050（tosu 在线/`osuTransport:"tosu"` 时壳加载 tosu 页面）。
+/// `/feedback` 与 `GET /shell-config` 共用这份白名单。
+const SHELL_PAGE_ORIGINS: &[&str] = &[
     "http://127.0.0.1:24061",
     "http://localhost:24061",
     "http://127.0.0.1:24050",
@@ -124,7 +125,7 @@ fn header_value<'a>(head: &'a str, name: &str) -> Option<&'a str> {
 
 fn allowed_origin(head: &str) -> Option<String> {
     let origin = header_value(head, "origin")?;
-    FEEDBACK_ORIGINS
+    SHELL_PAGE_ORIGINS
         .iter()
         .find(|allowed| allowed.eq_ignore_ascii_case(origin))
         .map(|_| origin.to_string())
@@ -441,9 +442,16 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     // GET /shell-config：壳配置全文 + 三个根目录的**实际采纳**路径（`None` → JSON `null`，
     // 由 `Option<PathBuf>` 序列化而来，不做有损字符串化）。配置不可读 → 400。
     if path == "/shell-config" {
+        // 24050#mma-shell 的跨源读取需要 ACAO；白名单与 /feedback 相同，绝不使用 *。
+        let origin = allowed_origin(head);
         let cfg = config::read_shell_config();
         if !cfg.is_object() {
-            respond_json(&mut stream, 400, r#"{"error":"shell config unreadable"}"#);
+            respond_json_cors(
+                &mut stream,
+                400,
+                r#"{"error":"shell config unreadable"}"#,
+                origin.as_deref(),
+            );
             return;
         }
         let win = config::read_window_state();
@@ -475,7 +483,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                     .filter(|value| !value.is_empty())
             }
         });
-        respond_json(&mut stream, 200, &body.to_string());
+        respond_json_cors(&mut stream, 200, &body.to_string(), origin.as_deref());
         return;
     }
 
@@ -838,5 +846,28 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
         "updated": updated_count,
         "skipped": skipped_count
     })
+}
+
+#[cfg(test)]
+mod cors_tests {
+    use super::allowed_origin;
+
+    #[test]
+    fn shell_page_origins_allow_only_loopback_shell_pages() {
+        assert_eq!(
+            allowed_origin("Origin: http://127.0.0.1:24050"),
+            Some("http://127.0.0.1:24050".to_string())
+        );
+        assert_eq!(
+            allowed_origin("Origin: http://localhost:24061"),
+            Some("http://localhost:24061".to_string())
+        );
+        assert_eq!(
+            allowed_origin("Origin: http://tauri.localhost"),
+            Some("http://tauri.localhost".to_string())
+        );
+        assert_eq!(allowed_origin("Origin: http://evil.example"), None);
+        assert_eq!(allowed_origin(""), None);
+    }
 }
 
