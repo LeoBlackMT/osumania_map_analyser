@@ -27,7 +27,7 @@ import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 import { setStatus, updateCardPlayVisibility } from "../hud.js";
-import { clearSection } from "../graphSection/index.js";
+import { clearSection, isSameBeatmapIdentity } from "../graphSection/index.js";
 
 function looksLikeOsu(text) {
     return typeof text === "string"
@@ -210,7 +210,7 @@ export function handleSongFrame(payload) {
     // 切图（身份变化）→ 复位选区；同一张图重复上报（身份不变）不复位。
     const previousBeatmapIdentity = state.lastBeatmapIdentity;
     state.lastBeatmapIdentity = String(payload.identity || "");
-    if (state.lastBeatmapIdentity !== previousBeatmapIdentity) {
+    if (!isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity)) {
         clearSection("beatmap", { recompute: false });
     }
     state.pendingSourceText = osuText;

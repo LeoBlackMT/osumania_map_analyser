@@ -20,7 +20,7 @@
 | 待命态再次拖拽 | 直接覆盖上一次选区，不退出待命态 |
 | 纯点击（无位移） | 还原上一次选区，不跑分析 |
 | 再次双击 | 退出；若存在选区则派发一次全谱重算 |
-| 换图（身份变化）/ 清卡 / 进入游玩 / 进入结算屏 | 复位选区（见 §8） |
+| 换图（身份变化）/ 清卡 / 进入游玩 / 进入结算屏 / **图表被清空** | 复位选区（见 §8） |
 
 **进入守卫**（`canArm`）：`isShellRuntime()`、非游玩态（`state.isInPlayState` / `malodyPlaying` / `malody4Playing`）、非结算屏（`state.clientStateName === "resultscreen"`）、`state.graphSeries` 可用（跨度 > 1ms）、至少一个图表视图可见。
 
@@ -67,9 +67,10 @@
 
 ### 5.1 全谱原文缓存
 
-- `rememberFullChartText(rawText)`：**只在非区间跑批**成功后写入 `{ identity, text }`（`js/app/graphSection/index.js`）。浏览器模式早退，不占内存。
-- `getFullChartText()`：identity 与 `state.lastBeatmapIdentity` 不一致时返回 `null`。
-- 为什么必须复用原文：外部源（Etterna / Malody V / Malody 4）没有可重抓的 osu 端点；osu 侧也免一次网络往返。
+- `rememberFullChartText(rawText)`：**只在非区间跑批**成功后写入 `identity → text` 的 LRU（最多 4 张，`js/app/graphSection/index.js`）。浏览器模式早退，不占内存。
+- `getFullChartText()`：按当前 `state.lastBeatmapIdentity` 取；取不到返回 `null`。
+- 为什么按 identity 存多张：换图后再切回来时结果缓存命中、那一轮**拿不到原文**（`rawText=null`），只留一张会让选区稳定触发 `text-missing`。
+- 兜底：区间跑批未命中且当前是 osu 源时，直接抓一次 `/files/beatmap/file` 再切片并回填缓存；外部源没有可重抓端点，取不到时提示 `text-missing` 并复位。
 
 ### 5.2 拦截点（H1–H12）
 
@@ -111,8 +112,8 @@
 
 - 状态行时间胶囊：`index.html` `#section-time`（`.title-icon` 右侧），文本 `mm:ss - mm:ss`（不设上限，75 分钟显示 `75:03`），样式在 `styles/status.css .section-time`。
 - 遮罩图层：两个 SVG 内各一组 `<g class="graph-section-overlay is-hidden">`（`rect.graph-section-mask` + 两条 `line.graph-section-edge-*`），位于暂停标记之后、游标之前；显隐用 **class**（SVG 上单写 `hidden` 不可靠）。
-- 颜色：`--graph-section-accent` 由 `starColorFor(rework.star)` 写到卡片根，遮罩 `fill-opacity: .18`，边界线 1.4。
-- 呼吸描边：`.star-graph-wrap.graph-section-armed` / `.body-graph-wrap.graph-section-armed`，`graph-section-breathe` 2.2s；`prefers-reduced-motion` 下关闭动画。
+- 颜色：`--graph-section-accent` 由 `starColorFor(rework.star)` 写到卡片根，遮罩 `fill-opacity: .22`，边界线 2.0。
+- 呼吸描边：`.star-graph-wrap.graph-section-armed` / `.body-graph-wrap.graph-section-armed`——1px 边框改主题色 + 2px 外环 `box-shadow` + `outline` 1px（offset 2），`graph-section-breathe` 1.8s 呼吸；`prefers-reduced-motion` 下关闭动画。
 
 ## 8. 生命周期
 
@@ -124,7 +125,9 @@
 | Malody 桥 / Malody 4 进入游玩 | `externalSource.handleSongFrame`（`screen=playing/play`） | `clearSection("play", { recompute: false })`（该帧自带跑批） |
 | 进入结算屏 | `socketHandlers.applySignalState`（`nextIsResultScreen` 首次为真） | `clearSection("results", { recompute: true })` |
 | 清卡 | `analysis.js invokeCardClear` | `clearSection("card-clear", { recompute: false })` |
+| 图表被清空 | `graph.js clearDiffGraph` / `showDiffGraphError` → `setGraphClearedHandler` | `clearSection("graph-cleared", { recompute: false })`（否则会留下「空白图 + 遮罩」的幽灵选区） |
 
+> 身份比较只看稳定段 `id:` / `hash:`（`isSameBeatmapIdentity`）：tosu 部分包可能缺 `path:`，字符串变了但不是换图，不能复位选区。
 > 仅改 mod（含 DT/HT/自定义速率）**不复位**：选区按物理时间保存，速率变化要保留选区并按新速率重算。
 
 ## 9. 已知限制
@@ -132,7 +135,7 @@
 1. **区间独立重算**：结果是「这段谱面单独拿出来算」，不是「全谱中这段的难度贡献」；看数值时要理解这一点（遮罩 + 胶囊只提示范围，不改变语义）。
 2. **SV 图**：`parseTimingsAndDetectSV` 需要 >1 个 SV 区间且 >2000ms 才判 `isSV`；超短区间可能判否，LN 子评分口径略偏。切片器已补前导绿线覆盖多数情况。
 3. **跨界 LN 完整保留**：区间 LN% 会高于全谱（真实语义），模式标签可能从 RC 变 Mix/LN。
-4. **缓存关闭 + 外部源**：退出选区需要重算；缓存关闭时无法命中全谱快照，外部源又无端点可抓，只能等下一次 song 帧。
+4. **原文 LRU 只有 4 张**：在超过 4 张图之间来回后，早先那张图的原文会被淘汰；osu 源会自动重抓，外部源（Etterna / Malody）只能复位并等下一次 song 帧。
 5. **速率切换的 200ms 竞态**：拖拽瞬间若 mod 速率刚好变化，物理时间可能按旧速率折算一次；下一次分析/重拖会校正。
 6. **空选区**：不设最小秒数/最小 Note 门槛，空结果走现有错误链路（状态行红字 / No data），不额外提示。
 

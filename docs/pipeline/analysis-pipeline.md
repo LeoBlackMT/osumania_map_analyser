@@ -336,7 +336,8 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 「特定时间点谱面分析」复用 `fetchBeatmapFile` 全流程，只在文本进管线前做一次切片（详见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)）：
 
 - **入口**：`fetchBeatmapFile` 顶部 `getSectionRange()` → `isSectionRun`；`js/app/graphSection/index.js` 在桌面壳内维护选区（双击/拖拽）。
-- **文本来源优先级**：区间跑批 → `getFullChartText()`（上一次全谱跑批留存的原文，外部源没有可重抓端点）；非区间 → `pendingSourceText`（外部源）→ `fetch(getEndpoint())`。
+- **文本来源优先级**：区间跑批 → `getFullChartText()`（按 identity 存的最近 4 张全谱原文；命中结果缓存的那轮拿不到原文，所以不能只留一张）；未命中且为 osu 源时直接抓一次 `/files/beatmap/file` 再切片；外部源取不到则 `text-missing` 复位。
 - **切片点**：`sliceOsuTextByTimeRange(rawText, startMs, endMs)`（`js/parser/osuTimeSlice.js`），之后与整图分析完全同路径（worker / 主线程兜底 / 渲染）。
 - **跳过的副作用**：缓存读（H2）、缓存写（H9）、遥测（H10）、`state.feedbackContext`（H10）、壳 result 帧（不消费 `pendingSourceRequestId`，H4）、图表重画（H8）；失败路径保留图表（H12 `resetReworkDisplay({ keepGraph: true })`）。
-- **不复位的情况**：仅改 mod（含 DT/HT/自定义速率）不复位选区——选区按物理时间保存，速率变化后重算即反映新速率。
+- **图表被清空即复位**：`clearDiffGraph` / `showDiffGraphError` 经 `setGraphClearedHandler` 通知选区控制器——否则设置切走 Graph 显示后会留下「空白图 + 遮罩」的幽灵选区。
+- **不复位的情况**：仅改 mod（含 DT/HT/自定义速率）不复位选区——选区按物理时间保存，速率变化后重算即反映新速率；身份比较只看 `id:`/`hash:` 稳定段，避免缺 `path:` 的部分包误判换图。

@@ -45,7 +45,8 @@ function paintView(view, mode, selection) {
     if (!overlay) {
         return;
     }
-    const show = mode === "armed" && selection != null && view.isEnabled();
+    // 双保险：曲线被清空时不画遮罩（正常路径由 graph.js 的 cleared 回调复位选区）。
+    const show = mode === "armed" && selection != null && Boolean(state.graphSeries) && view.isEnabled();
     overlay.classList.toggle("is-hidden", !show);
     if (!show) {
         return;

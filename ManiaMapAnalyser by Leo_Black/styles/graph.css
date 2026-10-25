@@ -228,36 +228,41 @@
 
 .graph-section-mask {
     fill: var(--graph-section-accent, #a6e0ff);
-    fill-opacity: 0.18;
+    fill-opacity: 0.22;
 }
 
 .graph-section-edge {
     stroke: var(--graph-section-accent, #a6e0ff);
-    stroke-width: 1.4;
-    stroke-opacity: 0.95;
+    stroke-width: 2;
+    stroke-opacity: 1;
     stroke-linecap: round;
 }
 
+/* 待命态：外框高亮要一眼能看见——2px 外环 + 呼吸辉光 + 内描边，而不是只加一点边框色。 */
 .star-graph-wrap.graph-section-armed,
 .body-graph-wrap.graph-section-armed {
     cursor: crosshair;
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
-    border-color: color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 55%, transparent);
-    animation: graph-section-breathe 2.2s ease-in-out infinite;
+    border-color: color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 90%, white);
+    outline: 1px solid color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 65%, transparent);
+    outline-offset: 2px;
+    animation: graph-section-breathe 1.8s ease-in-out infinite;
 }
 
 @keyframes graph-section-breathe {
     0%, 100% {
         box-shadow:
-            inset 0 0 0 1px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 45%, transparent),
-            0 0 6px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 30%, transparent);
+            0 0 0 2px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 70%, transparent),
+            0 0 12px 2px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 45%, transparent),
+            inset 0 0 10px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 30%, transparent);
     }
     50% {
         box-shadow:
-            inset 0 0 0 1px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 75%, transparent),
-            0 0 16px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 55%, transparent);
+            0 0 0 2px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 95%, transparent),
+            0 0 24px 6px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 70%, transparent),
+            inset 0 0 16px color-mix(in srgb, var(--graph-section-accent, #a6e0ff) 50%, transparent);
     }
 }
 

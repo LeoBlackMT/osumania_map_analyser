@@ -357,9 +357,24 @@ export function resetPauseRuntime(clearMarkers = false) {
     }
 }
 
+// 图表被清空的回调（由 graphSection 注册）：选区依赖全谱曲线坐标系，曲线没了必须一起复位，
+// 否则会留下「空白图 + 遮罩 + 胶囊」的幽灵选区。
+let graphClearedHandler = null;
+
+export function setGraphClearedHandler(handler) {
+    graphClearedHandler = typeof handler === "function" ? handler : null;
+}
+
+function notifyGraphCleared() {
+    if (graphClearedHandler) {
+        graphClearedHandler();
+    }
+}
+
 export function clearDiffGraph() {
     state.graphSeries = null;
     dropGraphSeriesSource();
+    notifyGraphCleared();
 
     forEachGraphView((view) => {
         if (view.svgEl) {
@@ -462,6 +477,7 @@ export function showDiffGraphError(message) {
     setGraphLoading(false);
     state.graphSeries = null;
     dropGraphSeriesSource();
+    notifyGraphCleared();
     forEachEnabledGraphView((view) => {
         clearGraphScanEnter(view);
         setCursorElementVisibility(view.cursorEl, false);

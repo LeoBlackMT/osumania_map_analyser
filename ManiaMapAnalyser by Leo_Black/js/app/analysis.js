@@ -584,10 +584,26 @@ export async function fetchBeatmapFile(reason) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
         } else if (isSectionRun) {
-            // 区间分析：只复用上一次全谱跑批的原文（外部源没有可重抓的端点）。
+            // 区间分析：优先复用某次全谱跑批留下的原文（外部源没有可重抓的端点）。
             rawText = getFullChartText();
+            if (!rawText && (state.activeSource ?? "osu") === "osu") {
+                // 原文缓存未命中（切图来回被淘汰等）：osu 端点还在，直接抓一次整谱再切片。
+                const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
+                    native: isRuntimeOsuOverrideActive(),
+                    isStale: isStaleRequest,
+                });
+                if (isStaleRequest() || response === null) return;
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+                rawText = await response.text();
+                if (isStaleRequest()) return;
+                if (rawText) {
+                    rememberFullChartText(rawText);
+                }
+            }
             if (!rawText) {
-                // 原文缺失/身份不匹配：复位选区，交给复位后的全谱跑批重建。
+                // 外部源且没有留存原文：只能复位，等下一帧 song 数据。
                 clearSection("text-missing", { recompute: true });
                 return;
             }
