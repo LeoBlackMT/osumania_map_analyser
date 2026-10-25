@@ -330,3 +330,13 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 - `songKey` 构建与 `changeKind` 判定已从 `socketHandlers.js` 抽到 **`js/app/changeKind.js`**（`buildSongKey` :7、`resolveChangeKind`），`socketHandlers.js:31` 导入后调用；定位这两段逻辑请直接看 `changeKind.js`。
 - `appContext.js` 中原 `GRAPH_SUPPORTED_KEY_SET = {4,6,7}` 常量已移除（见 `appContext.js:282` 注释），键数支持判定改由 estimator/graph 数据驱动。
 - 路径修正：`coverTheme.js` 实际位于 `js/app/coverTheme.js`（非 `js/app/sources/`）；`modData.js` 实际位于 `js/app/modData.js`（非 `js/parser/`）。
+
+## 区间分析（section run）补充
+
+「特定时间点谱面分析」复用 `fetchBeatmapFile` 全流程，只在文本进管线前做一次切片（详见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)）：
+
+- **入口**：`fetchBeatmapFile` 顶部 `getSectionRange()` → `isSectionRun`；`js/app/graphSection/index.js` 在桌面壳内维护选区（双击/拖拽）。
+- **文本来源优先级**：区间跑批 → `getFullChartText()`（上一次全谱跑批留存的原文，外部源没有可重抓端点）；非区间 → `pendingSourceText`（外部源）→ `fetch(getEndpoint())`。
+- **切片点**：`sliceOsuTextByTimeRange(rawText, startMs, endMs)`（`js/parser/osuTimeSlice.js`），之后与整图分析完全同路径（worker / 主线程兜底 / 渲染）。
+- **跳过的副作用**：缓存读（H2）、缓存写（H9）、遥测（H10）、`state.feedbackContext`（H10）、壳 result 帧（不消费 `pendingSourceRequestId`，H4）、图表重画（H8）；失败路径保留图表（H12 `resetReworkDisplay({ keepGraph: true })`）。
+- **不复位的情况**：仅改 mod（含 DT/HT/自定义速率）不复位选区——选区按物理时间保存，速率变化后重算即反映新速率。

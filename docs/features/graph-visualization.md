@@ -179,3 +179,12 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 - **图表是否启用**：由 `state.diffText` 与 `contentBar` 共同判定（`hasAnyGraphModeEnabled`，见 §2.2），与缓存快照的 coverage 检查相关（详见 [result-cache.md](../pipeline/result-cache.md)）。
 - **样式**：`star-graph-fill.graph-unplayed`（暗底）与 `star-graph-fill-play`（亮层）、`star-graph-pause-marker`、`loading` 波浪动画、`scan-enter` 扫描动画等类名在 `styles/graph.css` 与 `styles/theme.css`（osu 主题变体 `html.ma-theme-osu` 使用 `--ma-accent`）中定义；本文档不展开 CSS 细节。
 - **性能**：`renderDiffGraph` 手工预分配 path 段数组并复用 `f1` 减少字符串拼接（`graph.js:652-697`）；动画循环仅在 `hasAnyGraphModeEnabled()` 时更新游标（`graph.js:577`）。
+
+## 9. 选区遮罩（Graph Section Analysis）
+
+桌面壳支持「特定时间点谱面分析」：双击图表进入选区模式，拖出时间区间后按区间重算卡片指标。完整规格见 [graph-section-analysis.md](graph-section-analysis.md)，本节只记录与图表渲染相关的事实。
+
+- **图层**：两个 SVG 内各有一组 `<g class="graph-section-overlay is-hidden">`（`rect.graph-section-mask` + `line.graph-section-edge-start/end`），位于 `*-pause-markers` 之后、`-cursor` 之前——遮罩压住曲线/暂停线，进度游标仍在最上层。显隐用 class 控制（SVG 节点单写 `hidden` 不可靠，参见 `setCursorElementVisibility` 同时写 `hidden` 与 `style.display` 的做法）。
+- **坐标系**：遮罩直接使用 viewBox 单位；x = `GRAPH_PADDING_X + u * (GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X)`，`u ∈ [0,1]` 是选区在绘图带内的比例。指针 → viewBox 的换算在 `graphMath.js clientXToViewBoxX()`，按各图 `preserveAspectRatio`（header=`none`、body=`xMidYMid meet`）解算。
+- **不重画**：区间分析跑批时 `analysis.js` 跳过 `setGraphLoading(true)` 与 `renderDiffGraph`，`state.graphSeries` / `state.graphSeriesSource` 保持不变；因此在选区期间图表始终是全谱波形。若曲线被别处清空（如中途关闭 Graph 显示），区间分析会自动复位选区（`clearSection("graph-missing")`）。
+- **主题色**：遮罩颜色来自 `--graph-section-accent`（由 `starColorFor(当前 star)` 写到卡片根），外框呼吸动画为 `.graph-section-armed`。

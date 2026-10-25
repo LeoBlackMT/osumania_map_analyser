@@ -15,6 +15,7 @@
 | [mixed-routing.md](mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序：RC 树 R1–R7、LN/Mix 树 L1–L5、Companella 阶段 C1–C10；含精确阈值与常量、失败回退链、标签与算法胶囊取值、常见误解速查） |
 | [pattern-analysis.md](pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [graph-visualization.md](graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
+| [graph-section-analysis.md](graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、缓存/遥测/反馈严格门控） |
 | [pause-detection.md](pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
 | [mode-tagging.md](mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
@@ -47,6 +48,7 @@
 | [mixed-routing.md](mixed-routing.md) | AI | Mixed routing document (step-by-step decision order: RC tree R1-R7, LN/Mix tree L1-L5, Companella stage C1-C10, with exact thresholds and constants, fallback chains, label and capsule values, myth checklist) |
 | [pattern-analysis.md](pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [graph-visualization.md](graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
+| [graph-section-analysis.md](graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict cache/telemetry/feedback gating) |
 | [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
 | [mode-tagging.md](mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
