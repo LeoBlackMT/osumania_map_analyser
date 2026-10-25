@@ -20,6 +20,8 @@
                         <path d="M12 3.2l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.5 6.8 19.2l1-5.8L3.6 9.3l5.8-.8L12 3.2z"></path>
                     </svg>
                 </span>
+                <!-- 选区模式时间胶囊（[mm:ss - mm:ss]）：只在壳内选区生效时显示，写入者 js/app/graphSection/overlay.js -->
+                <span id="section-time" class="section-time" hidden>[--:-- - --:--]</span>
                 <p id="status" class="status">Waiting to load beatmap file...</p>
                 <!-- 壳相位提示：与 #status 同排的**独立**元素（扫描 13–23 s 期间显示壳下发的那句话）。写入者只有 js/app/sources/osuScanHint.js。 -->
                 <p id="osu-scan-hint" class="osu-scan-hint" hidden></p>
@@ -46,6 +48,11 @@
                             <path id="rework-diff-graph-fill-play" class="star-graph-fill-play" d="" clip-path="url(#rework-diff-graph-play-clip)"></path>
                             <path id="rework-diff-graph-line" class="star-graph-line" d=""></path>
                             <g id="rework-diff-graph-pause-markers"></g>
+                            <g class="graph-section-overlay is-hidden" aria-hidden="true">
+                                <rect class="graph-section-mask" x="0" y="0" width="0" height="0"></rect>
+                                <line class="graph-section-edge graph-section-edge-start" x1="0" x2="0" y1="0" y2="0"></line>
+                                <line class="graph-section-edge graph-section-edge-end" x1="0" x2="0" y1="0" y2="0"></line>
+                            </g>
                             <line id="rework-diff-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86"></line>
                             <circle id="rework-diff-graph-cursor-dot" class="star-graph-cursor-dot" cx="0" cy="0" r="2.8"></circle>
                         </svg>
@@ -90,6 +97,11 @@
                     <path id="body-graph-fill-play" class="star-graph-fill-play" d="" clip-path="url(#body-graph-play-clip)"></path>
                     <path id="body-graph-line" class="star-graph-line" d=""></path>
                     <g id="body-graph-pause-markers"></g>
+                    <g class="graph-section-overlay is-hidden" aria-hidden="true">
+                        <rect class="graph-section-mask" x="0" y="0" width="0" height="0"></rect>
+                        <line class="graph-section-edge graph-section-edge-start" x1="0" x2="0" y1="0" y2="0"></line>
+                        <line class="graph-section-edge graph-section-edge-end" x1="0" x2="0" y1="0" y2="0"></line>
+                    </g>
                     <line id="body-graph-cursor" class="star-graph-cursor" x1="0" y1="0" x2="0" y2="86"></line>
                     <circle id="body-graph-cursor-dot" class="star-graph-cursor-dot" cx="0" cy="0" r="2.8"></circle>
                 </svg>

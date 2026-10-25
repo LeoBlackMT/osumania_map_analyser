@@ -215,3 +215,13 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - 第 5/6/7 段都是硬要求，各自对应一件**会静默出错**的事：判定档决定换算出的等效 OD；**Turbo 1.2 与 Dash 1.2 的 speedRate 相同、只能靠第 6 段区分**；**Pro 在同一判定档与同一倍率下改变等效 OD，只能靠第 7 段区分**。任一变化都必须重算——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都由壳随 song 帧下发（`meta.judge` / `winScale` / `pro`），变化即触发一次重发。
 - `gameClient` 设置变更进入 `SETTING_CACHE_KEYS`（保守兜底）；`etternaRoot` / `malodyRoot` / `malody4Root` 不影响键值。
 - meta 降级（`meta:` 开头 identity）规则对外部源不适用（外部 identity 恒含 md5 段）。
+
+## 区间分析（section run）：不读不写
+
+「特定时间点谱面分析」的区间跑批是临时派生计算，**完全不进结果缓存**：
+
+- 不调用 `resultCache.get`（`analysis.js` 的 H2 守卫短路在 `state.enableResultCache` 之前，连设置项都不读）；
+- 不调用 `resultCache.put`（H9），不改变 `generation`，不清空缓存；
+- 退出选区后的全谱跑批仍按原缓存键命中，所以「拖一下再退出」能秒回整图口径。
+
+原因：缓存键是 `star-v12|算法|谱面身份|modSignature`，不含时间区间；写进去会让下一次整图分析命中半张谱面的快照。完整规格见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)。

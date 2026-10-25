@@ -369,3 +369,22 @@ html.shell-mode .status-row {
 .main-card.bars-full .pause-count {
     bottom: 12px;
 }
+
+/* 选区模式时间胶囊（Graph Section Analysis；仅桌面壳） */
+.section-time {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(198, 226, 255, 0.28);
+    background: rgba(38, 50, 84, 0.58);
+    color: #dceaff;
+    font-size: 12px;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.section-time[hidden] { display: none !important; }

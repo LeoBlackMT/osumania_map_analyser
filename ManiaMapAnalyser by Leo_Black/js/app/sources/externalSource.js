@@ -27,6 +27,7 @@ import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 import { setStatus, updateCardPlayVisibility } from "../hud.js";
+import { clearSection, isSameBeatmapIdentity } from "../graphSection/index.js";
 
 function looksLikeOsu(text) {
     return typeof text === "string"
@@ -116,6 +117,10 @@ export function handleSongFrame(payload) {
         state.malody4Screen = screen;
         state.malody4Playing = screen === "play" || screen === "playing";
     }
+    // 外部源进入实际游玩：复位选区（本帧自己的跑批会恢复整图口径，故不额外派发重算）。
+    if (state.malodyPlaying || state.malody4Playing) {
+        clearSection("play", { recompute: false });
+    }
 
     // 转换接线（主线程；osu 直通）。同图多难度：用桥上报的 difficulty 选对应块。
     let osuText = payload.rawText;
@@ -202,7 +207,12 @@ export function handleSongFrame(payload) {
     const mod = payload.modData || {};
     // state 注入（与 socketHandlers 写字段同形）：无 OD/cvt 修改时用 null
     // （与基线一致；"none" 字符串会被估算器 parseFloat 成 NaN）。
+    // 切图（身份变化）→ 复位选区；同一张图重复上报（身份不变）不复位。
+    const previousBeatmapIdentity = state.lastBeatmapIdentity;
     state.lastBeatmapIdentity = String(payload.identity || "");
+    if (!isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity)) {
+        clearSection("beatmap", { recompute: false });
+    }
     state.pendingSourceText = osuText;
     state.pendingSourceRequestId = requestId;
     state.pendingSourceActive = source;

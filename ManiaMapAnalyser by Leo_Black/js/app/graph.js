@@ -29,7 +29,12 @@ const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";
 const GRAPH_TIME_EPSILON_MS = 1e-3;
 
-function getGraphLineVerticalBounds(view) {
+/** 当前这批 times 是按哪个倍速算的（换速率后靠它等比换算）。 */
+let graphSeriesRate = 1;
+
+const currentSpeedRate = () => (Number.isFinite(state.speedRate) && state.speedRate > 0 ? Number(state.speedRate) : 1);
+
+export function getGraphLineVerticalBounds(view) {
     const yTop = GRAPH_PADDING_TOP;
     const yBottom = GRAPH_VIEWBOX_HEIGHT - GRAPH_PADDING_BOTTOM;
     if (!view || view.key !== "body") return { yTop, yBottom };
@@ -357,9 +362,24 @@ export function resetPauseRuntime(clearMarkers = false) {
     }
 }
 
+// 图表被清空的回调（由 graphSection 注册）：选区依赖全谱曲线坐标系，曲线没了必须一起复位，
+// 否则会留下「空白图 + 遮罩 + 胶囊」的幽灵选区。
+let graphClearedHandler = null;
+
+export function setGraphClearedHandler(handler) {
+    graphClearedHandler = typeof handler === "function" ? handler : null;
+}
+
+function notifyGraphCleared() {
+    if (graphClearedHandler) {
+        graphClearedHandler();
+    }
+}
+
 export function clearDiffGraph() {
     state.graphSeries = null;
     dropGraphSeriesSource();
+    notifyGraphCleared();
 
     forEachGraphView((view) => {
         if (view.svgEl) {
@@ -462,6 +482,7 @@ export function showDiffGraphError(message) {
     setGraphLoading(false);
     state.graphSeries = null;
     dropGraphSeriesSource();
+    notifyGraphCleared();
     forEachEnabledGraphView((view) => {
         clearGraphScanEnter(view);
         setCursorElementVisibility(view.cursorEl, false);
@@ -497,12 +518,41 @@ function isGraphProgressSupported() {
     return true;
 }
 
+/**
+ * 倍速变化后把全谱曲线按比例重画一次（像素形状不变，时间轴整体缩放）。
+ *
+ * 为什么需要：区间分析跑批刻意不重画图表（保持全谱形状），而 `state.songTimeMs` 与
+ * `songStartMs` 都是「原始时间 / speedRate」——速率一变，旧 times 与游标/暂停标记就不同域了。
+ * 这里用 `graphSeriesSource`（未裁剪序列）等比换算后重画，游标立刻回到正确位置。
+ *
+ * @returns {boolean} 是否真的重画了
+ */
+export function syncGraphSeriesRate() {
+    const rate = currentSpeedRate();
+    const source = state.graphSeriesSource;
+    if (!source || !state.graphSeries || !(graphSeriesRate > 0)) {
+        return false;
+    }
+    if (Math.abs(graphSeriesRate - rate) < 1e-6) {
+        return false;
+    }
+    const factor = graphSeriesRate / rate;
+    const times = new Array(source.times.length);
+    for (let i = 0; i < times.length; i += 1) {
+        times[i] = source.times[i] * factor;
+    }
+    return renderDiffGraph({ times, values: source.values }, { animate: false });
+}
+
 export function updateGraphCursor(explicitTimeMs = null) {
     if (!hasAnyGraphModeEnabled()) {
         forEachGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }
+
+    // 速率变化后先把曲线换到新时间轴，再算游标（区间模式不重画图表，靠这一步自愈）。
+    syncGraphSeriesRate();
 
     if (!isGraphProgressSupported()) {
         forEachEnabledGraphView((view) => {
@@ -623,6 +673,8 @@ export function renderDiffGraph(graphData, options = {}) {
     // 未裁剪的归一化序列留作重建源：渲染时的时间线只是快照（见
     // trimSeriesStartToFirstObject），refreshGraphTimeline 用它按新时间线重画。
     state.graphSeriesSource = normalizedSeries;
+    // 记录这批 times 是按哪个倍速算出来的：换速率后 syncGraphSeriesRate 用它换算。
+    graphSeriesRate = currentSpeedRate();
 
     const { minYValue: preMinY, maxYValue: preMaxY } = normalizedSeries;
 

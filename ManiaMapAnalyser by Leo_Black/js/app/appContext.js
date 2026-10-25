@@ -101,6 +101,8 @@ export const STAR_BG_STOPS = APP_CONFIG.starStops.background;
 export const STAR_TEXT_STOPS = APP_CONFIG.starStops.text;
 
 export const statusEl = document.getElementById("status");
+// 选区模式的时间胶囊（[mm:ss - mm:ss]）；写入者只有 js/app/graphSection/overlay.js。
+export const sectionTimeEl = document.getElementById("section-time");
 // 壳相位提示的**专属**元素（Step 9f）：与 `#status` 同排但写入者只有 `sources/osuScanHint.js`
 // —— 共享状态行由分析流程掌控，提示借写在那里会被任何一次外部改写打掉（Step 9e 实测只闪 300 ms）。
 export const osuScanHintEl = document.getElementById("osu-scan-hint");

@@ -37,6 +37,7 @@
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、回退链、标签与胶囊取值、Companella 融合三路） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
+| [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、严格门控） |
 | [features/pause-detection.md](features/pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
@@ -111,6 +112,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: which algorithm wins when, exact thresholds, fallback chains, label and capsule values, Companella fusion routes) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
+| [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict gating) |
 | [features/pause-detection.md](features/pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
