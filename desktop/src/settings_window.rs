@@ -82,8 +82,9 @@ pub fn open_or_focus(app: &AppHandle, plugin_dir: &Path) {
         // 几何约定：磁盘上的 x/y/w/h 来自 Moved/Resized 的 **physical** 载荷，恢复必须
         // 用 Physical* 构造（builder 的 position/inner_size 是 logical，混用会在高 DPI
         // 下逐次漂移；同 main.rs:126-128 的既有约定）。
-        let state = crate::config::read_settings_window_state();
-        let fresh = state.x == i32::MIN;
+        let mut state = crate::config::read_settings_window_state();
+        state.sanitize();
+        let fresh = state.x == i32::MIN || !crate::config::is_valid_position(state.x, state.y);
         let mut builder = WebviewWindowBuilder::new(&app, LABEL, url())
             .title(TITLE)
             .min_inner_size(720.0, 480.0)
@@ -92,15 +93,23 @@ pub fn open_or_focus(app: &AppHandle, plugin_dir: &Path) {
             .always_on_top(false)
             .skip_taskbar(false);
         if fresh {
-            // 首次打开（无记忆几何）：默认 logical 尺寸 + 居中。
+            // 首次打开（无记忆几何或异常几何）：默认 logical 尺寸 + 居中。
             builder = builder.inner_size(state.w as f64, state.h as f64).center();
         }
         match builder.build() {
             Ok(window) => {
                 if !fresh {
-                    // 记忆几何是 physical → 用 Physical* 恢复（见文件头几何约定）。
-                    let _ = window.set_position(tauri::PhysicalPosition::new(state.x, state.y));
-                    let _ = window.set_size(tauri::PhysicalSize::new(state.w, state.h));
+                    // 记忆几何是 physical → 检查是否在任一可用显示器上可见，避免虚空恢复
+                    let visible = crate::app::builder::is_window_visible_on_any_monitor(
+                        &window, state.x, state.y, state.w, state.h,
+                    );
+                    if visible {
+                        let _ = window.set_position(tauri::PhysicalPosition::new(state.x, state.y));
+                        let _ = window.set_size(tauri::PhysicalSize::new(state.w, state.h));
+                    } else {
+                        let _ = window.set_size(tauri::PhysicalSize::new(state.w, state.h));
+                        let _ = window.center();
+                    }
                 }
                 crate::server::log::log_line("settings window opened");
                 // 设置窗口在前期间取消主窗置顶（不写盘；关闭/失败时按磁盘恢复）。
