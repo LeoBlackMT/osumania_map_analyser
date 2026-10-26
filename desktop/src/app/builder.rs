@@ -1,13 +1,50 @@
 // app::builder - 应用程序生命周期流水线构建器
 
+use std::sync::atomic::Ordering;
 use tauri::Manager;
 use crate::config;
 use crate::server;
 use crate::settings_window;
 use super::shortcuts::register_global_shortcuts;
 use super::url::startup_url;
-use super::window_events::handle_window_event;
+use super::window_events::{handle_window_event, APP_INITIALIZED};
 use super::window_state::{spawn_window_state_watchdog, WINDOW_STATE};
+
+/// 检查窗口矩形是否与任意可用显示器有重叠（防止断开显示器或分辨率改变后窗口落在虚空中）。
+pub fn is_window_visible_on_any_monitor(
+    window: &tauri::WebviewWindow,
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+) -> bool {
+    let Ok(monitors) = window.available_monitors() else {
+        return true;
+    };
+    if monitors.is_empty() {
+        return true;
+    }
+    let win_r = x.saturating_add(w as i32);
+    let win_b = y.saturating_add(h as i32);
+
+    for m in monitors {
+        let m_pos = m.position();
+        let m_size = m.size();
+        let m_r = m_pos.x.saturating_add(m_size.width as i32);
+        let m_b = m_pos.y.saturating_add(m_size.height as i32);
+
+        let overlap_l = x.max(m_pos.x);
+        let overlap_t = y.max(m_pos.y);
+        let overlap_r = win_r.min(m_r);
+        let overlap_b = win_b.min(m_b);
+
+        // 要求至少与任一显示器有 50x50 像素的可视/可拖动交集
+        if overlap_r >= overlap_l + 50 && overlap_b >= overlap_t + 50 {
+            return true;
+        }
+    }
+    false
+}
 
 pub struct AppBuilder;
 
@@ -57,12 +94,25 @@ impl AppBuilder {
 
                 if let Some(window) = app.get_webview_window("main") {
                     server::set_main_window(&shared, window.clone());
-                    let saved = config::read_window_state();
-                    *WINDOW_STATE.lock().unwrap() = saved.clone();
-                    if saved.x != i32::MIN {
+                    let mut saved = config::read_window_state();
+                    saved.sanitize();
+
+                    let is_pos_valid = config::is_valid_position(saved.x, saved.y) && saved.x != i32::MIN;
+                    let is_visible = is_pos_valid && is_window_visible_on_any_monitor(&window, saved.x, saved.y, saved.w, saved.h);
+
+                    if is_visible {
                         let _ = window.set_position(tauri::PhysicalPosition::new(saved.x, saved.y));
+                    } else {
+                        let _ = window.center();
+                        if let Ok(pos) = window.outer_position() {
+                            if config::is_valid_position(pos.x, pos.y) {
+                                saved.x = pos.x;
+                                saved.y = pos.y;
+                            }
+                        }
                     }
                     let _ = window.set_size(tauri::PhysicalSize::new(saved.w, saved.h));
+                    *WINDOW_STATE.lock().unwrap() = saved.clone();
                     let _ = window.set_always_on_top(saved.topmost);
                     if saved.click_through {
                         let _ = window.set_ignore_cursor_events(true);
@@ -85,6 +135,9 @@ impl AppBuilder {
 
                 register_global_shortcuts(app.handle(), plugin_dir);
                 spawn_window_state_watchdog(app.handle());
+
+                // setup 完成：激活事件监听，彻底消除建窗时的事件竞争
+                APP_INITIALIZED.store(true, Ordering::Release);
 
                 Ok(())
             })
