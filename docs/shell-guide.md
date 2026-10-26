@@ -23,7 +23,7 @@
 
 ## 一、快速开始
 
-- 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。Linux 包的目录结构与 Windows 相同（插件内容在包根、`mma-shell` 与 `index.html` 同级），解压后运行`./mma-shell`；tar 已保留可执行位。
+- 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。Linux 用户解压后运行`./mma-shell`。
 - 如果你需要在 Etterna 或 Malody V 中使用，请运行`bridges/install-bridge-zh.bat`或`bridges/install-bridge.bat`。对于Linux用户，请参照下方「安装桥」章节手动安装 Etterna 与 Malody V 的桥文件。
 - 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。设置的详细说明见[docs/settings.md](docs/settings.md)，预设系统的使用方法见[docs/presets-guide.md](docs/presets-guide.md)。
 - 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
@@ -92,7 +92,7 @@ Malody V 有两个互不影响的通道，按需选择：
 
 #### B. 游戏内选曲桥
 
-1. 先准备加载器。从 BepInEx 6 IL2CPP `6.0.0-be.788` 的 GitHub Release 下载资产 `bepinex-il2cpp-788.zip`，保存为 `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`，或设环境变量 `MMA_BEPINEX_LOADER_ZIP` 指向它。安装前会校验 SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`。另外还需要 Unity 参考程序集 `bridges/malody/bepinex/unity-libs/2022.3.62.zip`（来源 [https://unity.bepinex.dev/libraries/2022.3.62.zip](https://unity.bepinex.dev/libraries/2022.3.62.zip)，`MMA_MALODY_UNITY_LIBS_ZIP` 可指向别处，SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`）。安装器会把它放在 `BepInEx\\unity-libs\\2022.3.62.zip`。从 Release 下载整包的用户无需准备，包里已带。
+1. 先准备加载器。从 BepInEx 6 IL2CPP `6.0.0-be.788` 的 GitHub Release 下载 `bepinex-il2cpp-788.zip`，保存为 `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`，或设环境变量 `MMA_BEPINEX_LOADER_ZIP` 指向它。（SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`）另外还需要 Unity 参考程序集 `bridges/malody/bepinex/unity-libs/2022.3.62.zip`（来源 [https://unity.bepinex.dev/libraries/2022.3.62.zip](https://unity.bepinex.dev/libraries/2022.3.62.zip)，`MMA_MALODY_UNITY_LIBS_ZIP` 可指向别处，SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`）。安装器会把它放在 `BepInEx\\unity-libs\\2022.3.62.zip`。*从 Release 下载整包的用户无需准备，包里自带*。
 2. 双击 `install-bridge-zh.bat`（或 `install-bridge.bat`）→ Install → Malody V → 游戏内选曲桥。装完目标文件是 `BepInEx\\plugins\\MalodyInsight\\MMAMalodySelection.dll`。
 3. 如果不使用安装脚本，将`bepinex-il2cpp-788.zip`解压后直接覆盖到Malody V运行目录下，并将`2022.3.62.zip`置于`BepInEx\\unity-libs\\2022.3.62.zip`。
 4. 验证：开着壳启动游戏，应当出现bepinex命令行界面。进选曲界面切谱，卡片应立刻跟着换，且星数随判定档、Pro、倍速变化。
@@ -117,14 +117,13 @@ Malody V 有两个互不影响的通道，按需选择：
 
 壳运行日志写在 exe 旁的 `logs/` 目录：`logs/mma-shell-YYYYMMDD.log`（按日轮转，保留 7 天）。排查问题时将 `logLevel` 设为 `debug`，把最新日志发到 [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues) 即可；遇到问题请先确认日志内容。
 
-## 六、界面语言
+## 六、组合模式与 Tab
 
-壳设置面板的第一行是**界面语言**下拉，可选 **自动 / 简体中文 / English**：
-
-- **自动**（默认）：跟随系统语言，中文系统显示中文，其他显示英文。
-- 选择会写进壳配置文件 `mma-shell-config.json` 的 `language` 字段（`auto` / `zh-CN` / `en-US`），重启后保留；也可以在文件里直接改。
-- 只影响壳自己的页面（设置页、预设管理器）。**tosu 自带的设置面板始终是英文**，因为 tosu 不支持中文设置标题。
-- 中文使用系统字体显示（微软雅黑 / 苹方 / Noto Sans CJK），不需要额外安装字体。
+- **组合模式**：设置页 `Shell Configuration` → “组合模式”（位于“内存偏移表管理”区块之后），打开开关后勾选要显示的模块（键型 / Etterna技能组 / 曲线 / PP），并用每行右侧的 ↑/↓ 调整顺序。至少保留一个模块；卡片高度随勾选数量自然增长，适合谱师审谱或 OBS 投屏。组合模式也可以随预设保存：预设管理器表单顶部有“桌面壳专属”组。
+- **Tab 胶囊栏**：桌面壳的紧凑卡片顶部会出现 Pattern / Etterna / Graph / PP 四枚小胶囊。左键单击只切换当前谱面的展示模块，不会改全局设置；点击当前已激活的胶囊会重新计算一次。卡片闲置几秒后胶囊会自动淡化隐藏，鼠标移到卡片上或用键盘聚焦即恢复。
+- 在图表上双击进入选区模式后若切走 Tab，选区会自动退出并清除；切回图表后需重新双击进入。
+- Tab 只在桌面壳显示；`contentBar=None` 或组合模式开启时不显示。切歌、换难度或切换 IN/HO 后会自动回到 `contentBar` 设置的模块。
+- 旧版 tosu 设置里的 `Full` 已移除，旧值会自动按 `Auto` 处理；需要多模块请看组合模式。
 
 ## 七、常见问题/已知问题
 
@@ -164,7 +163,7 @@ This project originally gathered osu! data via tosu. However, as features expand
 
 ## 1. Quick Start
 
-- Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly. The Linux package uses the same layout (plugin files at the archive root, `mma-shell` next to `index.html`); extract it and run `./mma-shell` (the tar keeps the executable bit).
+- Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly. Linux users can extract and run `./mma-shell`.
 - If you need to use it with Etterna or Malody V, run `bridges/install-bridge-zh.bat` or `bridges/install-bridge.bat`. For Linux users, refer to the "Bridges" section below to install bridge files manually.
 - Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, check whether auto-detected game directories are correct; otherwise, fill in the game directories you use to locate beatmaps for analysis. See [docs/settings.md](settings.md) for settings details and [docs/presets-guide.md](presets-guide.md) for preset usage.
 - Once configured, restart the application if needed, and it will be ready to use. In the Malody V editor, click the `MMA Analyze` button manually to analyze. Window controls are described below.
@@ -233,7 +232,7 @@ Malody V offers two independent channels; choose as needed:
 
 #### B. In-Game Song Selection Bridge
 
-1. Prepare the loader. Download `bepinex-il2cpp-788.zip` from BepInEx 6 IL2CPP `6.0.0-be.788` GitHub Releases and save it to `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`, or set the `MMA_BEPINEX_LOADER_ZIP` environment variable pointing to it. The installer validates SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`. You also need the Unity reference assemblies `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (source: [https://unity.bepinex.dev/libraries/2022.3.62.zip](https://unity.bepinex.dev/libraries/2022.3.62.zip); `MMA_MALODY_UNITY_LIBS_ZIP` can point elsewhere, SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`). The installer puts it in `BepInEx\unity-libs\2022.3.62.zip`. Users downloading full release packages need no preparation; it is included.
+1. Prepare the loader. Download `bepinex-il2cpp-788.zip` from BepInEx 6 IL2CPP `6.0.0-be.788` GitHub Releases and save it to `bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip`, or set the `MMA_BEPINEX_LOADER_ZIP` environment variable pointing to it. (SHA256 `F4CC496BD098A0DF4164B81E3737297707F13A47C2478DBA2F60EEFAB784817A`). You also need the Unity reference assemblies `bridges/malody/bepinex/unity-libs/2022.3.62.zip` (source: [https://unity.bepinex.dev/libraries/2022.3.62.zip](https://unity.bepinex.dev/libraries/2022.3.62.zip); `MMA_MALODY_UNITY_LIBS_ZIP` can point elsewhere, SHA256 `575E7D600F69DE8200CCF4DB700B3AE6252366C22E8C3434C860E428974518D1`). The installer puts it in `BepInEx\unity-libs\2022.3.62.zip`. *Users downloading full release packages need no preparation; it is included*.
 2. Double-click `install-bridge.bat` (or `install-bridge-zh.bat`) → Install → Malody V → In-game song selection bridge. The destination file is `BepInEx\plugins\MalodyInsight\MMAMalodySelection.dll`.
 3. If not using the installation script, extract `bepinex-il2cpp-788.zip` directly into the Malody V root directory, and place `2022.3.62.zip` at `BepInEx\unity-libs\2022.3.62.zip`.
 4. Verification: Start the game while the shell is running. A BepInEx console window should appear. In the song selection screen, change charts; the card should update immediately, and star rating moves with judge level, Pro, and rate.
@@ -258,14 +257,12 @@ Malody V offers two independent channels; choose as needed:
 
 Shell runtime logs are written to the `logs/` directory next to the executable: `logs/mma-shell-YYYYMMDD.log` (rotated daily, kept for 7 days). When troubleshooting, set `logLevel` to `debug` and attach the latest log to [Issues](https://github.com/LeoBlackMT/osumania_map_analyser/issues). Always check log contents first when encountering issues.
 
-## 6. Interface Language
+## 6. Combined Mode and Tabs
 
-The first row of the shell settings panel is an **interface language** dropdown: **Auto / 简体中文 / English**:
-
-- **Auto** (default): follows the system language — Chinese systems get Chinese, everything else gets English.
-- The choice is stored in `language` inside `mma-shell-config.json` (`auto` / `zh-CN` / `en-US`) and survives restarts; you can also edit that file directly.
-- It only affects the shell's own pages (settings page, presets manager). **tosu's built-in settings panel stays English**, because tosu does not support Chinese setting titles.
-- Chinese text uses system fonts (Microsoft YaHei / PingFang / Noto Sans CJK); no extra font installation is needed.
+- **Combined mode**: Settings → `Shell Configuration` → “Combined”. Turn it on, check the sections to show, and use the ↑/↓ buttons on each row to reorder them. At least one section is required; the card grows with the number of checked sections, which is useful for chart review or OBS.
+- **Tab capsule bar**: compact cards in the desktop shell show four small capsules (Pattern / Etterna / Graph / PP). A left click switches only the current beatmap's section without changing global settings; clicking the already-active capsule recomputes once.
+- Tabs are shell-only. They are hidden when `contentBar=None` or Combined mode is on. A song/difficulty change or an IN/HO switch resets the card to the `contentBar` setting.
+- The old tosu `Full` option is gone; legacy values are treated as `Auto`. Use Combined mode for multiple sections.
 
 ## 7. Troubleshooting / Known Issues
 

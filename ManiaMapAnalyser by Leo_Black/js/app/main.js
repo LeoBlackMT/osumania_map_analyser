@@ -7,8 +7,15 @@ import {
     updatePauseCountVisibility,
 } from "./hud.js";
 import { setRecomputeHandler, scheduleRecompute } from "./scheduler.js";
-import { loadSettings, applySettingsPayload } from "./settings.js";
+import {
+    applyCombinedModeSetting,
+    applySettingsPayload,
+    loadSettings,
+    setTabContentBar,
+} from "./settings.js";
 import { initTriangleField } from "./triangles.js";
+import { initContentBarTabs } from "./contentBarTabs.js";
+import { fetchShellConfig, isShellConfigPayload } from "./shellConfigClient.js";
 // 壳窗口可视提示：拖动把手跟随卡片顶沿 + 鼠标靠近窗口边缘时点亮那条边
 // （浏览器/tosu 模式内部自会 no-op，shell-mode 由桥连接后异步挂上）。
 import { initWindowAffordances } from "./windowAffordances.js";
@@ -26,9 +33,22 @@ import { initGraphSection } from "./graphSection/index.js";
 
 setRecomputeHandler(fetchBeatmapFile);
 
+/**
+ * 壳配置的启动读取：只有壳窗口会真的发请求（fetchShellConfig 内部判 isShellRuntime）。
+ * 失败时保持 combinedMode 默认关闭，后续 settings 广播仍可补上。
+ */
+async function initShellConfig() {
+    const config = await fetchShellConfig();
+    if (config) {
+        applyCombinedModeSetting(config.combinedMode);
+    }
+}
+
 export async function initialize() {
     initTriangleField();
     initWindowAffordances();
+    initContentBarTabs({ onSelect: setTabContentBar });
+    await initShellConfig();
     await loadSettings();
     initTelemetry();
     startTelemetryHeartbeat();
@@ -53,7 +73,14 @@ export async function initialize() {
         onState: applyShellState,
         onSong: handleSongFrame,
         onMalody4Selection: applyMalody4Selection,
-        onSettings: applySettingsPayload,
+        onSettings: (payload) => {
+            // 壳配置与插件设置共用 settings 帧；壳配置 payload 带 combinedMode，
+            // 先应用它，再交给插件设置处理器（后者只认自己的 uniqueID）。
+            if (isShellConfigPayload(payload)) {
+                applyCombinedModeSetting(payload.combinedMode);
+            }
+            applySettingsPayload(payload);
+        },
         onHello: () => {
             // 离线配置拉取：壳按优先级链（tosu 设置文件 > mma-settings.json > 默认）
             // 返回 /settings；无 tosu 用户可直接编辑 mma-settings.json 后重启。

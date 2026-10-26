@@ -1,10 +1,10 @@
 {
   "id": "full-overview",
   "name": "FullOverview",
-  "description": "Pattern, Etterna and graph together, ReworkSR on the left, graph at top-right.",
+  "description": "Auto body content (Pattern or Etterna), Pattern in the top-left capsule, graph at top-right. For several body sections at once, use Shell Configuration → Combined.",
   "version": 1,
   "settings": {
-    "contentBar": "Full",
+    "contentBar": "Auto",
     "srText": "Pattern",
     "VibroDetection": false,
     "reverseCardExtendDirection": true,

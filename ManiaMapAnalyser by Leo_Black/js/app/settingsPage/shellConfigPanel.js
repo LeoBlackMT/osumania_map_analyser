@@ -13,6 +13,11 @@
  */
 
 import { setLanguage, t } from "../i18n/index.js";
+import {
+    COMBINED_MODE_LABELS,
+    COMBINED_MODE_MODULES,
+    normalizeCombinedMode,
+} from "../combinedMode.js";
 
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
@@ -271,6 +276,8 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
                     section.appendChild(buildShadowSection());
                 }
             }
+            // 组合模式区块在「内存偏移表管理」（及其影子诊断子区块）之后。
+            section.appendChild(buildCombinedModeSection());
         }
         root.appendChild(section);
     }
@@ -472,6 +479,126 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         wrap.appendChild(hint);
 
         return buildRow("hotkeys", t("ui.shell.field.hotkeys.title", "Hotkeys"), t("ui.shell.field.hotkeys.description", "Shell-wide shortcuts."), wrap);
+    }
+
+    function buildCombinedModeSection() {
+        const current = normalizeCombinedMode(config.combinedMode);
+        const section = document.createElement("div");
+        section.className = "shell-config-subsection";
+        section.id = "shell-combined-mode-section";
+
+        const title = document.createElement("h3");
+        title.className = "settings-group-title";
+        title.textContent = t("ui.shell.combinedMode.title", "Combined Mode");
+        section.appendChild(title);
+
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.dataset.shellKey = "combinedMode-enabled";
+        toggle.checked = current.enabled;
+        toggle.addEventListener("change", () => {
+            list.hidden = !toggle.checked;
+            write({ combinedMode: { enabled: toggle.checked, modules: current.modules } });
+        });
+        section.appendChild(buildRow(
+            "combinedMode",
+            t("ui.shell.combinedMode.enable", "Enable combined mode"),
+            t("ui.shell.combinedMode.description", "Show several card sections at once, in the order below."),
+            toggle,
+        ));
+
+        const list = document.createElement("div");
+        list.className = "shell-combined-mode-list";
+        list.hidden = !current.enabled;
+        list.setAttribute(
+            "aria-label",
+            t("ui.shell.combinedMode.modulesTitle", "Sections and order"),
+        );
+
+        // 已勾选的模块按保存顺序在前；未勾选的按默认顺序追加，方便重新勾选。
+        const ordered = [
+            ...current.modules,
+            ...COMBINED_MODE_MODULES.filter((module) => !current.modules.includes(module)),
+        ];
+        for (const module of ordered) {
+            const checked = current.modules.includes(module);
+            const moduleKey = module === "ReworkPP" ? "pp" : module.toLowerCase();
+            const labelText = t(`ui.shell.combinedMode.module.${moduleKey}`, COMBINED_MODE_LABELS[module]);
+            const row = document.createElement("div");
+            row.className = "shell-combined-mode-item";
+            row.dataset.module = module;
+
+            const label = document.createElement("label");
+            label.className = "shell-combined-mode-label";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.dataset.shellKey = `combinedMode-${module}`;
+            checkbox.checked = checked;
+            // 只剩最后一个已勾选模块时禁止取消，保证 Combined 至少一个模块。
+            checkbox.disabled = checked && current.modules.length === 1;
+            if (checkbox.disabled) {
+                checkbox.title = t("ui.shell.combinedMode.atLeastOne", "Keep at least one section.");
+            }
+            checkbox.addEventListener("change", () => {
+                let next;
+                if (checkbox.checked) {
+                    next = current.modules.includes(module)
+                        ? current.modules.slice()
+                        : [...current.modules, module];
+                } else {
+                    next = current.modules.filter((item) => item !== module);
+                    if (next.length === 0) {
+                        checkbox.checked = true;
+                        return;
+                    }
+                }
+                write({ combinedMode: { enabled: current.enabled, modules: next } });
+            });
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(labelText));
+            row.appendChild(label);
+
+            const index = current.modules.indexOf(module);
+            for (const [direction, symbol, labelKey, fallback] of [
+                ["up", "↑", "ui.shell.combinedMode.moveUp", "Move up"],
+                ["down", "↓", "ui.shell.combinedMode.moveDown", "Move down"],
+            ]) {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "settings-action-btn shell-combined-mode-move";
+                button.dataset.move = direction;
+                button.textContent = symbol;
+                button.title = t(labelKey, fallback);
+                button.setAttribute("aria-label", `${t(labelKey, fallback)}: ${labelText}`);
+                button.disabled = !checked
+                    || (direction === "up" && index === 0)
+                    || (direction === "down" && index === current.modules.length - 1);
+                button.addEventListener("click", () => {
+                    const next = current.modules.slice();
+                    const from = next.indexOf(module);
+                    const to = direction === "up" ? from - 1 : from + 1;
+                    if (from < 0 || to < 0 || to >= next.length) {
+                        return;
+                    }
+                    [next[from], next[to]] = [next[to], next[from]];
+                    write({ combinedMode: { enabled: current.enabled, modules: next } });
+                });
+                row.appendChild(button);
+            }
+
+            list.appendChild(row);
+        }
+        section.appendChild(list);
+
+        const hint = document.createElement("p");
+        hint.className = "shell-config-hint";
+        hint.textContent = t(
+            "ui.shell.combinedMode.hint",
+            "Desktop shell only. The card grows with the number of checked sections.",
+        );
+        section.appendChild(hint);
+
+        return section;
     }
 
     function buildLogLevelRow() {

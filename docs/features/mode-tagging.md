@@ -54,13 +54,13 @@ Vibro:
 
 ```js
 const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
-let resolvedModeTag = (activeContentBar === "None")
+let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))
     ? fallbackModeTag
     : (patternResult?.report?.ModeTag || fallbackModeTag);
 ```
 
 - `analysis.js:1138` — 回退标签来自 `modeTagFromLnRatio`，输入优先取 rework 结果的 `lnRatio`，取不到再用解析器 `parsedInfo.lnRatio`。
-- `analysis.js:1139-1141` — 当 contentBar 为 `"None"` 时只用回退标签（此时不展示键型分析区，避免依赖 pattern 报告）；否则优先取 `patternResult.report.ModeTag`（`summary.js:74 ModeTag: modeTag`），缺失时回退。
+- `analysis.js` — 当 `contentBarShows("Pattern")` 为 false（`contentBar=None`，或组合模式未勾选 Pattern）时只用回退标签（不展示键型分析区，避免依赖 pattern 报告）；否则优先取 `patternResult.report.ModeTag`（`summary.js:74 ModeTag: modeTag`），缺失时回退。`cvtFlag` 激活时仍强制走转换后的 fallback。
 
 ### 2.3 Mixed 估算器内的标签使用
 

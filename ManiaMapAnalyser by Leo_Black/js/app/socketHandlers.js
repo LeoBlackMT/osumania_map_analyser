@@ -26,7 +26,7 @@ import {
 } from "./graph.js";
 import { updateCardPlayVisibility } from "./hud.js";
 import { scheduleRecompute } from "./scheduler.js";
-import { getCounterPathForCommand } from "./settings.js";
+import { getCounterPathForCommand, resetContentBarTabOverride } from "./settings.js";
 import { applyCoverThemeForBeatmap } from "./coverTheme.js";
 import { updateLivePp } from "./livePp.js";
 import { buildSongKey, resolveChangeKind } from "./changeKind.js";
@@ -338,12 +338,14 @@ export function applyBeatmapState(data) {
         noteOsuScanPayloadArrival();
         notifySourceEvent("osu");
 
+        const previousCvtFlag = state.cvtFlag;
         if (shouldApplyModState) {
             state.speedRate = modData.speedRate;
             state.odFlag = modData.odFlag;
             state.cvtFlag = modData.cvtFlag;
             state.modSignature = nextModSignature;
         }
+        const cvtChanged = state.cvtFlag !== previousCvtFlag;
 
         // 区分本次变化的类型，供渲染层选择对应的入场动画（song/difficulty/mod）。
         state.pendingChangeKind = resolveChangeKind({
@@ -356,8 +358,12 @@ export function applyBeatmapState(data) {
         // 切图（谱面身份变化）→ 复位选区；仅改 mod（含 DT/HT 速率）不复位：
         // 选区按物理时间保存，速率变化时遮罩不动、切片区间不变（见 graphSection 注释）。
         // 身份串只比稳定段（id/hash）——tosu 部分包可能缺 path，字符串变了但不是换图。
-        if (!isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity)) {
+        const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
+        if (identityChanged) {
             clearSection("beatmap", { recompute: false });
+        }
+        if (identityChanged || cvtChanged) {
+            resetContentBarTabOverride();
         }
 
         state.lastBeatmapIdentity = nextBeatmapIdentity;

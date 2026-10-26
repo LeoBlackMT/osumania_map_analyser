@@ -322,6 +322,7 @@ function wireActions(actionBar) {
                 formValues[key] = value;
             }
         }
+        applyShellSnapshotToForm(current);
         form.syncFormControls();
         showToast(t("ui.presets.loadedCurrent", "Form values loaded from the current overlay settings."), "success");
     }));
@@ -415,6 +416,33 @@ function resetEditor() {
     highlightActiveRow(null);
 }
 
+/**
+ * 把快照里的 shell 专属键（combinedMode）拆进表单的壳专属两行。
+ * 浏览器表单没有这两行（组不渲染），自然跳过；include=true 时（载入预设）
+ * 同时勾上两行 include 复选框，Load Current 只取值不勾选。
+ */
+function applyShellSnapshotToForm(settings, { include = false } = {}) {
+    if (!("shellCombinedEnabled" in formValues)) {
+        return;
+    }
+    const combined = settings && typeof settings.combinedMode === "object" && settings.combinedMode !== null
+        ? settings.combinedMode
+        : null;
+    if (combined) {
+        formValues.shellCombinedEnabled = combined.enabled === true;
+        formValues.shellCombinedModules = (Array.isArray(combined.modules) ? combined.modules : []).join(", ");
+        if (include) {
+            formIncluded.shellCombinedEnabled = true;
+            formIncluded.shellCombinedModules = true;
+        }
+        return;
+    }
+    if (include) {
+        formIncluded.shellCombinedEnabled = false;
+        formIncluded.shellCombinedModules = false;
+    }
+}
+
 async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = false } = {}) {
     editingId = isBuiltin || isDefault ? null : preset.id;
     metaNameInput.value = preset.name || "";
@@ -431,6 +459,7 @@ async function loadPresetIntoEditor(preset, { isBuiltin = false, isDefault = fal
             formIncluded[key] = true;
         }
     }
+    applyShellSnapshotToForm(preset.settings, { include: true });
     form.syncFormControls();
     syncIncludeCheckboxes();
     highlightActiveRow(preset.name);

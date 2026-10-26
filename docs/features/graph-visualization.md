@@ -15,7 +15,7 @@
 | 视图 | DOM | 启用条件 | 显示位置 |
 |---|---|---|---|
 | header（顶部胶囊图） | `rework-diff-graph` 系列元素 | `state.diffText === "Graph"` | 卡片右上角（顶栏区域） |
-| body（主体图） | `body-graph` 系列元素 | `state.contentBar`（或 `effectiveContentBar`）包含 Graph | 卡片主体 |
+| body（主体图） | `body-graph` 系列元素 | `contentBarShows("Graph")`（紧凑模式读 `tabContentBar` / `effectiveContentBar` / `contentBar`；组合模式读 `combinedModeModules`） | 卡片主体 |
 
 - `state.diffText`（右上角内容）与 `state.contentBar`（主体内容）的设置语义见 [settings.md](../settings.md) 的 "Graph: 显示难度变化图"（`settings.md:24`）与右上角 Graph 选项说明（`settings.md:37`）。
 - **任意键数均可渲染**：Graph 数据是 estimator 的星数序列（Sunny 核心为键数无关算法），历史上的 `GRAPH_SUPPORTED_KEY_SET = Set([4, 6, 7])` 键数限制已移除；渲染失败统一走 `showDiffGraphError("Graph unavailable")`。
@@ -34,11 +34,11 @@
 `appContext.js:340 GRAPH_VIEW_DEFS` 是视图定义的统一描述数组，每个视图含 `key`、各 DOM ref 字段与 `isEnabled()` 判定：
 
 - header 视图：`isEnabled: () => state.diffText === "Graph"`（`appContext.js:353`）。
-- body 视图：`isEnabled: () => contentBarShows("Graph")`（`appContext.js:367`，内部经 `appContext.js:335 contentBarShows` → `appContext.js:331 getActiveContentBar` 读取 `effectiveContentBar || contentBar`）。
+- body 视图：`isEnabled: () => contentBarShows("Graph")`（`js/app/appContext.js` 的 `contentBarShows()`：组合模式读 `combinedModeModules`，紧凑模式读 `getActiveContentBar()` 的 `tabContentBar || effectiveContentBar || contentBar`）。
 
 遍历工具：
 
-- `appContext.js:371 hasAnyGraphModeEnabled()`：`diffText === "Graph" || contentBarShows("Graph")`，用于判断图表功能整体是否激活。
+- `hasAnyGraphModeEnabled()`：`diffText === "Graph" || contentBarShows("Graph")`，用于判断图表功能整体是否激活；组合模式下由 `combinedMode.modules` 是否含 `Graph` 决定。
 - `appContext.js:375 forEachGraphView(callback)`：无条件遍历两个视图（清空、重置等必须覆盖隐藏视图的场合）。
 - `appContext.js:381 forEachEnabledGraphView(callback)`：只遍历 `isEnabled()` 为真的视图（渲染、游标更新等仅对可见视图生效的场合）。
 

@@ -62,7 +62,7 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
 }
 
 /// 启动时确保 mma-shell-config.json 存在（无 tosu 用户可发现并直接编辑）。
-/// 骨架含 hotkeys 与 logLevel（用户验收项 1：骨架必须完整可编辑）。
+/// 骨架含 combinedMode、hotkeys 与 logLevel（用户验收项 1：骨架必须完整可编辑）。
 pub fn ensure_shell_config() {
     let Some(dir) = exe_dir() else {
         return;
@@ -76,12 +76,14 @@ pub fn ensure_shell_config_in(dir: &Path) {
     if !path.exists() {
         let _ = fs::write(
             &path,
-            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"combinedMode\": {\n    \"enabled\": false,\n    \"modules\": [\"Pattern\", \"Etterna\", \"Graph\", \"ReworkPP\"]\n  },\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
         );
         return;
     }
     let mut existing = read_json_file(&path, "mma-shell-config.json");
-    if backfill_shell_hotkeys(&mut existing) {
+    let hotkeys_changed = backfill_shell_hotkeys(&mut existing);
+    let combined_changed = backfill_shell_combined_mode(&mut existing);
+    if hotkeys_changed || combined_changed {
         let _ = write_exe_json(dir.to_path_buf(), SHELL_CONFIG_FILE, &existing);
     }
 }
@@ -124,6 +126,73 @@ pub fn backfill_shell_hotkeys(config: &mut serde_json::Value) -> bool {
             changed = true;
         }
     }
+    changed
+}
+
+/// 组合模式默认模块（顺序 = 默认显示顺序；必须与骨架字面量一致）。
+pub const DEFAULT_COMBINED_MODE_MODULES: [&str; 4] =
+    ["Pattern", "Etterna", "Graph", "ReworkPP"];
+
+/// 给已有配置补 `combinedMode` 缺键/非法值（只补不改合法值）：
+/// 返回是否真的改了（→ 是否需要落盘）。空数组视为非法，回落默认四模块，
+/// 保证 Combined 永远不会退化成与 `contentBar=None` 相同的空看板。
+pub fn backfill_shell_combined_mode(config: &mut serde_json::Value) -> bool {
+    let Some(root) = config.as_object_mut() else {
+        return false;
+    };
+
+    if !root.get("combinedMode").map(|v| v.is_object()).unwrap_or(false) {
+        root.insert(
+            "combinedMode".to_string(),
+            serde_json::json!({
+                "enabled": false,
+                "modules": DEFAULT_COMBINED_MODE_MODULES,
+            }),
+        );
+        return true;
+    }
+
+    let Some(combined) = root.get_mut("combinedMode").and_then(|v| v.as_object_mut()) else {
+        return false;
+    };
+    let mut changed = false;
+
+    if !combined.get("enabled").map(|v| v.is_boolean()).unwrap_or(false) {
+        combined.insert("enabled".to_string(), serde_json::Value::Bool(false));
+        changed = true;
+    }
+
+    let mut modules: Vec<String> = Vec::new();
+    if let Some(items) = combined.get("modules").and_then(|v| v.as_array()) {
+        for item in items {
+            let Some(text) = item.as_str() else {
+                continue;
+            };
+            let lowered = text.trim().to_lowercase();
+            if let Some(canonical) = DEFAULT_COMBINED_MODE_MODULES
+                .iter()
+                .find(|module| module.to_lowercase() == lowered)
+            {
+                if !modules.iter().any(|module| module.as_str() == *canonical) {
+                    modules.push((*canonical).to_string());
+                }
+            }
+        }
+    }
+    if modules.is_empty() {
+        modules = DEFAULT_COMBINED_MODE_MODULES
+            .iter()
+            .map(|module| (*module).to_string())
+            .collect();
+    }
+
+    let desired =
+        serde_json::Value::Array(modules.into_iter().map(serde_json::Value::String).collect());
+    if combined.get("modules") != Some(&desired) {
+        combined.insert("modules".to_string(), desired);
+        changed = true;
+    }
+
     changed
 }
 

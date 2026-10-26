@@ -91,15 +91,14 @@
 		"uniqueID": "contentBar",
 		"type": "options",
 		"title": "Card Body Content",
-		"description": "Select what to show in the card body. Full shows Pattern, Etterna and Graph together.",
+		"description": "Select what to show in the card body. Auto follows the chart's LN ratio.",
 		"options": [
 			"None",
 			"Auto",
 			"Pattern",
 			"Etterna",
 			"Graph",
-			"ReworkPP",
-			"Full"
+			"ReworkPP"
 		],
 		"value": "Auto"
 	},

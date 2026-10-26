@@ -93,7 +93,7 @@
 - 在线（tosu.env 存在且存活）：**设置权威 = tosu**——壳**只读** `{tosuRoot}/settings/{插件目录名}.json`（mtime 变化重读，30s 周期内生效，**绝不写**）；页面经 tosu getSettings/sendCommand 读写；`POST /settings` 返回 **403**。
 - 离线：**设置权威 = 本地 `mma-settings.json`**（exe 旁，全量插件设置；无 tosu 用户可直接编辑，周期检测后生效）——`GET /settings` 返回本地文件内容（不存在则按插件 `settings.json` 的 `value` 生成默认骨架并落盘）；`POST /settings` 做请求键优先的读-改-写并落盘本地文件，随后广播 settings 帧。
 - **离线不读 tosu 设置文件**（即使它存在）：权威链的唯一判据是 `tosu_online`（`shared.tosu.is_some()` 且探测存活）。GET 的第 1 级与 POST 的 403 条件是**同一个表达式**；POST 内先复探存活，跳变经 `apply_tosu_online_transition` 切源（覆盖 30s 定时器粒度之外的即时切换）。
-- **壳配置 `mma-shell-config.json`**（exe 旁）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`hotkeys`/`logLevel`——仅壳使用（源路径/快捷键/日志），与插件设置分离。
+- **壳配置 `mma-shell-config.json`**（exe 旁）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`combinedMode`/`hotkeys`/`logLevel`——仅壳使用（源路径/组合模式/快捷键/日志），与插件设置分离。`combinedMode` 的结构为 `{enabled:boolean, modules:string[]}`，至少一个模块；页面通过 `GET /shell-config` 初始读取、通过 `settings` 广播接收变更。
 - settings.json（插件）始终是唯一 schema。
 
 ## 7. 封面白名单
@@ -273,13 +273,13 @@
 
 > **`CONTRACT_VERSION` 由 v7 起为 7**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v7 的升级来自 `/ws` 上的新字段（§15），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,7]`（§11.8）。
 
-Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故无需 CORS。**唯一例外**是 `/feedback`：tosu 在线时页面由 tosu（24050）提供，跨源 POST 需要预检，故该端点显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
+Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故设置页无需 CORS。**例外**：`/feedback`（跨源 POST 需预检）与 `GET /shell-config`（`24050#mma-shell` 的跨源初始读取）显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
 | 端点 | 方法 | 状态码与语义 |
 | --- | --- | --- |
 | `/settings` | GET | 200 = 权威链全量对象（在线 tosu 文件 / 离线本地 `mma-settings.json` / 生成骨架并落盘）；读取侧无只读门控 |
 | `/settings` | POST | 200 = 合并后全量对象（请求键优先读-改-写 + 广播 settings 帧）；**403** 在线只读（判据同 §6）；**400** body 非 JSON / 非对象；**500** base 不可读或写盘失败 |
-| `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400** 配置不可读 |
+| `/shell-config` | GET | 200 = `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调；`config.combinedMode` 为组合模式配置）；对 24050/24061/tauri 的 loopback Origin 返回 ACAO；**400** 配置不可读 |
 | `/shell-config` | POST | 200 = 合并后全量壳配置（+ `clear_detect_caches()` + 广播 settings 帧）；**400** body 非 JSON / 非对象 / base 不可读 / 写盘失败（不写盘） |
 | `/open-settings` | POST | 200 `{}`（异步发起建窗/聚焦，不等窗口建成）；**503** 无 app 句柄（无窗口模式） |
 | `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/no_mods/mods/rate/total_hits/completion/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403** Origin 不在白名单（无 Origin = 本机进程直连）；**405** 方法不允许。OPTIONS 返回 204 + CORS 预检头 |

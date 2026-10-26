@@ -49,6 +49,9 @@ import {
     patternClustersEl,
     ppBarsEl,
     reworkStarEl,
+    sepEtternaEl,
+    sepGraphEl,
+    sepPatternEl,
     sepPpEl,
     socket,
     state,
@@ -82,6 +85,10 @@ import { syncFeedbackVisibility } from "./feedback/feedbackStrip.js";
 import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
 import { clearResultCache } from "./resultCache.js";
 import { setTelemetryConfig } from "./telemetry.js";
+import { isCombinedModeModule, normalizeCombinedMode } from "./combinedMode.js";
+import { syncContentBarTabs } from "./contentBarTabs.js";
+import { clearSectionIfGraphHidden } from "./graphSection/index.js";
+import { isShellRuntime } from "./feedback/feedbackSpec.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -96,9 +103,44 @@ function resolveRuntimeDisplayProfile(modeTag = state.currentModeTag || "Mix") {
     };
 }
 
+const COMBINED_MODE_NODES = [
+    { section: "Pattern", sep: sepPatternEl, body: patternClustersEl },
+    { section: "Etterna", sep: sepEtternaEl, body: ettSkillBarsEl },
+    { section: "Graph", sep: sepGraphEl, body: bodyGraphWrapEl },
+    { section: "ReworkPP", sep: sepPpEl, body: ppBarsEl },
+];
+
+function arraysEqual(a, b) {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function sameModuleSet(a, b) {
+    return a.length === b.length && a.every((value) => b.includes(value));
+}
+
+/**
+ * 只写 style.order，不移动任何 DOM 节点。分隔条与模块体用同一个 order；
+ * 二者在文档中相邻且分隔条在前，等值时浏览器保持原有相对顺序。
+ */
+function applyCombinedModeOrder() {
+    const order = state.combinedModeEnabled ? state.combinedModeModules : [];
+    for (const { section, sep, body } of COMBINED_MODE_NODES) {
+        const index = order.indexOf(section);
+        const value = index >= 0 ? String(index + 1) : "";
+        for (const el of [sep, body]) {
+            if (!el) continue;
+            if (value) {
+                el.style.order = value;
+            } else {
+                el.style.removeProperty("order");
+            }
+        }
+    }
+}
+
 function updateContentBarVisibility() {
     const activeContentBar = getActiveContentBar();
-    const isFull = activeContentBar === "Full";
+    const isCombined = state.combinedModeEnabled;
 
     patternClustersEl.hidden = !contentBarShows("Pattern");
     ettSkillBarsEl.hidden = !contentBarShows("Etterna");
@@ -109,24 +151,27 @@ function updateContentBarVisibility() {
         ppBarsEl.hidden = !contentBarShows("ReworkPP");
     }
 
-    mainCardEl.classList.toggle("bars-full", isFull);
-    mainCardEl.classList.toggle("bars-pattern", !isFull && activeContentBar === "Pattern");
-    mainCardEl.classList.toggle("bars-etterna", !isFull && activeContentBar === "Etterna");
-    mainCardEl.classList.toggle("bars-graph", !isFull && activeContentBar === "Graph");
-    mainCardEl.classList.toggle("bars-pp", !isFull && activeContentBar === "ReworkPP");
-    mainCardEl.classList.toggle("bars-none", !isFull && activeContentBar === "None");
+    mainCardEl.classList.toggle("bars-combined", isCombined);
+    mainCardEl.classList.toggle("bars-pattern", !isCombined && activeContentBar === "Pattern");
+    mainCardEl.classList.toggle("bars-etterna", !isCombined && activeContentBar === "Etterna");
+    mainCardEl.classList.toggle("bars-graph", !isCombined && activeContentBar === "Graph");
+    mainCardEl.classList.toggle("bars-pp", !isCombined && activeContentBar === "ReworkPP");
+    mainCardEl.classList.toggle("bars-none", !isCombined && activeContentBar === "None");
 
     if (!contentBarShows("Etterna")) {
         mainCardEl.classList.remove("bars-etterna-compact");
     }
 
-    const separatorEls = document.querySelectorAll(".full-separator");
-    separatorEls.forEach(el => {
-        el.hidden = !isFull;
-    });
-    if (sepPpEl) {
-        sepPpEl.hidden = !isFull;
+    for (const { section, sep } of COMBINED_MODE_NODES) {
+        if (sep) {
+            sep.hidden = !(isCombined && contentBarShows(section));
+        }
     }
+    // Tab 临时切换/Combined 模块变化/contentBar 设置把 Graph 藏起来时，退出
+    // 图表选区模式（内部按视图真实可见性判断，diffText=Graph 的头部图表不算隐藏）。
+    clearSectionIfGraphHidden("content bar visibility");
+    applyCombinedModeOrder();
+    syncContentBarTabs();
 }
 
 let cardHeightTransitionTimerId = 0;
@@ -510,6 +555,9 @@ export function applyContentBarSetting(contentBar) {
     const nextBar = contentBar || "Pattern";
     const changed = state.userContentBar !== nextBar;
     state.userContentBar = nextBar;
+    // 改全局设置优先于临时巡检：任何 contentBar 设置应用都清掉 Tab 覆盖。
+    state.tabContentBar = null;
+    state.tabForceRecompute = false;
 
     if (state.userContentBar === "Auto") {
         refreshAutoDisplayProfile();
@@ -518,6 +566,88 @@ export function applyContentBarSetting(contentBar) {
     }
 
     return changed;
+}
+
+/**
+ * 应用壳配置的 combinedMode。只有壳窗口能真正打开；浏览器页面即使收到同形
+ * payload 也保持 disabled。模块集合/开关变化且当前有谱面时触发一次重算。
+ *
+ * @param {unknown} raw
+ * @returns {boolean} 是否发生变化
+ */
+export function applyCombinedModeSetting(raw) {
+    const next = normalizeCombinedMode(raw);
+    const enabled = isShellRuntime() && next.enabled;
+    const modules = next.modules;
+    const enabledChanged = state.combinedModeEnabled !== enabled;
+    const modulesChanged = !arraysEqual(state.combinedModeModules, modules);
+    const moduleSetChanged = !sameModuleSet(state.combinedModeModules, modules);
+    if (!enabledChanged && !modulesChanged) {
+        return false;
+    }
+
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
+    state.combinedModeEnabled = enabled;
+    state.combinedModeModules = modules;
+    if (enabled) {
+        state.tabContentBar = null;
+        state.tabForceRecompute = false;
+    }
+
+    updateContentBarVisibility();
+    animateCardHeightTransition(previousCardHeight);
+    if (!hasAnyGraphModeEnabled()) {
+        clearDiffGraph();
+    } else {
+        setGraphCursorVisible(false);
+    }
+    syncGraphAnimationLoop();
+
+    if (enabledChanged || (enabled && moduleSetChanged)) {
+        if (state.lastBeatmapIdentity) {
+            scheduleRecompute("combined mode changed", true);
+        }
+    }
+    return true;
+}
+
+/**
+ * Tab 单击：只算该展示模块；点击已激活 Tab 时强制跳过结果缓存一次。
+ * 不写设置、不进预设、不写 localStorage。
+ *
+ * @param {string} module
+ * @returns {boolean} 是否受理
+ */
+export function setTabContentBar(module) {
+    if (!isShellRuntime() || state.combinedModeEnabled) {
+        return false;
+    }
+    if (!isCombinedModeModule(module)) {
+        return false;
+    }
+
+    const isActive = getActiveContentBar() === module;
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
+    state.tabContentBar = module;
+    state.tabForceRecompute = isActive;
+
+    updateContentBarVisibility();
+    animateCardHeightTransition(previousCardHeight);
+    scheduleRecompute("content bar tab", false);
+    return true;
+}
+
+/** 清空 Tab 临时覆盖（换歌/换难度/IN·HO 或设置变更时调用）。 */
+export function resetContentBarTabOverride() {
+    if (!state.tabContentBar) {
+        return false;
+    }
+    const previousCardHeight = mainCardEl ? (Number(mainCardEl.getBoundingClientRect().height) || 0) : 0;
+    state.tabContentBar = null;
+    state.tabForceRecompute = false;
+    updateContentBarVisibility();
+    animateCardHeightTransition(previousCardHeight);
+    return true;
 }
 
 export function applySrTextSetting(srText) {
@@ -1031,5 +1161,7 @@ export function currentEstimatorAlgorithm() {
 }
 
 export function isAutoDisplayEnabledNow() {
-    return isAutoDisplayEnabled();
+    // Tab 巡检期间冻结 Auto 档位：否则默认 Auto 用户点任意 Tab 都会顺带算 Pattern
+    // 并触发 auto profile 的二次派发，违背“只算当前 Tab 一种”的约定。
+    return isAutoDisplayEnabled() && !state.tabContentBar;
 }

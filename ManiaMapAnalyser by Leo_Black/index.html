@@ -70,22 +70,31 @@
                 </div>
             </div>
 
-            <div class="full-separator" id="sep-pattern" hidden>Pattern</div>
+            <!-- 壳内 Tab 胶囊栏：仅桌面壳紧凑模式显示；Combined 开启或 contentBar=None 时隐藏。
+                 只有左键 click 切换，不挂滚轮/触摸/键盘/拖拽。 -->
+            <div id="content-bar-tabs" class="content-bar-tabs" role="group" aria-label="Card body sections" hidden>
+                <button type="button" class="content-tab" data-content-tab="Pattern" aria-pressed="false">Pattern</button>
+                <button type="button" class="content-tab" data-content-tab="Etterna" aria-pressed="false">Etterna</button>
+                <button type="button" class="content-tab" data-content-tab="Graph" aria-pressed="false">Graph</button>
+                <button type="button" class="content-tab" data-content-tab="ReworkPP" aria-pressed="false">PP</button>
+            </div>
+
+            <div class="combined-separator" id="sep-pattern" hidden>Pattern</div>
             <ol id="pattern-clusters" class="cluster-bars">
                 <li class="cluster-item empty">No data</li>
             </ol>
 
-            <div class="full-separator" id="sep-etterna" hidden>Etterna | Overall: --</div>
+            <div class="combined-separator" id="sep-etterna" hidden>Etterna | Overall: --</div>
             <ol id="ett-skill-bars" class="ett-skill-bars" hidden>
                 <li class="ett-skill-item empty">No data</li>
             </ol>
 
-            <div class="full-separator" id="sep-pp" hidden>ReworkPP</div>
+            <div class="combined-separator" id="sep-pp" hidden>ReworkPP</div>
             <ol id="pp-bars" class="pp-bars" hidden>
                 <li class="pp-item empty">No data</li>
             </ol>
 
-            <div class="full-separator" id="sep-graph" hidden>Graph</div>
+            <div class="combined-separator" id="sep-graph" hidden>Graph</div>
             <div class="body-graph-wrap" id="body-graph-wrap" hidden>
                 <svg id="body-graph" class="body-graph" viewBox="0 0 260 86" preserveAspectRatio="xMidYMid meet" aria-label="Body difficulty graph" role="img">
                     <defs>

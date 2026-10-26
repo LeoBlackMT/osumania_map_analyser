@@ -11,9 +11,9 @@
     overflow: hidden;
 }
 
-/* Full mode: show Pattern + Etterna + Graph stacked together.
+/* Combined mode: show Pattern + Etterna + Graph stacked together.
    Height grows to fit all three blocks; nothing is compressed or scrolled. */
-.main-card.bars-full {
+.main-card.bars-combined {
     grid-template-rows: none;
     grid-auto-rows: auto;
     align-content: start;
@@ -24,24 +24,24 @@
     overflow: visible;
 }
 
-.main-card.bars-full .cluster-bars,
-.main-card.bars-full .ett-skill-bars {
+.main-card.bars-combined .cluster-bars,
+.main-card.bars-combined .ett-skill-bars {
     overflow-x: hidden;
     overflow-y: visible;
     max-height: none;
 }
 
-.main-card.bars-full .body-graph-wrap {
+.main-card.bars-combined .body-graph-wrap {
     width: 100%;
     margin: 0 auto 28px;
 }
 
-/* Full mode section separators — hr-like with centered text */
-.full-separator {
+/* Combined mode section separators — hr-like with centered text */
+.combined-separator {
     display: none;
 }
 
-.main-card.bars-full .full-separator {
+.main-card.bars-combined .combined-separator {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -55,13 +55,19 @@
     opacity: 0.75;
 }
 
-.main-card.bars-full .full-separator::before,
-.main-card.bars-full .full-separator::after {
+.main-card.bars-combined .combined-separator::before,
+.main-card.bars-combined .combined-separator::after {
     content: "";
     flex: 1;
     height: 1px;
     background: color-mix(in srgb, var(--ma-accent) 22%, #4a5068);
     border-radius: 1px;
+}
+
+/* 未勾选的模块必须连分隔条一起消失（base.css 已用 !important 兜底，这里保持
+   组合模式规则的自洽，避免未来去掉全局 [hidden] 时回归）。 */
+.main-card.bars-combined .combined-separator[hidden] {
+    display: none;
 }
 
 /* Pattern mode: content-driven height — the card grows with the pattern
@@ -235,7 +241,7 @@
 }
 
 /* ReworkPP 模式：与 bars-etterna 同构——只显示 pp 块，其余主体块隐藏。
-   高度自适应内容（同 bars-full）：五小行内容撑开卡片，消除底部空白；
+   高度自适应内容（同 bars-combined）：五小行内容撑开卡片，消除底部空白；
    min-height 归零——bars-pp 没有 Full 的三块堆叠，无需 540px 下限。 */
 .main-card.bars-pp {
     grid-template-rows: none;
@@ -253,7 +259,7 @@
     display: none;
 }
 
-/* pp 框不内部滚动，随卡片高度生长全部展开（同 bars-full 的 pp-bars 处理）；
+/* pp 框不内部滚动，随卡片高度生长全部展开（同 bars-combined 的 pp-bars 处理）；
    底部留 margin 抬高，让框底边避开 mode-tag 胶囊（bottom:10px、高约 21px）。 */
 .main-card.bars-pp .pp-bars {
     overflow-x: hidden;
@@ -285,7 +291,7 @@
 }
 
 /* Full 模式：pp 块不内部滚动，随卡片高度生长全部展开 */
-.main-card.bars-full .pp-bars {
+.main-card.bars-combined .pp-bars {
     overflow-x: hidden;
     overflow-y: visible;
     max-height: none;

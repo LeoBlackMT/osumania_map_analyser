@@ -26,6 +26,16 @@ export const DEFAULT_SLOT_NAMES = ["Custom1", "Custom2", "Custom3"];
  */
 export const SYSTEM_SNAPSHOT_KEYS = new Set([PRESET_STORAGE_SETTING, "preset"]);
 
+/**
+ * Desktop-shell-only snapshot keys. They MAY live inside a preset's settings
+ * (a shell export carries them so another shell can restore them), but they
+ * are NOT tosu settings: they must never be written back through the settings
+ * transport (writeBackToTosu filters them), and the browser import strips
+ * them with a notice because a browser page cannot apply or even display
+ * them. Current keys: "combinedMode" ({enabled, modules}).
+ */
+export const SHELL_ONLY_SNAPSHOT_KEYS = new Set(["combinedMode"]);
+
 const STORE_VERSION = 2;
 const LEGACY_AUTO_NAME = "Auto";
 const WRITE_BACK_THROTTLE_MS = 1500;
