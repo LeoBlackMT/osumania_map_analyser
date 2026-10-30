@@ -18,13 +18,13 @@ import {
     COMBINED_MODE_MODULES,
     normalizeCombinedMode,
 } from "../combinedMode.js";
+import { normalizeSpaceMode } from "../laneAcc/accumulator.js";
 
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";
 export const OFFSETS_STATUS_URL = "/offsets/status";
 export const OFFSETS_GENERATE_URL = "/offsets/generate";
 export const OFFSETS_UPDATE_URL = "/offsets/update";
-export const SHADOW_RESET_URL = "/shadow/reset";
 
 /** `gameClient` values the plugin's source router understands (Auto = decide). */
 const GAME_CLIENT_OPTIONS = ["Auto", "osu!", "Etterna", "Malody", "Malody 4"];
@@ -156,12 +156,6 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         render();
     }
 
-    async function resetShadow() {
-        await requestJson(SHADOW_RESET_URL, { method: "POST" });
-        await fetchOffsetsStatus();
-        render();
-    }
-
     /** GET /shell-config → config + resolved; a 400 renders a read-only notice. */
     async function load() {
         await fetchOffsetsStatus();
@@ -272,30 +266,11 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             section.appendChild(buildLogLevelRow());
             if (offsetsInfo) {
                 section.appendChild(buildOffsetsSection());
-                if (offsetsInfo.shadow && isShadowDiagnosticsEnabled()) {
-                    section.appendChild(buildShadowSection());
-                }
             }
-            // 组合模式区块在「内存偏移表管理」（及其影子诊断子区块）之后。
-            section.appendChild(buildCombinedModeSection());
+            // 组合模式与分轨准确度同属「桌面壳专属卡片配置」，合并为一个区块。
+            section.appendChild(buildDesktopCardConfigSection());
         }
         root.appendChild(section);
-    }
-
-    function isShadowDiagnosticsEnabled() {
-        try {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has("debug") || params.has("shadow") || params.has("diag")) {
-                return true;
-            }
-        } catch (_) {}
-        if (offsetsInfo && (offsetsInfo.shadow_enabled === true || offsetsInfo.shadowDiagnostics === true)) {
-            return true;
-        }
-        if (config && config.shadowDiagnostics === true) {
-            return true;
-        }
-        return false;
     }
 
     function buildRow(key, title, description, control) {
@@ -481,16 +456,24 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         return buildRow("hotkeys", t("ui.shell.field.hotkeys.title", "Hotkeys"), t("ui.shell.field.hotkeys.description", "Shell-wide shortcuts."), wrap);
     }
 
+    function buildDesktopCardConfigSection() {
+        const section = document.createElement("div");
+        section.className = "shell-config-subsection";
+        section.id = "shell-card-config-section";
+        const title = document.createElement("h3");
+        title.className = "settings-group-title";
+        title.textContent = t("ui.shell.cardConfig.title", "Desktop-shell card settings");
+        section.appendChild(title);
+        section.appendChild(buildCombinedModeSection());
+        section.appendChild(buildLaneAccSpaceModeSection());
+        return section;
+    }
+
     function buildCombinedModeSection() {
         const current = normalizeCombinedMode(config.combinedMode);
         const section = document.createElement("div");
         section.className = "shell-config-subsection";
         section.id = "shell-combined-mode-section";
-
-        const title = document.createElement("h3");
-        title.className = "settings-group-title";
-        title.textContent = t("ui.shell.combinedMode.title", "Combined Mode");
-        section.appendChild(title);
 
         const toggle = document.createElement("input");
         toggle.type = "checkbox";
@@ -590,14 +573,38 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         }
         section.appendChild(list);
 
-        const hint = document.createElement("p");
-        hint.className = "shell-config-hint";
-        hint.textContent = t(
-            "ui.shell.combinedMode.hint",
-            "Desktop shell only. The card grows with the number of checked sections.",
-        );
-        section.appendChild(hint);
+        return section;
+    }
 
+    function buildLaneAccSpaceModeSection() {
+        const section = document.createElement("div");
+        section.className = "shell-config-subsection";
+        section.id = "shell-laneacc-section";
+
+        const select = document.createElement("select");
+        select.dataset.shellKey = "laneAccSpaceMode";
+        const current = normalizeSpaceMode(config.laneAccSpaceMode);
+        for (const [value, labelKey, fallback] of [
+            ["independent", "ui.shell.laneAcc.space.independent", "Independent Space lane"],
+            ["left", "ui.shell.laneAcc.space.left", "Middle lane = left hand"],
+            ["right", "ui.shell.laneAcc.space.right", "Middle lane = right hand"],
+        ]) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = t(labelKey, fallback);
+            option.selected = value === current;
+            select.appendChild(option);
+        }
+        select.value = current;
+        select.addEventListener("change", () => {
+            write({ laneAccSpaceMode: select.value });
+        });
+        section.appendChild(buildRow(
+            "laneAccSpaceMode",
+            t("ui.shell.laneAcc.space.title", "Odd-key middle lane"),
+            t("ui.shell.laneAcc.space.description", "Only affects the LaneAcc lane groups; it never changes accuracy or cache."),
+            select,
+        ));
         return section;
     }
 
@@ -680,73 +687,6 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         return wrap;
     }
 
-    function buildShadowSection() {
-        const wrap = document.createElement("div");
-        wrap.className = "shell-config-subsection";
-
-        const header = document.createElement("h3");
-        header.className = "settings-group-title";
-        header.textContent = t("ui.shell.shadow.title", "Shadow Diagnostics (Native vs Tosu)");
-        wrap.appendChild(header);
-
-        const shadow = offsetsInfo.shadow || {};
-        const total = shadow.total_compared || 0;
-        const matches = shadow.matched_frames || 0;
-        const mismatches = shadow.mismatched_frames || 0;
-        const rate = typeof shadow.match_rate === "number" ? shadow.match_rate.toFixed(1) : "0.0";
-
-        const desc = total === 0
-            ? (shadow.tosu_connected
-                ? t("ui.shell.shadow.tosuConnected", "tosu connected — awaiting compared frames")
-                : t("ui.shell.shadow.waiting", "Waiting for concurrent tosu and native data streams…"))
-            : `${total} ${t("ui.shell.shadow.framesCompared", "frames compared")}: ${matches} ${t("ui.shell.shadow.matched", "matched")} (${rate}%), ${mismatches} ${t("ui.shell.shadow.mismatched", "mismatched")}`;
-
-        const badge = document.createElement("span");
-        if (total === 0) {
-            badge.className = "shell-config-badge badge-idle";
-            badge.textContent = t("ui.shell.shadow.idle", "Idle");
-        } else if (mismatches === 0) {
-            badge.className = "shell-config-badge badge-ok";
-            badge.textContent = t("ui.shell.shadow.fullMatch", "100% Match");
-        } else {
-            badge.className = "shell-config-badge badge-error";
-            badge.textContent = `${mismatches} ${t("ui.shell.shadow.differ", "Differ")}`;
-        }
-
-        wrap.appendChild(buildRow("shadowStatus", t("ui.shell.shadow.statusTitle", "Comparison Status"), desc, badge));
-
-        if (mismatches > 0 && Array.isArray(shadow.last_mismatches) && shadow.last_mismatches.length > 0) {
-            const diffDesc = `${t("ui.shell.shadow.lastDiffs", "Last differing fields")}: ${shadow.last_mismatches.join(", ")}`;
-            const diffTag = document.createElement("span");
-            diffTag.className = "shell-config-diff-tag";
-            diffTag.textContent = shadow.last_mismatches.join(", ");
-            wrap.appendChild(buildRow("shadowDiffs", t("ui.shell.shadow.diffTitle", "Discrepancy Details"), diffDesc, diffTag));
-        }
-
-        const actionsWrap = document.createElement("div");
-        actionsWrap.className = "shell-config-actions";
-
-        const refreshBtn = document.createElement("button");
-        refreshBtn.type = "button";
-        refreshBtn.className = "settings-action-btn";
-        refreshBtn.textContent = t("ui.shell.shadow.refresh", "Refresh Stats");
-        refreshBtn.addEventListener("click", async () => {
-            await fetchOffsetsStatus();
-            render();
-        });
-        actionsWrap.appendChild(refreshBtn);
-
-        const resetBtn = document.createElement("button");
-        resetBtn.type = "button";
-        resetBtn.className = "settings-action-btn";
-        resetBtn.textContent = t("ui.shell.shadow.reset", "Reset Counts");
-        resetBtn.addEventListener("click", () => resetShadow());
-        actionsWrap.appendChild(resetBtn);
-
-        wrap.appendChild(buildRow("shadowActions", t("ui.shell.shadow.actionsTitle", "Diagnostics Controls"), t("ui.shell.shadow.actionsDescription", "Manage shadow verification metrics."), actionsWrap));
-
-        return wrap;
-    }
 
     return {
         load,

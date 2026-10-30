@@ -54,6 +54,7 @@
         - Etterna: 显示Etterna 7大键型分。
         - Graph: 显示难度变化图。
         - ReworkPP: 显示最大/实时 Rework PP 及其相关参数。
+        - LaneAcc: 分轨准确度与 ScoreV1 实时转换（仅桌面壳 + osu!lazer 原生 mania 4K–18K）。
         - 注：原Full选项已移除。旧配置里的Full会自动按Auto处理；桌面壳用户如需同时显示多个模块，请在“组合模式”中勾选并排序。
     - **Top-left Capsule Text**：选择在卡片左上角胶囊显示的内容。
         - Auto: 根据谱面LN占比自动选择显示ReworkSR或MSD。
@@ -232,6 +233,7 @@
         - Etterna: Displays Etterna's 7 major skill set breakdowns.
         - Graph: Displays the difficulty variation graph.
         - ReworkPP: Displays the max/live Rework PP performance and related parameters.
+        - LaneAcc: Per-lane accuracy and live ScoreV1 conversion (desktop shell + osu!lazer native mania 4K–18K only).
         - Note: The original Full option has been removed. Old configurations with Full will automatically be treated as Auto; desktop shell users who want to display multiple modules simultaneously should check and sort them in "Combined Mode".
     - **Top-left Capsule Text**: Select what to display in the top-left capsule.
         - Auto: Automatically selects ReworkSR or MSD based on the LN ratio of the beatmap.

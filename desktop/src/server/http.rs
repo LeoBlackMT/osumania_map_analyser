@@ -493,13 +493,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         let ppysb_table = crate::osu::offsets::find_stable_table_variant(None, "ppysb");
         let lazer_default = crate::osu::offsets::default_lazer_table();
         let gen_ready = find_gen_executable(&shared).is_some();
-        let shadow_diag = crate::osu::compare::current_diagnostics();
-        let shadow_enabled = std::env::var("MMA_SHADOW_DIAG").map(|v| v != "0").unwrap_or(false)
-            || std::env::args().any(|arg| arg == "--shadow-diag" || arg == "--debug");
         let body = serde_json::json!({
             "status": "ok",
             "generator_ready": gen_ready,
-            "shadow_enabled": shadow_enabled,
             "stable": {
                 "client": "stable",
                 "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
@@ -520,25 +516,11 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "runtime_version": lazer_default.runtime_version,
                 "arch": lazer_default.arch,
                 "types_count": lazer_default.types.len(),
+                "score_ready": lazer_default.score().is_some(),
                 "loaded": true
-            },
-            "shadow": shadow_diag
+            }
         });
         respond_json(&mut stream, 200, &body.to_string());
-        return;
-    }
-
-    // GET /shadow/status：获取当前 L3 影子比对状态与诊断（P2 Topic 12）
-    if method == "GET" && path == "/shadow/status" {
-        let diag = crate::osu::compare::current_diagnostics();
-        respond_json(&mut stream, 200, &serde_json::to_string(&diag).unwrap_or_default());
-        return;
-    }
-
-    // POST /shadow/reset：重置影子比对计数
-    if method == "POST" && path == "/shadow/reset" {
-        crate::osu::compare::reset_diagnostics();
-        respond_json(&mut stream, 200, r#"{"status":"ok"}"#);
         return;
     }
 

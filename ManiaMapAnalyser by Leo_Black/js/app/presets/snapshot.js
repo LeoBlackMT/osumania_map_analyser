@@ -8,7 +8,8 @@ import {
     SETTING_RECOMPUTE_KEYS,
     SETTING_CACHE_KEYS,
 } from "../settings.js";
-import { applyCombinedModeSetting } from "../settings.js";
+import { applyCombinedModeSetting, applyLaneAccSpaceMode } from "../settings.js";
+import { normalizeSpaceMode } from "../laneAcc/accumulator.js";
 import { normalizeCombinedMode } from "../combinedMode.js";
 import { state } from "../appContext.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
@@ -91,6 +92,7 @@ export async function captureCurrentSettings() {
             enabled: state.combinedModeEnabled === true,
             modules: [...state.combinedModeModules],
         };
+        snapshot.laneAccSpaceMode = state.laneAccSpaceMode || "independent";
     }
     return snapshot;
 }
@@ -131,6 +133,15 @@ export async function applySnapshot(snapshot, { quiet = false } = {}) {
         // own recompute; never part of the recompute/cache invalidation sets.
         // 与下方 per-key try/catch 同语义：管理页（presets.html）没有卡片 DOM，
         // applyCombinedModeSetting 内部的可见性更新会抛错——落盘不受影响。
+        if (key === "laneAccSpaceMode" || key === "handAccSpaceMode") {
+            try {
+                applyLaneAccSpaceMode(value);
+            } catch (error) {
+                console.debug('[presets] apply "laneAccSpaceMode" failed (DOM may be missing on this page):', error);
+            }
+            postShellConfigPatch({ laneAccSpaceMode: normalizeSpaceMode(value) });
+            continue;
+        }
         if (key === "combinedMode") {
             try {
                 applyCombinedModeSetting(value);

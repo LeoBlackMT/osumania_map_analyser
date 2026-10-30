@@ -98,7 +98,8 @@
 			"Pattern",
 			"Etterna",
 			"Graph",
-			"ReworkPP"
+			"ReworkPP",
+			"LaneAcc"
 		],
 		"value": "Auto"
 	},

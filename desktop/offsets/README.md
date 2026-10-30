@@ -110,3 +110,33 @@ mod 的自定义设置：
 The lazer table may carry an optional `mods` section (see above) to read per-mod custom
 settings from `SelectedMods`. It is a live-probed section like `results`: the generator
 does not emit it, so re-check it with `MMA_LAZER_MODS_PROBE=1` after a lazer update.
+
+## lazer 表的 `score` 段（LaneAcc 逐判定事件）
+
+`score` 段记录 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`）的读侧偏移，
+供 LaneAcc 在局内/回放中逐 note 取判定：
+
+```json
+"score": {
+  "player_score_processor": 1096,
+  "hit_events": 656,
+  "hit_object": 0,
+  "time_offset": 16,
+  "result": 24,
+  "column": 72,
+  "stride": 64
+}
+```
+
+- `player_score_processor` / `hit_events`：`Player` 与 `ScoreProcessor` 上的字段位移；
+- `hit_object` / `time_offset` / `result`：`HitEvent` 元素内字段位移（**managed** 布局：
+  2026-10-26 回放实测 `HitObject@0x00`、`LastHitObject@0x08`、`TimeOffset@0x10`、`Result@0x18`；
+  `Marshal.OffsetOf` 给的是 unmanaged 布局，不能当 managed 偏移用）；
+- `column`：`ManiaHitObject.Column` 在 HitObject 内的位移（`0x48`）；`stride` = `0x40`。
+
+这一段与 `results` 一样是**活体探针段**：`gen.exe` / `lazer-offsets-gen` 的 `live` 在游玩或
+回放时扫 `ScoreProcessor` 字段并用“`LastHitObject == 上一事件 HitObject` 链 + 列号域”自证后写出；
+完整 dump 链路（`extract → emit`）不产出它。缺这一段时读侧不发逐判定帧，卡片显示占位。
+
+The lazer table may also carry an optional `score` section (see above) for the LaneAcc live
+hit-event reader; like `results`/`mods` it is produced only by the `live` generator path.

@@ -29,6 +29,7 @@ import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 import { setStatus, updateCardPlayVisibility } from "../hud.js";
 import { clearSection, isSameBeatmapIdentity } from "../graphSection/index.js";
+import { laneAccView } from "../laneAcc/view.js";
 
 function looksLikeOsu(text) {
     return typeof text === "string"
@@ -215,6 +216,9 @@ export function handleSongFrame(payload) {
     const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity);
     if (identityChanged) {
         clearSection("beatmap", { recompute: false });
+        if (state.lastBeatmapIdentity) {
+            laneAccView.reset();
+        }
     }
     state.pendingSourceText = osuText;
     state.pendingSourceRequestId = requestId;

@@ -43,11 +43,18 @@ pub fn detect_stable_variant(_target: &win::Target) -> &'static str {
 
 /// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
 #[cfg(windows)]
-pub fn run(reader: Reader) {
+pub fn run(
+    reader: Reader,
+    hit_log: Arc<lazer::HitEventLog>,
+    replay_log: Arc<lazer::score::ReplayFrameLog>,
+) {
     let mut attached: Option<win::Target> = None;
     let mut anchors: Option<patterns::AnchorTable> = None;
     let mut stable_table: Option<offsets::StableTable> = None;
     let mut lazer_attach: Option<lazer::Attach> = None;
+    let mut hit_player: Option<u64> = None;
+    let mut hit_state = lazer::score::PollState::default();
+    let mut replay_state = lazer::score::ReplayPollState::default();
     let mut regions: scan::RegionCache = scan::RegionCache::new();
     let mut anchor_cache: anchor_cache::AnchorCache = anchor_cache::AnchorCache::new();
     let mut last_scan_fail: Option<std::time::Instant> = None;
@@ -402,6 +409,15 @@ pub fn run(reader: Reader) {
             let client = target.client().unwrap_or(Client::Stable);
             let read = match lazer_attach.as_mut() {
                 Some(attach) => lazer::read_tick(attach, target).map(|frame| {
+                    let state_name = frame.snapshot.state_name.clone();
+                    let top = frame.chain.screen_top;
+                    if state_name.as_deref() == Some("play") {
+                        hit_player = top;
+                    } else {
+                        // 离开 play 只停止轮询：保留本局日志与游标，页面继续显示上一局终态。
+                        // 新一局由 Player/ScoreProcessor/List 指针变化或 `_size` 回退触发 reset。
+                        hit_player = None;
+                    }
                     publish_lazer_state(
                         &reader,
                         Some(lazer::Diagnostics {
@@ -493,16 +509,56 @@ pub fn run(reader: Reader) {
                     regions = scan::RegionCache::new();
                     lost_at = Some(std::time::Instant::now());
                     attach_failures = 0;
+                    hit_player = None;
+                    hit_state = lazer::score::PollState::default();
+                    replay_state = lazer::score::ReplayPollState::default();
+                    hit_log.clear();
+                    replay_log.clear();
                     publish_phase(&reader, Phase::Attaching, None, &format!("reason={detail}"));
                 }
             }
         }
-        thread::sleep(compare_interval);
+        // 全量帧 250ms；两次全量帧之间按 100ms 读逐判定事件。
+        let next_full = std::time::Instant::now() + compare_interval;
+        if let Some(target) = attached.as_ref() {
+            loop {
+                if let (Some(player), Some(attach)) = (hit_player, lazer_attach.as_ref()) {
+                    if let Some(section) = attach.table.score() {
+                        if let Err(reason) =
+                            lazer::score::poll(target, section, player, &hit_log, &mut hit_state)
+                        {
+                            if reason != "hit-events-size-unreadable" {
+                                eprintln!("[osu] score poll skipped: {reason}");
+                            }
+                        }
+                        if let Err(reason) =
+                            lazer::score::poll_replay(target, section, player, &replay_log, &mut replay_state)
+                        {
+                            if reason != "replay-size-unreadable" {
+                                eprintln!("[osu] replay poll skipped: {reason}");
+                            }
+                        }
+                    }
+                }
+                let now = std::time::Instant::now();
+                if now >= next_full {
+                    break;
+                }
+                let remaining = next_full.saturating_duration_since(now);
+                thread::sleep(remaining.min(std::time::Duration::from_millis(100)));
+            }
+        } else {
+            thread::sleep(compare_interval);
+        }
     }
 }
 
 #[cfg(not(windows))]
-pub fn run(reader: Reader) {
+pub fn run(
+    reader: Reader,
+    _hit_log: Arc<lazer::HitEventLog>,
+    _replay_log: Arc<lazer::score::ReplayFrameLog>,
+) {
     let mut gate = Gate::new();
     let outcome = gate.on_anchor_failure(Reason::PlatformUnsupported, 0);
     publish_outcome(&reader, &gate, &outcome, None, None, None);

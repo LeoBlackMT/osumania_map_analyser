@@ -32,9 +32,9 @@ export const SYSTEM_SNAPSHOT_KEYS = new Set([PRESET_STORAGE_SETTING, "preset"]);
  * are NOT tosu settings: they must never be written back through the settings
  * transport (writeBackToTosu filters them), and the browser import strips
  * them with a notice because a browser page cannot apply or even display
- * them. Current keys: "combinedMode" ({enabled, modules}).
+ * them. Current keys: "combinedMode" ({enabled, modules}), "laneAccSpaceMode".
  */
-export const SHELL_ONLY_SNAPSHOT_KEYS = new Set(["combinedMode"]);
+export const SHELL_ONLY_SNAPSHOT_KEYS = new Set(["combinedMode", "laneAccSpaceMode", "handAccSpaceMode"]);
 
 const STORE_VERSION = 2;
 const LEGACY_AUTO_NAME = "Auto";

@@ -41,15 +41,20 @@ pub fn run_live(options: &Options) -> i32 {
                 Some(mods) => format!(r#","mods":{mods}"#),
                 None => r#","mods":null"#.to_string(),
             };
+            let score_json = match &info.score {
+                Some(score) => format!(r#","score":{score}"#),
+                None => r#","score":null"#.to_string(),
+            };
             if json_output {
                 println!(
-                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}{}}}"#,
+                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}{}{}}}"#,
                     info.lazer_version,
                     info.runtime_version,
                     info.arch,
                     info.output_path.display().to_string().replace('\\', "\\\\"),
                     results_json,
                     mods_json,
+                    score_json,
                 );
             } else {
                 println!("Live offset generation succeeded!");
@@ -65,6 +70,12 @@ pub fn run_live(options: &Options) -> i32 {
                     Some(mods) => println!("  Mods section: {mods}"),
                     None => println!(
                         "  Mods section: not captured (select a speed mod + mania DA in song select)"
+                    ),
+                }
+                match &info.score {
+                    Some(score) => println!("  Score section: {score}"),
+                    None => println!(
+                        "  Score section: not captured (run `live` while playing or replaying a mania map)"
                     ),
                 }
                 println!("  Saved to: {}", info.output_path.display());
@@ -97,6 +108,9 @@ pub struct GenerationOutcome {
     /// 选歌/游玩界面捕获到的 `mods` 段（JSON 对象文本）。`None` = 没有同时看到速度 mod
     /// 与 mania DA（例如 NM 选歌）。
     pub mods: Option<String>,
+    /// 游玩/回放界面捕获到的 `score` 段（JSON 对象文本）。`None` = 没有可自证的
+    /// `ScoreProcessor.hitEvents` 列表（例如不在 play/replay）。
+    pub score: Option<String>,
 }
 
 pub struct LiveError {
@@ -212,7 +226,12 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     let resolver = EetypeResolver::new(handle, &inventory, &modules);
 
     // 6. 多跳解析并活体校验 GameBase
-    let mut verified_table: Option<(String, Option<ResultsOffsets>, Option<ModsOffsets>)> = None;
+    let mut verified_table: Option<(
+        String,
+        Option<ResultsOffsets>,
+        Option<ModsOffsets>,
+        Option<ScoreOffsets>,
+    )> = None;
     let mut _verified_vtable: u64 = 0;
 
     for anchor in &anchor_hits {
@@ -257,7 +276,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         }
     }
 
-    let Some((table_json, results, mods)) = verified_table else {
+    let Some((table_json, results, mods, score)) = verified_table else {
         return Err(LiveError::new(
             "live_validation_failed",
             "found candidate GameBase, but live validation checks (MD5Hash / ScreenStack / VTable) failed",
@@ -272,6 +291,13 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         None => eprintln!(
             "[live] results section NOT captured — run `live` while the result screen is up to \
              include it (the rest of the table is unaffected)"
+        ),
+    }
+    match &score {
+        Some(found) => eprintln!("[live] score section captured: {}", found.witness()),
+        None => eprintln!(
+            "[live] score section NOT captured — run `live` while playing or replaying a mania map \
+             to include it (the rest of the table is unaffected)"
         ),
     }
 
@@ -344,6 +370,7 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         output_path: out_file,
         results: results.as_ref().map(|found| found.to_json()),
         mods: mods.as_ref().map(|found| found.to_json()),
+        score: score.as_ref().map(|found| found.to_json()),
     })
 }
 
@@ -836,6 +863,189 @@ impl ModsOffsets {
     fn to_json(&self) -> String {
         r#"{"bindable_value":64,"difficulty_current":96,"settings":{"DT":{"speed_change":16,"adjust_pitch":24},"NC":{"speed_change":16},"HT":{"speed_change":16,"adjust_pitch":24},"DC":{"speed_change":16},"DA":{"drain_rate":16,"extended_limits":32,"overall_difficulty":40}}}"#.to_string()
     }
+}
+
+/// `live` 在游玩/回放时从 `Player → ScoreProcessor.hitEvents` 测出的 `score` 段。
+///
+/// `HitEvent` 是 64 字节顺序值类型（安装程序集静态反射：`TimeOffset@0x00`、
+/// `Result@0x18`、`HitObject@0x20`）。这里保留一组**候选布局**并用活体事件样本
+/// 自证（结果域、偏移有限、列号 0..=17、`LastHitObject == 上一事件 HitObject` 的链），
+/// 选命中率最高的一组；不靠写死偏移。
+#[cfg(windows)]
+#[derive(Clone, Copy)]
+struct HitEventLayout {
+    time_offset: u64,
+    result: u64,
+    hit_object: u64,
+    last_hit_object: u64,
+    stride: u64,
+}
+
+#[cfg(windows)]
+const HIT_EVENT_LAYOUTS: &[HitEventLayout] = &[
+    // 2026-10-26 live replay verified (managed layout; preferred).
+    HitEventLayout { time_offset: 0x10, result: 0x18, hit_object: 0x00, last_hit_object: 0x08, stride: 0x40 },
+    // `Marshal.OffsetOf` unmanaged layout (NOT the managed field offsets; kept as a candidate).
+    HitEventLayout { time_offset: 0x00, result: 0x18, hit_object: 0x20, last_hit_object: 0x28, stride: 0x40 },
+    HitEventLayout { time_offset: 0x10, result: 0x18, hit_object: 0x08, last_hit_object: 0x00, stride: 0x40 },
+];
+
+#[cfg(windows)]
+struct ScoreOffsets {
+    player_score_processor: u64,
+    hit_events: u64,
+    hit_object: u64,
+    time_offset: u64,
+    result: u64,
+    column: u64,
+    stride: u64,
+    player_type: String,
+    sample_count: usize,
+    chain_matches: usize,
+}
+
+#[cfg(windows)]
+impl ScoreOffsets {
+    fn witness(&self) -> String {
+        format!(
+            "live play: {} -> ScoreProcessor.hitEvents (List<HitEvent>, stride 0x{:X}); \
+             TimeOffset@+0x{:X}, Result@+0x{:X}, HitObject@+0x{:X}, Column@HitObject+0x{:X}; \
+             sample={} chain={}",
+            self.player_type,
+            self.stride,
+            self.time_offset,
+            self.result,
+            self.hit_object,
+            self.column,
+            self.sample_count,
+            self.chain_matches
+        )
+    }
+
+    fn to_json(&self) -> String {
+        format!(
+            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"witness":"{}"}}"#,
+            self.player_score_processor,
+            self.hit_events,
+            self.hit_object,
+            self.time_offset,
+            self.result,
+            self.column,
+            self.stride,
+            escape_json(&self.witness())
+        )
+    }
+}
+
+/// `List<T>` 的 `_items` / `_size`；尺寸不合理就返回 `None`（不猜）。
+#[cfg(windows)]
+fn list_items_and_size(handle: Handle, list: u64) -> Option<(u64, usize)> {
+    let items = read_ptr(handle, list + 8)?;
+    let size = read_i32(handle, list + 16)?;
+    if size < 0 || size > 400_000 {
+        return None;
+    }
+    let capacity = read_i32(handle, items + 8)?;
+    if capacity < size {
+        return None;
+    }
+    Some((items, size as usize))
+}
+
+/// 用尾部最多 64 个事件验证一组布局；返回 `(有效事件数, 命中链数)`。
+#[cfg(windows)]
+fn validate_hit_event_layout(
+    handle: Handle,
+    items: u64,
+    size: usize,
+    layout: &HitEventLayout,
+) -> Option<(usize, usize)> {
+    if size < 8 {
+        return None;
+    }
+    let sample = size.min(64);
+    let start = size - sample;
+    let mut valid = 0usize;
+    let mut chain = 0usize;
+    let mut previous_hit: Option<u64> = None;
+    for index in start..size {
+        let base = items
+            .checked_add(0x10)?
+            .checked_add(layout.stride.checked_mul(index as u64)?)?;
+        let Some(offset) = read_f64(handle, base + layout.time_offset) else { continue };
+        let Some(result) = read_i32(handle, base + layout.result) else { continue };
+        let Some(hit_object) = read_ptr(handle, base + layout.hit_object) else { continue };
+        let Some(last_hit_object) = read_ptr(handle, base + layout.last_hit_object) else { continue };
+        if !offset.is_finite() || offset.abs() > 5_000.0 {
+            continue;
+        }
+        if !(0..=16).contains(&result) || !is_valid_ptr(hit_object) {
+            continue;
+        }
+        let Some(column) = read_i32(handle, hit_object + 0x48) else { continue };
+        if !(0..=17).contains(&column) {
+            continue;
+        }
+        valid += 1;
+        if let Some(previous) = previous_hit {
+            if last_hit_object == previous {
+                chain += 1;
+            }
+        }
+        previous_hit = Some(hit_object);
+    }
+    if valid * 2 < sample {
+        return None;
+    }
+    Some((valid, chain))
+}
+
+/// 扫 `Player` 字段找 ScoreProcessor，再扫 ScoreProcessor 字段找 `hitEvents` 列表；
+/// 对每个候选用三组 `HitEvent` 布局自证，取分数最高者。
+#[cfg(windows)]
+fn discover_score(
+    handle: Handle,
+    resolver: &EetypeResolver<'_>,
+    player: u64,
+) -> Result<ScoreOffsets, String> {
+    let mut best: Option<(ScoreOffsets, usize)> = None;
+    for player_offset in (0x8..=0x1000).step_by(8) {
+        let Some(score_processor) = read_ptr(handle, player + player_offset) else { continue };
+        let Some(score_processor_type) = resolver.name(score_processor) else { continue };
+        if !score_processor_type.contains("ScoreProcessor") {
+            continue;
+        }
+        for list_offset in (0x8..=0x800).step_by(8) {
+            let Some(list) = read_ptr(handle, score_processor + list_offset) else { continue };
+            let Some((items, size)) = list_items_and_size(handle, list) else { continue };
+            for layout in HIT_EVENT_LAYOUTS {
+                let Some((valid, chain)) = validate_hit_event_layout(handle, items, size, layout)
+                else {
+                    continue;
+                };
+                let rank = valid * 10 + chain;
+                let found = ScoreOffsets {
+                    player_score_processor: player_offset,
+                    hit_events: list_offset,
+                    hit_object: layout.hit_object,
+                    time_offset: layout.time_offset,
+                    result: layout.result,
+                    column: 0x48,
+                    stride: layout.stride,
+                    player_type: score_processor_type.clone(),
+                    sample_count: valid,
+                    chain_matches: chain,
+                };
+                if best.as_ref().map_or(true, |(_, best_rank)| rank > *best_rank) {
+                    best = Some((found, rank));
+                }
+            }
+        }
+    }
+    best.map(|(found, _)| found).ok_or_else(|| {
+        "no ScoreProcessor.hitEvents list with a verifiable HitEvent layout (play or replay required)"
+            .to_string()
+    })
 }
 
 /// `HitResult` 的枚举表：`(载荷键 → 枚举序号, 成员总数)`。
@@ -1449,7 +1659,12 @@ fn validate_and_emit(
     lazer_version: &str,
     runtime_version: &str,
     arch: &str,
-) -> Option<(String, Option<ResultsOffsets>, Option<ModsOffsets>)> {
+) -> Option<(
+    String,
+    Option<ResultsOffsets>,
+    Option<ModsOffsets>,
+    Option<ScoreOffsets>,
+)> {
     if !is_valid_ptr(vtable) || !is_valid_ptr(game_base) {
         return None;
     }
@@ -1578,6 +1793,25 @@ fn validate_and_emit(
         }
     };
 
+    // 活体验证 6（游玩/回放）：测 `score` 段（Player → ScoreProcessor.hitEvents）。
+    // 只在 play 态有意义；非 play 时 `top_screen` 不是 Player，发现会失败并跳过。
+    let score = match top_screen {
+        Some(player) => match discover_score(handle, resolver, player) {
+            Ok(found) => {
+                eprintln!("[live] score section captured: {}", found.witness());
+                Some(found)
+            }
+            Err(reason) => {
+                eprintln!("[live] score section not captured: {reason}");
+                None
+            }
+        },
+        None => {
+            eprintln!("[live] score section not captured: screen-top-unreadable");
+            None
+        }
+    };
+
     // 组装已知经过活体校验的类型布局
     let json = serde_json_table(
         lazer_version,
@@ -1590,9 +1824,10 @@ fn validate_and_emit(
         rid,
         results.as_ref(),
         mods.as_ref(),
+        score.as_ref(),
     );
 
-    Some((json, results, mods))
+    Some((json, results, mods, score))
 }
 
 #[cfg(windows)]
@@ -1607,6 +1842,7 @@ fn serde_json_table(
     observed_rid: u32,
     results: Option<&ResultsOffsets>,
     mods: Option<&ModsOffsets>,
+    score: Option<&ScoreOffsets>,
 ) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -1752,6 +1988,13 @@ fn serde_json_table(
     // 模组自定义设置（只有活体同时验证到速度 mod + mania DA 才写）。
     if let Some(found) = mods {
         out.push_str("  \"mods\": ");
+        out.push_str(&found.to_json());
+        out.push_str(",\n");
+    }
+
+    // 局内逐判定事件（只有活体验证到 ScoreProcessor.hitEvents 才写）。
+    if let Some(found) = score {
+        out.push_str("  \"score\": ");
         out.push_str(&found.to_json());
         out.push_str(",\n");
     }

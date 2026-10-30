@@ -382,6 +382,47 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
         }
     }
 
+    if let Some(score) = &table.score {
+        check_string_safety("score.witness", &score.witness)?;
+        check_results_offset("score.player_score_processor", score.player_score_processor)?;
+        check_results_offset("score.hit_events", score.hit_events)?;
+        check_results_offset("score.column", score.column)?;
+        if !(0x20..=0x200).contains(&score.stride) || score.stride % 8 != 0 {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "score.stride".to_string(),
+                score.stride,
+            ));
+        }
+        check_event_offset("score.hit_object", score.hit_object, score.stride, 8)?;
+        check_event_offset("score.time_offset", score.time_offset, score.stride, 8)?;
+        check_event_offset("score.result", score.result, score.stride, 4)?;
+        if !score.usable() {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "score (unusable)".to_string(),
+                0,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// `score` 段元素内偏移的判据：在 `[0, stride-width]` 内且按 `width` 对齐。
+fn check_event_offset(
+    field: &str,
+    offset: i64,
+    stride: i64,
+    width: i64,
+) -> Result<(), ValidationError> {
+    if offset < 0 || width <= 0 || offset.saturating_add(width) > stride {
+        return Err(ValidationError::DisplacementOutOfRange(
+            field.to_string(),
+            offset,
+        ));
+    }
+    if offset % width != 0 {
+        return Err(ValidationError::InvalidAlignment(field.to_string(), offset));
+    }
     Ok(())
 }
 

@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 7 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 8 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 7;
+pub const CONTRACT_VERSION: u32 = 10;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -299,6 +299,20 @@ pub struct ResultInbound {
     pub status_hint: Option<String>,
     pub active_source: Option<String>,
     pub errors: Option<Vec<String>>,
+}
+
+// 壳 → 页面：本局逐判定事件（契约 v8，LaneAcc / ScoreV1）。
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct HitEventFrame {
+    pub reset: bool,
+    pub events: Vec<HitEventItem>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct HitEventItem {
+    pub col: i32,
+    pub result: i32,
+    pub offset: f64,
 }
 
 // 页面 → 壳控制帧（契约 v2：窗口操控）。

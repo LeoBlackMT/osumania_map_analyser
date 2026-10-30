@@ -5,4 +5,10 @@
 export default {
     "settings.GuideButton.title": "Settings Guide",
     "settings.PresetGuideButton.title": "Presets Guide",
+    "ui.shell.laneAcc.title": "LaneAcc",
+    "ui.shell.laneAcc.space.title": "Odd-key middle lane",
+    "ui.shell.laneAcc.space.description": "Only affects the LaneAcc lane groups; it never changes accuracy or cache.",
+    "ui.shell.laneAcc.space.independent": "Excluded",
+    "ui.shell.laneAcc.space.left": "Join left hand",
+    "ui.shell.laneAcc.space.right": "Join right hand",
 };

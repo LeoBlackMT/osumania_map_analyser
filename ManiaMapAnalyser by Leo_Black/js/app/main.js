@@ -9,6 +9,7 @@ import {
 import { setRecomputeHandler, scheduleRecompute } from "./scheduler.js";
 import {
     applyCombinedModeSetting,
+    applyLaneAccSpaceMode,
     applySettingsPayload,
     loadSettings,
     setTabContentBar,
@@ -23,13 +24,14 @@ import { initWindowAffordances } from "./windowAffordances.js";
 // settings-stream listener) on load; it must be loaded exactly once.
 import "./presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "./telemetry.js";
-import { initBridgeClient } from "./sources/bridgeClient.js";
+import { initBridgeClient, sendLaneAccSync } from "./sources/bridgeClient.js";
 import { handleSongFrame } from "./sources/externalSource.js";
 import { applyShellState, applyMalody4Selection } from "./sources/shellState.js";
 import { initSourceManager } from "./sources/sourceManager.js";
 import { setupSocketListener, resumeBufferedOsuState } from "./socketHandlers.js";
 import { initFeedback } from "./feedback/feedbackStrip.js";
 import { initGraphSection } from "./graphSection/index.js";
+import { laneAccView } from "./laneAcc/view.js";
 
 setRecomputeHandler(fetchBeatmapFile);
 
@@ -41,6 +43,7 @@ async function initShellConfig() {
     const config = await fetchShellConfig();
     if (config) {
         applyCombinedModeSetting(config.combinedMode);
+        applyLaneAccSpaceMode(config.laneAccSpaceMode);
     }
 }
 
@@ -48,7 +51,19 @@ export async function initialize() {
     initTriangleField();
     initWindowAffordances();
     initContentBarTabs({ onSelect: setTabContentBar });
+    laneAccView.init();
     await initShellConfig();
+    if (typeof window !== "undefined" && window.location?.port === "24061") {
+        fetch("http://127.0.0.1:24061/offsets/status")
+            .then((response) => (response.ok ? response.json() : null))
+            .then((body) => {
+                state.laneAccScoreReady = body?.lazer?.score_ready === true;
+                if (state.laneAccScoreReady === false) {
+                    laneAccView.setUnavailable("offsets");
+                }
+            })
+            .catch(() => {});
+    }
     await loadSettings();
     initTelemetry();
     startTelemetryHeartbeat();
@@ -69,6 +84,27 @@ export async function initialize() {
         },
     });
     setupSocketListener();
+    // Temporary replay-event dump switch: ?hitdump=1 or
+    // localStorage.MMA_HIT_DUMP=1; call window.__mmaDownloadHitDump().
+    const hitDump = { events: [] };
+    const hitDumpEnabled = (() => {
+        try {
+            return new URLSearchParams(window.location.search).get("hitdump") === "1"
+                || window.localStorage.getItem("MMA_HIT_DUMP") === "1";
+        } catch {
+            return false;
+        }
+    })();
+    window.__mmaHitDump = hitDump.events;
+    window.__mmaDownloadHitDump = () => {
+        const blob = new Blob([JSON.stringify(hitDump.events)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "mma-hit-events.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    };
     initBridgeClient({
         onState: applyShellState,
         onSong: handleSongFrame,
@@ -78,10 +114,28 @@ export async function initialize() {
             // 先应用它，再交给插件设置处理器（后者只认自己的 uniqueID）。
             if (isShellConfigPayload(payload)) {
                 applyCombinedModeSetting(payload.combinedMode);
+                applyLaneAccSpaceMode(payload.laneAccSpaceMode);
             }
             applySettingsPayload(payload);
         },
-        onHello: () => {
+        onManiaHitEvents: (payload) => {
+            if (hitDumpEnabled && Array.isArray(payload?.events)) {
+                if (payload.reset) {
+                    hitDump.events.length = 0;
+                }
+                hitDump.events.push(...payload.events);
+            }
+            laneAccView.applyBatch(payload);
+        },
+        onManiaReplayFrames: (payload) => {
+            laneAccView.applyReplayFrames(payload);
+        },
+        onHello: (payload) => {
+            state.shellContractVersion = Number(payload?.contract) || 0;
+            if (state.shellContractVersion < 9) {
+                laneAccView.setUnavailable("contract");
+            }
+            sendLaneAccSync();
             // 离线配置拉取：壳按优先级链（tosu 设置文件 > mma-settings.json > 默认）
             // 返回 /settings；无 tosu 用户可直接编辑 mma-settings.json 后重启。
             fetch("http://127.0.0.1:24061/settings")

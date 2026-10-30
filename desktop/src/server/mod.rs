@@ -3,6 +3,8 @@
 //       + ws.rs（/ws 帧循环）+ post.rs（24060 POST/resolve/control）+ log.rs（日志）。
 
 pub mod bridge;
+pub mod hit_events;
+pub mod replay_frames;
 pub mod http;
 pub mod log;
 pub mod osu_compat;
@@ -47,6 +49,9 @@ pub struct Shared {
     /// 读取器健康读数的纯记忆（Step 9c 抗抖动窗口的唯一状态；`osu_source::ReaderLiveness`）。
     /// 由 `osu_source()` 每次取值时观测一次 ⇒ 状态帧/监视器两条路径共享同一个窗口。
     pub osu_reader_liveness: Mutex<osu_source::ReaderLiveness>,
+    /// 本局逐判定事件（LaneAcc / ScoreV1）；读取线程写、WS 发送线程取。
+    pub hit_events: Arc<crate::osu::lazer::HitEventLog>,
+    pub replay_frames: Arc<crate::osu::lazer::ReplayFrameLog>,
     /// 壳侧推送错误面（state.errors，页面 status 行展示）。
     pub shell_errors: Mutex<Vec<String>>,
     /// Etterna 桥状态（poller 更新）。
@@ -98,6 +103,8 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         bridge_listen_ok: Mutex::new(false),
         tosu_online: Mutex::new(false),
         osu_reader_liveness: Mutex::new(osu_source::ReaderLiveness::default()),
+        hit_events: Arc::new(crate::osu::lazer::HitEventLog::new()),
+        replay_frames: Arc::new(crate::osu::lazer::ReplayFrameLog::new()),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
         malody4: Mutex::new(crate::malody4::Malody4Status::default()),
@@ -612,7 +619,9 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     // 与 `osu_compat` 并列启动，失败不 panic（线程内部自愈重试）。
     // 共享句柄存进进程级 OnceLock：本步没有 state 帧消费点（Step 9 接），但后续步骤
     // 与调试入口需要一个稳定的读取入口。
-    let _ = crate::osu::INSTANCE.set(crate::osu::spawn_osu_reader());
+    let _ = crate::osu::INSTANCE.set(crate::osu::spawn_osu_reader(shared.hit_events.clone(), shared.replay_frames.clone()));
+    hit_events::spawn_sender(shared.clone());
+    replay_frames::spawn_sender(shared.clone());
     if let Some(post_listener) = post_listener {
         post::spawn_post(shared.clone(), post_listener);
     }

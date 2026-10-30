@@ -17,6 +17,8 @@ export function normalizeContentBarValue(value) {
     if (lowered === "full") return "Auto";
     if (lowered === "none") return "None";
     if (lowered === "reworkpp") return "ReworkPP";
+    // 旧命名 HandAcc 迁移到 LaneAcc。
+    if (lowered === "laneacc" || lowered === "handacc") return "LaneAcc";
     return null;
 }
 

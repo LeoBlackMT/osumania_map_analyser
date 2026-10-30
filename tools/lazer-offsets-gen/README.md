@@ -116,6 +116,30 @@ temp/lazer-offsets-gen.exe live --json
 
 > 不在结算屏时：表的其余部分照常生成，`results` 段缺席（`"results":null`），读侧对 `resultsScreen.hits` 整段降级并给页面提示——**不会**用 0 或上一帧占位。完整 dump 链路（`extract → emit`）目前**不产出**这一段（`spec.rs` 的链还不支持数组元素步）。
 
+### `live` 的 `score` 段（LaneAcc 逐判定事件）
+
+`live` 在**游玩/回放中**还会测 `Player → ScoreProcessor.hitEvents` 的 `score` 段：
+
+```json
+"score": {
+  "player_score_processor": 1096,
+  "hit_events": 656,
+  "hit_object": 0,
+  "time_offset": 16,
+  "result": 24,
+  "column": 72,
+  "stride": 64
+}
+```
+
+判据：扫 Player 字段找类型名含 `ScoreProcessor` 的对象；扫 ScoreProcessor 字段找
+`List<HitEvent>` 形状；用尾部最多 64 条事件验证 `TimeOffset`/`Result`/`HitObject` 与
+`LastHitObject == 上一事件 HitObject` 的链，选命中率最高的布局。`HitEvent` 是 64 字节顺序
+值类型（2026.1005 live 实测：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`），
+`Column` 在 `HitObject+0x48`。不在 play/replay 时 `score` 段缺席，其余表照常生成。
+`gen.exe` 与 `lazer-offsets-gen live` 共用这一实现；`extract/emit` 与 `results` 一样不产出
+`score`。
+
 > `mods` 段（模组自定义设置）是**活体探针段**：`live` 在选歌/游玩界面、且
 > `SelectedMods` 里同时有速度 mod（DT/NC/HT/DC）与 mania DA 时产出；它现场读
 > `DT speed_change=1.2x`、`DA OD 15/HP 5.5/extended=true` 做自校验后才写。

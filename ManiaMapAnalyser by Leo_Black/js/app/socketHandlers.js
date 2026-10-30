@@ -9,6 +9,8 @@ import {
     socket,
     state,
 } from "./appContext.js";
+import { laneAccView } from "./laneAcc/view.js";
+import { sendLaneAccSync } from "./sources/bridgeClient.js";
 import {
     extractCurrentSongTimeMs as extractCurrentSongTimeMsFromPayload,
     getModData as getModDataFromPayload,
@@ -174,6 +176,8 @@ function updateSongTimeState(data) {
 /** 信号段：游玩态/songTime/livePP（败方门控豁免照读，供 Auto 路由回 osu）。 */
 export function applySignalState(data) {
     noteTelemetryActivity();
+    let laneAccEnteredPlay = false;
+    let laneAccEnteredResult = false;
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;
@@ -191,6 +195,7 @@ export function applySignalState(data) {
             // 不允许反馈；页面启动时已在结算屏（壳中途重启）也判为不确定。
             if (nextIsResultScreen && !wasResultScreen) {
                 state.resultsFromPlay = leftPlayState;
+                laneAccEnteredResult = true;
                 // 结算屏不保留选区（D2）：复位后由重算把卡片恢复成整图口径。
                 clearSection("results", { recompute: true });
             } else if (!nextIsResultScreen) {
@@ -201,7 +206,12 @@ export function applySignalState(data) {
 
             if (enteredPlayState) {
                 // 游玩态优先保障实时指标/进度线：选区退出并恢复整图分析。
+                laneAccEnteredPlay = true;
                 clearSection("play", { recompute: true });
+            }
+
+            if (leftPlayState && !nextIsResultScreen) {
+                laneAccView.finishSession();
             }
 
             if (enteredPlayState || (leftPlayState && !nextIsResultScreen)) {
@@ -218,6 +228,15 @@ export function applySignalState(data) {
         if (modData.hasModPayload) {
             state.modCodes = modData.modCodes || [];
             state.classicMod = Boolean(modData.classic);
+        }
+
+        // LaneAcc 的 play/结算边沿放在 mods 之后：窗口用本局的 speedRate/OD。
+        if (laneAccEnteredPlay) {
+            laneAccView.startSession();
+            sendLaneAccSync();
+        }
+        if (laneAccEnteredResult) {
+            laneAccView.finishSession();
         }
 
         updateSongTimeState(data);
@@ -361,6 +380,11 @@ export function applyBeatmapState(data) {
         const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
         if (identityChanged) {
             clearSection("beatmap", { recompute: false });
+            // LaneAcc 不能等新谱面分析完成才清：否则切图/跨图包时结果屏会继续显示上一张图。
+            // 空身份（partial/结算帧）不清，避免把已保留的终态误清。
+            if (nextBeatmapIdentity) {
+                laneAccView.reset();
+            }
         }
         if (identityChanged || cvtChanged) {
             resetContentBarTabOverride();

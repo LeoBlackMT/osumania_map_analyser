@@ -422,6 +422,17 @@ function resetEditor() {
  * 同时勾上两行 include 复选框，Load Current 只取值不勾选。
  */
 function applyShellSnapshotToForm(settings, { include = false } = {}) {
+    if ("shellLaneAccSpaceMode" in formValues) {
+        const spaceMode = settings?.laneAccSpaceMode ?? settings?.handAccSpaceMode;
+        if (spaceMode === "independent" || spaceMode === "left" || spaceMode === "right") {
+            formValues.shellLaneAccSpaceMode = spaceMode;
+            if (include) {
+                formIncluded.shellLaneAccSpaceMode = true;
+            }
+        } else if (include) {
+            formIncluded.shellLaneAccSpaceMode = false;
+        }
+    }
     if (!("shellCombinedEnabled" in formValues)) {
         return;
     }

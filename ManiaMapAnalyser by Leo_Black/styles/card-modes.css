@@ -296,3 +296,35 @@
     overflow-y: visible;
     max-height: none;
 }
+
+/* LaneAcc mode: single-module card. The tab strip shrinks to its natural
+   height and the lane stage takes every remaining pixel, so there is no dead
+   band between the tabs and the card body. */
+.main-card.bars-laneacc {
+    grid-template-rows: auto auto auto auto;
+    align-content: start;
+    gap: 6px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    /* 底部 38px 是 Mix/Pause 的独立 footer，轨道舞台不再伸到胶囊下面。 */
+    padding-bottom: 38px;
+}
+
+.main-card.bars-laneacc .content-bar-tabs {
+    min-height: 0;
+    height: auto;
+}
+
+.main-card.bars-laneacc .laneacc-wrap {
+    grid-row: 4;
+    min-height: 0;
+}
+
+.main-card.bars-laneacc .laneacc-stage {
+    /* 固定高度：轨道条落到卡片底部（只留 4px 安全带），卡片总高基本不变。 */
+    flex: 0 0 auto;
+    height: 190px;
+    min-height: 190px;
+    max-height: 190px;
+}

@@ -14,7 +14,7 @@ const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 
 // 桌面壳专属表单键（仅壳内渲染）。它们不直接进快照：collectCheckedSnapshot
 // 把勾选的字段合并成一个 `combinedMode` 对象，未勾选的字段回落当前卡片 state。
-const SHELL_FORM_KEYS = new Set(["shellCombinedEnabled", "shellCombinedModules"]);
+const SHELL_FORM_KEYS = new Set(["shellCombinedEnabled", "shellCombinedModules", "shellLaneAccSpaceMode"]);
 
 /**
  * @param {object} api
@@ -96,8 +96,16 @@ export function createForm(api) {
             uniqueID: "shellCombinedModules",
             type: "text",
             value: [...state.combinedModeModules].join(", "),
-            title: "Combined sections order",
-            description: "Comma-separated: Pattern, Etterna, Graph, ReworkPP",
+            title: t("ui.shell.combinedMode.modulesTitle", "Sections and order"),
+            description: t("ui.shell.combinedMode.modulesDescription", "Comma-separated: Pattern, Etterna, Graph, ReworkPP, LaneAcc"),
+        }));
+        group.appendChild(buildSettingRow({
+            uniqueID: "shellLaneAccSpaceMode",
+            type: "options",
+            options: ["independent", "left", "right"],
+            value: state.laneAccSpaceMode || "independent",
+            title: t("ui.shell.laneAcc.space.title", "Odd-key middle lane"),
+            description: t("ui.shell.laneAcc.space.description", "independent = separate Space hand; left/right = join that hand."),
         }));
         return group;
     }
@@ -310,6 +318,9 @@ export function createForm(api) {
                     ? parseCombinedModeModuleList(formValues.shellCombinedModules)
                     : [...state.combinedModeModules],
             };
+        }
+        if (formIncluded.shellLaneAccSpaceMode) {
+            snapshot.laneAccSpaceMode = formValues.shellLaneAccSpaceMode;
         }
         return snapshot;
     }

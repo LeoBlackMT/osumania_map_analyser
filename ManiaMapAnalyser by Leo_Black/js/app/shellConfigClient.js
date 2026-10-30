@@ -46,7 +46,7 @@ export async function fetchShellConfig(timeoutMs = 1200) {
 /**
  * `settings` 帧 payload 是否是壳配置（而不是插件设置）。
  *
- * 壳配置始终带 combinedMode，并至少带 hotkeys/gameClient/logLevel 之一；
+ * 壳配置始终带 combinedMode / laneAccSpaceMode，并至少带 hotkeys/gameClient/logLevel 之一；
  * 插件设置是 uniqueID→value 的对象或数组，不会命中这些键。
  *
  * @param {unknown} payload
@@ -59,7 +59,7 @@ export function isShellConfigPayload(payload) {
     const hasCombinedMode = payload.combinedMode
         && typeof payload.combinedMode === "object"
         && !Array.isArray(payload.combinedMode);
-    const hasShellMarker = ["hotkeys", "gameClient", "logLevel"].some((key) =>
+    const hasShellMarker = ["hotkeys", "gameClient", "logLevel", "laneAccSpaceMode", "handAccSpaceMode"].some((key) =>
         Object.prototype.hasOwnProperty.call(payload, key),
     );
     return Boolean(hasCombinedMode && hasShellMarker);

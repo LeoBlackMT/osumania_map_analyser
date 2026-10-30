@@ -8,6 +8,7 @@
 // - resolve: 站点到 GameBase 多跳解析与 L1 结构证明
 // - table: 偏移表查找梯子与加载逻辑
 // - results: 结算屏判定数（`ResultsScreen.Score` → `ScoreInfo.<StatisticsJson>`）
+// - score: 游玩/回放的逐判定事件（`Player → ScoreProcessor.hitEvents`）
 // - frame: 逐帧读取、字段解引用、L0 attach 与 read_tick
 
 pub mod fields;
@@ -17,6 +18,7 @@ pub mod screen;
 pub mod resolve;
 pub mod table;
 pub mod results;
+pub mod score;
 pub mod mods;
 pub mod frame;
 
@@ -27,6 +29,7 @@ pub use screen::*;
 pub use resolve::*;
 pub use table::*;
 pub use results::*;
+pub use score::*;
 pub use frame::*;
 
 #[cfg(test)]

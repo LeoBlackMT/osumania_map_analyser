@@ -51,6 +51,9 @@ pub struct OffsetTable {
     /// `SelectedMods` 的 mod 对象 → 模组自定义设置（倍速 / DA 的 OD、HP）。
     #[serde(default)]
     pub mods: Option<ModsSection>,
+    /// 局内逐判定事件（LaneAcc / ScoreV1 转换）的读取布局。
+    #[serde(default)]
+    pub score: Option<ScoreSection>,
     pub verified_build: String,
     pub evidence: String,
 }
@@ -157,6 +160,96 @@ impl ModsSection {
     }
 }
 
+/// 局内逐判定事件（`ScoreProcessor.hitEvents`）的读取布局。
+///
+/// 这是 **LaneAcc / ScoreV1 转换**的核心段：`Player.<ScoreProcessor>` →
+/// `ScoreProcessor.hitEvents`（`List<HitEvent>`）→ 元素内的 `TimeOffset` /
+/// `Result` / `HitObject`，再从 `HitObject + column` 取 mania 轨道号。
+///
+/// 结构布局来自 **live 实测**（2026.1005.0.0，
+/// `temp/laneacc-evidence/CONCLUSION.md`）：`HitEvent` 是 64 字节顺序值类型，
+/// `TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`；`Marshal.OffsetOf` 是 unmanaged 布局，
+/// 不能当 managed 字段偏移用。`Player.<ScoreProcessor>` 与 `ScoreProcessor.hitEvents`
+/// 是**字段偏移**，由生成器 `live` 复核后写入。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ScoreSection {
+    /// `Player` 对象上 `<ScoreProcessor>k__BackingField` 的字段位移。
+    pub player_score_processor: i64,
+    /// `ScoreProcessor` 对象上 `hitEvents`（`List<HitEvent>`）的字段位移。
+    pub hit_events: i64,
+    /// `HitEvent` 元素内 `HitObject` 指针的位移。
+    pub hit_object: i64,
+    /// `HitEvent` 元素内 `TimeOffset`（f64）的位移。
+    pub time_offset: i64,
+    /// `HitEvent` 元素内 `Result`（i32）的位移。
+    pub result: i64,
+    /// `HitObject` 对象内 `Column`（i32）的位移（mania 轨道号）。
+    pub column: i64,
+    /// `HitEvent` 的数组步长（本构建 0x40）。
+    pub stride: i64,
+    /// `Player` 对象上 `Score` 字段的位移（`LegacyDatabasedScore`，2026.1005 实测 0x480）。
+    #[serde(default)]
+    pub player_score: i64,
+    /// `Score` 对象上 `Replay` 字段的位移（实测 0x10）。
+    #[serde(default)]
+    pub score_replay: i64,
+    /// `Replay` 对象上 `Frames`（`List<ReplayFrame>`）的位移（实测 0x08）。
+    #[serde(default)]
+    pub replay_frames: i64,
+    /// `ManiaReplayFrame` 对象上 `Time`（f64）的位移（实测 0x10）。
+    #[serde(default)]
+    pub replay_time: i64,
+    /// `ManiaReplayFrame` 对象上 `Actions`（`List<ManiaAction>`）的位移（实测 0x18）。
+    #[serde(default)]
+    pub replay_actions: i64,
+    /// `Actions` 列表的 `_items` 位移（实测 0x08）。
+    #[serde(default)]
+    pub actions_items: i64,
+    /// `Actions` 列表的 `_size` 位移（实测 0x10）。
+    #[serde(default)]
+    pub actions_size: i64,
+    #[serde(default)]
+    pub witness: String,
+}
+
+impl ScoreSection {
+    /// 字段偏移在合理域、元素内偏移落在 stride 内、stride 8 字节对齐。
+    pub fn usable(&self) -> bool {
+        let field = |offset: i64| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(&offset)
+                && offset % 8 == 0
+        };
+        let event = |offset: i64, align: i64| {
+            offset >= 0 && offset + align <= self.stride && offset % align == 0
+        };
+        field(self.player_score_processor)
+            && field(self.hit_events)
+            && (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET)
+                .contains(&self.column)
+            && self.column % 4 == 0
+            && (0x20..=0x200).contains(&self.stride)
+            && self.stride % 8 == 0
+            && event(self.hit_object, 8)
+            && event(self.time_offset, 8)
+            && event(self.result, 4)
+    }
+
+    /// 原始 ReplayFrame 读取是否可用（旧表没有这段 ⇒ 只走 hitEvents）。
+    pub fn replay_usable(&self) -> bool {
+        let field = |offset: i64| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(&offset)
+                && offset % 8 == 0
+        };
+        field(self.player_score)
+            && field(self.score_replay)
+            && field(self.replay_frames)
+            && field(self.replay_time)
+            && field(self.replay_actions)
+            && field(self.actions_items)
+            && field(self.actions_size)
+    }
+}
+
 /// `runtime` 段里的一个位移。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct RuntimeEntry {
@@ -225,6 +318,7 @@ pub const TABLE_KEYS: &[&str] = &[
     "types",
     "runtime",
     "results",
+    "score",
     "verified_build",
     "evidence",
 ];
@@ -328,6 +422,11 @@ impl OffsetTable {
     /// `mods` 段（位移越界/未对齐 ⇒ `None`，读侧回落到旧倍速启发式）。
     pub fn mods(&self) -> Option<&ModsSection> {
         self.mods.as_ref().filter(|section| section.usable())
+    }
+
+    /// `score` 段（坏值 ⇒ `None`，读侧整段降级，不猜）。
+    pub fn score(&self) -> Option<&ScoreSection> {
+        self.score.as_ref().filter(|section| section.usable())
     }
 
     pub fn runtime_entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {
