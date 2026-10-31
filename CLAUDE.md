@@ -19,23 +19,29 @@
 - backup/(本地私有): 用于存放本地备份的文件夹，仅在本地使用，远程仓库不存在。
 - temp/(本地私有): 用于存放本地临时文件的文件夹，仅在本地使用，远程仓库不存在。
 - ManiaMapAnalyser by Leo_Black/: 插件的源代码文件夹，包含插件的所有源代码文件。其路径携带空格，为tosu的命名要求。请在使用时注意。
-    - js/app/: 插件核心功能的 js 目录（仅浏览器端运行）：主流程、显示、图表、设置、缓存。
+    - js/app/: 插件核心功能的 js 目录（仅浏览器端运行），已按职责划分为内聚子目录：
+        - js/app/core/: 核心流程控制（analysis、main、appContext、settings、scheduler、resultCache、modeLogic）。
+        - js/app/net/: 网络连接、WebSocket 与遥测（socket、socketHandlers、telemetry、updateChecker、shellConfigClient）。
+        - js/app/ui/: DOM 呈现、HUD、主题与组件（display、hud、combinedMode、contentBarTabs、coverTheme、triangles 等），包含子目录 ui/laneAcc/ 交互视图。
+        - js/app/live/: 局内实时状态与计数（livePp、livePpCounts、changeKind）。
+        - js/app/graph/: 难度走势图表与选区分析（index、math、section、sectionOverlay）。
         - js/app/worker/: worker 线程（compute.worker.js + manager.js），把计算移出主线程，避免 UI 卡顿。
         - js/app/sources/: 四数据源路由（sourceManager）、壳桥客户端、外部源注入。
         - js/app/feedback/: 难度反馈的门控、评分条与协议。
         - js/app/presets/: 预设系统（schema、存储、tosu/壳两种传输）。
         - js/app/settingsPage/: 壳内设置页。
         - js/app/i18n/: 壳内页面（设置页、预设管理）的词典与取词模块（t/tf）。settings.json 保持英文，翻译只作用于壳自己的页面显示。
+    - js/laneAcc/: 独立通用数据与计算模型（无 DOM，按键回放帧解析与精度累加，accumulator、chart、format、rawFrames）。
     - js/pipeline/: runAnalysisPipeline.js——一次调用完成解析 → 估算 → 标准化 → 附属段的纯函数管线。
     - js/debug/: 插件的调试目录，包含插件的调试工具和调试代码。应当保留。
-    - js/estimator/: 七个难度估算算法的实现。
+    - js/estimator/: 七个难度估算算法的实现及共享数学工具（estimatorMath）。
         - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。
         - js/estimator/intervals/: Sunny 难度估计算法的星数映射表。
     - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的六个版本WASM运行时。
     - js/interlude/: 插件集成的 Interlude 星数计算模块。
-    - js/parser/: 谱面解析、设置解析、判定档→OD 表，以及 sm/ssc/mc → .osu 转换器；第三方 simfile 解析器在 vendor/simfile-parser。
+    - js/parser/: 谱面解析、Mod 解析（modData）、时间切片（osuTimeSlice）、设置解析、判定档→OD 表，以及 sm/ssc/mc → .osu 转换器；第三方 simfile 解析器在 vendor/simfile-parser。
     - js/patterns/: 插件的键型分析模块，包含RC/LN键型分析器。其中RC键型分析器使用了Interlude的算法，并在其基础上新增了LN检测算法。
-    - js/rework/: 插件集成的星数重算算法模块，主要包含 Sunny Rework 的算法实现。
+    - js/rework/: 插件集成的星数重算算法模块，主要包含 Sunny / SunnyWindow 算法核心及 sunnyCore 共享计算。
     - styles/: 插件的样式目录，包含插件的CSS样式文件。
     - styles/fonts/: 插件的字体目录，包含插件的字体文件。
     - presets/: 内置预设 JSON，index.json 为清单。
@@ -50,7 +56,6 @@
 - 附属项目见上方项目介绍。
 
 ## 要求限制
-- 在进行操作之前，请先阅读下方[行为准则](#行为准则)并遵守。
 - 在对代码进行破坏性修改、对未被git跟踪的文件进行修改、对已有功能进行大幅度改动之前，请务必先征求用户意见，确保用户理解你的修改意图。随后，在 backup 目录下创建备份文件夹，并将你要修改的文件复制到备份文件夹中，以便在出现问题时可以快速恢复。请使用时间戳和修改内容命名目录。
 - 在生成测试代码/保存临时文件/生成调试文件时，请将其放置在 temp 目录下，并确保不会被提交到远程仓库。随后在实现功能后，请删除 temp 目录下本次相关的文件，以避免占用磁盘空间。测试脚本等临时文件建议等用户完全验收后再删除，避免验收时无法复用。测试脚本一律不得提交到仓库。
 - desktop/ 为可选桌面壳子项目（Tauri v2 + Rust）：改动涉及 `desktop/**` 时遵循其自身构建（cargo build）与契约（desktop/docs/CONTRACT.md，其版本号须与页面 `js/app/sources/bridgeClient.js` 的 CONTRACT_VERSION 一致）；壳构建 CI 仅监听 main 分支的 desktop/** 变动。
@@ -105,69 +110,3 @@
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
 - [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)：估计算法基准测试仓库。
 - [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)：参考了其获取Etterna数据的方法。
-
-## 行为准则
-
-Behavioral guidelines to reduce common LLM coding mistakes.
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

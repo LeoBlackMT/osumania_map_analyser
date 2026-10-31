@@ -28,6 +28,7 @@
 | [2026-09-30-osu-native-memory.md](2026-09-30-osu-native-memory.md) | 2026-09-30 | feat/osu-native-memory | osu! 原生内存传输：壳内只读读取器（stable 32 位签名扫描 / lazer 64 位偏移表）+ **24062** tosu 兼容子集 origin（`MMA_OSU_COMPAT_REPLAY` 回放开关）、契约 v5→v6 的 `sources.osu` 端点下发与页面 **socket 层切流**（不写 `wsEndpoint`，故不清结果缓存）、壳主窗**恒落 24061**（`osuTransport:"tosu"` 逃生开关）、扫描提示 `#osu-scan-hint`、结算 404 的身份保持 + 一次静默重试、lazer 7 条字段缺口进 `degradedFields`、插件版本**保持 2.1.0 不变**；浏览器模式逐字节不变 |
 | [2026-10-17-rc-difficulty-feedback.md](2026-10-17-rc-difficulty-feedback.md) | 2026-10-17 | feat/rc-difficulty-feedback（版本保持 2.1.0） | RC 难度反馈（默认开启、仅壳、仅 RC）：五档评分条 + 页面 gate + 壳 native 重算与 Ed25519 签名 + 独立 `feedback.db` 严格入库 + osu! API 校验/限流 + 聚合/admin/CSV + OBS 成对备份；mod 码表扩到完整 mania 表（缓存键不变） |
 | [2026-10-25-contentbar-tabs-and-combined-mode.md](2026-10-25-contentbar-tabs-and-combined-mode.md) | 2026-10-25 | feat/contentbar-tabs-combined（版本保持 2.1.0） | 卡片 Tab 胶囊栏与组合模式：`contentBar` 删除 `Full`（旧值→Auto）、壳专属 Tab（None 隐藏、只算一个模块、点击已激活 Tab 强制重算、切歌/IN·HO 复位）、`combinedMode` 至少一个模块并按 CSS order 排列（原 Full 更名 Combined）；契约/版本不变 |
+| [2026-10-25-mania-lane-acc.md](2026-10-25-mania-lane-acc.md) | 2026-10-25 | feat/mania-lane-acc | LaneAcc 分轨准确度与 ScoreV1 实时转换：契约升至 v10（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、失败局分母） |
 
 [返回 docs 索引](../README.md)
 
