@@ -65,34 +65,34 @@ import {
     normalizeContentBarValue,
     normalizeDiffTextValue,
     normalizeSrTextValue,
-} from "../parser/settingsParser.js";
+} from "../../parser/settingsParser.js";
 import {
     clearDiffGraph,
     redrawPauseMarkers,
     setGraphCursorVisible,
     syncGraphAnimationLoop,
     updateDiffTextVisibility,
-} from "./graph.js";
+} from "../graph/index.js";
 import {
     updateCardPlayVisibility,
     updateModeTagVisibility,
     updatePauseCountVisibility,
     refreshStatusRendering,
-} from "./hud.js";
+} from "../ui/hud.js";
 import { resolveAutoDisplayProfile } from "./modeLogic.js";
-import { applyCoverThemeForBeatmap, resetCoverTheme } from "./coverTheme.js";
-import { initTriangleField } from "./triangles.js";
+import { applyCoverThemeForBeatmap, resetCoverTheme } from "../ui/coverTheme.js";
+import { initTriangleField } from "../ui/triangles.js";
 import { scheduleRecompute } from "./scheduler.js";
-import { syncFeedbackVisibility } from "./feedback/feedbackStrip.js";
-import { runUpdateCheckIfDue, runUpdateCheckNow } from "./updateChecker.js";
+import { syncFeedbackVisibility } from "../feedback/feedbackStrip.js";
+import { runUpdateCheckIfDue, runUpdateCheckNow } from "../net/updateChecker.js";
 import { clearResultCache } from "./resultCache.js";
-import { setTelemetryConfig } from "./telemetry.js";
-import { isCombinedModeModule, normalizeCombinedMode } from "./combinedMode.js";
-import { syncContentBarTabs } from "./contentBarTabs.js";
-import { clearSectionIfGraphHidden } from "./graphSection/index.js";
-import { isShellRuntime } from "./feedback/feedbackSpec.js";
-import { normalizeSpaceMode } from "./laneAcc/accumulator.js";
-import { laneAccView } from "./laneAcc/view.js";
+import { setTelemetryConfig } from "../net/telemetry.js";
+import { isCombinedModeModule, normalizeCombinedMode } from "../ui/combinedMode.js";
+import { syncContentBarTabs } from "../ui/contentBarTabs.js";
+import { clearSectionIfGraphHidden } from "../graph/section.js";
+import { isShellRuntime } from "../feedback/feedbackSpec.js";
+import { normalizeSpaceMode } from "../../laneAcc/accumulator.js";
+import { laneAccView } from "../ui/laneAcc/view.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";

@@ -11,9 +11,9 @@
 // Malody V 选曲桥（契约 v4）同样由 state 帧驱动：`sources.malody` 的六个字段进页面状态，
 // 并在**桥事件边沿 + 卡片归属为桥**时清空卡片（规则见下方 maybeClearBridgeCard）。
 
-import { applyOsuTransport, isRuntimeOsuOverrideActive, state } from "../appContext.js";
-import { setStatus, updateCardPlayVisibility } from "../hud.js";
-import { invokeCardClear } from "../analysis.js";
+import { applyOsuTransport, isRuntimeOsuOverrideActive, state } from "../core/appContext.js";
+import { setStatus, updateCardPlayVisibility } from "../ui/hud.js";
+import { invokeCardClear } from "../core/analysis.js";
 import { currentRoute, notifySourceEvent, reEvaluate } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 

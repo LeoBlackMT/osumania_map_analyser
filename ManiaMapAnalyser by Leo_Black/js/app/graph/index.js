@@ -15,15 +15,15 @@ import {
     reworkRightCapsuleEl,
     starTipEl,
     state,
-} from "./appContext.js";
+} from "../core/appContext.js";
 import {
     buildFillPath,
     buildLinePath,
     interpolateSeriesValue,
     normalizeGraphSeries,
-} from "./graphMath.js";
-import { updatePauseCountVisibility } from "./hud.js";
-import { updateStarTipDots } from "./display.js";
+} from "./math.js";
+import { updatePauseCountVisibility } from "../ui/hud.js";
+import { updateStarTipDots } from "../ui/display.js";
 
 const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";

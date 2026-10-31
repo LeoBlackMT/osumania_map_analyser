@@ -5,7 +5,7 @@
 // plugin. Only aggregate, non-identifying fields are sent — no username, no
 // beatmap identity, no IP (the server never stores IP either). The endpoint is
 // hardcoded in index.js (window.__MMA_TELEMETRY_ENDPOINT).
-import { state } from "./appContext.js";
+import { state } from "../core/appContext.js";
 import { isOfficialVersion, MAX_COMPUTE_DURATION_MS } from "./telemetrySpec.js";
 
 const INSTALL_ID_KEY = "mma.telemetry.installId.v1";

@@ -88,6 +88,14 @@
 		"value": ""
 	},
 	{
+		"uniqueID": "showModeTagCapsule",
+		"type": "checkbox",
+		"title": "Map Tag Capsule",
+		"description": "Show the beatmap's tag capsule (HB/RC/LN/Mix/SV) at bottom-left.",
+		"options": [],
+		"value": true
+	},
+	{
 		"uniqueID": "contentBar",
 		"type": "options",
 		"title": "Card Body Content",
@@ -135,14 +143,6 @@
 		"value": "Difficulty"
 	},
 	{
-		"uniqueID": "showModeTagCapsule",
-		"type": "checkbox",
-		"title": "Map Tag Capsule",
-		"description": "Show the beatmap's tag capsule (HB/RC/LN/Mix/SV) at bottom-left.",
-		"options": [],
-		"value": true
-	},
-	{
 		"uniqueID": "hTheme",
 		"type": "header",
 		"title": "Theme & Effects",
@@ -183,14 +183,6 @@
 		"value": true
 	},
 	{
-		"uniqueID": "customBackgroundColor",
-		"type": "color",
-		"title": "Custom Background Color",
-		"description": "[Requires Lazer Card Theme] Use a custom color instead of sampling the beatmap's background. Set to pure black (#000000) to disable.",
-		"options": [],
-		"value": "#000000"
-	},
-	{
 		"uniqueID": "enableEtternaRainbowBars",
 		"type": "checkbox",
 		"title": "Rainbow Bars",
@@ -215,12 +207,12 @@
 		"value": true
 	},
 	{
-    	"uniqueID": "enableLNDifficulty",
-    	"type": "checkbox",
-    	"title": "LN Star Rating",
-    	"description": "[Require Improve Sunny LN Estimation]Show Rework Star Rating values in LN algorithms.",
-    	"options": [],
-    	"value": false
+		"uniqueID": "enableLNDifficulty",
+		"type": "checkbox",
+		"title": "LN Star Rating",
+		"description": "[Require Improve Sunny LN Estimation]Show Rework Star Rating values in LN algorithms.",
+		"options": [],
+		"value": false
 	},
 	{
 		"uniqueID": "reverseCardExtendDirection",
@@ -229,6 +221,14 @@
 		"description": "Anchor card bottom and extend upwards when card needs to extend.",
 		"options": [],
 		"value": false
+	},
+	{
+		"uniqueID": "customBackgroundColor",
+		"type": "color",
+		"title": "Custom Background Color",
+		"description": "[Requires Lazer Card Theme] Use a custom color instead of sampling the beatmap's background. Set to pure black (#000000) to disable.",
+		"options": [],
+		"value": "#000000"
 	},
 	{
 		"uniqueID": "cardVisibility",
@@ -356,12 +356,12 @@
 		"value": true
 	},
 	{
-    	"uniqueID": "enableAnalyzeLN",
-    	"type": "checkbox",
-    	"title": "Analyze LN Parts",
-    	"description": "[Require Improve Sunny LN Estimation]Analyze the percentage of LN/HB/Mix/RC parts in beatmap.",
-    	"options": [],
-    	"value": false
+		"uniqueID": "enableAnalyzeLN",
+		"type": "checkbox",
+		"title": "Analyze LN Parts",
+		"description": "[Require Improve Sunny LN Estimation]Analyze the percentage of LN/HB/Mix/RC parts in beatmap.",
+		"options": [],
+		"value": false
 	},
 	{
 		"uniqueID": "estimatorAlgorithm",
@@ -474,12 +474,12 @@
 		"value": true
 	},
 	{
-    	"uniqueID": "enableAlwaysShowLNDifficulty",
-    	"type": "checkbox",
-    	"title": "Always Show LN Difficulty",
-    	"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
-    	"options": [],
-    	"value": false
+		"uniqueID": "enableAlwaysShowLNDifficulty",
+		"type": "checkbox",
+		"title": "Always Show LN Difficulty",
+		"description": "Always show LN Difficulty even when LN% is too low or LN is too simple.",
+		"options": [],
+		"value": false
 	},
 	{
 		"uniqueID": "presetStorage",

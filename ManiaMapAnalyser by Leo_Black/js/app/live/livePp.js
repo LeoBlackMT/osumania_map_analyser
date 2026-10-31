@@ -15,13 +15,13 @@
 // ppMetrics reference so the cheap guard can skip renders while neither the
 // counts, the state mode, nor the map changed (pauses freeze naturally because
 // the counts don't move; a new map forces one re-render via a fresh ref).
-import { contentBarShows, state } from "./appContext.js";
+import { contentBarShows, state } from "../core/appContext.js";
 import {
     isPlayStateName,
     isResultScreenStateName,
-} from "./modeLogic.js";
-import { renderReworkPpBars, showReworkPpValue } from "./display.js";
-import { calculateReworkPp } from "../rework/reworkPerformance.js";
+} from "../core/modeLogic.js";
+import { renderReworkPpBars, showReworkPpValue } from "../ui/display.js";
+import { calculateReworkPp } from "../../rework/reworkPerformance.js";
 import { resolveCounts } from "./livePpCounts.js";
 
 // Row constants shared verbatim with analysis.js buildReworkPpDisplay (Task 13):

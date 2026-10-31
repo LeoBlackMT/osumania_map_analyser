@@ -37,7 +37,7 @@ import {
     DEFAULT_SLOT_NAMES,
 } from "./storage.js";
 import { createForm } from "./form.js";
-import { LINK_COPIED_NOTICE, openExternalLink } from "../externalLink.js";
+import { LINK_COPIED_NOTICE, openExternalLink } from "../net/externalLink.js";
 
 // ---------------------------------------------------------------------------
 // Constants

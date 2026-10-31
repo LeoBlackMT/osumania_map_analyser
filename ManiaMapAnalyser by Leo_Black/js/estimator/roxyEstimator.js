@@ -1,3 +1,12 @@
+import {
+    clamp,
+    safeDiv,
+    fmt4,
+    piecewiseLinear,
+    quantileFromSorted,
+    powerMean,
+    topTailMean,
+} from "./estimatorMath.js";
 import { OsuFileParser } from "../parser/osuFileParser.js";
 import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runDanielEstimatorFromText } from "./danielEstimator.js";
@@ -141,18 +150,11 @@ function buildScopeResult(label, code, structuralNumeric, rawNumeric, extras) {
     };
 }
 
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-}
 
-function safeDiv(a, b, fallback = 0) {
-    if (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(b) < 1e-9) return fallback;
-    return a / b;
-}
 
-function fmt4(value) {
-    return Number.isFinite(value) ? Number(value.toFixed(4)) : null;
-}
+
+
+
 
 function numericToRoxyRcLabel(numeric) {
     const value = Number(numeric);
@@ -246,60 +248,22 @@ function decayState(state, input, dt, tau) {
     return state * decay + input;
 }
 
-function piecewiseLinear(x, knots) {
-    const value = Number(x);
-    if (!Number.isFinite(value) || !Array.isArray(knots) || knots.length === 0) return value;
-    if (value <= knots[0][0]) return knots[0][1];
-    const last = knots.length - 1;
-    if (value >= knots[last][0]) return knots[last][1];
 
-    for (let i = 0; i < last; i += 1) {
-        const [x0, y0] = knots[i];
-        const [x1, y1] = knots[i + 1];
-        if (value >= x0 && value <= x1) {
-            return y0 + safeDiv((value - x0) * (y1 - y0), x1 - x0, 0);
-        }
-    }
-
-    return value;
-}
 
 function linearMap(value, x0, x1, y0, y1) {
     return y0 + safeDiv((value - x0) * (y1 - y0), x1 - x0, 0);
 }
 
-function quantileFromSorted(sortedValues, q) {
-    if (!sortedValues.length) return 0;
-    const t = clamp(Number(q), 0, 1) * (sortedValues.length - 1);
-    const left = Math.floor(t);
-    const right = Math.min(sortedValues.length - 1, left + 1);
-    const w = t - left;
-    return sortedValues[left] * (1 - w) + sortedValues[right] * w;
-}
+
 
 function quantile(values, q) {
     const sorted = values.filter((item) => Number.isFinite(item)).sort((a, b) => a - b);
     return quantileFromSorted(sorted, q);
 }
 
-function powerMean(values, p) {
-    if (!values.length) return 0;
-    let acc = 0;
-    for (const value of values) {
-        acc += Math.pow(Math.max(0, value), p);
-    }
-    return Math.pow(acc / values.length, 1 / p);
-}
 
-function topTailMean(sortedValues, ratio) {
-    if (!sortedValues.length) return 0;
-    const count = Math.max(1, Math.ceil(sortedValues.length * ratio));
-    let sum = 0;
-    for (let i = sortedValues.length - count; i < sortedValues.length; i += 1) {
-        sum += sortedValues[i];
-    }
-    return sum / count;
-}
+
+
 
 function bitCount4(mask) {
     let value = mask & 15;

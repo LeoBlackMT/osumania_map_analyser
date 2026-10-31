@@ -15,7 +15,7 @@
 param(
     [ValidateSet("Windows", "Linux")]
     [string]$Target = "Windows",
-    [string]$Version = "2.1.0",
+    [string]$Version = "3.0.0",
     [string]$OutDir
 )
 

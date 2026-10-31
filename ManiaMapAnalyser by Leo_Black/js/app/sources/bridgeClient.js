@@ -3,7 +3,7 @@
 // 浏览器模式（壳未启动）：连接失败 → 自动周期性重试，外部源不可用（osu 单源）。
 // 契约版本不匹配：呈现终态（state.shellContractMismatch）并停止重连。
 
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;

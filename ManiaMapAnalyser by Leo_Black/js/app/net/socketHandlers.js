@@ -8,36 +8,36 @@ import {
     SORTED_KNOWN_MOD_CODES,
     socket,
     state,
-} from "./appContext.js";
-import { laneAccView } from "./laneAcc/view.js";
-import { sendLaneAccSync } from "./sources/bridgeClient.js";
+} from "../core/appContext.js";
+import { laneAccView } from "../ui/laneAcc/view.js";
+import { sendLaneAccSync } from "../sources/bridgeClient.js";
 import {
     extractCurrentSongTimeMs as extractCurrentSongTimeMsFromPayload,
     getModData as getModDataFromPayload,
-} from "./modData.js";
+} from "../../parser/modData.js";
 import {
     isPlayStateName,
     isResultScreenStateName,
     normalizeClientStateName,
-} from "./modeLogic.js";
+} from "../core/modeLogic.js";
 import {
     addPauseMarker,
     refreshGraphTimeline,
     resetPauseRuntime,
     updateGraphCursor,
-} from "./graph.js";
-import { updateCardPlayVisibility } from "./hud.js";
-import { scheduleRecompute } from "./scheduler.js";
-import { getCounterPathForCommand, resetContentBarTabOverride } from "./settings.js";
-import { applyCoverThemeForBeatmap } from "./coverTheme.js";
-import { updateLivePp } from "./livePp.js";
-import { buildSongKey, resolveChangeKind } from "./changeKind.js";
+} from "../graph/index.js";
+import { updateCardPlayVisibility } from "../ui/hud.js";
+import { scheduleRecompute } from "../core/scheduler.js";
+import { getCounterPathForCommand, resetContentBarTabOverride } from "../core/settings.js";
+import { applyCoverThemeForBeatmap } from "../ui/coverTheme.js";
+import { updateLivePp } from "../live/livePp.js";
+import { buildSongKey, resolveChangeKind } from "../ui/changeKind.js";
 import { noteTelemetryActivity } from "./telemetry.js";
-import { isOsuSuppressed } from "./sources/sourceManager.js";
-import { notifySourceEvent } from "./sources/sourceManager.js";
-import { noteOsuScanPayloadArrival } from "./sources/osuScanHint.js";
-import { noteFeedbackFrame, resetFeedbackStrip } from "./feedback/feedbackStrip.js";
-import { clearSection, isSameBeatmapIdentity } from "./graphSection/index.js";
+import { isOsuSuppressed } from "../sources/sourceManager.js";
+import { notifySourceEvent } from "../sources/sourceManager.js";
+import { noteOsuScanPayloadArrival } from "../sources/osuScanHint.js";
+import { noteFeedbackFrame, resetFeedbackStrip } from "../feedback/feedbackStrip.js";
+import { clearSection, isSameBeatmapIdentity } from "../graph/section.js";
 
 
 function getModData(data) {
