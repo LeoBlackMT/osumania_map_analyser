@@ -899,15 +899,23 @@ struct ScoreOffsets {
     result: u64,
     column: u64,
     stride: u64,
+    player_score: u64,
+    score_replay: u64,
+    replay_frames: u64,
+    replay_time: u64,
+    replay_actions: u64,
+    actions_items: u64,
+    actions_size: u64,
     player_type: String,
     sample_count: usize,
     chain_matches: usize,
+    replay_sample_count: usize,
 }
 
 #[cfg(windows)]
 impl ScoreOffsets {
     fn witness(&self) -> String {
-        format!(
+        let mut text = format!(
             "live play: {} -> ScoreProcessor.hitEvents (List<HitEvent>, stride 0x{:X}); \
              TimeOffset@+0x{:X}, Result@+0x{:X}, HitObject@+0x{:X}, Column@HitObject+0x{:X}; \
              sample={} chain={}",
@@ -919,12 +927,26 @@ impl ScoreOffsets {
             self.column,
             self.sample_count,
             self.chain_matches
-        )
+        );
+        if self.player_score != 0 {
+            text.push_str(&format!(
+                "; Player.Score@+0x{:X}, Score.Replay@+0x{:X}, Frames@+0x{:X}, Time@+0x{:X}, Actions@+0x{:X} (items@+0x{:X}, size@+0x{:X}); replay_samples={}",
+                self.player_score,
+                self.score_replay,
+                self.replay_frames,
+                self.replay_time,
+                self.replay_actions,
+                self.actions_items,
+                self.actions_size,
+                self.replay_sample_count
+            ));
+        }
+        text
     }
 
     fn to_json(&self) -> String {
         format!(
-            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"witness":"{}"}}"#,
+            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"player_score":{},"score_replay":{},"replay_frames":{},"replay_time":{},"replay_actions":{},"actions_items":{},"actions_size":{},"witness":"{}"}}"#,
             self.player_score_processor,
             self.hit_events,
             self.hit_object,
@@ -932,6 +954,13 @@ impl ScoreOffsets {
             self.result,
             self.column,
             self.stride,
+            self.player_score,
+            self.score_replay,
+            self.replay_frames,
+            self.replay_time,
+            self.replay_actions,
+            self.actions_items,
+            self.actions_size,
             escape_json(&self.witness())
         )
     }
@@ -1008,6 +1037,30 @@ fn discover_score(
     resolver: &EetypeResolver<'_>,
     player: u64,
 ) -> Result<ScoreOffsets, String> {
+    // 1. 探测 Player.Score（用于 ReplayFrame 读取）
+    let mut discovered_player_score = 0x480u64; // 已验证的标准基准
+    let mut replay_sample_count = 0usize;
+    for score_cand in (0x8..=0x1000).step_by(8) {
+        let Some(score_obj) = read_ptr(handle, player + score_cand) else { continue };
+        let Some(name) = resolver.name(score_obj) else { continue };
+        if (name.contains("Score") || name.contains("LegacyDatabasedScore")) && !name.contains("ScoreProcessor") {
+            // 检查 Score.Replay (+0x10)
+            if let Some(replay) = read_ptr(handle, score_obj + 0x10) {
+                let is_replay = resolver.name(replay).map_or(false, |rn| rn.contains("Replay"));
+                if is_replay {
+                    discovered_player_score = score_cand;
+                    // 尝试看 Frames (+0x08)
+                    if let Some(frames_list) = read_ptr(handle, replay + 0x08) {
+                        if let Some((_, size)) = list_items_and_size(handle, frames_list) {
+                            replay_sample_count = size;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     let mut best: Option<(ScoreOffsets, usize)> = None;
     for player_offset in (0x8..=0x1000).step_by(8) {
         let Some(score_processor) = read_ptr(handle, player + player_offset) else { continue };
@@ -1032,9 +1085,17 @@ fn discover_score(
                     result: layout.result,
                     column: 0x48,
                     stride: layout.stride,
+                    player_score: discovered_player_score,
+                    score_replay: 0x10,
+                    replay_frames: 0x08,
+                    replay_time: 0x10,
+                    replay_actions: 0x18,
+                    actions_items: 0x08,
+                    actions_size: 0x10,
                     player_type: score_processor_type.clone(),
                     sample_count: valid,
                     chain_matches: chain,
+                    replay_sample_count,
                 };
                 if best.as_ref().map_or(true, |(_, best_rank)| rank > *best_rank) {
                     best = Some((found, rank));
