@@ -76,14 +76,15 @@ pub fn ensure_shell_config_in(dir: &Path) {
     if !path.exists() {
         let _ = fs::write(
             &path,
-            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"combinedMode\": {\n    \"enabled\": false,\n    \"modules\": [\"Pattern\", \"Etterna\", \"Graph\", \"ReworkPP\"]\n  },\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"combinedMode\": {\n    \"enabled\": false,\n    \"modules\": [\"Pattern\", \"Etterna\", \"Graph\", \"ReworkPP\"]\n  },\n  \"laneAccSpaceMode\": \"independent\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
         );
         return;
     }
     let mut existing = read_json_file(&path, "mma-shell-config.json");
     let hotkeys_changed = backfill_shell_hotkeys(&mut existing);
     let combined_changed = backfill_shell_combined_mode(&mut existing);
-    if hotkeys_changed || combined_changed {
+    let laneacc_changed = backfill_shell_laneacc_space_mode(&mut existing);
+    if hotkeys_changed || combined_changed || laneacc_changed {
         let _ = write_exe_json(dir.to_path_buf(), SHELL_CONFIG_FILE, &existing);
     }
 }
@@ -133,6 +134,10 @@ pub fn backfill_shell_hotkeys(config: &mut serde_json::Value) -> bool {
 pub const DEFAULT_COMBINED_MODE_MODULES: [&str; 4] =
     ["Pattern", "Etterna", "Graph", "ReworkPP"];
 
+/// `contentBar`/Combined 允许的模块全集（LaneAcc 是可选第五模块；默认仍是四模块）。
+pub const ALLOWED_COMBINED_MODE_MODULES: [&str; 5] =
+    ["Pattern", "Etterna", "Graph", "ReworkPP", "LaneAcc"];
+
 /// 给已有配置补 `combinedMode` 缺键/非法值（只补不改合法值）：
 /// 返回是否真的改了（→ 是否需要落盘）。空数组视为非法，回落默认四模块，
 /// 保证 Combined 永远不会退化成与 `contentBar=None` 相同的空看板。
@@ -169,7 +174,7 @@ pub fn backfill_shell_combined_mode(config: &mut serde_json::Value) -> bool {
                 continue;
             };
             let lowered = text.trim().to_lowercase();
-            if let Some(canonical) = DEFAULT_COMBINED_MODE_MODULES
+            if let Some(canonical) = ALLOWED_COMBINED_MODE_MODULES
                 .iter()
                 .find(|module| module.to_lowercase() == lowered)
             {
@@ -194,6 +199,36 @@ pub fn backfill_shell_combined_mode(config: &mut serde_json::Value) -> bool {
     }
 
     changed
+}
+
+/// 奇数键中列归属的合法值（默认 independent）。
+pub const DEFAULT_LANE_ACC_SPACE_MODE: &str = "independent";
+
+/// 给已有配置补 `laneAccSpaceMode` 缺键/非法值（只补不改合法值）。
+/// 旧键 `handAccSpaceMode`（特性早期命名）非空且合法时迁移过来，不丢用户选择。
+pub fn backfill_shell_laneacc_space_mode(config: &mut serde_json::Value) -> bool {
+    let Some(root) = config.as_object_mut() else {
+        return false;
+    };
+    let valid = matches!(
+        root.get("laneAccSpaceMode").and_then(|value| value.as_str()),
+        Some("independent" | "left" | "right")
+    );
+    if valid {
+        return false;
+    }
+    let legacy_value = root
+        .remove("handAccSpaceMode")
+        .and_then(|value| value.as_str().map(str::to_string));
+    let migrated = match legacy_value.as_deref() {
+        Some("independent" | "left" | "right") => legacy_value.unwrap_or_default(),
+        _ => DEFAULT_LANE_ACC_SPACE_MODE.to_string(),
+    };
+    root.insert(
+        "laneAccSpaceMode".to_string(),
+        serde_json::Value::String(migrated),
+    );
+    true
 }
 
 pub fn write_exe_json(dir: PathBuf, file: &str, value: &serde_json::Value) -> bool {

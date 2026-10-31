@@ -1,19 +1,21 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**7**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> 版本：**10**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
 > v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > v2→v3 变更：新增第四数据源 **Malody 4.3.7 原生客户端**（零注入只读观察通道）——新增 `malody4_selection` 帧（八型）；`source` 枚举新增 `"malody4"`；`requestId` 新增 `n{seq}` 前缀；`identity` 新增 `mdy4:{md5}`；`sources` 新增 `malody4{alive,playing,screen,reason?,judge?}`；`meta` 新增可选 `judge`（Malody 4 判定档字母）。
 > v3→v4 变更：Malody V 通道新增**游戏内选曲桥**（BepInEx 插件 `POST /selection` → 壳 17653）——`sources.malody` 由 `{alive}` 扩为 `{alive,transport,screen,playing,eventSeq,judge}`；`song` 帧新增 `screen` / `judge` / `winScale`（仅桥通道携带）；`requestId` 新增 `b{eventSeq}`（真实事件）与 `b{eventSeq}r{k}`（重连补发）前缀；`identity` 的桥通道带 `u` 后缀（`mdy:…:{contentMd5}u`）；新增端口 **17653**；详情见 §11。**注**：v4 当时装的是上游插件，v5 起改为本仓库自建的 fork（§12），上面的历史描述保留原样。
 > v4→v5 变更：Malody V 选曲桥的判定档/Pro/Turbo 三字段进入契约（`POST /selection` 11 字段、`song` 帧 `pro`/`turbo`、`sources.malody` 八字段、`winScale` 可为 `null`）；详情见 §12。
 > v5→v6 变更：新增 **osu 原生传输的端点下发**——`sources.osu` 进入 state 帧（`{alive, osuTransport:{mode,host,port,wsPath,filesPath}, gate?, client?, reason?, degradedFields?, phase?, notice?, progress?}`），页面据此在 **socket 层**运行时切换 osu 数据面（**不写 `wsEndpoint`**，故切换**不清结果缓存**）；新增端口 **24062**（壳内 tosu 兼容子集 origin）；壳主窗在 `osuTransport != "tosu"` 时一律落 24061 本地页；详情见 §14。`phase`/`notice`/`progress` 三项是 2026-09-29 的**向后兼容追加**（L0 扫描提示，**契约版本仍为 v6**，见 §8）。
 > v6→v7 变更：Malody V 桥通道新增 `cvt` / `cvtFlag`（Holds→`IN`、Taps→`HO`）——`POST /selection` 12 字段、`song.modData.cvtFlag`、内容判据扩为 **七元组**；详情见 §15。旧 6 字段/11 字段载荷仍按缺省 `null` 接受。
+> v7→v8 变更：新增 **`mania_hit_events` 下行**（局内逐判定事件）与 **`handacc_sync` 上行**（页面刷新/重连取本局全量）——LaneAcc / ScoreV1 转换的数据面。v8 未发布。
+> v8→v9 变更：特性统一命名为 **LaneAcc**（不再有 HandAcc 残留），上行帧 `handacc_sync` 改名 **`laneacc_sync`**；**字段与语义不变**。详情见 §16。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
 
 - 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback——解析 Origin 的 host 段**精确匹配** `127.0.0.1` / `localhost` / `[::1]`（子串匹配会放过 `localhost.evil.com` 类域）；24061 HTTP 侧同样校验 Host 头仅本机 24061。**17653 是另一个独立 listener（Malody 选曲桥的入站面向游戏插件，不是页面通道），只认 `POST /selection`，Host 头必须精确等于 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653`，且**任何** `Origin` 头出现即 403（见 §11）。**
-- 帧：`{v: 6, type, seq}`；`seq` 单向前递增。
-- type 全集（八型职责语义闭合）：
+- 帧：`{v: 8, type, seq}`；`seq` 单向前递增。
+- type 全集（十型职责语义闭合）：
   | type | 方向 | 职责 |
   |---|---|---|
   | hello | 壳→页 | 握手：`{tosuOnline, contract}` + 全量状态复位 |
@@ -24,6 +26,9 @@
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
   | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart` / `toggleTopmost` / `toggleClickThrough`（后两者为 v2 行内扩展——Wayland 页面内快捷键兜底，页面与壳同版本发布故不升 v3；toggle 以 `mma-shell-state.json` 为权威读-翻-写，主线程执行）；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
+  | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增）：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块 |
+  | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增）：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，全量快照 ≤4096 条/帧分块 |
+  | laneacc_sync | 页→壳 | 页面刷新/重连取本局全量（v9 新增）：`{}`；壳把 `mania_hit_events` / `mania_replay_frames` 全量快照发给当前连接 |
 
 - diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入八型。
 - 浏览器模式（无壳）：24061 不可达 → 页面不建壳通道，osu 单源（现状行为）。
@@ -234,13 +239,16 @@
 
 | 壳 `hello.contract` | 页面行为 |
 |---|---|
-| `6` | 全功能（本文件）：`sources.osu.osuTransport` 可把 osu 数据面切到壳内 origin（24062） |
+| `9` | 全功能（本文件）：LaneAcc 逐判定事件 + `laneacc_sync` 全量刷新 + `sources.osu.osuTransport` 数据面切换 |
+| `8` | 接受：LaneAcc 逐判定事件可用（帧名 `handacc_sync`），但页面发出的 `laneacc_sync` 不被 v8 壳识别 ⇒ 刷新/重连只拿增量，不补全量快照 |
+| `7` | 接受：LaneAcc 相关帧缺席，其余功能正常 |
+| `6` | 接受：`sources.osu.osuTransport` 可把 osu 数据面切到壳内 origin（24062）；无 LaneAcc 帧 |
 | `5` | 接受：`sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`（tosu 传输）；`sources.malody` 八字段齐全 |
 | `4` | 接受：`sources.malody` 无 `pro`/`turbo`，桥帧也无这两个字段；`winScale` 恒为数值（旧语义）。页面据此关闭动态 OD 并说明原因 |
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
-| `< 3` 或 `> 7` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
+| `< 3` 或 `> 10` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 7`，区间为 `[3,7]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 10`，区间为 `[3,10]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -271,7 +279,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **`CONTRACT_VERSION` 由 v7 起为 7**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v7 的升级来自 `/ws` 上的新字段（§15），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,7]`（§11.8）。
+> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 10**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,10]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故设置页无需 CORS。**例外**：`/feedback`（跨源 POST 需预检）与 `GET /shell-config`（`24050#mma-shell` 的跨源初始读取）显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
@@ -285,7 +293,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/no_mods/mods/rate/total_hits/completion/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403** Origin 不在白名单（无 Origin = 本机进程直连）；**405** 方法不允许。OPTIONS 返回 204 + CORS 预检头 |
 | `/cover/...` | GET | 200 白名单内的具体文件（`Access-Control-Allow-Origin: *`）；404 未列入白名单或读取失败 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 200 插件目录静态文件（防穿越，`Cache-Control: no-store`）；405 其他方法；404 穿越/不存在 |
-| `/ws` | WS | 帧通道（§0–§12 的八型 + diag） |
+| `/ws` | WS | 帧通道（§0–§12 的十型 + diag） |
 
 改这一面（含状态码）只需更新本节与 `docs/features/desktop-shell.md` §3c；**只有当 `/ws` 上的帧字段/语义变化时才按 §10 升 `CONTRACT_VERSION`**。
 
@@ -348,3 +356,67 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - `cvt` 进入页面的 `modSignature`（第 3 段）⇒ `IN` / `HO` / 无转换各自独立缓存；结果缓存不会把
   原始谱面的星数复用给转换后的谱面。
 
+
+## 16. v8 → v9 差异（LaneAcc / ScoreV1 逐判定事件；v8 未发布，v9 统一命名）
+
+变更动机：LaneAcc 需要**逐判定事件**（每条 note / LN 头尾 / 断持），才能在页面实时算左右手与
+4K–18K 分轨准确率，并用 Stable Classic 窗口重算 ScoreV1 转换 Acc。`resultsScreen.hits` 只有
+结算后的六档汇总，无法支撑局内分轨。
+
+| 面 | v7 | v9 | 原因 |
+|---|---|---|---|
+| `CONTRACT_VERSION` / `hello.contract` / 帧信封 `v` | 7 | **8** | §10 规则 |
+| 下行帧 | 八型 | + **`mania_hit_events`**（`{reset, events:[{col,result,offset}]}`） | 局内增量事件 |
+| 上行帧 | 无 | + **`laneacc_sync`**（`{}`） | 页面刷新/重连取本局全量 |
+| 页面接受区间 | `[3,7]` | **`[3,9]`** | §11.8 |
+
+`mania_hit_events`：
+
+```json
+{
+  "v": 8,
+  "type": "mania_hit_events",
+  "seq": 123,
+  "payload": {
+    "reset": true,
+    "events": [
+      { "col": 0, "result": 6, "offset": -1.234 },
+      { "col": 3, "result": 1, "offset": 158.0 }
+    ]
+  }
+}
+```
+
+- `reset:true`：先清空页面累加器，再应用本帧 `events`；分块全量快照只有首帧 `reset:true`。
+- `result`：lazer `HitResult` 原始枚举（0 None / 1 Miss / 2 Meh / 3 Ok / 4 Good / 5 Great /
+  6 Perfect / 7–12 Tick/Bonus / 13 IgnoreMiss / 14 IgnoreHit / 15 ComboBreak / 16 SliderTailHit）。
+- `offset`：毫秒，3 位小数，游戏时钟域。
+- 壳只在 `client == lazer` 且 `state.name == play` 且表有 `score` 段时推送；非 play 时清空日志并
+  发一个空 `reset:true`。全量快照 ≤2048 条/帧分块，避免 5MB 帧上限。
+- 事件来自 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；`HitEvent` 布局
+  由 live 实测钉住：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`，
+  `Column@HitObject+0x48`（2026.1005.0.0）。表缺 `score` 段 ⇒ 不发帧，页面显示占位。
+
+`laneacc_sync`：页面在 `hello` 之后（以及刷新/重连）发送；壳把**当前连接**的全量快照按
+≤2048 条/帧回放，首帧 `reset:true`。不向其它连接广播，避免重复大包。
+
+兼容矩阵：
+- v10 壳 + v7 页：旧页不识别 `mania_hit_events` / `mania_replay_frames`，忽略帧；LaneAcc 不可用（旧页没有该卡片）。
+- v7 壳 + v10 页：`hello.contract=7` 在 `[3,10]` 内，页面接受但收不到事件帧；LaneAcc 显示
+  “请更新壳（契约 v10）”。
+- 两边都 v10：完整 LaneAcc（hitEvents + 原始帧）。
+- 两边都 v9：LaneAcc 可用，但没有原始帧，ScoreV1 退回 hitEvents 口径（regrab 场景精度较低）。
+
+
+## 17. v9 → v10 差异（原始 ReplayFrame）
+
+- 新增 `mania_replay_frames` 下行：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为
+  `ManiaAction` 位掩码（Key1=bit0）。`reset:true` 先清空再应用；全量快照按 4096 帧分块。
+- 用途：LaneAcc 在 `mania_hit_events` 之外读取 `Player.Score.Replay.Frames`，按 Stable 的
+  原始按键帧重算 ScoreV1；`mania_hit_events` 仍负责 Lazer 305 口径。
+- `laneacc_sync` 的全量快照同时包含两种事件；v9 页面忽略未知的 `mania_replay_frames` 帧，
+  不影响现有 LaneAcc 显示。
+- 原始帧偏移（2026.1005.0.0 实测，18 分钟 ReplayPlayer，80777 帧）：
+  `Player.Score@+0x480`、`Score.Replay@+0x10`、`Replay.Frames@+0x08`、
+  `ManiaReplayFrame.Time@+0x10`、`Actions List<ManiaAction>@+0x18`、
+  `List._items@+0x08` / `_size@+0x10`。

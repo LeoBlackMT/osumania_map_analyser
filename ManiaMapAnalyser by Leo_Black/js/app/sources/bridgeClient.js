@@ -8,7 +8,7 @@ import { state } from "../appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 7;
+const CONTRACT_VERSION = 10;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *
@@ -18,8 +18,9 @@ const CONTRACT_VERSION = 7;
  * **v4** 壳有六个 `sources.malody` 字段、`winScale` 恒为数值；**v5** 起 `pro`/`turbo`
  * 随帧下发、`winScale` 可为 `null`（未知）；**v6** 新增 `sources.osu.osuTransport`
  * （原生传输的端点下发，缺省 ⇒ 页面继续用 `wsEndpoint`）；**v7** 增加桥通道
- * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）。页面按字段**逐个存在性**降级，
- * 不按版本号分支。只有越界（< 3 或 > 7）才算不匹配。
+ * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）；**v9** 新增 `mania_hit_events` 下行与
+ * `laneacc_sync` 上行（LaneAcc / ScoreV1）。页面按字段**逐个存在性**降级，
+ * 不按版本号分支。只有越界（< 3 或 > 8）才算不匹配。
  *
  * ⚠️ 这个常量必须与壳侧 `desktop/src/frames.rs::CONTRACT_VERSION` 同步：壳升而页面不升，
  * `hello` 会被判为越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 不只数据帧不通，
@@ -94,6 +95,20 @@ export function sendDiag(message) {
         seq,
         payload: { message },
     });
+    try {
+        socket.send(frame);
+    } catch {
+        // 静默失败
+    }
+}
+
+/** 页面刷新/重连时主动要本局全量逐判定事件（契约 v9 laneacc_sync）。 */
+export function sendLaneAccSync() {
+    if (!bridgeOnline()) {
+        return;
+    }
+    seq += 1;
+    const frame = JSON.stringify({ v: CONTRACT_VERSION, type: "laneacc_sync", seq });
     try {
         socket.send(frame);
     } catch {
@@ -189,6 +204,16 @@ function handleFrame(frame, handlers) {
         case "malody4_selection":
             if (handlers.onMalody4Selection) {
                 handlers.onMalody4Selection(payload);
+            }
+            break;
+        case "mania_hit_events":
+            if (handlers.onManiaHitEvents) {
+                handlers.onManiaHitEvents(payload);
+            }
+            break;
+        case "mania_replay_frames":
+            if (handlers.onManiaReplayFrames) {
+                handlers.onManiaReplayFrames(payload);
             }
             break;
         case "settings":

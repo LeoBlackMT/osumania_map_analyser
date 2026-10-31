@@ -122,3 +122,13 @@ tosu WebSocket 设置广播
 2. 新增设置时：settings.js 的 `SETTING_HANDLERS` 加一行（parse/apply 对）并同步 `SETTING_RECOMPUTE_KEYS`/`SETTING_CACHE_KEYS` 集合；`schema.js` 无需改动。
 3. `preset` 与 `presetStorage` 两个 uniqueID 是系统保留键：前者是预设选择器（不参与快照应用），后者是预设库存储（不参与手动修改判定）。
 4. 部分快照语义：应用任意预设只覆盖快照中存在的键；"Default" 是全量出厂快照（唯一全量预设）。
+
+## 壳专属快照键（v8）
+
+`SHELL_ONLY_SNAPSHOT_KEYS` 当前包含 `combinedMode` 与 `laneAccSpaceMode`：
+
+- 只在壳窗口捕获/应用；浏览器/OBS 页面导入时由 `io.js` 自动剥离并提示。
+- 表单侧 `SHELL_FORM_KEYS` 对应 `shellCombinedEnabled` / `shellCombinedModules` / `shellLaneAccSpaceMode`；
+  `collectCheckedSnapshot()` 把勾选项合并为 `combinedMode` 对象与 `laneAccSpaceMode` 字符串。
+- 应用时 `snapshot.js` 调用 `applyLaneAccSpaceMode()` 并 `postShellConfigPatch({ laneAccSpaceMode })`
+  落盘 `mma-shell-config.json`；它**不**进 `SETTING_CACHE_KEYS` / `SETTING_RECOMPUTE_KEYS`。

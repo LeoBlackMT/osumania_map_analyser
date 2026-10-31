@@ -221,32 +221,34 @@ fn run_live_interactive(lang: Lang) {
     println!();
     if lang == Lang::Zh {
         println!("------------------------------------------------------------------");
-        println!("[步骤 1/4] 检查 osu! 进程状态...");
+        println!("[步骤 1/5] 检查 osu! 进程状态...");
     } else {
         println!("------------------------------------------------------------------");
-        println!("[Step 1/4] Checking osu! process status...");
+        println!("[Step 1/5] Checking osu! process status...");
     }
 
     match live::find_lazer_process() {
         Ok((pid, exe_path)) => {
             if lang == Lang::Zh {
-                println!("[步骤 2/4] 已检测到运行中的 osu! 进程:");
+                println!("[步骤 2/5] 已检测到运行中的 osu! 进程:");
                 println!("  PID:  {pid}");
                 if !exe_path.as_os_str().is_empty() {
                     println!("  路径: {}", exe_path.display());
                 }
                 println!();
-                println!("[步骤 3/4] 正在分析程序集 IL 元数据并扫描进程内存...");
-                println!("[步骤 4/4] 正在执行活体自校验（MD5Hash / ScreenStack / VTable）...");
+                println!("[步骤 3/5] 正在分析程序集 IL 元数据并扫描进程内存...");
+                println!("[步骤 4/5] 正在扫描 ScoreProcessor.hitEvents（分轨判定事件）...");
+                println!("[步骤 5/5] 正在执行活体自校验（MD5Hash / ScreenStack / VTable）...");
             } else {
-                println!("[Step 2/4] Detected running osu! process:");
+                println!("[Step 2/5] Detected running osu! process:");
                 println!("  PID:  {pid}");
                 if !exe_path.as_os_str().is_empty() {
                     println!("  Path: {}", exe_path.display());
                 }
                 println!();
-                println!("[Step 3/4] Analyzing assembly IL metadata and scanning memory...");
-                println!("[Step 4/4] Running live validation (MD5Hash / ScreenStack / VTable)...");
+                println!("[Step 3/5] Analyzing assembly IL metadata and scanning memory...");
+                println!("[Step 4/5] Scanning ScoreProcessor.hitEvents (per-judgement events)...");
+                println!("[Step 5/5] Running live validation (MD5Hash / ScreenStack / VTable)...");
             }
 
             let options = Options::default();
@@ -261,6 +263,11 @@ fn run_live_interactive(lang: Lang) {
                         println!("   osu!lazer 版本: {}", info.lazer_version);
                         println!("   .NET 运行时:    {}", info.runtime_version);
                         println!("   目标架构:       {}", info.arch);
+                        println!();
+                        match &info.score {
+                            Some(score) => println!("   Score 段:      {score}"),
+                            None => println!("   Score 段:      未捕获（请在游玩/回放 mania 时运行）"),
+                        }
                         println!();
                         println!(" 表保存位置:");
                         println!("   {}", info.output_path.display());
@@ -278,6 +285,11 @@ fn run_live_interactive(lang: Lang) {
                         println!("   osu!lazer Version: {}", info.lazer_version);
                         println!("   .NET Runtime:      {}", info.runtime_version);
                         println!("   Target Arch:       {}", info.arch);
+                        println!();
+                        match &info.score {
+                            Some(score) => println!("   Score section:     {score}"),
+                            None => println!("   Score section:     not captured (run while playing/replaying mania)"),
+                        }
                         println!();
                         println!(" Table Saved To:");
                         println!("   {}", info.output_path.display());

@@ -248,12 +248,15 @@ impl Reader {
 }
 
 /// 启动读取线程。
-pub fn spawn_osu_reader() -> Reader {
+pub fn spawn_osu_reader(
+    hit_log: Arc<lazer::score::HitEventLog>,
+    replay_log: Arc<lazer::score::ReplayFrameLog>,
+) -> Reader {
     let reader = Reader {
         inner: Arc::new(Mutex::new(ReaderState::default())),
     };
     let handle = reader.clone();
-    thread::spawn(move || runner::run(handle));
+    thread::spawn(move || runner::run(handle, hit_log, replay_log));
     reader
 }
 

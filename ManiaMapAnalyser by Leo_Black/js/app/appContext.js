@@ -2,7 +2,7 @@ import WebSocketManager from "./socket.js";
 import { DISPLAY_SKILLSET_ORDER } from "../ett/index.js";
 import { APP_CONFIG } from "../../config.js";
 import { createSettingsParsers } from "../parser/settingsParser.js";
-import { COMBINED_MODE_MODULES } from "./combinedMode.js";
+import { DEFAULT_COMBINED_MODE_MODULES } from "./combinedMode.js";
 
 export { APP_CONFIG };
 
@@ -141,6 +141,8 @@ export const sepPatternEl = document.getElementById("sep-pattern");
 export const sepEtternaEl = document.getElementById("sep-etterna");
 export const sepPpEl = document.getElementById("sep-pp");
 export const sepGraphEl = document.getElementById("sep-graph");
+export const sepLaneAccEl = document.getElementById("sep-laneacc");
+export const laneAccWrapEl = document.getElementById("laneacc-wrap");
 export const contentBarTabsEl = document.getElementById("content-bar-tabs");
 export const overlayEl = document.getElementById("card-overlay");
 export const overlaySpinnerEl = document.getElementById("overlay-spinner");
@@ -179,7 +181,12 @@ export const state = {
     tabForceRecompute: false,
     // 桌面壳组合模式：只能由 applyCombinedModeSetting() 写入；浏览器页面恒 false。
     combinedModeEnabled: false,
-    combinedModeModules: [...COMBINED_MODE_MODULES],
+    combinedModeModules: [...DEFAULT_COMBINED_MODE_MODULES],
+    // 壳专属：奇数键中列归属（independent / left / right），由 applyLaneAccSpaceMode() 写入。
+    laneAccSpaceMode: "independent",
+    laneAccScoreReady: null,
+    // 最近一次 hello 的壳契约版本（0 = 未握手/浏览器）。
+    shellContractVersion: 0,
     srText: APP_CONFIG.defaults.srText,
     userContentBar: APP_CONFIG.defaults.contentBar,
     userSrText: APP_CONFIG.defaults.srText,

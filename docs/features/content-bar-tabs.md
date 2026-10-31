@@ -5,9 +5,9 @@
 
 ## 1. 功能范围
 
-- **Tab 胶囊栏**：壳窗口内、卡片主体顶部的 4 枚微型胶囊（Pattern / Etterna / Graph / PP）。左键单击临时切换当前谱面的展示模块；不写设置、不进预设、不写 localStorage。
+- **Tab 胶囊栏**：壳窗口内、卡片主体顶部的 5 枚微型胶囊（Pattern / Etterna / Graph / PP / LaneAcc）。左键单击临时切换当前谱面的展示模块；不写设置、不进预设、不写 localStorage。
 - **组合模式（Combined）**：原 `Full` 的替代。由 `mma-shell-config.json` 的 `combinedMode` 控制，在卡片中同时显示多个模块，并按配置顺序排列。入口在设置页 `Shell Configuration`。
-- **tosu 侧**：`contentBar` 枚举只保留 `None / Auto / Pattern / Etterna / Graph / ReworkPP`；旧值 `"Full"` 静默降级为 `"Auto"`。旧的 `Full` 不再能把多模块塞回 tosu 叠加层。
+- **tosu 侧**：`contentBar` 枚举只保留 `None / Auto / Pattern / Etterna / Graph / ReworkPP / LaneAcc`；旧值 `"Full"` 静默降级为 `"Auto"`。旧的 `Full` 不再能把多模块塞回 tosu 叠加层。
 
 ## 2. 可见性规则
 
@@ -48,7 +48,7 @@ contentBarShows(section) =
 不变量：
 
 - `combinedModeEnabled` 为真时 `tabContentBar` 必须为 `null`；
-- `combinedModeModules` 至少一个模块（空数组归一化默认四模块）；
+- `combinedModeModules` 至少一个模块（空数组归一化默认四模块；允许 `LaneAcc` 作为可选第五模块）；
 - `tabForceRecompute` 在 `fetchBeatmapFile` 入口读取后立即清零。
 
 ## 4. 点击语义
@@ -109,13 +109,13 @@ contentBarTabsEl.addEventListener("click", (event) => {
 }
 ```
 
-- 数组顺序即卡片显示顺序；token 只认四个规范值（大小写不敏感）；
+- 数组顺序即卡片显示顺序；token 只认五个规范值（Pattern / Etterna / Graph / ReworkPP / LaneAcc；大小写不敏感）；
 - 缺失/非数组/空数组/全非法 → 默认四模块；
 - UI 禁止取消最后一个已勾选模块；
 - 设置页写入整对象 `{enabled, modules}`，避免 `merge_json` 递归合并残留旧数组；
 - 旧 `contentBar: "Full"` 只按 §1 降级为 Auto；组合模式使用独立的新键 `combinedMode`。
 
-设置页 `Shell Configuration` 中该区块位于「内存偏移表管理」（及其影子诊断子区块）之后；模块列表显示名为 键型 / Etterna技能组（Etterna Skillsets）/ 曲线 / PP。
+设置页 `Shell Configuration` 中该区块位于「内存偏移表管理」之后；模块列表显示名为 键型 / Etterna技能组（Etterna Skillsets）/ 曲线 / PP。
 
 ### 5.1 预设支持（shell 专属键）
 
@@ -145,7 +145,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 ## 7. CSS / DOM
 
 - Tab 栏是 `.main-card` 的网格项，`order: 0`；不包裹、不移动已有模块；
-- 4 枚胶囊高 18px，`display:flex`、`overflow:visible`，不出现原生滚动条；
+- 5 枚胶囊高 18px，`display:flex`、`overflow:visible`，不出现原生滚动条；
 - Combined 只写 `style.order`：每个模块的分隔条与容器使用同一 `order`，等值时保持文档顺序（分隔条在前）；
 - 未勾选模块 `hidden = true` 并清空 `order`；
 - `.main-card.bars-combined .combined-separator[hidden] { display:none }` 兜底；

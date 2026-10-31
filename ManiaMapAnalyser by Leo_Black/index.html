@@ -77,6 +77,23 @@
                 <button type="button" class="content-tab" data-content-tab="Etterna" aria-pressed="false">Etterna</button>
                 <button type="button" class="content-tab" data-content-tab="Graph" aria-pressed="false">Graph</button>
                 <button type="button" class="content-tab" data-content-tab="ReworkPP" aria-pressed="false">PP</button>
+                <button type="button" class="content-tab" data-content-tab="LaneAcc" aria-pressed="false">LaneAcc</button>
+            </div>
+
+            <div class="combined-separator" id="sep-laneacc" hidden>LaneAcc</div>
+            <div id="laneacc-wrap" class="laneacc-wrap" hidden>
+                <div class="laneacc-summary">
+                    <div class="laneacc-sv1">
+                        <span class="laneacc-badge">ScoreV1</span>
+                        <span id="laneacc-sv1-value" class="laneacc-sv1-value">100.00%</span>
+                        <span id="laneacc-od" class="laneacc-chip" hidden></span>
+                    </div>
+                    <div id="laneacc-hands" class="laneacc-hands"></div>
+                </div>
+                <div id="laneacc-stage" class="laneacc-stage" role="group" aria-label="Lane accuracy">
+                    <div id="laneacc-popover" class="laneacc-popover" hidden></div>
+                </div>
+                <div id="laneacc-error" class="laneacc-error" hidden></div>
             </div>
 
             <div class="combined-separator" id="sep-pattern" hidden>Pattern</div>

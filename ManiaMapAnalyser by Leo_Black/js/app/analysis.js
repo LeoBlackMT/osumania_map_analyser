@@ -7,6 +7,8 @@ import { calculateInterludeStar } from "../interlude/index.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { settingsHash, slotCount } from "./feedback/feedbackMath.js";
 import { OsuFileParser } from "../parser/osuFileParser.js";
+import { laneAccView } from "./laneAcc/view.js";
+import { buildChart } from "./laneAcc/chart.js";
 import { runInWorker } from "./worker/manager.js";
 import {
     analyzeEtternaFromText,
@@ -566,6 +568,7 @@ export async function fetchBeatmapFile(reason) {
     try {
         let parsedInfo = null;
         let rawText = null;
+        let laneAccChart = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
         // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
         // 唯一例外：Etterna 容器内的 osu 谱（externalSourceOsuLike）没有 Etterna
@@ -1249,6 +1252,16 @@ export async function fetchBeatmapFile(reason) {
             // 写缓存：companella 完成后、SV/auto-profile 段之前。
             // 门控：miss && 开关开 && 全成功 && generation 未变（防 clear 后旧分析写回）。
             // ⚠️ 区间跑批既不读也不写缓存（局部结果绝不能污染全谱快照）。
+            laneAccChart = null;
+            if (!isSectionRun && rawText) {
+                try {
+                    const laneAccParser = new OsuFileParser(rawText);
+                    laneAccParser.process();
+                    laneAccChart = buildChart(laneAccParser.getParsedData(), state.lastBeatmapIdentity);
+                } catch {
+                    laneAccChart = null;
+                }
+            }
             if (!isSectionRun && !cached && state.enableResultCache && state.lastBeatmapIdentity
                 && errors.length === 0
                 && rework && !isStaleRequest()
@@ -1283,6 +1296,7 @@ export async function fetchBeatmapFile(reason) {
                         columnCount: parsedInfo.columnCount,
                         od: parsedInfo.od,
                     },
+                    laneAccText: rawText,
                     computed: needComputed,
                 }, { skip: isMetaDegraded });
             }
@@ -1456,6 +1470,51 @@ export async function fetchBeatmapFile(reason) {
         );
 
         renderCombinedModeSeparators(ettOverallValue);
+
+        // LaneAcc：始终准备谱面模型（即使当前页签不是 LaneAcc）。
+        // 否则用户在分析完成后才切到 LaneAcc，会命中“Chart text unavailable”，只能切图重载。
+        // 复用本轮的 rawText；缓存命中时回落到本图留存的全谱原文。
+        {
+            let laneAccText = rawText || getFullChartText();
+            if (!laneAccChart && cached?.laneAccChart) {
+                laneAccChart = cached.laneAccChart;
+            }
+            if (!laneAccText && cached?.laneAccText) {
+                laneAccText = cached.laneAccText;
+            }
+            // 缓存命中时 rawText 可能为空；LaneAcc 需要原文才能建轨道模型。
+            // 此时补抓一次，绝不再把“暂时没有原文”当成红色错误。
+            if (!laneAccChart && !laneAccText && !isSectionRun && (state.activeSource ?? "osu") === "osu") {
+                try {
+                    const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
+                        native: isRuntimeOsuOverrideActive(),
+                        isStale: isStaleRequest,
+                    });
+                    if (isStaleRequest() || response === null) return;
+                    if (response.ok) {
+                        laneAccText = await response.text();
+                        if (isStaleRequest()) return;
+                        if (laneAccText) rememberFullChartText(laneAccText);
+                    }
+                } catch {
+                    // 端点暂时不可用：保持固定高度的 loading 占位，下一帧再试。
+                }
+            }
+            if (laneAccChart) {
+                laneAccView.prepareChart(laneAccChart);
+            } else if (laneAccText) {
+                try {
+                    const laneAccParser = new OsuFileParser(laneAccText);
+                    laneAccParser.process();
+                    laneAccChart = buildChart(laneAccParser.getParsedData(), state.lastBeatmapIdentity);
+                    laneAccView.prepareChart(laneAccChart);
+                } catch {
+                    laneAccView.setPending();
+                }
+            } else {
+                laneAccView.setPending();
+            }
+        }
 
         if (isVibroMap && state.diffText === "Difficulty") {
             setEstimateDifficultyText("VIBRO");

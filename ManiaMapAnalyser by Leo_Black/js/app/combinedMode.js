@@ -4,7 +4,10 @@
 // contentBar 的规范值，数组顺序就是卡片上的显示顺序。enabled 为真时至少保留
 // 一个模块；空数组/缺键一律回落默认四模块，避免与 contentBar=None 的语义重复。
 
-export const COMBINED_MODE_MODULES = Object.freeze(["Pattern", "Etterna", "Graph", "ReworkPP"]);
+export const COMBINED_MODE_MODULES = Object.freeze(["Pattern", "Etterna", "Graph", "ReworkPP", "LaneAcc"]);
+
+/** 默认组合（LaneAcc 是可选第五模块，不改变既有用户的默认视图）。 */
+export const DEFAULT_COMBINED_MODE_MODULES = Object.freeze(["Pattern", "Etterna", "Graph", "ReworkPP"]);
 
 // 显示名只被设置页的模块列表使用（t() 的英文 fallback）；卡片 Tab 胶囊的
 // 短标签写在 index.html 里，不经过这里。
@@ -13,6 +16,7 @@ export const COMBINED_MODE_LABELS = Object.freeze({
     Etterna: "Etterna Skillsets",
     Graph: "Graph",
     ReworkPP: "PP",
+    LaneAcc: "Lane accuracy",
 });
 
 /** 把逗号/空白分隔的模块串解析成规范 token 数组（去重保序，空串回落默认四模块）。 */
@@ -29,7 +33,7 @@ export function parseCombinedModeModuleList(text) {
             modules.push(matched);
         }
     }
-    return modules.length > 0 ? modules : [...COMBINED_MODE_MODULES];
+    return modules.length > 0 ? modules : [...DEFAULT_COMBINED_MODE_MODULES];
 }
 
 export function isCombinedModeModule(value) {
@@ -60,7 +64,7 @@ export function normalizeCombinedMode(value) {
             if (typeof item !== "string") {
                 continue;
             }
-            const lowered = item.trim().toLowerCase();
+            const lowered = item.trim().toLowerCase() === "handacc" ? "laneacc" : item.trim().toLowerCase();
             const matched = COMBINED_MODE_MODULES.find((module) => module.toLowerCase() === lowered);
             if (matched && !modules.includes(matched)) {
                 modules.push(matched);
@@ -70,6 +74,6 @@ export function normalizeCombinedMode(value) {
 
     return {
         enabled,
-        modules: modules.length > 0 ? modules : [...COMBINED_MODE_MODULES],
+        modules: modules.length > 0 ? modules : [...DEFAULT_COMBINED_MODE_MODULES],
     };
 }

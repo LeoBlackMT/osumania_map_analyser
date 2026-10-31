@@ -6,6 +6,7 @@ import {
     ettSkillBarsEl,
     getActiveContentBar,
     hasAnyGraphModeEnabled,
+    laneAccWrapEl,
     isRuntimeOsuOverrideActive,
     mainCardEl,
     parseAutoModeValue,
@@ -51,6 +52,7 @@ import {
     reworkStarEl,
     sepEtternaEl,
     sepGraphEl,
+    sepLaneAccEl,
     sepPatternEl,
     sepPpEl,
     socket,
@@ -89,6 +91,8 @@ import { isCombinedModeModule, normalizeCombinedMode } from "./combinedMode.js";
 import { syncContentBarTabs } from "./contentBarTabs.js";
 import { clearSectionIfGraphHidden } from "./graphSection/index.js";
 import { isShellRuntime } from "./feedback/feedbackSpec.js";
+import { normalizeSpaceMode } from "./laneAcc/accumulator.js";
+import { laneAccView } from "./laneAcc/view.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -108,6 +112,7 @@ const COMBINED_MODE_NODES = [
     { section: "Etterna", sep: sepEtternaEl, body: ettSkillBarsEl },
     { section: "Graph", sep: sepGraphEl, body: bodyGraphWrapEl },
     { section: "ReworkPP", sep: sepPpEl, body: ppBarsEl },
+    { section: "LaneAcc", sep: sepLaneAccEl, body: laneAccWrapEl },
 ];
 
 function arraysEqual(a, b) {
@@ -150,12 +155,21 @@ function updateContentBarVisibility() {
     if (ppBarsEl) {
         ppBarsEl.hidden = !contentBarShows("ReworkPP");
     }
+    if (laneAccWrapEl) {
+        const show = contentBarShows("LaneAcc");
+        const wasHidden = laneAccWrapEl.hidden;
+        laneAccWrapEl.hidden = !show;
+        if (show && wasHidden) {
+            laneAccView.replayEntrance();
+        }
+    }
 
     mainCardEl.classList.toggle("bars-combined", isCombined);
     mainCardEl.classList.toggle("bars-pattern", !isCombined && activeContentBar === "Pattern");
     mainCardEl.classList.toggle("bars-etterna", !isCombined && activeContentBar === "Etterna");
     mainCardEl.classList.toggle("bars-graph", !isCombined && activeContentBar === "Graph");
     mainCardEl.classList.toggle("bars-pp", !isCombined && activeContentBar === "ReworkPP");
+    mainCardEl.classList.toggle("bars-laneacc", !isCombined && activeContentBar === "LaneAcc");
     mainCardEl.classList.toggle("bars-none", !isCombined && activeContentBar === "None");
 
     if (!contentBarShows("Etterna")) {
@@ -566,6 +580,21 @@ export function applyContentBarSetting(contentBar) {
     }
 
     return changed;
+}
+
+/**
+ * 壳专属：奇数键中列归属。只影响分轨 UI 分组，不影响任何计算/缓存键。
+ * @param {unknown} raw
+ * @returns {boolean} 是否发生变化
+ */
+export function applyLaneAccSpaceMode(raw) {
+    const next = normalizeSpaceMode(raw);
+    if (state.laneAccSpaceMode === next) {
+        return false;
+    }
+    state.laneAccSpaceMode = next;
+    laneAccView.setSpaceMode(next);
+    return true;
 }
 
 /**

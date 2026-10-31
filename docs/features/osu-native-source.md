@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v7）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v10）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -21,7 +21,7 @@ osu!stable (32 位)          osu!lazer (64 位)
       │ 只读内存（签名扫描）        │ 只读内存（偏移表驱动）
       └────────────┬───────────────┘
        desktop/src/osu/**：读取线程（250 ms 一拍）
-         ├─ L0 锚点定址 → L1 结构校验 → L2 不变量 → L3 影子比对（tosu 在线时）
+         ├─ L0 锚点定址 → L1 结构校验 → L2 不变量 → L3 影子比对（仅开发期 MMA_OSU_COMPARE=1）
          └─ Snapshot → packet.rs → tosu v2 形状载荷
                    │
       desktop/src/server/osu_compat.rs：24062（tosu 兼容子集 origin）
@@ -82,10 +82,8 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
    - 校验通过后**先比较版本**：只有远端版本严格新于本地（AppData 缓存与内嵌表的较大者）才原子写入本地缓存目录（`%APPDATA%\ManiaMapAnalyser\offsets\`）；同版本或更旧的远端表只计为 `skipped`，不会把刚生成/随包的新表降级覆盖。若无网络或校验失败，静默使用随包或编译期内嵌表，零报错打扰用户。
 5. **stable 维护者专用探测生成器**：
    - `tools/stable-offsets-gen/main.rs`：针对 32 位 `osu!.exe` 执行签名扫描与自证验证，全自动导出符合 `mma-offset-v2` 格式的稳定版特征表。
-6. **L3 影子比对诊断面板（Topic 12）**：
-   - 在线运行时，壳在 `osu/compare.rs` 实时比对 Native 内存直读与 tosu 的 11 项核心字段（`COMPARED_FIELDS`），记录比对总帧数、匹配率与逐字段差异计数。
-   - 提供 `GET /offsets/status`、`GET /shadow/status` 与 `POST /shadow/reset` 端点。
-   - 设置页的 Shell Configuration 面板内提供特征表状态监控、生成/更新操作按钮与影子对拍诊断看板。
+6. **L3 影子比对（仅开发期）**：
+   - 默认关闭；仅设置 `MMA_OSU_COMPARE=1` 时由 `osu/compare.rs` 启动，用于开发期对拍，不提供设置页入口或 HTTP 端点。
 
 ### 3.3 共享的读门槛
 
@@ -115,9 +113,9 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **WS 的 Origin 校验**：loopback Origin 或**无 Origin**放行，其它 **403**（`osu_compat.rs:464-486`，与 24061 的 `ws.rs` 同一份判定；非 loopback Origin 实测 403）。
 - **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:80-82`，`replay_enabled()`）；**缺省是实时载荷**。
 - **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:672-692`，`spawn_osu_compat` 的绑定失败分支）。
-- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。
+- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。v9/v10 另供 `mania_hit_events`（局内逐判定）与 `mania_replay_frames`（原始按键帧）供 LaneAcc；这是壳页面通道的帧，不走 24062 tosu 兼容子集。
 
-## 5. 契约 v6/v7：端点下发与页面切流
+## 5. 契约 v6/v7/v10：端点下发、页面切流与判定数据
 
 ### 5.1 壳侧下发
 
@@ -153,6 +151,15 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 - **native 位进路由**：`state.shellOsuNativeAlive` 同时用于 L3' 存活回窗（`js/app/sources/sourceManager.js:130`）与 osu 败方门控（`sourceManager.js:196-197`）——缺它原生帧会被当成"败方帧"静默缓冲，用户可见现象是**换图不更新**（DEC-21 缺陷①）。
 - **壳主窗策略**（DEC-21 缺陷②）：壳配置 `osuTransport != "tosu"`（缺省 `auto`）时，主窗**一律**落 `http://127.0.0.1:24061/`；只有显式 `"osuTransport": "tosu"` 才维持旧策略（在线 ⇒ tosu 插件页）——主窗落 tosu 页时端点下发与桥都不可达（`desktop/src/app/url.rs:7` 的 `startup_url`）。
 - **扫描提示**（Step 9e/9f）：壳把 L0 附着/扫描相位写成 `phase`（闭集 `waiting-for-game` / `attaching` / `scanning` / `healthy` / `unavailable`，`osu/mod.rs:84` 的 `Phase` 枚举 / `:114` 的 `phase_for`）+ 英文 `notice` + 实测 `progress`；页面只在自己的元素 `#osu-scan-hint`（`index.html:25`）渲染那句话（`js/app/sources/osuScanHint.js`、纯规则在 `osuScanHintRules.js`）。三条纪律：**只写自己的元素**（借写共享 `#status` 会被别的写手打掉，真机实测只闪 ~300 ms）、**同一相位值内"载荷到过"粘住不复活**、**只在壳页**（浏览器 tosu 页不提示）。真机实测提示连续可见 25 s。
+
+### 5.3 LaneAcc 判定事件与原始帧（v10）
+
+- 壳在 `osu/runner.rs` 的全量帧之间按 100 ms 轮询 `Player → ScoreProcessor.hitEvents`；事件写入
+  `HitEventLog`，由 `server/hit_events.rs` 合并后广播 `mania_hit_events`。
+- 表 `score` 段：`player_score_processor` / `hit_events` / `hit_object` / `time_offset` / `result` /
+  `column` / `stride`。缺失或坏值 ⇒ 不发帧（整段降级）。
+- 页面刷新/重连发 `laneacc_sync`，壳只向当前连接回放全量（≤2048 条/帧，首帧 reset）。
+- 详细公式与 UI 见 [lane-acc.md](lane-acc.md)。
 
 ## 6. 能力边界
 
@@ -237,7 +244,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ## 8. 健康状态机（L0–L3）
 
-四层门（DEC-17）：**L0 锚点解析**（附着时/进程变化时/失败刷新时）→ **L1 结构校验**（每次读：整块读满 + 候选自证 + 指针合理性）→ **L2 不变量**（`osu/invariants.rs` 的 I-01…I-10；无状态者每帧判、时序性者只在状态迁移那一帧判）→ **L3 影子比对**（tosu 在线时，`osu/shadow.rs` 纯函数 + `osu/compare.rs` IO 驱动）。
+四层门（DEC-17）：**L0 锚点解析**（附着时/进程变化时/失败刷新时）→ **L1 结构校验**（每次读：整块读满 + 候选自证 + 指针合理性）→ **L2 不变量**（`osu/invariants.rs` 的 I-01…I-10；无状态者每帧判、时序性者只在状态迁移那一帧判）→ **L3 影子比对**（仅开发期 `MMA_OSU_COMPARE=1` 时启用；`osu/shadow.rs` 纯函数 + `osu/compare.rs` IO 驱动）。
 
 四态（`invariants.rs:849-862` 的 `HealthState`）：`idle`（没目标）/ `healthy` / `degraded`（出帧 + 上报缺字段）/ `unhealthy`（不出帧）。
 
@@ -321,11 +328,11 @@ rustc --edition 2021 -O -A dead_code -o %TEMP%\lazer-offsets-gen.exe tools/lazer
 | 1 | 壳构建 | `cd desktop; cargo build` | 0 warning |
 | 2 | 壳单测 + 基线比对 | `cd desktop; cargo test` | 通过数只能增加；**失败名集合**与 本机证据集（不入库）/B1-replay/cargo-test-BASELINE-stashed.txt` **逐名相同**（36 项，全部是沙箱 `temp_dir` `PermissionDenied` 的既有环境失败；新增失败 = 本步引入）。提取名字比对：`Select-String -Path <日志> -Pattern '^test (.+) \.\.\. FAILED'` 取两侧集合作对称差，应为空 |
 | 3 | osu 家族单测 + 全量读数 | `cd desktop; cargo test osu::`；`cd desktop; cargo test` | osu 家族全绿；全量 = **382 passed / 36 failed / 1 ignored**（2026-09-30 复跑的实测值；failed 全部是上面那 36 项） |
-| 4 | 影子对拍（tosu 在线） | `cd desktop; $env:MMA_OSU_COMPARE="1"; $env:MMA_OSU_COMPARE_INTERVAL_MS="100"; $env:MMA_OSU_COMPARE_OUT="$env:TEMP\samples.jsonl"; cargo run --release` | `samples.jsonl` 每行有 `cmp`；第一断言 = `cmp.identity` / `cmp.mod_signature` / `cmp.state_name` 逐字节相等；不等/跳过只在 `diff` 里列；`"skipped:<why>"` **不是** `false`。关整套装置用 `MMA_OSU_COMPARE=0`；`MMA_OSU_TOSU` 换 tosu 端点；`MMA_OSU_COMPARE_FULL=1` 恢复整包落盘 |
+| 4 | 影子对拍（tosu 在线） | `cd desktop; $env:MMA_OSU_COMPARE="1"; $env:MMA_OSU_COMPARE_INTERVAL_MS="100"; $env:MMA_OSU_COMPARE_OUT="$env:TEMP\samples.jsonl"; cargo run --release` | `samples.jsonl` 每行有 `cmp`；第一断言 = `cmp.identity` / `cmp.mod_signature` / `cmp.state_name` 逐字节相等；不等/跳过只在 `diff` 里列；`"skipped:<why>"` **不是** `false`。默认关闭，`MMA_OSU_COMPARE=1` 开启；`MMA_OSU_TOSU` 换 tosu 端点；`MMA_OSU_COMPARE_FULL=1` 恢复整包落盘 |
 | 5 | 端点探针（HTTP） | `Invoke-WebRequest http://127.0.0.1:24062/files/beatmap/file -UseBasicParsing` | 200 + `Access-Control-Allow-Origin: *`；body = 当前谱面 `.osu`（`text/plain; charset=utf-8`） |
 | 6 | Host 门禁 | raw socket（或 `curl -H "Host: evil.example"`）请求 24062 | **403** `{"error":"forbidden host"}` 且带 ACAO；`127.0.0.1:24062` ⇒ 200 |
 | 7 | 端点探针（WS） | `node -e` 用内置 `WebSocket` 连 `ws://127.0.0.1:24062/websocket/v2`（Node 24 有全局 WebSocket） | 101；实时模式 ≈6.45 帧/s（真机 `avg_fps 6.45`）；回放模式（`MMA_OSU_COMPAT_REPLAY=1`）32 帧/5 s、帧间隔 153–158 ms；`/websocket/commands` 101 且 0 帧 |
-| 8 | 契约版本三处一致 | `grep`：`desktop/src/frames.rs`、页面 `js/app/sources/bridgeClient.js`、`desktop/docs/CONTRACT.md` | 三处都是 `7`，页面接受区间 `[3,7]` |
+| 8 | 契约版本三处一致 | `grep`：`desktop/src/frames.rs`、页面 `js/app/sources/bridgeClient.js`、`desktop/docs/CONTRACT.md` | 三处都是 `10`，页面接受区间 `[3,10]` |
 | 9 | 破坏性签名测试 | 按 §9 第 5 条复制源码到工作区外打补丁、编译、跑 | 变体 A ⇒ `signature-miss:statusPtr` + 0 伪造帧；变体 B ⇒ 冻结帧（带 `state.name`、无 `beatmap`）→ `unhealthy` 停帧，解除锚点到 unhealthy ≈1.4 s |
 | 10 | lazer 表存在性与自检 | `Get-Content "<壳 exe 目录>\offsets\lazer\<ver>__<rt>__<arch>.json" -TotalCount 12`；`tools/lazer-offsets-gen` 的 `self-test` | `game_base_vtable` 与 `types` 都非空；自测 35/35 |
 | 11 | 零写入审计 | `grep -rn "WriteProcessMemory\|VirtualProtect\|CreateRemoteThread\|VirtualAllocEx\|SetWindowsHookEx" desktop/src/osu` | 0 命中 |

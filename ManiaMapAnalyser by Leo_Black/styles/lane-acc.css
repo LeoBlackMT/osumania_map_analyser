@@ -1,0 +1,503 @@
+/* LaneAcc card body: ScoreV1 chips + hand blocks + 4K–18K lane stage. */
+
+.laneacc-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    /* 轨道条一直落到卡片底部；左下 mode-tag 只压住色条下沿，不再留大空隙。 */
+    padding-bottom: 0;
+}
+
+.laneacc-wrap[data-state="loading"] .laneacc-summary {
+    opacity: 0.62;
+}
+
+/* ---------------------------------------------------------------- summary */
+
+.laneacc-summary {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.laneacc-sv1 {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    flex: 0 0 225px;
+    width: 225px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.laneacc-sv1-value {
+    color: #f6fbff;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    width: 104px;
+    min-width: 104px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.laneacc-chip {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(52, 74, 118, 0.6);
+    color: #cfe2ff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 13px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    min-width: 52px;
+    width: 52px;
+    flex: 0 0 52px;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.laneacc-hands {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 38px;
+}
+
+.laneacc-hand {
+    display: grid;
+    grid-template-columns: 10px 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 4px;
+    width: 96px;
+    min-width: 96px;
+    height: auto;
+    box-sizing: border-box;
+    padding: 2px 10px;
+    border-radius: 6px;
+    background: rgba(28, 37, 60, 0.62);
+    border: 1px solid rgba(132, 166, 214, 0.18);
+    white-space: nowrap;
+}
+
+.laneacc-hand-label {
+    grid-row: 1;
+    color: #9fb6d9;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.laneacc-hand-acc {
+    grid-row: 1;
+    color: #f6fbff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+    text-align: right;
+    justify-self: stretch;
+}
+
+.laneacc-hand-miss {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    color: #ff9a9a;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 11px;
+}
+
+.laneacc-hands[data-count="3"] {
+    gap: 4px;
+}
+
+.laneacc-hands[data-count="3"] .laneacc-hand {
+    width: 62px;
+    min-width: 62px;
+    padding: 2px 5px;
+    column-gap: 2px;
+}
+
+.laneacc-hands[data-count="3"] .laneacc-hand-acc {
+    font-size: 13px;
+}
+
+.laneacc-hands[data-count="3"] .laneacc-hand-miss {
+    font-size: 9px;
+    line-height: 10px;
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.laneacc-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 72px;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    padding-top: 2px;
+    --laneacc-lanes: 4;
+}
+
+.laneacc-stage.is-dense {
+    gap: 2px;
+}
+
+.laneacc-stage.is-loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.laneacc-stage.is-loading .laneacc-lane {
+    opacity: 0.52;
+    filter: saturate(0.65);
+}
+
+.laneacc-stage.is-loading .laneacc-lane-fill {
+    opacity: 0.42;
+}
+
+.laneacc-stage.is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 5px;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgba(177, 220, 255, 0.16) 48%, transparent 76%);
+    transform: translateX(-110%);
+    animation: laneacc-lazy-sweep 1.2s ease-in-out infinite;
+}
+
+.laneacc-stage.is-loading-difficulty::after {
+    animation-duration: 1.8s;
+    opacity: 0.55;
+}
+
+.laneacc-stage.is-loading-song::after {
+    animation-duration: 1.05s;
+}
+
+.laneacc-stage.is-loading-song .laneacc-lane {
+    animation: laneacc-lazy-song 360ms cubic-bezier(0.2, 0.92, 0.28, 1) both;
+}
+
+.laneacc-stage.is-loading-difficulty .laneacc-lane {
+    animation: laneacc-lazy-difficulty 240ms ease-out both;
+}
+
+.laneacc-lane.is-placeholder {
+    background: linear-gradient(180deg, rgba(44, 62, 91, 0.6), rgba(21, 31, 50, 0.72));
+    border-color: rgba(132, 166, 214, 0.1);
+}
+
+@keyframes laneacc-lazy-song {
+    from { opacity: 0.1; transform: translateY(5px); }
+    to { opacity: 0.52; transform: translateY(0); }
+}
+
+@keyframes laneacc-lazy-difficulty {
+    from { opacity: 0.3; }
+    to { opacity: 0.52; }
+}
+
+.laneacc-lane.is-placeholder::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    bottom: 2px;
+    height: 42%;
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(147, 190, 238, 0.22), rgba(84, 121, 173, 0.2));
+    animation: laneacc-skeleton-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes laneacc-lazy-sweep {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(110%); }
+}
+
+@keyframes laneacc-skeleton-pulse {
+    0%, 100% { opacity: 0.45; transform: scaleY(0.82); }
+    50% { opacity: 0.9; transform: scaleY(1); }
+}
+
+.laneacc-lane {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    border: 1px solid rgba(132, 166, 214, 0.16);
+    border-radius: 5px 5px 3px 3px;
+    background: rgba(20, 27, 45, 0.72);
+    overflow: hidden;
+    cursor: pointer;
+    appearance: none;
+}
+
+.laneacc-lane:nth-child(even) {
+    background: rgba(26, 34, 55, 0.78);
+}
+
+.laneacc-lane:hover,
+.laneacc-lane:focus-visible {
+    border-color: rgba(140, 210, 255, 0.75);
+    outline: none;
+}
+
+.laneacc-lane-fill {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 0;
+    bottom: 0;
+    height: auto;
+    min-height: 0;
+    border-radius: 4px 4px 2px 2px;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--ma-accent) 42%, #9fd0ff) 0%,
+        color-mix(in srgb, var(--ma-accent) 76%, #2f6fc0) 100%
+    );
+    transform: scaleY(var(--lane-scale, 0));
+    transform-origin: bottom;
+    will-change: transform;
+    transition: transform 240ms cubic-bezier(0.2, 0.92, 0.28, 1);
+}
+
+.laneacc-stage.is-entering .laneacc-lane {
+    animation: laneacc-lane-in 340ms cubic-bezier(0.2, 0.92, 0.28, 1) both;
+    animation-delay: calc(var(--lane-index, 0) * 24ms);
+}
+
+@keyframes laneacc-lane-in {
+    from { opacity: 0; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 副主题色交替：偶数轨用 accent 偏紫的派生色，奇数轨用 accent 偏蓝的派生色。
+   中列（M）不再使用黄色，只跟随交替色。 */
+.laneacc-lane:nth-child(even) .laneacc-lane-fill {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--ma-accent) 58%, #c9b6ff) 0%,
+        color-mix(in srgb, var(--ma-accent) 86%, #5b46a8) 100%
+    );
+}
+
+.laneacc-lane.is-empty .laneacc-lane-fill {
+    opacity: 0.25;
+}
+
+.laneacc-lane-number {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    color: rgba(214, 232, 255, 0.65);
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.laneacc-lane-acc {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 15px;
+    padding: 2px 0 3px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(7, 13, 24, 0.66), rgba(7, 13, 24, 0.42));
+    color: #fff;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.9);
+    -webkit-text-stroke: 0.35px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+.laneacc-lane.is-empty .laneacc-lane-acc {
+    color: rgba(206, 224, 248, 0.45);
+}
+
+.laneacc-lane-miss {
+    position: absolute;
+    top: auto;
+    left: auto;
+    right: 2px;
+    bottom: 4px;
+    z-index: 2;
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(196, 62, 74, 0.92);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 14px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+.laneacc-stage.is-dense .laneacc-lane-number {
+    font-size: 7px;
+}
+
+/* 宽度自适应：满 34px/轨显示两位小数，26px 一位，17px 整数，更窄只留色条与
+   一个 Miss 圆点（轨道本身仍是可点的 hover/焦点目标）。 */
+.laneacc-stage[data-acc-mode="short"] .laneacc-lane-acc {
+    font-size: 10px;
+}
+
+.laneacc-stage[data-acc-mode="int"] .laneacc-lane-acc {
+    font-size: 9px;
+}
+
+.laneacc-stage[data-acc-mode="short"] .laneacc-lane-miss {
+    min-width: 13px;
+    padding: 0 3px;
+    font-size: 10px;
+    line-height: 13px;
+}
+
+.laneacc-stage[data-acc-mode="int"] .laneacc-lane-miss {
+    min-width: 12px;
+    padding: 0 2px;
+    font-size: 9px;
+    line-height: 12px;
+}
+
+.laneacc-stage[data-acc-mode="none"] .laneacc-lane-acc {
+    display: none;
+}
+
+.laneacc-stage[data-acc-mode="none"] .laneacc-lane-number {
+    top: 2px;
+    bottom: auto;
+}
+
+.laneacc-stage[data-acc-mode="none"] .laneacc-lane-miss {
+    top: auto;
+    left: auto;
+    right: 2px;
+    bottom: 4px;
+    width: 7px;
+    height: 7px;
+    min-width: 0;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+    line-height: 0;
+}
+
+/* ---------------------------------------------------------------- popover */
+
+.laneacc-popover {
+    position: absolute;
+    z-index: 6;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    min-width: 148px;
+    max-width: min(240px, 94%);
+    padding: 6px 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(140, 210, 255, 0.45);
+    background: rgba(14, 20, 34, 0.97);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    color: #e6f2ff;
+    font-size: 10px;
+    pointer-events: none;
+}
+
+.laneacc-popover-title {
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.laneacc-popover-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.laneacc-popover-cell {
+    white-space: nowrap;
+}
+
+.laneacc-popover-combo {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(140, 210, 255, 0.16);
+    color: #cfe2ff;
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.laneacc-stat-popover {
+    position: absolute;
+    z-index: 9;
+    min-width: 148px;
+    max-width: min(240px, 94%);
+    padding: 6px 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(140, 210, 255, 0.45);
+    background: rgba(14, 20, 34, 0.97);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    color: #e6f2ff;
+    font-size: 10px;
+    pointer-events: none;
+}
+
+.laneacc-stat-popover[hidden] {
+    display: none;
+}
+
+.laneacc-error {
+    min-height: 132px;
+    margin-bottom: 28px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 164, 164, 0.42);
+    background: rgba(55, 16, 20, 0.6);
+    color: #ffecec;
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.laneacc-error[hidden] {
+    display: none;
+}

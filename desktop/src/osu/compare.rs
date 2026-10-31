@@ -3,7 +3,7 @@
 // 分工（B3 重构）：比较规则在 `osu/shadow.rs`（纯函数，独立单测）；本文件只负责
 // ① 连 tosu 取载荷（tungstenite WS 客户端线程）② 每 tick 调 `record()` 落一条 JSONL。
 //
-// 关开关（不重编译）：环境变量 `MMA_OSU_COMPARE=0` 关闭整套装置；
+// 开发期影子对拍：默认关闭，只有显式 `MMA_OSU_COMPARE=1` 才启动；
 // `MMA_OSU_COMPARE_INTERVAL_MS` 覆盖对拍节奏（默认 **100 ms**，夹取 20..=5000）。
 //
 // 口径说明（**必须照记**）：
@@ -33,11 +33,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// 对拍装置的开关：`MMA_OSU_COMPARE=0` 关闭（其它值/未设置 = 开启）。
+/// 对拍装置的开关：默认关闭，只有显式 `MMA_OSU_COMPARE=1` 才启动。
 pub fn enabled() -> bool {
     match std::env::var("MMA_OSU_COMPARE") {
-        Ok(value) => value.trim() != "0",
-        Err(_) => true,
+        Ok(value) => value.trim() == "1",
+        Err(_) => false,
     }
 }
 
