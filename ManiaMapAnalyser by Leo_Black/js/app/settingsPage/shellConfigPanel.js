@@ -17,8 +17,8 @@ import {
     COMBINED_MODE_LABELS,
     COMBINED_MODE_MODULES,
     normalizeCombinedMode,
-} from "../combinedMode.js";
-import { normalizeSpaceMode } from "../laneAcc/accumulator.js";
+} from "../ui/combinedMode.js";
+import { normalizeSpaceMode } from "../../laneAcc/accumulator.js";
 
 /** Local shell-config endpoint (desktop/src/server/http.rs). */
 export const SHELL_CONFIG_URL = "/shell-config";

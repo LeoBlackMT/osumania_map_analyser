@@ -20,7 +20,7 @@
  */
 
 import { createShellTransport } from "../presets/shellTransport.js";
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 
 /** Default gate: tosu online means the page is read-only (shell owns the file). */
 function defaultIsReadOnly() {

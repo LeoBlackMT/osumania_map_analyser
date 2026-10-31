@@ -11,9 +11,9 @@ import {
     mainCardEl,
     sectionTimeEl,
     state,
-} from "../appContext.js";
-import { getGraphLineVerticalBounds } from "../graph.js";
-import { ensureContrastColor } from "../display.js";
+} from "../core/appContext.js";
+import { getGraphLineVerticalBounds } from "./index.js";
+import { ensureContrastColor } from "../ui/display.js";
 
 const PLOT_WIDTH = GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X;
 /** 图表容器深色渐变起点（styles/graph.css `.star-graph-wrap`），用于计算对比度。 */

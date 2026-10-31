@@ -6,9 +6,9 @@
  */
 
 import { t } from "../i18n/index.js";
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
-import { parseCombinedModeModuleList } from "../combinedMode.js";
+import { parseCombinedModeModuleList } from "../ui/combinedMode.js";
 
 const EXCLUDED_KEYS = new Set(["preset", "presetStorage"]);
 

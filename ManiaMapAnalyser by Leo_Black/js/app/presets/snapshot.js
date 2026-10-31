@@ -7,15 +7,15 @@
 import {
     SETTING_RECOMPUTE_KEYS,
     SETTING_CACHE_KEYS,
-} from "../settings.js";
-import { applyCombinedModeSetting, applyLaneAccSpaceMode } from "../settings.js";
-import { normalizeSpaceMode } from "../laneAcc/accumulator.js";
-import { normalizeCombinedMode } from "../combinedMode.js";
-import { state } from "../appContext.js";
+} from "../core/settings.js";
+import { applyCombinedModeSetting, applyLaneAccSpaceMode } from "../core/settings.js";
+import { normalizeSpaceMode } from "../../laneAcc/accumulator.js";
+import { normalizeCombinedMode } from "../ui/combinedMode.js";
+import { state } from "../core/appContext.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
-import { postShellConfigPatch } from "../shellConfigClient.js";
-import { clearResultCache } from "../resultCache.js";
-import { scheduleRecompute } from "../scheduler.js";
+import { postShellConfigPatch } from "../net/shellConfigClient.js";
+import { clearResultCache } from "../core/resultCache.js";
+import { scheduleRecompute } from "../core/scheduler.js";
 import {
     SYSTEM_SNAPSHOT_KEYS,
 } from "./storage.js";

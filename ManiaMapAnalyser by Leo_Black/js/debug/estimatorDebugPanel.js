@@ -14,8 +14,8 @@ import {
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
 } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
-import { getModData } from "../app/modData.js";
-import { state } from "../app/appContext.js";
+import { getModData } from "../parser/modData.js";
+import { state } from "../app/core/appContext.js";
 import {
     evaluateRoxyOverfitVariant,
     ROXY_OVERFIT_REPORT,

@@ -1,8 +1,8 @@
-import WebSocketManager from "./socket.js";
-import { DISPLAY_SKILLSET_ORDER } from "../ett/index.js";
-import { APP_CONFIG } from "../../config.js";
-import { createSettingsParsers } from "../parser/settingsParser.js";
-import { DEFAULT_COMBINED_MODE_MODULES } from "./combinedMode.js";
+import WebSocketManager from "../net/socket.js";
+import { DISPLAY_SKILLSET_ORDER } from "../../ett/index.js";
+import { APP_CONFIG } from "../../../config.js";
+import { createSettingsParsers } from "../../parser/settingsParser.js";
+import { DEFAULT_COMBINED_MODE_MODULES } from "../ui/combinedMode.js";
 
 export { APP_CONFIG };
 

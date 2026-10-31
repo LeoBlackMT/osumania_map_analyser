@@ -1,4 +1,4 @@
-import { initialize } from "./js/app/main.js";
+import { initialize } from "./js/app/core/main.js";
 import { sendControl } from "./js/app/sources/bridgeClient.js";
 
 const _VERSION = "3.0.0";

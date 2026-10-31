@@ -8,7 +8,7 @@
 // - 鼠标穿透时按钮全部禁用并给出提示（穿透状态下本来也点不到）。
 // - "Don't ask again" 立即本机静默，并尽力把设置项关掉（离线壳可写；tosu 在线只读）。
 
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 import {
     FEEDBACK_VOTES,
     STRIP_DELAY_MS,

@@ -1,22 +1,22 @@
-import { runAnalysisPipeline } from "../pipeline/runAnalysisPipeline.js";
-import { calculateReworkPp } from "../rework/reworkPerformance.js";
-import { applyCompanellaToMixedResult } from "../estimator/mixedEstimator.js";
-import { rcLabelToNumeric } from "../estimator/rcDifficultyFormat.js";
-import { classifyCompanellaDifficulty } from "../estimator/companellaEstimator.js";
-import { calculateInterludeStar } from "../interlude/index.js";
-import { analyzePatternFromText } from "../patterns/service.js";
-import { settingsHash, slotCount } from "./feedback/feedbackMath.js";
-import { OsuFileParser } from "../parser/osuFileParser.js";
-import { laneAccView } from "./laneAcc/view.js";
-import { buildChart } from "./laneAcc/chart.js";
-import { runInWorker } from "./worker/manager.js";
+import { runAnalysisPipeline } from "../../pipeline/runAnalysisPipeline.js";
+import { calculateReworkPp } from "../../rework/reworkPerformance.js";
+import { applyCompanellaToMixedResult } from "../../estimator/mixedEstimator.js";
+import { rcLabelToNumeric } from "../../estimator/rcDifficultyFormat.js";
+import { classifyCompanellaDifficulty } from "../../estimator/companellaEstimator.js";
+import { calculateInterludeStar } from "../../interlude/index.js";
+import { analyzePatternFromText } from "../../patterns/service.js";
+import { settingsHash, slotCount } from "../feedback/feedbackMath.js";
+import { OsuFileParser } from "../../parser/osuFileParser.js";
+import { laneAccView } from "../ui/laneAcc/view.js";
+import { buildChart } from "../../laneAcc/chart.js";
+import { runInWorker } from "../worker/manager.js";
 import {
     analyzeEtternaFromText,
     DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL,
     MINACALC_ABORT_CODE,
     MINACALC_ABORT_MESSAGE,
-} from "../ett/index.js";
-import { PATTERNS_CONFIG } from "../patterns/config.js";
+} from "../../ett/index.js";
+import { PATTERNS_CONFIG } from "../../patterns/config.js";
 import {
     ettSkillBarsEl,
     getEndpoint,
@@ -52,8 +52,8 @@ import {
     show6KConstValue,
     showReworkPpValue,
     renderCombinedModeSeparators,
-} from "./display.js";
-import { getLatestPpValue, resetLivePp } from "./livePp.js";
+} from "../ui/display.js";
+import { getLatestPpValue, resetLivePp } from "../live/livePp.js";
 import { modeTagFromLnRatio } from "./modeLogic.js";
 import {
     hideOverlay,
@@ -62,7 +62,7 @@ import {
     setStatus,
     setSvTagVisible,
     showOverlay,
-} from "./hud.js";
+} from "../ui/hud.js";
 import {
     clearAllPauseMarkers,
     clearDiffGraph,
@@ -72,7 +72,7 @@ import {
     showDiffGraphError,
     setGraphLoading,
     updateDiffTextVisibility,
-} from "./graph.js";
+} from "../graph/index.js";
 import {
     animateCardHeightTransition,
     currentEstimatorAlgorithm,
@@ -81,15 +81,15 @@ import {
     setEffectiveContentBarForMap,
 } from "./settings.js";
 import { scheduleRecompute } from "./scheduler.js";
-import { detectVibro, detectVibroFromMetadata } from "../patterns/chartVibro.js";
+import { detectVibro, detectVibroFromMetadata } from "../../patterns/chartVibro.js";
 import { resultCache, resultCacheGeneration } from "./resultCache.js";
-import { trackTelemetryAnalyze } from "./telemetry.js";
-import { toTelemetryAlgorithm, toTelemetryActualAlgorithm } from "./telemetrySpec.js";
-import { sendResult, isBridgeConnected } from "./sources/bridgeClient.js";
+import { trackTelemetryAnalyze } from "../net/telemetry.js";
+import { toTelemetryAlgorithm, toTelemetryActualAlgorithm } from "../net/telemetrySpec.js";
+import { sendResult, isBridgeConnected } from "../sources/bridgeClient.js";
 // Step 9g：壳原生端点上的瞬态抓取失败（结算/换图那一两帧读取线程正处在身份保持窗口 ⇒
 // 24062 的 `/files/beatmap/file` 404）静默重试一次，不让状态行出现 `Request failed with 404`。
 // tosu 通道不重试（判据在模块内，见 `shouldRetryNativeBeatmapFetch`）。
-import { fetchBeatmapTextWithRetry } from "./sources/beatmapFetchRetry.js";
+import { fetchBeatmapTextWithRetry } from "../sources/beatmapFetchRetry.js";
 // 区间分析（Graph Section Analysis）：选区状态、全谱原文缓存、切片器。
 // 只在桌面壳里会有非 null 的 getSectionRange()；浏览器模式下恒为 null（零行为变化）。
 import {
@@ -98,8 +98,8 @@ import {
     getSectionRange,
     notifySectionAnalysis,
     rememberFullChartText,
-} from "./graphSection/index.js";
-import { sliceOsuTextByTimeRange } from "../parser/osuTimeSlice.js";
+} from "../graph/section.js";
+import { sliceOsuTextByTimeRange } from "../../parser/osuTimeSlice.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -397,7 +397,7 @@ export function invokeCardClear() {
     cardClearHandler();
 }
 
-export { toTelemetryActualAlgorithm } from "./telemetrySpec.js";
+export { toTelemetryActualAlgorithm } from "../net/telemetrySpec.js";
 
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
