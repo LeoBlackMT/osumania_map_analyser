@@ -105,6 +105,8 @@ trap 'rm -rf "$stage"' EXIT
 # `mma-shell` 同级），再放 offsets/。壳的 plugin_dir 规则 1
 # （"exe 同级有 index.html"）因此命中。
 cp -a "$plugin_dir/." "$stage/"
+# 排除开发依赖（如 companella ORT 的 node_modules）
+find "$stage" -type d -name "node_modules" -prune -exec rm -rf {} +
 if [ -d "$root/desktop/offsets" ]; then
     cp -r "$root/desktop/offsets" "$stage/offsets"
     find "$stage/offsets" -type f -name '*.pdb' -delete
@@ -112,8 +114,9 @@ fi
 install -m 0755 "$exe" "$stage/mma-shell"
 
 # 兜底断言：开发产物与未剥离的 bridges 绝不进包
-if find "$stage" -type d \( -name .tools -o -name tests -o -name node_modules -o -name bridges \) | grep -q .; then
-    echo "refusing to package dev artefacts or unstripped bridges" >&2
+forbidden="$(find "$stage" -type d \( -name .tools -o -name tests -o -name node_modules -o -name bridges \))"
+if [ -n "$forbidden" ]; then
+    echo "refusing to package dev artefacts or unstripped bridges: $forbidden" >&2
     exit 1
 fi
 

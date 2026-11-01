@@ -1186,6 +1186,7 @@ pub fn read_songs_cfg_value(_target: &win::Target, _addr: u32) -> Option<String>
 ///
 /// 为什么需要它：`resultsScreen.hits` 是"表里有没有 `results` 段 + 活体读得到吗"两件事的
 /// 合成结果，页面只能看到 `no_hits`；把失败时的那条 gap 写进壳日志，现场才可诊断。
+#[cfg_attr(not(windows), allow(dead_code))]
 fn log_results_diagnostic(snapshot: &Snapshot, gaps: &[String]) {
     if !snapshot.is_result_state() {
         return;
