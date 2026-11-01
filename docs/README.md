@@ -42,6 +42,7 @@
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
+| [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | 非 4K 难度反馈功能文档（6K/7K 的反馈范围与侧选择、双标签拆分、去重键、门控条件） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界；§7 为独立的难度反馈数据类别：4K RC + 6K/7K） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v10**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
@@ -78,6 +79,7 @@
 | [breakings/2026-09-30-osu-native-memory.md](breakings/2026-09-30-osu-native-memory.md) | 人类/AI | osu! 原生内存传输破坏性说明（壳内只读内存读取 + 24062 tosu 兼容子集 origin、契约 v5→v6 的 `sources.osu` 端点下发、壳主窗恒落 24061、扫描提示与原生抓取重试、插件版本保持 2.1.0 不变；回滚 = `osuTransport:"tosu"` + git revert） |
 | [breakings/2026-10-17-rc-difficulty-feedback.md](breakings/2026-10-17-rc-difficulty-feedback.md) | 人类/AI | RC 难度反馈破坏性说明（默认开启、仅壳、仅 RC；页面五档条 + 壳 native 重算与 Ed25519 签名 + 独立 `feedback.db` 严格入库 + osu! API 校验/限流 + 聚合/admin/CSV + OBS 成对备份；mod 码表扩到完整 mania 表且缓存键不变；插件版本保持 2.1.0） |
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | 人类/AI | 卡片 Tab 胶囊栏与组合模式破坏性说明（`contentBar` 删除 `Full`、旧值降级 Auto；壳专属 Tab 单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 至少一个模块并按 CSS order 排列；契约/版本不变） |
+| [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | 人类/AI | LaneAcc 分轨准确度与 ScoreV1 实时转换破坏性说明（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、契约 v7→v10） |
 
 # English
 
@@ -120,6 +122,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
+| [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | Non-4K difficulty feedback document (6K/7K feedback scope and side selection, dual-label split, dedup keys, gate conditions) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries; §7 covers the separate RC difficulty feedback category) |
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; a transport-layer section: native osu source + tosu fallback + the browser-only invariant) |
 | [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v10, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
@@ -156,3 +159,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-09-30-osu-native-memory.md](breakings/2026-09-30-osu-native-memory.md) | Human/AI | osu! native memory transport breaking note (in-shell read-only memory reader plus the 24062 tosu-compatible subset origin, contract v5→v6 with `sources.osu` endpoint delivery, the main window always landing on 24061, the scan hint and the native beatmap-fetch retry, the plugin version staying 2.1.0; rollback = `osuTransport:"tosu"` + git revert) |
 | [breakings/2026-10-17-rc-difficulty-feedback.md](breakings/2026-10-17-rc-difficulty-feedback.md) | Human/AI | RC difficulty feedback breaking note (on by default, shell only, RC only; page strip + shell-side native rebuild and Ed25519 signing + a separate strict `feedback.db` + osu! API validation/limits + aggregation/admin/CSV + paired OBS backups; the mod table now covers the full mania set with unchanged cache keys; plugin version stays 2.1.0) |
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | Human/AI | Card tab capsule bar and Combined mode breaking note (`contentBar` drops `Full`, legacy value becomes Auto; shell-only tab single-section inspection, hidden when `contentBar=None`, active-tab forced recompute, `combinedMode` with at least one module ordered by CSS `order`; contract/version unchanged) |
+| [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | Human/AI | LaneAcc per-lane accuracy and live ScoreV1 conversion breaking note (Lazer raw replay frames and hit events, dual metrics, score offset section, shell-only space setting, contract v7→v10) |

@@ -58,8 +58,8 @@
  *   retry — resets writeOk = true; a failed retry must not schedule another.
  */
 
-import { socket } from "../appContext.js";
-import { getCounterPathForCommand } from "../settings.js";
+import { socket } from "../core/appContext.js";
+import { getCounterPathForCommand } from "../core/settings.js";
 import {
     PRESET_STORAGE_SETTING,
     storeFromPayload,

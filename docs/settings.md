@@ -4,6 +4,12 @@
 
 ## 中文
 
+### 注意事项
+
+- 如果你使用的是桌面壳，可以直接在Interface language将语言改为中文。
+- 如果你使用的是 tosu，则无壳设置部分，请直接跳转到[卡片设置](#卡片设置)。
+- 当无法通过图形界面调整设置时，请前往 `tosu/settings/{你插件目录的名称}.value.json`（tosu卡片设置文件）、`mma-shell-config.json`（壳设置文件）或 `mma-settings.json`（壳卡片设置文件）手动调整。
+
 ### 壳设置
 
 - **常规设置**
@@ -28,10 +34,12 @@
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
     - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
-- **壳专属卡片配置**
+- **壳专属卡片配置**（Desktop-shell card settings）
   - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
-    - 启用后可以调整模块数量，显示顺序。在复选框中勾选所需模块。至少需要勾选一个模块。
-    - 右侧可以使用上下箭头调整模块显示顺序。
+    - 启用后可以调整模块数量和显示顺序。在复选框中勾选所需模块。至少需要勾选一个模块。
+    - 右侧可以使用上下箭头调整模块顺序。
+  - **Odd-key middle lane**：决定在奇数Key中分轨Acc中间轨道的左右手分组。
+    - 在奇数Key中，选择中间轨道的数据分配到左手还是右手（即左空或右空，双空推荐选择不计入）。会影响左右手独立Acc的数据。
 
 ### 卡片设置
 
@@ -183,6 +191,12 @@
 
 ## English
 
+### Notes
+
+- If you are using the desktop shell, you can directly change the language to your preferred choice under Interface language.
+- If you are using tosu, there is no shell settings section; please jump directly to [Card Settings](#card-settings).
+- When unable to adjust settings through the graphical interface, you can manually edit `tosu/settings/{plugin_folder_name}.value.json` (tosu card settings file), `mma-shell-config.json` (shell configuration file), or `mma-settings.json` (shell card settings file).
+
 ### Shell Settings
 
 - **General Settings**:
@@ -211,6 +225,8 @@
   - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
     - Once enabled, you can adjust the number of modules and their display order. Check the boxes for the desired modules. At least one module must be selected.
     - Use the up and down arrows on the right to adjust the display order of the modules.
+  - **Odd-key middle lane**: Determines the hand grouping for the middle column in odd-key layouts for LaneAcc.
+    - In odd-key charts, choose whether middle column stats are assigned to the left hand, right hand, or excluded (independent; recommended if using thumb for spacebar). Affects per-hand independent accuracy metrics.
 
 ### Card Settings
 

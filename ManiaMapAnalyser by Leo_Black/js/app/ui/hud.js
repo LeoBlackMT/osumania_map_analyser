@@ -10,7 +10,7 @@ import {
     state,
     statusEl,
     svTagEl,
-} from "./appContext.js";
+} from "../core/appContext.js";
 
 const SV_TAG_EXIT_DURATION_MS = 220;
 let svTagHideTimerId = 0;

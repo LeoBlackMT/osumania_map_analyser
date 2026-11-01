@@ -2,9 +2,10 @@
 # 用法：.\release.ps1
 # 产物：cargo build --release → 拷贝 mma-shell.exe 到插件目录 → release/{timestamp}-{version}/ 下
 #       包含：
-#       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表 + bridges）
+#       1. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell.zip（插件 + exe + 偏移表）
 #       2. ManiaMapAnalyser-by-Leo_Black-v{version}.zip（纯插件本体）
-#       3. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell-linux.tar.gz（-SkipLinux 可跳过；
+#       3. bridges.zip（桥安装素材）
+#       4. ManiaMapAnalyser-by-Leo_Black-v{version}-with-shell-linux.tar.gz（-SkipLinux 可跳过；
 #          Linux 包也写进同一个时间戳目录，目录结构与 zip 相同）
 #
 # 反馈签名（必填）：先设置 MMA_FEEDBACK_SIGNING_SEED（64 hex）与 MMA_FEEDBACK_KEY_ID，
@@ -178,7 +179,7 @@ if (-not (Test-Path $exeSrc)) { throw "release exe missing: $exeSrc" }
 $zip = Join-Path $outDir "ManiaMapAnalyser-by-Leo_Black-v$version-with-shell.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 
-# 打包：插件目录 + exe + bridges（桥安装素材）。
+# 打包：插件目录 + exe + 偏移表（不再包含 bridges，以大幅缩减发布包体积）。
 # ⚠️ `Copy-Item -Recurse bridges` 会把**开发产物**一起装进去：NuGet 包缓存
 # （`bepinex/.tools/nuget-packages`，约 97 MB）、本地断言工程（`plugin/tests/`）与
 # `plugin/{bin,obj}/`。`.gitignore` 只管 git、**不管拷贝**，所以这里必须显式排除，
@@ -207,51 +208,20 @@ if (Test-Path $genSrc) {
     $genDst = Join-Path $offsetsStage "gen.exe"
     & rustc --edition 2021 -O -A dead_code "-Clink-arg=/MANIFEST:EMBED" "-Clink-arg=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'" -o $genDst $genSrc
     if ($LASTEXITCODE -ne 0) { throw "rustc build of gen.exe failed" }
-}
-
-$bridgesSrc = Join-Path $root "bridges"
-$bridgesDst = Join-Path $stage "bridges"
-# /E 全部子目录（含空） /XD 排除这些目录名（任意层级）
-& robocopy $bridgesSrc $bridgesDst /E /NFL /NDL /NJH /NJS /NP `
-    /XD ".tools" "bin" "obj" "tests" | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
-
-# `bepinex\plugin\` 是插件的**开发树**（5 个 .cs、.csproj、NuGet.Config、build.ps1）。
-# 安装器只读 `MMAMalodySelection.dll`（install-bridge.ps1 的 $BridgeDllRel）；LICENSE 是
-# 该 DLL 的 MIT 归属声明、NOTICES.md 是它的来源与复现说明，两者必须随二进制分发。
-# 其余文件对用户没有任何用途，只留这三份。
-$pluginStage = Join-Path $bridgesDst "malody\bepinex\plugin"
-$pluginShip = @('MMAMalodySelection.dll', 'LICENSE', 'NOTICES.md')
-Get-ChildItem -LiteralPath $pluginStage -File |
-    Where-Object { $_.Name -notin $pluginShip } |
-    Remove-Item -Force
-
-# 兜底断言：开发产物一个都不许进包
-$forbidden = Get-ChildItem $stage -Recurse -Directory |
-    Where-Object { $_.Name -in @('.tools', 'tests', 'node_modules') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
-if ($forbidden) {
-    throw ("refusing to package dev artefacts: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
-}
-
-# 兜底断言：插件目录里只该有那三份安装素材。将来若有人往 plugin/ 里加了新文件又被拷进包，
-# 这里会直接失败，而不是把开发文件悄悄发给用户。
-$shippedPluginFiles = @(Get-ChildItem -LiteralPath $pluginStage -File | Select-Object -ExpandProperty Name | Sort-Object)
-if (($shippedPluginFiles -join ',') -ne (($pluginShip | Sort-Object) -join ',')) {
-    throw ("unexpected files in the packaged plugin folder: " + ($shippedPluginFiles -join ', '))
-}
-
-# 兜底断言：安装素材必须随包分发。加载器与 Unity 参考程序集都是 gitignore 的
-# 本地资产，插件 DLL 由 build.ps1 落盘——缺任何一个，安装器都会拒绝安装，
-# 用户拿到的就是一个装不上的包。
-$required = @(
-    'bridges\malody\bepinex\loader\bepinex-il2cpp-788.zip',
-    'bridges\malody\bepinex\unity-libs\2022.3.62.zip',
-    'bridges\malody\bepinex\plugin\MMAMalodySelection.dll'
-)
-foreach ($rel in $required) {
-    if (-not (Test-Path -LiteralPath (Join-Path $stage $rel) -PathType Leaf)) {
-        throw "release package is missing a required asset: $rel"
+    $genPdb = Join-Path $offsetsStage "gen.pdb"
+    if (Test-Path -LiteralPath $genPdb) {
+        Remove-Item -LiteralPath $genPdb -Force
     }
+}
+if (Test-Path (Join-Path $stage "offsets")) {
+    Get-ChildItem -Path (Join-Path $stage "offsets") -Filter "*.pdb" -Recurse | Remove-Item -Force
+}
+
+# 兜底断言：开发产物与未剥离的 bridges 绝不进主包
+$forbidden = Get-ChildItem $stage -Recurse -Directory |
+    Where-Object { $_.Name -in @('.tools', 'tests', 'node_modules', 'bridges') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
+if ($forbidden) {
+    throw ("refusing to package dev artefacts or bridges: " + (($forbidden | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }) -join ', '))
 }
 
 Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
@@ -272,6 +242,65 @@ Remove-Item -Recurse -Force $pluginStage
 
 $pluginMb = [math]::Round((Get-Item $pluginOnlyZip).Length / 1MB, 1)
 Write-Host "released (plugin only): $pluginOnlyZip ($pluginMb MB)"
+
+# 独立 bridges 包（bridges.zip）
+# 桥安装素材（Etterna 与 Malody V）独立打包分发，减少主发布包体积。大部分玩家用不到 bridges。
+$bridgesZip = Join-Path $outDir "bridges.zip"
+if (Test-Path $bridgesZip) { Remove-Item $bridgesZip }
+
+$bridgesStage = Join-Path $env:TEMP "mma-bridges-stage-$PID"
+if (Test-Path $bridgesStage) { Remove-Item -Recurse -Force $bridgesStage }
+$bridgesDst = Join-Path $bridgesStage "bridges"
+New-Item -ItemType Directory -Path $bridgesDst -Force | Out-Null
+
+$bridgesSrc = Join-Path $root "bridges"
+# /E 全部子目录（含空） /XD 排除这些目录名（任意层级）
+& robocopy $bridgesSrc $bridgesDst /E /NFL /NDL /NJH /NJS /NP /XD ".tools" "bin" "obj" "tests" | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
+
+# `bepinex\plugin\` 是插件的开发树（5 个 .cs、.csproj、NuGet.Config、build.ps1）。
+# 安装器只读 `MMAMalodySelection.dll`（install-bridge.ps1 的 $BridgeDllRel）；LICENSE 是
+# 该 DLL 的 MIT 归属声明、NOTICES.md 是它的来源与复现说明，两者必须随二进制分发。
+# 其余文件对用户没有任何用途，只留这三份。
+$pluginStage = Join-Path $bridgesDst "malody\bepinex\plugin"
+$pluginShip = @('MMAMalodySelection.dll', 'LICENSE', 'NOTICES.md')
+Get-ChildItem -LiteralPath $pluginStage -File |
+    Where-Object { $_.Name -notin $pluginShip } |
+    Remove-Item -Force
+
+# 兜底断言：开发产物一个都不许进包
+$forbiddenBridges = Get-ChildItem $bridgesStage -Recurse -Directory |
+    Where-Object { $_.Name -in @('.tools', 'tests', 'node_modules') -or ($_.Name -in @('bin', 'obj') -and $_.FullName -like '*bepinex*') }
+if ($forbiddenBridges) {
+    throw ("refusing to package dev artefacts in bridges: " + (($forbiddenBridges | ForEach-Object { $_.FullName.Substring($bridgesStage.Length + 1) }) -join ', '))
+}
+
+# 兜底断言：插件目录里只该有那三份安装素材。将来若有人往 plugin/ 里加了新文件又被拷进包，
+# 这里会直接失败，而不是把开发文件悄悄发给用户。
+$shippedPluginFiles = @(Get-ChildItem -LiteralPath $pluginStage -File | Select-Object -ExpandProperty Name | Sort-Object)
+if (($shippedPluginFiles -join ',') -ne (($pluginShip | Sort-Object) -join ',')) {
+    throw ("unexpected files in the packaged plugin folder: " + ($shippedPluginFiles -join ', '))
+}
+
+# 兜底断言：安装素材必须随包分发。加载器与 Unity 参考程序集都是 gitignore 的
+# 本地资产，插件 DLL 由 build.ps1 落盘——缺任何一个，安装器都会拒绝安装，
+# 用户拿到的就是一个装不上的包。
+$required = @(
+    'bridges\malody\bepinex\loader\bepinex-il2cpp-788.zip',
+    'bridges\malody\bepinex\unity-libs\2022.3.62.zip',
+    'bridges\malody\bepinex\plugin\MMAMalodySelection.dll'
+)
+foreach ($rel in $required) {
+    if (-not (Test-Path -LiteralPath (Join-Path $bridgesStage $rel) -PathType Leaf)) {
+        throw "bridges package is missing a required asset: $rel"
+    }
+}
+
+Compress-Archive -Path (Join-Path $bridgesStage "bridges") -DestinationPath $bridgesZip -Force
+Remove-Item -Recurse -Force $bridgesStage
+
+$bridgesMb = [math]::Round((Get-Item $bridgesZip).Length / 1MB, 1)
+Write-Host "released (bridges):     $bridgesZip ($bridgesMb MB)"
 
 if (-not $SkipLinux) {
     Write-Host "Building Linux package (set -SkipLinux to skip)..."

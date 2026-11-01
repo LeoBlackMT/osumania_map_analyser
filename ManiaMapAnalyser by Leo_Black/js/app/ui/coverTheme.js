@@ -8,7 +8,7 @@
 // analysis.js 取 .osu 文件用的 /files/beatmap/file 同源，所以 canvas 读像素
 // 不会被跨域污染；即便被污染（异源打开），也只是取色失败退默认，封面仍可显示。
 
-import { getSocketHost, state } from "./appContext.js";
+import { getSocketHost, state } from "../core/appContext.js";
 
 const DEFAULT_ACCENT = "#232f5d";
 

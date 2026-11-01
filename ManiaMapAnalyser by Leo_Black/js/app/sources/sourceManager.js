@@ -22,9 +22,9 @@
 // 挂起 osu 的 identity/mod 写与 recompute（信号部分照常应用），并缓冲最后
 // 一条 tosu 包，切回 osu 时先回放再 recompute（缓存键对齐）。
 
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
-import { updateCardPlayVisibility } from "../hud.js";
+import { updateCardPlayVisibility } from "../ui/hud.js";
 
 const FRESH_WINDOW_MS = 60000;
 const DEBOUNCE_MS = 200;

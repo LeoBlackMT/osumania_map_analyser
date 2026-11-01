@@ -4,7 +4,7 @@
 // 注意：这里只是"该不该问"，真正的客观字段由 shell 从 native 快照重算并签名，
 // 后端还会再校验一次，因此页面侧宁可严格。
 
-import { extractCounts } from "../livePpCounts.js";
+import { extractCounts } from "../live/livePpCounts.js";
 import {
     ALLOWED_MODE_TAGS_6K7K,
     ALLOWED_MOD_CODES,

@@ -1,6 +1,6 @@
 // Shared threshold logic (js/patterns/config.js) re-exported for the
 // browser side; analysis.js imports it from here.
-export { modeTagFromLnRatio } from "../patterns/config.js";
+export { modeTagFromLnRatio } from "../../patterns/config.js";
 
 export function normalizeClientStateName(value) {
     return String(value || "")

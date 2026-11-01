@@ -18,12 +18,12 @@ import {
     GRAPH_VIEWBOX_WIDTH,
     forEachGraphView,
     state,
-} from "../appContext.js";
-import { clientXToViewBoxX } from "../graphMath.js";
-import { setGraphClearedHandler } from "../graph.js";
+} from "../core/appContext.js";
+import { clientXToViewBoxX } from "./math.js";
+import { setGraphClearedHandler } from "./index.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
-import { scheduleRecompute } from "../scheduler.js";
-import { paintSectionOverlay } from "./overlay.js";
+import { scheduleRecompute } from "../core/scheduler.js";
+import { paintSectionOverlay } from "./sectionOverlay.js";
 
 const PLOT_WIDTH = GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X;
 const MIN_DRAG_VIEWBOX = 1.5;

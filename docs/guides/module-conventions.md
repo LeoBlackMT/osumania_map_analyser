@@ -89,7 +89,7 @@ Worker 创建与资源路径解析必须用 `new URL(specifier, import.meta.url)
 
 ### 9. 版本号一致性
 
-`index.js` 内部版本（`index.js:4` `_VERSION`）必须与 `metadata.txt` 外部版本（`metadata.txt:6` `Version`）一致（当前均为 `2.1.0`）。发布新版本时两处同步修改——`metadata.txt` 版本暴露给 tosu 插件管理界面，`_VERSION` 供插件内部判断更新。
+`index.js` 内部版本（`index.js:4` `_VERSION`）必须与 `metadata.txt` 外部版本（`metadata.txt:6` `Version`）一致（当前均为 `3.0.0`）。发布新版本时两处同步修改——`metadata.txt` 版本暴露给 tosu 插件管理界面，`_VERSION` 供插件内部判断更新。
 
 - 依据：`CLAUDE.md:65`
 

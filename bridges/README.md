@@ -1,5 +1,7 @@
 # 游戏桥接组件说明
 
+> English Version [below](#game-bridge-documentation)
+
 本目录包含用于将外部游戏数据对接到桌面壳（mma-shell）的桥接文件与安装脚本。
 
 当前支持的游戏数据源：
@@ -16,6 +18,29 @@ Windows 用户推荐使用目录下的交互式脚本进行安装或卸载：
   ```powershell
   powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1 -Chinese
   ```
+
+注意：请将此目录与 `mma-shell.exe` 同级放置。正确的目录结构如下：
+
+```text
+ManiaMapAnalyser/
+├── mma-shell.exe           # 桌面壳主程序
+├── offsets/                # 内存偏移表目录
+├── bridges/                # 游戏桥接组件目录（解压自 bridges.zip）
+│   ├── install-bridge-zh.bat
+│   ├── install-bridge.bat
+│   ├── install-bridge.ps1
+│   ├── etterna/
+│   │   ├── mma_bridge.lua
+│   │   └── mma_gameplay.lua
+│   └── malody/
+│       ├── mma_editor.lua
+│       └── bepinex/
+│           ├── loader/
+│           ├── unity-libs/
+│           └── plugin/
+│               └── MMAMalodySelection.dll
+└── ...
+```
 
 安装器功能：
 - 自动检测正在运行的游戏、环境变量、Steam 库及常见安装路径。如果未检测到，支持手动浏览选择或输入路径。
@@ -69,13 +94,11 @@ Windows 用户推荐使用目录下的交互式脚本进行安装或卸载：
 5. 启动桌面壳后再启动游戏，切换谱面即可自动接收数据。
 6. 如需卸载，删除 `BepInEx/plugins/MalodyInsight/MMAMalodySelection.dll` 即可。
 
-### 4. Malody 4.3.7
-
-Malody 4.3.7 数据源由桌面壳在外部进行状态读取，游戏目录内不需要放置任何文件。只需在 `mma-shell-config.json` 中将 `malody4Root` 设置为游戏目录路径，启动游戏和桌面壳后即可自动跟随。
-
 ---
 
 # Game Bridge Documentation
+
+> [Chinese version above](#游戏桥接组件说明)
 
 This directory contains bridge files and installation scripts used to feed song and gameplay data from external rhythm games into the desktop shell (mma-shell).
 
@@ -93,6 +116,29 @@ Windows users can use the interactive script in this directory to install or uni
   ```powershell
   powershell -NoProfile -ExecutionPolicy Bypass -File install-bridge.ps1
   ```
+
+Note: Please place this directory in the same folder as `mma-shell.exe`. The expected layout is:
+
+```text
+ManiaMapAnalyser/
+├── mma-shell.exe           # Desktop shell executable
+├── offsets/                # Memory offset tables directory
+├── bridges/                # Bridge files directory (from bridges.zip)
+│   ├── install-bridge-zh.bat
+│   ├── install-bridge.bat
+│   ├── install-bridge.ps1
+│   ├── etterna/
+│   │   ├── mma_bridge.lua
+│   │   └── mma_gameplay.lua
+│   └── malody/
+│       ├── mma_editor.lua
+│       └── bepinex/
+│           ├── loader/
+│           ├── unity-libs/
+│           └── plugin/
+│               └── MMAMalodySelection.dll
+└── ...
+```
 
 Installer capabilities:
 - Automatically detects running games, environment variables, Steam libraries, and common installation folders. If not detected, manual folder selection and path input are supported.
@@ -145,7 +191,3 @@ With the in-game song selection bridge, the overlay follows chart selection, gam
 4. In `mma-shell-config.json`, set `malodyRoot` to your Malody V directory.
 5. Start the desktop shell before launching the game. As you scroll through charts in game, the card updates automatically.
 6. To uninstall, delete `BepInEx/plugins/MalodyInsight/MMAMalodySelection.dll`.
-
-### 4. Malody 4.3.7
-
-Malody 4.3.7 is observed by the desktop shell externally, requiring no files inside the game folder. Set `malody4Root` in `mma-shell-config.json` to the game folder path, and launch both the game and the shell to start tracking.

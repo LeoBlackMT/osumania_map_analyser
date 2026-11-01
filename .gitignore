@@ -38,3 +38,5 @@ desktop/offsets/gen
 # never committed. The public key is configured on the server only.
 .secrets/
 *.feedback-seed
+
+.local/

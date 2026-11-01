@@ -21,14 +21,14 @@
  * DOM this page does not have.
  */
 
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 import { applySnapshot } from "../presets/snapshot.js";
 import { initPresets, setPresetTransport } from "../presets/core.js";
 import { loadBuiltinPresets } from "../presets/builtin.js";
 import { loadSettingsSchema } from "../presets/schema.js";
 import { initBridgeClient } from "../sources/bridgeClient.js";
 import { applyShellState as applyShellStateFrame } from "../sources/shellState.js";
-import { LINK_COPIED_NOTICE } from "../externalLink.js";
+import { LINK_COPIED_NOTICE } from "../net/externalLink.js";
 import { createShellPresetTransport } from "./shellTransport.js";
 import { createSettingsForm } from "./settingsForm.js";
 import { createSettingsLinks } from "./settingsLinks.js";

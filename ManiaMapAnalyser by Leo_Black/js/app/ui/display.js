@@ -15,7 +15,7 @@ import {
     STAR_TEXT_STOPS,
     starTipEl,
     state,
-} from "./appContext.js";
+} from "../core/appContext.js";
 
 const NUMERIC_ANIMATION_DURATION_MS = 400;
 const ITEM_STAGGER_DELAY_MS = 80;

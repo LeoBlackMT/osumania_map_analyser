@@ -12,7 +12,7 @@
  * to the clipboard + `onCopied()` when the shell webview blocks `window.open`.
  */
 
-import { openExternalLink } from "../externalLink.js";
+import { openExternalLink } from "../net/externalLink.js";
 
 /**
  * Link ids this page does not offer (the sibling exclusion of `EXCLUDED_KEYS`

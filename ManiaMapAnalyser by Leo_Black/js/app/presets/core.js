@@ -4,7 +4,7 @@
  * the exported state/action API and onPresetsChanged notifications.
  */
 
-import { state } from "../appContext.js";
+import { state } from "../core/appContext.js";
 import {
     loadSettingsSchema,
     buildDefaultSnapshot,

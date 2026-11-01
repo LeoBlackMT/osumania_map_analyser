@@ -6,7 +6,7 @@
 //     由 isShellConfigPayload() 辨别后直接应用，不额外轮询。
 // 浏览器/OBS 页面不会调用这里（调用方先判 isShellRuntime）。
 
-import { isShellRuntime } from "./feedback/feedbackSpec.js";
+import { isShellRuntime } from "../feedback/feedbackSpec.js";
 
 export const SHELL_CONFIG_URL = "http://127.0.0.1:24061/shell-config";
 

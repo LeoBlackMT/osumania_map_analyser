@@ -1,3 +1,11 @@
+import {
+    clamp,
+    safeDiv,
+    fmt4,
+    piecewiseLinear,
+    quantileFromSorted,
+    powerMean,
+} from "./estimatorMath.js";
 import { OsuFileParser } from "../parser/osuFileParser.js";
 import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
@@ -193,32 +201,13 @@ function buildErrorResult(code, message, extras = {}) {
     };
 }
 
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-}
 
-function safeDiv(a, b, fallback = 0) {
-    if (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(b) < 1e-9) return fallback;
-    return a / b;
-}
 
-function fmt4(value) {
-    return Number.isFinite(value) ? Number(value.toFixed(4)) : null;
-}
 
-function piecewiseLinear(x, knots, valueCol = 1) {
-    const v = Number(x);
-    if (!Number.isFinite(v) || !Array.isArray(knots) || knots.length === 0) return v;
-    if (v <= knots[0][0]) return knots[0][valueCol];
-    const last = knots.length - 1;
-    if (v >= knots[last][0]) return knots[last][valueCol];
-    for (let i = 0; i < last; i += 1) {
-        const x0 = knots[i][0], y0 = knots[i][valueCol];
-        const x1 = knots[i + 1][0], y1 = knots[i + 1][valueCol];
-        if (v >= x0 && v <= x1) return y0 + safeDiv((v - x0) * (y1 - y0), x1 - x0, 0);
-    }
-    return v;
-}
+
+
+
+
 
 function piecewiseBlock(x, blocks) {
     const v = Number(x);
@@ -287,29 +276,9 @@ function estimateSunnyNumeric(result) {
     return Number(clamp(numeric, -2, 20).toFixed(2));
 }
 
-function quantileFromSorted(sortedValues, q) {
-    if (!sortedValues.length) {
-        return 0;
-    }
 
-    const t = clamp(Number(q), 0, 1) * (sortedValues.length - 1);
-    const left = Math.floor(t);
-    const right = Math.min(sortedValues.length - 1, left + 1);
-    const w = t - left;
-    return (sortedValues[left] * (1 - w)) + (sortedValues[right] * w);
-}
 
-function powerMean(values, p) {
-    if (!values.length) {
-        return 0;
-    }
 
-    let acc = 0;
-    for (const value of values) {
-        acc += Math.pow(Math.max(value, 0), p);
-    }
-    return Math.pow(acc / values.length, 1 / p);
-}
 
 function buildTapNotes(parsed) {
     const taps = [];

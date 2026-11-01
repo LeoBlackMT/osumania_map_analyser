@@ -5,7 +5,7 @@
 #   sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
 #     libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 # 产物：cargo build --release → release/ 下插件 tar.gz
-#       （含 mma-shell（保留执行位）、插件目录与 bridges 安装素材；开发产物与插件源码不入包）。
+#       （含 mma-shell（保留执行位）、插件目录与 offsets；bridges 已独立打包）。
 #       release.ps1 会用 MMA_RELEASE_DIR 把 tar.gz 放进同一个 `release/{timestamp}-{version}/`。
 #
 # 反馈签名（必填）：MMA_FEEDBACK_SIGNING_SEED（64 hex）+ MMA_FEEDBACK_KEY_ID，
@@ -98,49 +98,30 @@ mkdir -p "$out_dir"
 tarball="$out_dir/ManiaMapAnalyser-by-Leo_Black-v$version-with-shell-linux.tar.gz"
 rm -f "$tarball"
 
-# 打包：插件目录 + mma-shell + bridges（桥安装素材；二进制保留执行位）。
+# 打包：插件目录 + mma-shell + offsets（二进制保留执行位；bridges 已独立打包）。
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 # 与 Windows zip 相同的目录结构：**插件内容直接放在包根**（`index.html` 与
-# `mma-shell` 同级），再放 bridges/ 与 offsets/。壳的 plugin_dir 规则 1
-# （"exe 同级有 index.html"）因此命中；历史包多套了一层
-# `ManiaMapAnalyser by Leo_Black/`，与 Windows 布局不一致。
+# `mma-shell` 同级），再放 offsets/。壳的 plugin_dir 规则 1
+# （"exe 同级有 index.html"）因此命中。
 cp -a "$plugin_dir/." "$stage/"
-cp -r "$root/bridges" "$stage/bridges"
+# 排除开发依赖（如 companella ORT 的 node_modules）
+find "$stage" -type d -name "node_modules" -prune -exec rm -rf {} +
 if [ -d "$root/desktop/offsets" ]; then
     cp -r "$root/desktop/offsets" "$stage/offsets"
+    find "$stage/offsets" -type f -name '*.pdb' -delete
 fi
 install -m 0755 "$exe" "$stage/mma-shell"
 
-# ⚠️ 开发产物一律不入包：NuGet 包缓存（`bepinex/.tools/nuget-packages`，约 97 MB）、
-# 本地断言工程（`plugin/tests/`）与 `plugin/{bin,obj}/`。`.gitignore` 只管 git、不管拷贝。
-# 与 release.ps1 的 robocopy /XD 同一份规则：按目录名排除，任意层级生效。
-find "$stage/bridges" -type d \( -name .tools -o -name bin -o -name obj -o -name tests \) -prune -exec rm -rf {} +
-
-# `bepinex/plugin/` 是插件的**开发树**（5 个 .cs、.csproj、NuGet.Config、build.ps1）。
-# 安装器只读 MMAMalodySelection.dll（install-bridge.ps1 的 $BridgeDllRel）；LICENSE 是该 DLL
-# 的 MIT 归属声明、NOTICES.md 是它的来源与复现说明，两者必须随二进制分发。其余文件对用户
-# 没有任何用途，只留这三份（与 release.ps1 的 $pluginShip 同一份清单）。
-find "$stage/bridges/malody/bepinex/plugin" -maxdepth 1 -type f \
-    ! -name 'MMAMalodySelection.dll' ! -name 'LICENSE' ! -name 'NOTICES.md' -delete
-
-# 兜底断言：安装素材必须随包分发。加载器与 Unity 参考程序集都是 gitignore 的本地资产，
-# 插件 DLL 由 build.ps1 落盘——缺任何一个，安装器都会拒绝安装。
-for rel in \
-    bridges/malody/bepinex/loader/bepinex-il2cpp-788.zip \
-    bridges/malody/bepinex/unity-libs/2022.3.62.zip \
-    bridges/malody/bepinex/plugin/MMAMalodySelection.dll ; do
-    if [ ! -f "$stage/$rel" ]; then
-        echo "release package is missing a required asset: $rel" >&2
-        exit 1
-    fi
-done
+# 兜底断言：开发产物与未剥离的 bridges 绝不进包
+forbidden="$(find "$stage" -type d \( -name .tools -o -name tests -o -name node_modules -o -name bridges \))"
+if [ -n "$forbidden" ]; then
+    echo "refusing to package dev artefacts or unstripped bridges: $forbidden" >&2
+    exit 1
+fi
 
 # 包内目录结构与 Windows zip 保持一致：没有外层包装目录，条目直接是
-# `ManiaMapAnalyser by Leo_Black/…`、`bridges/…`、`mma-shell`、`offsets/…`。
-# （`tar -C "$stage" .` 会写成 `./…` 并附带一个 `./` 条目，部分解压工具会把它
-# 当成隐藏根目录，和 zip 不一致。）`find -printf %P` 去掉 `./` 前缀，且用 NUL
-# 分隔，路径里的空格不会把文件名拆坏。
+# `index.html` 等插件文件、`mma-shell`、`offsets/…`。
 ( cd "$stage" && find . -mindepth 1 -maxdepth 1 -printf '%P\0' | tar --null -czf "$tarball" -T - )
 
 echo "released: $tarball"

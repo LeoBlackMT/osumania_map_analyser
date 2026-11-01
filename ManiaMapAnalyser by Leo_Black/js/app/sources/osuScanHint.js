@@ -26,7 +26,7 @@
 //   （等壳下发新相位值）。回落到 tosu 时的帧不算（见 `noteOsuScanPayloadArrival`）。
 // - **只在壳页**（24061）：浏览器 tosu 页 / 无壳页一律不提示（壳的读取器与它无关）。
 
-import { isRuntimeOsuOverrideActive, isShellPage, osuScanHintEl, state } from "../appContext.js";
+import { isRuntimeOsuOverrideActive, isShellPage, osuScanHintEl, state } from "../core/appContext.js";
 import {
     createOsuScanLatch,
     deriveOsuScanHint,

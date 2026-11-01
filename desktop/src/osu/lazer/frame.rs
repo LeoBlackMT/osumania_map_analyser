@@ -725,6 +725,7 @@ pub fn read_tick(
 /// 把 play 帧的 `SelectedMods` 带到结算屏（lazer 会在结算时清空它）。
 ///
 /// 返回 `true` 表示结算屏且没有任何 play 帧可证明 mods，调用方补一条 gap。
+#[cfg_attr(not(windows), allow(dead_code))]
 fn carry_lazer_mods(
     state: Option<&str>,
     mods: &mut Option<Vec<LazerMod>>,

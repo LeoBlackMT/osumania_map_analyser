@@ -17,9 +17,9 @@
 //   **唯一写入者**（判定与桥事件异步，只放 state 帧会有竞态）；
 // - 归属：带 `screen` 的帧把 `state.cardOwner` 置为 `"malody-bridge"`（必须在 notifySourceEvent 之后）。
 
-import { state } from "../appContext.js";
-import { scheduleRecompute } from "../scheduler.js";
-import { resetContentBarTabOverride } from "../settings.js";
+import { state } from "../core/appContext.js";
+import { scheduleRecompute } from "../core/scheduler.js";
+import { resetContentBarTabOverride } from "../core/settings.js";
 import { convertSmSscToOsuText } from "../../parser/smSscToOsuConverter.js";
 import { convertMcToOsuText } from "../../parser/mcToOsuConverter.js";
 import { computeOd } from "../../parser/judgeOdTable.js";
@@ -27,9 +27,9 @@ import { resolveOd } from "./odResolver.js";
 import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
-import { setStatus, updateCardPlayVisibility } from "../hud.js";
-import { clearSection, isSameBeatmapIdentity } from "../graphSection/index.js";
-import { laneAccView } from "../laneAcc/view.js";
+import { setStatus, updateCardPlayVisibility } from "../ui/hud.js";
+import { clearSection, isSameBeatmapIdentity } from "../graph/section.js";
+import { laneAccView } from "../ui/laneAcc/view.js";
 
 function looksLikeOsu(text) {
     return typeof text === "string"

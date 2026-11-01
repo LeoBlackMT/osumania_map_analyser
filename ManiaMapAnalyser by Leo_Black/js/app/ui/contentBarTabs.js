@@ -5,8 +5,8 @@
 // 任何指针/焦点活动都会立即恢复。交互刻意收窄为 click（左键）——不挂
 // wheel/touch/键盘/拖拽，避免在游戏或选歌时误触。
 
-import { contentBarTabsEl, getActiveContentBar, mainCardEl, state } from "./appContext.js";
-import { isShellRuntime } from "./feedback/feedbackSpec.js";
+import { contentBarTabsEl, getActiveContentBar, mainCardEl, state } from "../core/appContext.js";
+import { isShellRuntime } from "../feedback/feedbackSpec.js";
 
 /** 卡片无 hover/操作多久后淡化胶囊栏。 */
 const TAB_IDLE_FADE_MS = 3000;
