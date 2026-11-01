@@ -906,6 +906,7 @@ struct ScoreOffsets {
     replay_actions: u64,
     actions_items: u64,
     actions_size: u64,
+    score_result_counts: Option<u64>,
     player_type: String,
     sample_count: usize,
     chain_matches: usize,
@@ -928,6 +929,9 @@ impl ScoreOffsets {
             self.sample_count,
             self.chain_matches
         );
+        if let Some(counts) = self.score_result_counts {
+            text.push_str(&format!("; ScoreProcessor.ScoreResultCounts@+0x{:X}", counts));
+        }
         if self.player_score != 0 {
             text.push_str(&format!(
                 "; Player.Score@+0x{:X}, Score.Replay@+0x{:X}, Frames@+0x{:X}, Time@+0x{:X}, Actions@+0x{:X} (items@+0x{:X}, size@+0x{:X}); replay_samples={}",
@@ -945,8 +949,12 @@ impl ScoreOffsets {
     }
 
     fn to_json(&self) -> String {
+        let counts_json = match self.score_result_counts {
+            Some(off) => format!(r#","score_result_counts":{off}"#),
+            None => String::new(),
+        };
         format!(
-            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"player_score":{},"score_replay":{},"replay_frames":{},"replay_time":{},"replay_actions":{},"actions_items":{},"actions_size":{},"witness":"{}"}}"#,
+            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"player_score":{},"score_replay":{},"replay_frames":{},"replay_time":{},"replay_actions":{},"actions_items":{},"actions_size":{}{counts_json},"witness":"{}"}}"#,
             self.player_score_processor,
             self.hit_events,
             self.hit_object,
@@ -1077,6 +1085,22 @@ fn discover_score(
                     continue;
                 };
                 let rank = valid * 10 + chain;
+                let mut discovered_score_result_counts = None;
+                for offset in (0x8..=0x800).step_by(8) {
+                    let Some(dict) = read_ptr(handle, score_processor + offset) else { continue };
+                    if !is_valid_ptr(dict) { continue; }
+                    let Some(tname) = resolver.name(dict) else { continue };
+                    if !tname.contains("Dictionary") { continue; }
+                    let Some(next_dict) = read_ptr(handle, score_processor + offset + 8) else { continue };
+                    if !is_valid_ptr(next_dict) { continue; }
+                    let Some(next_tname) = resolver.name(next_dict) else { continue };
+                    if !next_tname.contains("Dictionary") { continue; }
+                    discovered_score_result_counts = Some(offset);
+                    break;
+                }
+                if discovered_score_result_counts.is_none() && list_offset >= 16 {
+                    discovered_score_result_counts = Some(list_offset - 16);
+                }
                 let found = ScoreOffsets {
                     player_score_processor: player_offset,
                     hit_events: list_offset,
@@ -1092,6 +1116,7 @@ fn discover_score(
                     replay_actions: 0x18,
                     actions_items: 0x08,
                     actions_size: 0x10,
+                    score_result_counts: discovered_score_result_counts,
                     player_type: score_processor_type.clone(),
                     sample_count: valid,
                     chain_matches: chain,

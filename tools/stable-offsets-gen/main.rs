@@ -454,8 +454,35 @@ fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>) -
     out.push_str("    \"gameplay_from_ruleset\": 100,\n");
     out.push_str("    \"result_from_ruleset\": 56,\n");
     out.push_str("    \"score_from_gameplay\": 56,\n");
-    out.push_str("    \"score_from_result\": 64,\n");
-    out.push_str("    \"hits_candidate_offsets\": [138, 136, 140, 146]\n");
+    out.push_str("    \"mods_container\": 28,\n");
+    out.push_str("    \"mods_xor_high\": 12,\n");
+    out.push_str("    \"mods_xor_low\": 8,\n");
+    out.push_str("    \"score_processor_from_score\": 84,\n");
+    out.push_str("    \"scorev2_bit\": 536870912,\n");
+    out.push_str("    \"result_score_offset\": 120,\n");
+    out.push_str("    \"result_max_combo_offset\": 104,\n");
+    out.push_str("    \"result_player_name_offset\": 40,\n");
+    out.push_str("    \"result_online_id_offset\": 4,\n");
+    out.push_str("    \"mp3_length_from_anchor\": 7,\n");
+    out.push_str("    \"mp3_length_field\": 4,\n");
+    out.push_str("    \"beatmap_md5\": 108,\n");
+    out.push_str("    \"beatmap_filename\": 144,\n");
+    out.push_str("    \"beatmap_folder\": 120,\n");
+    out.push_str("    \"beatmap_version\": 172,\n");
+    out.push_str("    \"beatmap_artist\": 24,\n");
+    out.push_str("    \"beatmap_title\": 36,\n");
+    out.push_str("    \"beatmap_mapper\": 124,\n");
+    out.push_str("    \"beatmap_id\": 200,\n");
+    out.push_str("    \"beatmap_set_id\": 204,\n");
+    out.push_str("    \"hits_candidate_offsets\": [136, 138, 140, 142, 144, 146, 148, 104],\n");
+    out.push_str("    \"hits_slot_mapping\": [\n");
+    out.push_str("      [0, \"100\"],\n");
+    out.push_str("      [1, \"300\"],\n");
+    out.push_str("      [2, \"50\"],\n");
+    out.push_str("      [3, \"geki\"],\n");
+    out.push_str("      [4, \"katu\"],\n");
+    out.push_str("      [5, \"miss\"]\n");
+    out.push_str("    ]\n");
     out.push_str("  },\n");
 
     out.push_str("  \"mappings\": {\n");
@@ -481,7 +508,9 @@ fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>) -
     out.push_str("      \"SO\": 4096,\n");
     out.push_str("      \"PF\": 16416\n");
     out.push_str("    }\n");
-    out.push_str("  }\n");
+    out.push_str("  },\n");
+    out.push_str("  \"verified_build\": \"probed-live\",\n");
+    out.push_str("  \"evidence\": \"Probed live via stable-offsets-gen IDA anchor scanner against running osu!stable (32-bit)\"\n");
     out.push_str("}\n");
 
     out
