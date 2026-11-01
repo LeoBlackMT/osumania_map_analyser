@@ -240,6 +240,9 @@ function parseHitObjects(lines) {
             out.push({ kind: "HitCircle", X: x, Time: time });
         }
     }
+    // [HitObjects] 在文件规范上不保证单调时间序（部分第三方转换器或手写拼接谱面存在乱序）
+    // convertHitObjects 依赖时间单调递增，此处进行稳定排序
+    out.sort((a, b) => a.Time - b.Time);
     return out;
 }
 
