@@ -1,5 +1,4 @@
 import {
-    hasAnyGraphModeEnabled,
     MOD_BIT_FLAG_ENTRIES,
     NOTE_END_MARGIN_MS,
     PAUSE_DETECT_EPSILON_MS,
@@ -24,7 +23,6 @@ import {
     addPauseMarker,
     refreshGraphTimeline,
     resetPauseRuntime,
-    updateGraphCursor,
 } from "../graph/index.js";
 import { updateCardPlayVisibility } from "../ui/hud.js";
 import { scheduleRecompute } from "../core/scheduler.js";
@@ -101,11 +99,8 @@ function updateSongTimeState(data) {
         state.prevSongTimeReceiveTs = now;
         state.songTimeMs = scaledLiveTimeMs;
         state.songTimeReceiveTs = now;
+        state.songTimeLastMoveAt = now;
         state.frozenInterpMs = scaledLiveTimeMs;
-
-        if (hasAnyGraphModeEnabled()) {
-            updateGraphCursor(state.songTimeMs);
-        }
         return;
     }
 
@@ -158,18 +153,25 @@ function updateSongTimeState(data) {
         state.frozenInterpMs = state.songTimeMs;
     }
 
-    state.prevSongTimeMs = previousTime;
-    state.prevSongTimeReceiveTs = state.songTimeReceiveTs;
-    state.songTimeMs = scaledLiveTimeMs;
-    state.songTimeReceiveTs = now;
+    // 原生读取器按 150ms 推包，但谱面时钟的更新粒度更粗：连续两包可能给出
+    // 完全相同的 live 时间。旧写法把「重复样本」也当成新锚点（delta=0），
+    // 图表插值速率随即变 0，下一包再跳一大步 → 游标 10→11→10→11 抖动。
+    // 只有时钟真的前进/回跳时才滚动基准；重复样本继续沿用上一次正向速率。
+    const movedForward = scaledLiveTimeMs > previousTime;
+    const jumped = Math.abs(scaledLiveTimeMs - previousTime) > SONG_TIME_JUMP_THRESHOLD_MS;
+    if (movedForward || jumped) {
+        state.prevSongTimeMs = previousTime;
+        state.prevSongTimeReceiveTs = state.songTimeReceiveTs;
+        state.songTimeMs = scaledLiveTimeMs;
+        state.songTimeReceiveTs = now;
+        state.songTimeLastMoveAt = now;
+    }
+    // 重复样本（时钟粒度粗于推包频率）不刷新锚点：让图表继续按上一次
+    // 正向速率外推，直到下一包真正前进；静止超过窗口后由 graph 层冻结。
 
-    if (Math.abs(state.songTimeMs - previousTime) > SONG_TIME_JUMP_THRESHOLD_MS) {
+    if (jumped) {
         state.prevSongTimeMs = state.songTimeMs;
         state.prevSongTimeReceiveTs = state.songTimeReceiveTs;
-    }
-
-    if (hasAnyGraphModeEnabled()) {
-        updateGraphCursor(state.pauseDetectionEnabled && state.isPaused ? state.frozenInterpMs : state.songTimeMs);
     }
 }
 
@@ -346,7 +348,12 @@ export function applyBeatmapState(data) {
             ? modData.modSignature
             : previousModSignature;
 
-        const hasStateMismatch = nextBeatmapIdentity !== previousBeatmapIdentity
+        // 只比稳定段（id 优先，其次 hash）：原生/部分包会在个别帧缺
+        // `checksum`/path。旧实现把这种「同一张图的弱帧」当成新图，每个包都
+        // 清选区、重置 LaneAcc 并重排 200ms 重算，防抖永远不触发（表现：
+        // 切图不重算、Graph 双击闪一下退出）。
+        const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
+        const hasStateMismatch = identityChanged
             || nextModSignature !== previousModSignature;
         if (!hasStateMismatch) return;
         // Step 9f：**带谱面身份、且真的改动了卡片**的载荷 ⇒ 壳相位提示（若有）撤掉。
@@ -376,21 +383,39 @@ export function applyBeatmapState(data) {
 
         // 切图（谱面身份变化）→ 复位选区；仅改 mod（含 DT/HT 速率）不复位：
         // 选区按物理时间保存，速率变化时遮罩不动、切片区间不变（见 graphSection 注释）。
-        // 身份串只比稳定段（id/hash）——tosu 部分包可能缺 path，字符串变了但不是换图。
-        const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
         if (identityChanged) {
-            clearSection("beatmap", { recompute: false });
+            try {
+                clearSection("beatmap", { recompute: false });
+            } catch (error) {
+                console.warn("mma: section reset failed", error);
+            }
             // LaneAcc 不能等新谱面分析完成才清：否则切图/跨图包时结果屏会继续显示上一张图。
             // 空身份（partial/结算帧）不清，避免把已保留的终态误清。
+            // ⚠️ 这里的 DOM 复位绝不能反过来中断身份写入与重算调度：一旦
+            // reset 抛错（曾因 popover 丢失抛 null.hidden），socket 回调的
+            // try/catch 会吞掉后半段，表现为「切图永远只显示第一张图」。
             if (nextBeatmapIdentity) {
-                laneAccView.reset();
+                try {
+                    laneAccView.reset();
+                } catch (error) {
+                    console.warn("mma: laneAcc reset failed", error);
+                }
             }
         }
         if (identityChanged || cvtChanged) {
-            resetContentBarTabOverride();
+            try {
+                resetContentBarTabOverride();
+            } catch (error) {
+                console.warn("mma: content bar reset failed", error);
+            }
         }
 
-        state.lastBeatmapIdentity = nextBeatmapIdentity;
+        // 同一张图的弱帧（缺 hash/path）不覆盖更完整的旧身份：缓存键、
+        // 原文 LRU 与反馈上下文都按这个字符串索引，来回切换会让它们全部失效。
+        const adoptedIdentity = (!previousBeatmapIdentity || identityChanged)
+            ? nextBeatmapIdentity
+            : previousBeatmapIdentity;
+        state.lastBeatmapIdentity = adoptedIdentity;
         // 换图/换 mod：旧分析结果不再对应当前显示值，反馈条立即作废。
         state.feedbackContext = null;
         resetFeedbackStrip();
@@ -404,10 +429,10 @@ export function applyBeatmapState(data) {
 
         // 仅在谱面本身（非单纯改 mod）发生变化时，重新取封面主色刷新主题。
         // 取色异步进行、失败自动退默认，绝不阻塞分析流程。
-        if (state.enableCoverArt && nextBeatmapIdentity !== previousBeatmapIdentity) {
-            applyCoverThemeForBeatmap(nextBeatmapIdentity).catch(() => {});
+        if (state.enableCoverArt && identityChanged) {
+            applyCoverThemeForBeatmap(adoptedIdentity).catch(() => {});
         }
-        const key = `${nextBeatmapIdentity}|${nextModSignature}`;
+        const key = `${adoptedIdentity}|${nextModSignature}`;
         resetPauseRuntime(true);
         state.lastBeatmapKey = key;
 

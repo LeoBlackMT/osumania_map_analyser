@@ -97,7 +97,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
         }
         const anchor = statKind === "sv1"
             ? nodes.wrap.querySelector(".laneacc-sv1")
-            : nodes.hands.querySelector(`.laneacc-hand[data-hand="${statKind}"]`);
+            : nodes.hands?.querySelector(`.laneacc-hand[data-hand="${statKind}"]`);
         if (anchor) {
             showStatPopover(anchor, statKind);
         }
@@ -106,7 +106,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
     function showPopover(col, lane) {
         const nodes = getDom();
         const activeChart = getActiveChart();
-        if (!nodes || !lane || !activeChart) {
+        if (!nodes?.popover || !lane || !activeChart) {
             return;
         }
         popoverCol = col;
@@ -161,7 +161,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
             clearTimeout(popoverTimer);
             popoverTimer = 0;
         }
-        if (nodes) {
+        if (nodes?.popover) {
             nodes.popover.hidden = true;
         }
     }

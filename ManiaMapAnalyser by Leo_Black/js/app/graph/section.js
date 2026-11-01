@@ -20,7 +20,7 @@ import {
     state,
 } from "../core/appContext.js";
 import { clientXToViewBoxX } from "./math.js";
-import { setGraphClearedHandler } from "./index.js";
+import { setGraphClearedHandler, setGraphRenderedHandler } from "./index.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
 import { scheduleRecompute } from "../core/scheduler.js";
 import { paintSectionOverlay } from "./sectionOverlay.js";
@@ -37,6 +37,9 @@ let drag = null; // { pointerId, anchorU, moved, prevSelection, view, axis }
 const fullChartTexts = new Map();
 const MAX_STORED_TEXTS = 4;
 let lastCommitAt = 0;
+// 上一次渲染的图表时间轴：换图/换难度后新曲线的时间轴必然变化，旧的
+// armed 态/选区不能带进新坐标系（否则双击会直接走「再次双击退出」分支）。
+let lastGraphAxisKey = "";
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
@@ -268,6 +271,7 @@ export function initGraphSection() {
         return;
     }
     setGraphClearedHandler(handleGraphCleared);
+    setGraphRenderedHandler(handleGraphRendered);
     forEachGraphView(bindView);
 }
 
@@ -279,16 +283,29 @@ export function initGraphSection() {
  * 两者都缺失（meta: 降级身份）时退回整串比较。
  */
 export function isSameBeatmapIdentity(previous, next) {
-    const stableKey = (value) => {
+    const partsOf = (value) => {
         const parts = String(value || "").split("|");
-        const id = parts.find((part) => part.startsWith("id:"));
-        const hash = parts.find((part) => part.startsWith("hash:"));
-        if (id || hash) {
-            return `${id || ""}|${hash || ""}`;
-        }
-        return String(value || "");
+        return {
+            id: parts.find((part) => part.startsWith("id:")),
+            hash: parts.find((part) => part.startsWith("hash:")),
+        };
     };
-    return stableKey(previous) === stableKey(next);
+    const a = partsOf(previous);
+    const b = partsOf(next);
+    // 在线 ID 是唯一权威：两边都有 ID 时只比它。原生/部分包偶尔只在
+    // 某些帧带上 checksum（hash）或 path，旧实现把「缺 hash」当成换图，
+    // 于是每个包都 clearSection + 重排重算，200ms 防抖永远不触发。
+    if (a.id && b.id) {
+        return a.id === b.id;
+    }
+    if (a.hash && b.hash) {
+        return a.hash === b.hash;
+    }
+    if (a.id || a.hash || b.id || b.hash) {
+        // 一边有稳定段、一边完全没有：无法证明是同一张图，交给整串比较。
+        return String(previous || "") === String(next || "");
+    }
+    return String(previous || "") === String(next || "");
 }
 
 /** 当前生效的切片区间（物理谱面毫秒）；未 armed / 无选区时返回 null。 */
@@ -304,30 +321,36 @@ export function getSectionRange() {
     return { startMs: Math.min(startMs, endMs), endMs: Math.max(startMs, endMs) };
 }
 
-/** 全谱原文（供区间跑批切片）；identity 不匹配或为空时返回 null。 */
-export function getFullChartText() {
-    const identity = String(state.lastBeatmapIdentity || "");
-    if (!identity) {
+/**
+ * 全谱原文（供区间跑批切片）；identity 不匹配或为空时返回 null。
+ *
+ * `identity` 必须由调用方在**请求开始时**快照传入：分析途中切图时，
+ * `state.lastBeatmapIdentity` 已经指向下一张图，再用它读写会把上一张
+ * 图的原文写到下一张图的键下，后续所有重算都会拿到旧谱面。
+ */
+export function getFullChartText(identity = state.lastBeatmapIdentity) {
+    const key = String(identity || "");
+    if (!key) {
         return null;
     }
-    const text = fullChartTexts.get(identity);
+    const text = fullChartTexts.get(key);
     return typeof text === "string" && text.length > 0 ? text : null;
 }
 
 /** 全谱跑批成功后写入原文（只在非区间跑批时调用；浏览器模式不占用内存）。 */
-export function rememberFullChartText(rawText) {
+export function rememberFullChartText(rawText, identity = state.lastBeatmapIdentity) {
     if (!isShellRuntime()) {
         return;
     }
-    const identity = String(state.lastBeatmapIdentity || "");
+    const key = String(identity || "");
     const text = typeof rawText === "string" ? rawText : "";
-    if (!identity || !text) {
+    if (!key || !text) {
         return;
     }
     // 按 identity 存最近 MAX_STORED_TEXTS 张谱面：换图后再切回来（命中结果缓存、拿不到原文）
     // 仍能切片；只留一张会在「切图来回」后稳定触发 text-missing。
-    fullChartTexts.delete(identity);
-    fullChartTexts.set(identity, text);
+    fullChartTexts.delete(key);
+    fullChartTexts.set(key, text);
     while (fullChartTexts.size > MAX_STORED_TEXTS) {
         fullChartTexts.delete(fullChartTexts.keys().next().value);
     }
@@ -338,7 +361,17 @@ export function rememberFullChartText(rawText) {
  * 选区依赖全谱曲线坐标系：曲线没了必须一起复位，否则会留下「空白图 + 遮罩」的幽灵选区。
  */
 export function handleGraphCleared() {
+    lastGraphAxisKey = "";
     clearSection("graph-cleared", { recompute: false });
+}
+
+/** 新曲线渲染：时间轴变了（换图/换难度）就复位旧的 armed/选区。 */
+function handleGraphRendered(series) {
+    const key = `${state.lastBeatmapIdentity || ""}|${Math.round(series?.minTime ?? 0)}|${Math.round(series?.maxTime ?? 0)}`;
+    if (lastGraphAxisKey && key !== lastGraphAxisKey) {
+        clearSection("graph-axis", { recompute: false });
+    }
+    lastGraphAxisKey = key;
 }
 
 /**

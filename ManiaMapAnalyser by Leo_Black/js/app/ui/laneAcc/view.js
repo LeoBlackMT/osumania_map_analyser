@@ -26,13 +26,25 @@ function dom() {
     if (!laneAccWrapEl) {
         return null;
     }
+    const stage = laneAccWrapEl.querySelector("#laneacc-stage");
+    let popover = laneAccWrapEl.querySelector("#laneacc-popover");
+    // `stage.replaceChildren()`（ensureLanes / reset）会连带移除 popover；下一次
+    // querySelector 查不到时若直接 `append(null)`，DOM 里会留下文本 "null"。
+    // popover 是舞台的常驻子元素，丢了就补回来。
+    if (!popover && stage) {
+        popover = document.createElement("div");
+        popover.id = "laneacc-popover";
+        popover.className = "laneacc-popover";
+        popover.hidden = true;
+        stage.append(popover);
+    }
     return {
         wrap: laneAccWrapEl,
         summary: laneAccWrapEl.querySelector(".laneacc-summary"),
         sv1: laneAccWrapEl.querySelector("#laneacc-sv1-value"),
         hands: laneAccWrapEl.querySelector("#laneacc-hands"),
-        stage: laneAccWrapEl.querySelector("#laneacc-stage"),
-        popover: laneAccWrapEl.querySelector("#laneacc-popover"),
+        stage,
+        popover,
         error: laneAccWrapEl.querySelector("#laneacc-error"),
         od: laneAccWrapEl.querySelector("#laneacc-od"),
     };
@@ -50,6 +62,7 @@ export const laneAccView = (() => {
     let allEvents = false;
     let lastRawSolveAt = 0;
     let sessionActive = false;
+    let hasResult = false;
     let renderHandle = 0;
     let laneButtons = [];
     let laneKey = "";
@@ -57,6 +70,8 @@ export const laneAccView = (() => {
     let latestSnapshot = null;
     let laneBounds = null;
     let stageVisible = false;
+    // 全量快照按 2048 事件分块到达；谱面还没准备好时必须排队（否则后面的块会覆盖前面的块）。
+    let pendingBatches = [];
 
     // Popover 交互控制器（分轨与手部弹窗）
     const popoverCtrl = createPopoverController({
@@ -115,12 +130,17 @@ export const laneAccView = (() => {
     }
 
     function options() {
+        const odFlag = state.odFlag ?? null;
+        // 桥源（Malody/Etterna）的 odFlag 已是折算后的等效 OD：不再叠加 HR/EZ 倍率。
+        const odResolved = state.activeSource !== "osu"
+            && odFlag != null && odFlag !== ""
+            && Number.isFinite(Number(odFlag));
         return {
             spaceMode: spaceModeSetting,
-            lazerScore: state.lazerScoreData ?? null,
-            od: state.odFlag ?? null,
             speedRate: state.speedRate || 1.0,
-            mods: state.modCodes || [],
+            mods: Array.isArray(state.modCodes) ? state.modCodes : [],
+            odFlag,
+            odResolved,
         };
     }
 
@@ -144,10 +164,12 @@ export const laneAccView = (() => {
             return;
         }
         nodes.wrap.dataset.state = "error";
-        nodes.summary.hidden = true;
-        nodes.stage.hidden = true;
-        nodes.error.hidden = false;
-        nodes.error.textContent = ERROR_TEXT[key] || ERROR_TEXT.shell;
+        if (nodes.summary) nodes.summary.hidden = true;
+        if (nodes.stage) nodes.stage.hidden = true;
+        if (nodes.error) {
+            nodes.error.hidden = false;
+            nodes.error.textContent = ERROR_TEXT[key] || ERROR_TEXT.shell;
+        }
     }
 
     function showLoading(changeKind = "song") {
@@ -156,16 +178,20 @@ export const laneAccView = (() => {
             return;
         }
         nodes.wrap.dataset.state = "loading";
-        nodes.summary.hidden = false;
-        nodes.stage.hidden = false;
-        nodes.error.hidden = true;
-        nodes.stage.classList.remove(
-            "is-entering",
-            "is-loading",
-            "is-loading-song",
-            "is-loading-difficulty",
-        );
-        nodes.stage.classList.add("is-loading", `is-loading-${changeKind}`);
+        if (nodes.summary) nodes.summary.hidden = false;
+        if (nodes.stage) {
+            nodes.stage.hidden = false;
+            nodes.stage.classList.remove(
+                "is-entering",
+                "is-loading",
+                "is-loading-song",
+                "is-loading-difficulty",
+            );
+            nodes.stage.classList.add("is-loading", `is-loading-${changeKind}`);
+        }
+        if (nodes.error) {
+            nodes.error.hidden = true;
+        }
     }
 
     function clearLoading() {
@@ -173,7 +199,7 @@ export const laneAccView = (() => {
         if (!nodes) {
             return;
         }
-        nodes.stage.classList.remove(
+        nodes.stage?.classList.remove(
             "is-loading",
             "is-loading-song",
             "is-loading-difficulty",
@@ -186,15 +212,17 @@ export const laneAccView = (() => {
             return;
         }
         nodes.wrap.dataset.state = "ready";
-        nodes.summary.hidden = false;
-        nodes.stage.hidden = false;
-        nodes.error.hidden = true;
-        nodes.error.textContent = "";
+        if (nodes.summary) nodes.summary.hidden = false;
+        if (nodes.stage) nodes.stage.hidden = false;
+        if (nodes.error) {
+            nodes.error.hidden = true;
+            nodes.error.textContent = "";
+        }
     }
 
     function ensureLanes(snapshot) {
         const nodes = dom();
-        if (!nodes) {
+        if (!nodes?.stage) {
             return;
         }
         const key = `${activeChart.columnCount}:${snapshot.spaceMode}`;
@@ -239,7 +267,9 @@ export const laneAccView = (() => {
             nodes.stage.append(button);
             laneButtons.push(button);
         }
-        nodes.stage.append(nodes.popover);
+        if (nodes.popover) {
+            nodes.stage.append(nodes.popover);
+        }
     }
 
     function accDisplayMode(columns) {
@@ -393,20 +423,33 @@ export const laneAccView = (() => {
         if (!a || !b) {
             return false;
         }
-        return a.columnCount === b.columnCount && a.noteCount === b.noteCount && a.identity === b.identity;
+        if (a === b) {
+            return true;
+        }
+        const first = (chart) => (chart.noteCount > 0 ? chart.noteStarts[0] : -1);
+        const last = (chart) => (chart.noteCount > 0 ? chart.noteEnds[chart.noteCount - 1] : -1);
+        return a.columnCount === b.columnCount
+            && a.noteCount === b.noteCount
+            && a.od === b.od
+            && first(a) === first(b)
+            && last(a) === last(b)
+            && a.identity === b.identity;
     }
 
     function evaluateError() {
         if (!isShellRuntime()) {
             return "shell";
         }
-        const contract = Number(state.shellContract ?? 0);
+        const contract = Number(state.shellContractVersion ?? 0);
         if (contract > 0 && contract < 10) {
             return "contract";
         }
-        const client = String(state.gameClient || state.client || "").toLowerCase();
+        const client = String(state.client || "").toLowerCase();
         if (client && !client.includes("lazer")) {
             return "lazer";
+        }
+        if (state.laneAccScoreReady === false) {
+            return "offsets";
         }
         if (state.externalBridgeAvailable && state.shellOsuAlive === false) {
             return "native";
@@ -423,172 +466,284 @@ export const laneAccView = (() => {
         return null;
     }
 
-    function prepareChart(chart) {
-        pendingChart = chart;
-        const err = evaluateError();
-        if (err) {
-            showError(err);
-            return;
-        }
-        if (!chart) {
-            showError("chart");
-            return;
-        }
-        if (chart.columnCount < 4 || chart.columnCount > 18) {
-            showError("keys");
-            return;
-        }
-        clearLoading();
-        clearError();
-        const reuseState = sessionActive && accumulator && sameChart(activeChart, chart);
-        activeChart = chart;
-        if (!reuseState) {
-            accumulator = createAccumulator(chart, options());
-            rawAccumulator = createAccumulator(chart, options());
-            replayFrames = [];
-            hitEvents = [];
-            feedIndex = 0;
-            lastCutoff = -Infinity;
-            allEvents = false;
-            lastRawSolveAt = 0;
-            laneBounds = null;
-        } else {
-            accumulator.syncModifiers(options());
-            rawAccumulator?.syncModifiers(options());
-        }
-        scheduleRender();
-    }
-
-    function startSession() {
-        sessionActive = true;
+    function clearSessionEvents() {
+        hitEvents = [];
+        replayFrames = [];
         feedIndex = 0;
         lastCutoff = -Infinity;
         allEvents = false;
         lastRawSolveAt = 0;
+        pendingBatches = [];
+        latestSnapshot = null;
+    }
+
+    function createFor(chart) {
+        const nodes = dom();
+        nodes?.stage?.classList.remove(
+            "is-entering",
+            "is-loading",
+            "is-loading-song",
+            "is-loading-difficulty",
+        );
+        activeChart = chart;
+        accumulator = createAccumulator(chart, options());
+        rawAccumulator = createAccumulator(chart, options());
+        feedIndex = 0;
+        lastCutoff = -Infinity;
+        lastRawSolveAt = 0;
         laneBounds = null;
-        if (activeChart) {
-            accumulator = createAccumulator(activeChart, options());
-            rawAccumulator = createAccumulator(activeChart, options());
+        if (pendingBatches.length > 0) {
+            const batches = pendingBatches;
+            pendingBatches = [];
+            for (const batch of batches) {
+                if (batch?.reset) {
+                    hitEvents = [];
+                }
+                if (Array.isArray(batch?.events)) {
+                    hitEvents.push(...batch.events);
+                }
+            }
+        }
+        pump();
+        laneKey = "";
+        laneButtons = [];
+        clearError();
+        render();
+        if (laneAccWrapEl && laneAccWrapEl.offsetParent !== null) {
+            replayEntrance();
+        }
+    }
+
+    /** 分析完成：只暂存；若当前没有战报，则显示 100.00% 预览。 */
+    function prepareChart(chart) {
+        if (!isShellRuntime()) {
+            pendingChart = null;
+            activeChart = null;
+            accumulator = null;
+            showError("shell");
+            return;
+        }
+        const err = evaluateError();
+        if (err) {
+            pendingChart = null;
+            activeChart = null;
+            accumulator = null;
+            showError(err);
+            return;
+        }
+        if (!chart || chart.error) {
+            const reason = chart?.error === "keys" ? "keys" : chart?.error === "mode" ? "mania" : "chart";
+            pendingChart = null;
+            activeChart = null;
+            accumulator = null;
+            hasResult = false;
+            sessionActive = false;
+            showError(reason);
+            return;
+        }
+        if (chart.columnCount < 4 || chart.columnCount > 18) {
+            pendingChart = null;
+            activeChart = null;
+            accumulator = null;
+            showError("keys");
+            return;
+        }
+        if (activeChart && !sameChart(activeChart, chart)) {
+            // 切图/换难度：旧事件的 note 索引只对旧谱面有效，必须先清空并重建
+            // 累加器；否则未匹配的旧头/尾会按新谱面落成 Miss。
+            clearSessionEvents();
+            pendingChart = chart;
+            sessionActive = false;
+            hasResult = false;
+            createFor(chart);
+            return;
+        }
+        pendingChart = chart;
+        if (!sessionActive && !hasResult) {
+            createFor(chart);
+        } else if (sessionActive && !accumulator) {
+            createFor(chart);
+        } else if (accumulator) {
+            accumulator.syncModifiers(options());
+            rawAccumulator?.syncModifiers(options());
         }
         clearLoading();
+        clearError();
         scheduleRender();
     }
 
-    function replayFramesChanged(prev, next) {
-        if (prev.length !== next.length) {
-            return true;
-        }
-        if (prev.length === 0) {
+    /** 进入 play：采纳 pending 谱面并清空本局。 */
+    function startSession() {
+        const chart = pendingChart || activeChart;
+        if (!chart) {
             return false;
         }
-        return prev[prev.length - 1].time !== next[next.length - 1].time;
+        pendingChart = chart;
+        sessionActive = true;
+        hasResult = false;
+        allEvents = false;
+        hitEvents = [];
+        feedIndex = 0;
+        lastCutoff = -Infinity;
+        createFor(chart);
+        clearLoading();
+        return true;
     }
 
-    function solveRawAccumulator(frames, chart) {
-        const parsed = framesToSv1Events(frames, chart.columnCount);
-        const sim = createAccumulator(chart, options());
-        sim.feedEvents(parsed);
-        sim.feedComplete();
-        return sim;
+    /** 当前播放位置（chart ms）；尚无时钟时返回 -Infinity（不喂任何判定）。 */
+    function currentCutoff() {
+        if (allEvents || hasResult) {
+            return Infinity;
+        }
+        const live = Number(state.songTimeMs);
+        return Number.isFinite(live) ? live : -Infinity;
+    }
+
+    /** 按时钟把 hitEvents 逐条喂给 accumulator；时钟回跳时重建。 */
+    function pump() {
+        if (!accumulator || !activeChart) {
+            return;
+        }
+        const cutoff = currentCutoff();
+        if (cutoff + 1 < lastCutoff) {
+            accumulator = createAccumulator(activeChart, options());
+            rawAccumulator = createAccumulator(activeChart, options());
+            feedIndex = 0;
+            lastCutoff = -Infinity;
+            lastRawSolveAt = 0;
+        }
+        while (feedIndex < hitEvents.length) {
+            const time = accumulator.eventTime(hitEvents[feedIndex]);
+            if (Number.isFinite(time) && time > cutoff) {
+                break;
+            }
+            accumulator.applyEvent(hitEvents[feedIndex]);
+            feedIndex += 1;
+        }
+        lastCutoff = cutoff;
+        rebuildRawAccumulator(true, cutoff);
+        scheduleRender();
+    }
+
+    /** 原始 ReplayFrame：只用于 SV1，不改变 gameCounts。 */
+    function rebuildRawAccumulator(force = false, cutoff = currentCutoff()) {
+        if (!rawAccumulator || !activeChart) {
+            return;
+        }
+        const now = Date.now();
+        if (!force && now - lastRawSolveAt < 500) {
+            return;
+        }
+        lastRawSolveAt = now;
+        const windows = accumulator?.snapshot()?.windows;
+        if (!windows) {
+            return;
+        }
+        const final = cutoff === Infinity;
+        const visible = final
+            ? replayFrames
+            : replayFrames.filter((frame) => frame.time <= cutoff + 250);
+        if (visible.length === 0) {
+            rawAccumulator = createAccumulator(activeChart, options());
+            return;
+        }
+        const currentOptions = options();
+        let events = framesToSv1Events(
+            activeChart,
+            visible,
+            windows,
+            currentOptions.mods,
+            currentOptions.speedRate,
+            null,
+            cutoff,
+        );
+        rawAccumulator.applyBatch({ reset: true, events });
+        // 原始帧的 first-release 在「掉落 + regrab」上会多算 Miss；若比 Lazer 判定
+        // 多出明显数量，才用 hitEvents 的 15/13 掉落集合重建成 Stable 的 50/100。
+        const rawMiss = rawAccumulator.snapshot().sv1Counts[5];
+        const hitMiss = accumulator?.snapshot()?.sv1Counts?.[5] ?? 0;
+        if (rawMiss > hitMiss + 5) {
+            events = framesToSv1Events(
+                activeChart,
+                visible,
+                windows,
+                currentOptions.mods,
+                currentOptions.speedRate,
+                accumulator?.noRegrabDropNotes?.() ?? null,
+                cutoff,
+            );
+            rawAccumulator.applyBatch({ reset: true, events });
+        }
     }
 
     function applyReplayFrames(payload) {
-        const frames = Array.isArray(payload) ? payload : (payload?.frames || []);
-        if (payload && typeof payload === "object" && payload.reset) {
+        if (payload?.reset) {
             replayFrames = [];
-            rawAccumulator = null;
         }
-        if (!sessionActive || !Array.isArray(frames) || frames.length === 0 || !activeChart) {
-            return;
+        if (Array.isArray(payload?.frames)) {
+            for (const frame of payload.frames) {
+                if (Number.isFinite(frame?.time) && Number.isFinite(frame?.keys)) {
+                    replayFrames.push({ time: frame.time, keys: frame.keys >>> 0 });
+                }
+            }
         }
-        const hasChange = replayFramesChanged(replayFrames, frames);
-        replayFrames = frames;
-        if (!hasChange) {
-            return;
-        }
-        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-        if (now - lastRawSolveAt >= 300) {
-            lastRawSolveAt = now;
-            rawAccumulator = solveRawAccumulator(replayFrames, activeChart);
+        if (accumulator) {
+            pump();
+        } else {
             scheduleRender();
         }
     }
 
-    function applyBatch(payload, isLast = false) {
-        const batch = Array.isArray(payload) ? payload : (payload?.events || []);
-        if (payload && typeof payload === "object" && payload.reset) {
+    function applyBatch(payload) {
+        const batch = Array.isArray(payload) ? { events: payload } : (payload || {});
+        if (batch.reset) {
             hitEvents = [];
             feedIndex = 0;
+            lastCutoff = -Infinity;
             allEvents = false;
             if (accumulator) {
                 accumulator.reset();
             }
         }
-        if (!sessionActive || !accumulator) {
+        if (Array.isArray(batch.events)) {
+            hitEvents.push(...batch.events);
+        }
+        if (!accumulator) {
+            // 全量快照按 2048 事件分块到达；谱面还没准备好时必须全部排队，
+            // 否则后一块会覆盖前一块，页面只统计到最后一块（真机少 20–30%）。
+            if (batch.reset) {
+                pendingBatches = [];
+            }
+            pendingBatches.push(batch);
+            if (!startSession()) {
+                return;
+            }
             return;
         }
-        if (batch.length === 0 && !isLast) {
-            return;
-        }
-        if (batch.length > 0) {
-            hitEvents = hitEvents.concat(batch);
-        }
-        if (isLast) {
-            allEvents = true;
-        }
+        accumulator.syncModifiers(options());
         pump();
     }
 
-    function pump() {
-        if (!accumulator || !sessionActive) {
+    /** 结算：只冻结显示，分母仍是已判定计数。 */
+    function finishSession() {
+        if (!accumulator) {
             return;
         }
-        const timeMs = Number(state.songTimeMs);
-        const cutoff = Number.isFinite(timeMs) ? timeMs : Infinity;
-        let advanced = false;
-        while (feedIndex < hitEvents.length) {
-            const event = hitEvents[feedIndex];
-            const eventTime = Number(event.time);
-            if (Number.isFinite(cutoff) && Number.isFinite(eventTime) && eventTime > cutoff) {
-                break;
-            }
-            accumulator.feedEvents([event]);
-            feedIndex += 1;
-            advanced = true;
-        }
-        if (allEvents && feedIndex >= hitEvents.length) {
-            accumulator.feedComplete();
-            if (rawAccumulator && replayFrames.length > 0) {
-                rawAccumulator = solveRawAccumulator(replayFrames, activeChart);
-            }
-            advanced = true;
-        }
-        if (advanced || Math.abs(cutoff - lastCutoff) > 200) {
-            lastCutoff = cutoff;
-            scheduleRender();
-        }
-    }
-
-    function finishSession() {
+        allEvents = true;
+        pump();
+        rawAccumulator?.finish();
+        accumulator.finish();
         sessionActive = false;
-        if (accumulator) {
-            if (feedIndex < hitEvents.length) {
-                accumulator.feedEvents(hitEvents.slice(feedIndex));
-                feedIndex = hitEvents.length;
-            }
-            accumulator.feedComplete();
-            if (rawAccumulator && replayFrames.length > 0) {
-                rawAccumulator = solveRawAccumulator(replayFrames, activeChart);
-            }
-            scheduleRender();
-        }
+        hasResult = true;
+        scheduleRender();
     }
 
     function setSpaceMode(mode) {
         spaceModeSetting = mode;
         if (accumulator) {
-            accumulator.syncModifiers(options());
-            rawAccumulator?.syncModifiers(options());
+            accumulator.setSpaceMode(mode);
+            rawAccumulator?.setSpaceMode(mode);
+            laneKey = "";
             scheduleRender();
         }
     }
@@ -603,6 +758,7 @@ export const laneAccView = (() => {
 
     function reset() {
         sessionActive = false;
+        hasResult = false;
         pendingChart = null;
         activeChart = null;
         accumulator = null;
@@ -614,6 +770,8 @@ export const laneAccView = (() => {
         allEvents = false;
         lastRawSolveAt = 0;
         laneBounds = null;
+        latestSnapshot = null;
+        pendingBatches = [];
         popoverCtrl.hidePopover();
         popoverCtrl.hideStatPopover();
         clearLoading();
@@ -624,7 +782,11 @@ export const laneAccView = (() => {
             delete nodes.sv1.dataset.displayValue;
             nodes.od.hidden = true;
             nodes.hands.replaceChildren();
+            const popover = nodes.popover;
             nodes.stage.replaceChildren();
+            if (popover) {
+                nodes.stage.append(popover);
+            }
             laneButtons = [];
             laneKey = "";
         }

@@ -143,8 +143,9 @@
 | 进入结算屏 | `socketHandlers.applySignalState`（`nextIsResultScreen` 首次为真） | `clearSection("results", { recompute: true })` |
 | 清卡 | `analysis.js invokeCardClear` | `clearSection("card-clear", { recompute: false })` |
 | 图表被清空 | `graph.js clearDiffGraph` / `showDiffGraphError` → `setGraphClearedHandler` | `clearSection("graph-cleared", { recompute: false })`（否则会留下「空白图 + 遮罩」的幽灵选区） |
+| 新曲线渲染且身份/时间轴变化 | `graph/index.js renderDiffGraph` → `setGraphRenderedHandler` | `clearSection("graph-axis", { recompute: false })`（换图后旧 armed 态不能带进新坐标系，否则双击会被当成「再次双击退出」） |
 
-> 身份比较只看稳定段 `id:` / `hash:`（`isSameBeatmapIdentity`）：tosu 部分包可能缺 `path:`，字符串变了但不是换图，不能复位选区。
+> 身份比较只看稳定段（`isSameBeatmapIdentity`）：两边都有 `id:` 时只比 ID；否则比 `hash:`；只有完全没有稳定段时才退回整串。tosu/原生部分包可能缺 `path:` 或 `hash:`，字符串变了但不是换图，不能复位选区。
 > 仅改 mod（含 DT/HT/自定义速率）**不复位**：选区按物理时间保存，速率变化要保留选区并按新速率重算。
 
 ## 9. 已知限制

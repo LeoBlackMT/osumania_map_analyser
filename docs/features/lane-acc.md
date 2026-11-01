@@ -144,6 +144,7 @@ LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js`
 - 游玩/回放过程中判定数和 ScoreV1 逐步增加；
 - 回放不再开局冻结为最终值，seek 回跳时重建并重放到新位置；
 - 结算 `finishSession()` 才强制应用全量并冻结。
+- 全量快照按 2048 条分块到达；谱面模型尚未准备好时先排队，`prepareChart` 建好累加器后再按 reset/events 顺序回放，不能只保留最后一块。
 - 切图/换难度时按 `chart.identity + columnCount + noteCount + OD + 首尾时间` 检测谱面变化，清空 hitEvents/replayFrames 并重建累加器；旧谱面的事件不会按新 note 索引落成 Miss，卡片从 100.00% 重新开始。
 
 ## 6. 测试
