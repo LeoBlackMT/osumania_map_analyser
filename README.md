@@ -9,9 +9,11 @@
 
 <details>
 <summary>功能展示</summary>
-<img src="img/themeLN.jpg" alt="LN" width="400">
-<img src="img/themeRC.jpg" alt="RC" width="400">
-<img src="img/full.jpg" alt="Combined" width="400">
+<img src="img/LaneAcc.jpg" alt="LaneAcc">
+<img src="img/LivePP.jpg" alt="LivePP">
+<img src="img/CombineModeAndSectionMode.jpg" alt="CombineModeAndSectionMode">
+<br/>
+<img src="img/CompareRAM.jpg" alt="CompareRAM">
 </details>
 
 ## 主要特性
