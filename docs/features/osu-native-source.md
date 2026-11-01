@@ -182,10 +182,10 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 | 载荷字段 | 降级原因字面量 | 机制原因 |
 |---|---|---|
 | `resultsScreen.hits` | `resultsScreen.hits:offsets-missing-results-section` | 计数域在 `ScoreInfo.<StatisticsJson>`（入库过的成绩）与 `ScoreInfo.statistics` 字典（刚打完的活成绩）里。表的 `results` 段由 `live` 在**结算屏上**实测写入（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）；`live` 生成表时游戏不在结算屏 ⇒ 这一段缺席 ⇒ 整段降级（反馈条给出非交互提示）。dump 链路（`extract → emit`）尚未产出这一段 |
-| `play.hits` | `play.hits:offsets-missing-score-chain` | lazer 局内没有与 stable "候选槽"等价的结果对象；本特性只覆盖结算屏 |
+| `play.hits` | `play.hits:offsets-missing-score-chain` | 局内游玩判定数：从 `Player.ScoreProcessor.ScoreResultCounts` 字典读取（表里 `score.score_result_counts` 偏移）。偏移表缺失该字段或游戏处于非 play 状态时降级 |
 | `files.background` / `files.audio` | `files.background:offsets-missing-BeatmapSetInfo.Files` | 需要 `BeatmapSetInfo.<Files>` 列表的**元素**（`filename` + `hash`），而 `dumpobj` 对数组只回 `Fields: None` ⇒ 需要"数组元素布局"的表格式扩展（`dumparray` 见证） |
 
-⇒ `mods` 已不再是缺口（`SelectedMods` 链 + `lazer_mods`），`resultsScreen.hits` 在表含 `results` 段时可用（RC 反馈条依赖它）；`play.hits` 仍不可用（lazer 上 livePP 面）。这是"**绝不编造**"的取舍（缺字段 = 不出现在载荷里 + 上报原因，绝不发 0/占位/沿用上一帧）。
+⇒ `mods` 已接通（`SelectedMods` 链 + `lazer_mods`），`resultsScreen.hits` 在表含 `results` 段时可用，`play.hits` 在表含 `score.score_result_counts` 时可用（Live PP 面完整支持）；未接通表或非 play 状态时仍遵循"**绝不编造**"的取舍（缺字段 = 不出现在载荷里 + 上报原因，绝不发 0/占位/沿用上一帧）。
 
 ### 6.4 明确不做
 

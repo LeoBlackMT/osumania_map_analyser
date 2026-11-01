@@ -118,7 +118,7 @@ temp/lazer-offsets-gen.exe live --json
 
 ### `live` 的 `score` 段（LaneAcc 逐判定事件）
 
-`live` 在**游玩/回放中**还会测 `Player → ScoreProcessor.hitEvents` 的 `score` 段：
+`live` 在**游玩/回放中**还会测 `Player → ScoreProcessor.hitEvents` 及 `ScoreResultCounts` 的 `score` 段：
 
 ```json
 "score": {
@@ -128,15 +128,16 @@ temp/lazer-offsets-gen.exe live --json
   "time_offset": 16,
   "result": 24,
   "column": 72,
-  "stride": 64
+  "stride": 64,
+  "score_result_counts": 640
 }
 ```
 
 判据：扫 Player 字段找类型名含 `ScoreProcessor` 的对象；扫 ScoreProcessor 字段找
-`List<HitEvent>` 形状；用尾部最多 64 条事件验证 `TimeOffset`/`Result`/`HitObject` 与
+`List<HitEvent>` 形状与 `ScoreResultCounts`（`Dictionary<HitResult, int>`）；用尾部最多 64 条事件验证 `TimeOffset`/`Result`/`HitObject` 与
 `LastHitObject == 上一事件 HitObject` 的链，选命中率最高的布局。`HitEvent` 是 64 字节顺序
 值类型（2026.1005 live 实测：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`），
-`Column` 在 `HitObject+0x48`。不在 play/replay 时 `score` 段缺席，其余表照常生成。
+`Column` 在 `HitObject+0x48`；`ScoreResultCounts` 记录当前判定的字典映射，供原生内存读取在局内发布 `play.hits`（支持 Live PP 实时计算）。不在 play/replay 时 `score` 段缺席，其余表照常生成。
 `gen.exe` 与 `lazer-offsets-gen live` 共用这一实现；`extract/emit` 与 `results` 一样不产出
 `score`。
 

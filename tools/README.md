@@ -210,6 +210,30 @@ Rebuild with the command above whenever the version table in `desktop/src/malody
 - `temp/malody4-anchor-check.exe` is a scratch artifact: delete it after acceptance per CLAUDE.md, never commit it.
 - The tool is read-only: no injection, no file writes, no administrator rights needed (same user as the game is enough).
 
+## stable-offsets-gen（osu!stable 32位偏移表探测器）
+
+### 这个工具是做什么的（What it does）
+
+针对 osu!stable（x86 32 位）的特征探测工具。当 stable 客户端发生更新或需要校准内存特征时，通过 IDA 特征码扫描生成符合 `mma-offset-v2` 规范的偏移表（`stable__x86.json`）。该表包含 7 枚全局锚点、完整 8 候选判定槽（`hits_candidate_offsets`）、6 键判定映射（`hits_slot_mapping`）及多跳解引用拓扑，为桌面壳提供只读原生读取与 Live PP 判定支持。
+
+A probing tool for osu!stable (x86 32-bit). When the stable client is updated or memory patterns need re-calibration, it scans the running game via IDA signatures to generate a compliant `mma-offset-v2` offset table (`stable__x86.json`). The table includes 7 global anchors, full 8 hit candidate offsets (`hits_candidate_offsets`), 6-key judgement slot mappings (`hits_slot_mapping`), and multi-hop dereference topology, supporting desktop shell native read-only access and Live PP calculations.
+
+### 原理（How it works）
+
+- 单文件、裸 `rustc` 编译，**零外部依赖**。
+- 只读访问（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写目标进程内存。
+- 扫描 7 枚特征码（`statusPtr`、`baseAddr`、`menuModsPtr`、`playTimeAddr`、`rulesetsAddr`、`getAudioLengthPtr`、`settingsClassAddr`），校验地址合法性并自动导出拓扑。
+
+### 使用方法（Usage）
+
+```powershell
+# 编译
+rustc --edition 2021 -O -A dead_code -o temp/stable-offsets-gen.exe tools/stable-offsets-gen/main.rs
+
+# 探测运行中的 stable 进程并输出 json 表
+temp/stable-offsets-gen.exe --out desktop/offsets/stable/stable__x86.json
+```
+
 ## i18n-check.mjs（中文词典覆盖率检查）
 
 ### 这个脚本是做什么的（What it does）
