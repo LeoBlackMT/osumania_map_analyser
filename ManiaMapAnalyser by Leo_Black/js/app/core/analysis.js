@@ -1501,7 +1501,11 @@ export async function fetchBeatmapFile(reason) {
                 }
             }
             if (laneAccChart) {
-                laneAccView.prepareChart(laneAccChart);
+                try {
+                    laneAccView.prepareChart(laneAccChart);
+                } catch {
+                    laneAccView.setPending();
+                }
             } else if (laneAccText) {
                 try {
                     const laneAccParser = new OsuFileParser(laneAccText);

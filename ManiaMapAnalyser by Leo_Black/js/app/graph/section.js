@@ -28,6 +28,7 @@ import { paintSectionOverlay } from "./sectionOverlay.js";
 const PLOT_WIDTH = GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X;
 const MIN_DRAG_VIEWBOX = 1.5;
 const COMMIT_SUPPRESS_DBLCLICK_MS = 250;
+const ARM_DEBOUNCE_MS = 350;
 
 let mode = "idle"; // "idle" | "armed"
 let selection = null; // { u0, u1, startMs, endMs, rateAtSelection }
@@ -145,6 +146,8 @@ function commitSelection() {
     scheduleRecompute("graph section", true);
 }
 
+let lastArmAt = 0;
+
 function onDblClick(event) {
     if (Date.now() - lastCommitAt < COMMIT_SUPPRESS_DBLCLICK_MS || drag) {
         return;
@@ -155,7 +158,11 @@ function onDblClick(event) {
         }
         event.preventDefault();
         mode = "armed";
+        lastArmAt = Date.now();
         paint();
+        return;
+    }
+    if (Date.now() - lastArmAt < ARM_DEBOUNCE_MS) {
         return;
     }
     event.preventDefault();

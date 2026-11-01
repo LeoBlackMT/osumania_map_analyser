@@ -393,7 +393,7 @@ export const laneAccView = (() => {
         if (!a || !b) {
             return false;
         }
-        return a.columnCount === b.columnCount && a.notes.length === b.notes.length;
+        return a.columnCount === b.columnCount && a.noteCount === b.noteCount && a.identity === b.identity;
     }
 
     function evaluateError() {
@@ -492,7 +492,12 @@ export const laneAccView = (() => {
         return sim;
     }
 
-    function applyReplayFrames(frames) {
+    function applyReplayFrames(payload) {
+        const frames = Array.isArray(payload) ? payload : (payload?.frames || []);
+        if (payload && typeof payload === "object" && payload.reset) {
+            replayFrames = [];
+            rawAccumulator = null;
+        }
         if (!sessionActive || !Array.isArray(frames) || frames.length === 0 || !activeChart) {
             return;
         }
@@ -509,8 +514,17 @@ export const laneAccView = (() => {
         }
     }
 
-    function applyBatch(batch, isLast = false) {
-        if (!sessionActive || !Array.isArray(batch) || !accumulator) {
+    function applyBatch(payload, isLast = false) {
+        const batch = Array.isArray(payload) ? payload : (payload?.events || []);
+        if (payload && typeof payload === "object" && payload.reset) {
+            hitEvents = [];
+            feedIndex = 0;
+            allEvents = false;
+            if (accumulator) {
+                accumulator.reset();
+            }
+        }
+        if (!sessionActive || !accumulator) {
             return;
         }
         if (batch.length === 0 && !isLast) {
