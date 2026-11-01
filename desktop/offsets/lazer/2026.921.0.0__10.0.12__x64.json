@@ -2474,6 +2474,7 @@
     "replay_actions": 24,
     "actions_items": 8,
     "actions_size": 16,
+    "score_result_counts": 640,
     "witness": "live play 2026-10-31 (osu.Game.dll 2026.1005.0.0, 18min ReplayPlayer): Player.Score (LegacyDatabasedScore)@+0x480, Score.Replay@+0x10, Replay.Frames List<ReplayFrame>@+0x08, ManiaReplayFrame.Time@+0x10, Actions List<ManiaAction>@+0x18, List._items@+0x08/_size@+0x10; sample=80777 frames."
   }
 }

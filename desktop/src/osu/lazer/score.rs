@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use crate::osu::model::Hits;
 use crate::osu::offsets::ScoreSection;
 use super::source::{read_f64, read_i32, read_ptr_field, Source};
 
@@ -151,6 +152,36 @@ impl HitEventLog {
         }
         !inner.pending.is_empty() || inner.reset_pending
     }
+
+    /// 返回当前已收集全量判定事件所对应的 `Hits`。
+    pub fn current_hits(&self) -> Hits {
+        let inner = self.inner.lock().unwrap();
+        hits_from_events(&inner.events)
+    }
+}
+
+/// 从逐判定事件列表累加得到当前 `Hits`。
+/// lazer HitResult 枚举值映射：
+/// 1 = miss
+/// 2 = meh (50)
+/// 3 = ok (100)
+/// 4 = good (katu / 200)
+/// 5 = great (300)
+/// 6 = perfect (geki / 320)
+pub fn hits_from_events(events: &[RawHitEvent]) -> Hits {
+    let mut hits = Hits::default();
+    for event in events {
+        match event.result {
+            6 => hits.geki += 1,
+            5 => hits.n300 += 1,
+            4 => hits.katu += 1,
+            3 => hits.n100 += 1,
+            2 => hits.n50 += 1,
+            1 => hits.miss += 1,
+            _ => {}
+        }
+    }
+    hits
 }
 
 
@@ -516,6 +547,7 @@ mod tests {
             replay_actions: 0,
             actions_items: 0,
             actions_size: 0,
+            score_result_counts: None,
             witness: String::new(),
         }
     }
@@ -649,5 +681,31 @@ mod tests {
         let snapshot = log.snapshot();
         assert!(snapshot.reset);
         assert_eq!(snapshot.events.len(), 1);
+    }
+
+    #[test]
+    fn hits_from_events_counts_correctly() {
+        let events = vec![
+            RawHitEvent { col: 0, result: 6, offset: 0.0 },
+            RawHitEvent { col: 1, result: 6, offset: 1.0 },
+            RawHitEvent { col: 2, result: 5, offset: 2.0 },
+            RawHitEvent { col: 3, result: 4, offset: 3.0 },
+            RawHitEvent { col: 0, result: 3, offset: 4.0 },
+            RawHitEvent { col: 1, result: 2, offset: 5.0 },
+            RawHitEvent { col: 2, result: 1, offset: 6.0 },
+            RawHitEvent { col: 3, result: 99, offset: 7.0 },
+        ];
+        let hits = hits_from_events(&events);
+        assert_eq!(hits.geki, 2);
+        assert_eq!(hits.n300, 1);
+        assert_eq!(hits.katu, 1);
+        assert_eq!(hits.n100, 1);
+        assert_eq!(hits.n50, 1);
+        assert_eq!(hits.miss, 1);
+
+        let log = HitEventLog::new();
+        log.push(false, &events);
+        let log_hits = log.current_hits();
+        assert_eq!(log_hits, hits);
     }
 }

@@ -350,9 +350,44 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             gaps.push(offsets_gap("resultsScreen.mods", &error));
         }
     }
+
+    // ⑥d 局内游玩判定数：`Player.ScoreProcessor.ScoreResultCounts` 字典。
+    //     游玩进行中，`ScoreProcessor` 实时累加命中判定到 `ScoreResultCounts`；
+    //     若读取成功则发布 `snapshot.play_hits = Some(hits)`，
+    //     允许全零（开局刚进图未打击）。失败或非 play 态不发布。
+    if snapshot.is_play_state() {
+        let mut play_hits_read = None;
+        if let Some(player) = chain.screen_top {
+            if let Some(score_sec) = table.score() {
+                if let Some(counts_offset) = score_sec.score_result_counts {
+                    if let Some(score_proc) = read_ptr_field(source, player, score_sec.player_score_processor) {
+                        if let Some(dict) = read_ptr_field(source, score_proc, counts_offset) {
+                            if let Some(results_sec) = table.results() {
+                                let entries_offset = results_sec.dict_entries_offset.unwrap_or(0x10);
+                                play_hits_read = results::read_dictionary_hits(
+                                    source,
+                                    dict,
+                                    entries_offset,
+                                    &results_sec.hit_result_values,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(hits) = play_hits_read {
+            snapshot.play_hits = Some(hits);
+        } else {
+            gaps.push(GAP_PLAY_HITS.to_string());
+        }
+    } else {
+        gaps.push(GAP_PLAY_HITS.to_string());
+    }
+
     // ⑦ 播放时钟
     snapshot.play_time = read_live_time(source, game_base, &resolved, &mut chain, &mut gaps);
-    gaps.push(GAP_PLAY_HITS.to_string());
     // 结算态由 ⑥b 负责：读到了就不该再报"offsets-missing"；读不到时它已经写了逐字的 gap。
     if !snapshot.is_result_state() {
         gaps.push(GAP_RESULTS_HITS.to_string());
