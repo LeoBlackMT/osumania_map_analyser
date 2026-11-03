@@ -60,7 +60,7 @@ osu 源在壳版里有**两条传输**，页面只看一条（`DECISIONS.md` DEC
 
 - 设置 `gameClient`：`Auto`（默认）/ `Osu!` / `Etterna` / `Malody` / `Malody 4`。
 - Auto 决策表（`js/app/sources/sourceManager.js`）：
-  - L1 游玩态抢占（osu=isInPlayState 信号豁免照读；etterna=playing 外推；malody4=壳 state 帧的 `playing` 位（场景 3 且新鲜 ≤10s）；malody=无游玩态信号）；
+  - L1 游玩态抢占（osu=isInPlayState 信号豁免照读；etterna=playing 外推且未超过 `playingExpireAt`；malody4=壳 state 帧的 `playing` 位（场景 3 且 selection 心跳新鲜 ≤6s）；malody=桥 `alive` + `playing`）；所有壳侧位都要求壳桥在线，断连后不再采信；
   - L2 60s 新鲜事件窗口（osu=换谱/换 mod/改 rate；etterna=桥写入；malody=POST/song 帧；**malody4=非心跳且 `path` 非空的选曲帧——hidden 帧与心跳永不续约**，否则壳只要在跑就会把路由永久钉在 malody4）；
   - L3 hold 只作用于当前源，他源新鲜事件无游玩态可抢占；窗口过期按 osu > Etterna > Malody 4 > Malody 重选；
   - L3' 存活回窗（无窗口源时 tosu 在线 → osu）；

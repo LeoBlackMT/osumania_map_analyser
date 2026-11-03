@@ -87,6 +87,14 @@ body {
     will-change: opacity, transform, height;
 }
 
+.main-card.card-source-stale {
+    opacity: 1;
+}
+
+.main-card.card-hidden-by-play.card-source-stale {
+    opacity: 0;
+}
+
 .main-card.card-hidden-by-play {
     opacity: 0;
     transform: translateY(8px) scale(0.985);

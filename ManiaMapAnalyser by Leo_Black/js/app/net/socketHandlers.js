@@ -232,7 +232,9 @@ export function applySignalState(data) {
             }
 
             if (leftPlayState && !nextIsResultScreen) {
-                laneAccView.finishSession();
+                // 中途退出到选歌：只冻结到当前时钟，不能把整张谱的剩余 note
+                // 当作已到期并全部记 Miss（ScoreV1 Acc 会瞬间掉到很低）。
+                laneAccView.finishSession(false);
             }
 
             if (enteredPlayState || (leftPlayState && !nextIsResultScreen)) {
@@ -352,11 +354,24 @@ export function applyBeatmapState(data) {
         if (!nextBeatmapIdentity) return;
 
         // 反馈条只认最近一次解析出的谱面身份：结算帧通常不带 beatmap，必须留档。
-        if (beatmapId) state.currentBeatmapId = Number(beatmapId);
-        if (/^[0-9a-f]{32}$/.test(beatmapHash)) state.currentBeatmapChecksum = beatmapHash;
+        // 但新谱面没有 bid（本地/未提交谱面）时必须清掉上一张图的缓存，否则
+        // feedback gate 会拿旧 bid 把本地谱面当成可反馈。
+        const identityChangedForFeedback = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
+        if (beatmapId) {
+            state.currentBeatmapId = Number(beatmapId);
+        } else if (identityChangedForFeedback) {
+            state.currentBeatmapId = 0;
+        }
+        if (/^[0-9a-f]{32}$/.test(beatmapHash)) {
+            state.currentBeatmapChecksum = beatmapHash;
+        } else if (identityChangedForFeedback) {
+            state.currentBeatmapChecksum = "";
+        }
         const objectsTotal = Number(beatmap?.stats?.objects?.total);
         if (Number.isFinite(objectsTotal) && objectsTotal > 0) {
             state.currentObjectsTotal = objectsTotal;
+        } else if (identityChangedForFeedback) {
+            state.currentObjectsTotal = 0;
         }
 
         // api_v2 packets can be partial. Only apply incoming mod state when

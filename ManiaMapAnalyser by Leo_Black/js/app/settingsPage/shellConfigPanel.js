@@ -85,6 +85,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     let offsetsInfo = null;
     let offsetsActionMsg = "";
     let offsetsActionKind = "info";
+    let lastGeneratedSections = null;
 
     async function requestJson(url, init) {
         try {
@@ -165,6 +166,15 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         return (body && body.message) || (error && error.message) || `HTTP ${status || "?"}`;
     }
 
+    function sectionStateText(sections) {
+        if (!sections || typeof sections !== "object") {
+            return "";
+        }
+        return ["score", "results", "mods"]
+            .map((name) => `${name} ${sections[name] ? "✓" : "—"}`)
+            .join(" · ");
+    }
+
     async function generateOffsets() {
         offsetsActionMsg = t("ui.shell.offsets.scanning", "Scanning running osu! and generating offsets…");
         offsetsActionKind = "saving";
@@ -175,6 +185,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             offsetsActionKind = "error";
         } else {
             const sections = result.body && result.body.sections;
+            lastGeneratedSections = sections || null;
             if (sections && (!sections.score || !sections.results)) {
                 const key = !sections.score && !sections.results
                     ? "generatedMissingBoth"
@@ -188,6 +199,13 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
                         : "Offsets generated, but the results section required by result-screen feedback is missing. Stay on the result screen and generate again.";
                 offsetsActionMsg = t(`ui.shell.offsets.${key}`, fallback);
                 offsetsActionKind = "info";
+            } else if (sections) {
+                offsetsActionMsg = tf(
+                    "ui.shell.offsets.generatedSections",
+                    { sections: sectionStateText(sections) },
+                    `Offsets generated and verified (${sectionStateText(sections)}).`,
+                );
+                offsetsActionKind = "ok";
             } else {
                 offsetsActionMsg = t("ui.shell.offsets.generated", "Offsets generated and verified successfully.");
                 offsetsActionKind = "ok";
@@ -724,8 +742,9 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         wrap.appendChild(buildRow("offsetsStable", t("ui.shell.offsets.stableTitle", "osu!stable Offsets"), stableDesc, stableBadge));
 
         const lazerInfo = offsetsInfo.lazer || {};
+        const generatedSections = lastGeneratedSections ? ` · ${sectionStateText(lastGeneratedSections)}` : "";
         const lazerDesc = lazerInfo.loaded
-            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)`
+            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)${generatedSections}`
             : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
@@ -760,6 +779,14 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             statusEl.textContent = offsetsActionMsg;
             actionsWrap.appendChild(statusEl);
         }
+
+        const workflowHint = document.createElement("div");
+        workflowHint.className = "shell-config-workflow-hint";
+        workflowHint.textContent = t(
+            "ui.shell.offsets.workflowHint",
+            "New lazer version: generate once in play/replay for score, then once on the result screen for results.",
+        );
+        actionsWrap.appendChild(workflowHint);
 
         wrap.appendChild(buildRow("offsetsActions", t("ui.shell.offsets.actionsTitle", "Offsets Actions"), t("ui.shell.offsets.actionsDescription", "Update or generate memory layout tables for osu! clients."), actionsWrap));
 

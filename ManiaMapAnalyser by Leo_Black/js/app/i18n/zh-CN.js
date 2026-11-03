@@ -218,6 +218,8 @@ export default {
     "ui.shell.offsets.generatedMissingScore": "偏移表已生成并校验通过；缺少 LaneAcc/LivePP 所需的 score 段。请进入游玩/回放后再次点击“实时生成”。",
     "ui.shell.offsets.generatedMissingResults": "偏移表已生成并校验通过；缺少结算反馈所需的 results 段。请停留在结算界面再次点击“实时生成”。",
     "ui.shell.offsets.generatedMissingBoth": "偏移表已生成并校验通过；本次只捕获了基础字段。请先进入游玩/回放生成一次，再停留在结算界面生成一次，以补齐 score/results。",
+    "ui.shell.offsets.generatedSections": "偏移表已生成并校验通过（{sections}）。",
+    "ui.shell.offsets.workflowHint": "需要分两次生成：① 进入游玩/回放；② 打完停在结算屏。",
     "ui.shell.offsets.unreadableHttp": "无法读取壳配置",
     "ui.shell.offsets.anchors": "个锚点",
     "ui.shell.status.nothingWritten": "未写入任何内容",

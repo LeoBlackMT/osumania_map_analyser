@@ -24,6 +24,7 @@ import {
 } from "./math.js";
 import { updatePauseCountVisibility } from "../ui/hud.js";
 import { updateStarTipDots } from "../ui/display.js";
+import { normalizeCardOwnerSource } from "../sources/sourceActivity.js";
 
 const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";
@@ -34,6 +35,9 @@ const GRAPH_TIME_EPSILON_MS = 1e-3;
 const GRAPH_MAX_EXTRAPOLATION_MS = 400;
 const GRAPH_STALE_SAMPLE_MS = 600;
 const GRAPH_SEEK_RESET_MS = 1500;
+// 读数包间隔约 150ms，直接按目标时间画会让游标一跳一跳。用时间常数
+// 约 90ms 的指数缓动把离散目标铺到每一帧；真实 seek 仍由上面的阈值直接吸附。
+const GRAPH_CURSOR_EASE_TAU_MS = 90;
 
 /** 当前这批 times 是按哪个倍速算的（换速率后靠它等比换算）。 */
 let graphSeriesRate = 1;
@@ -43,6 +47,13 @@ let graphSeriesRate = 1;
 const RATE_WINDOW_MS = 1200;
 let rateSamples = [];
 let lastRateSampleTs = 0;
+let smoothCursorMs = null;
+let smoothCursorFrameTs = 0;
+
+function resetCursorEasing() {
+    smoothCursorMs = null;
+    smoothCursorFrameTs = 0;
+}
 
 const currentSpeedRate = () => (Number.isFinite(state.speedRate) && state.speedRate > 0 ? Number(state.speedRate) : 1);
 
@@ -89,7 +100,9 @@ function getInterpolatedPlaybackTime() {
         return state.frozenInterpMs;
     }
 
-    if (!Number.isFinite(state.songTimeMs) || state.songTimeReceiveTs <= 0) {
+    // 离开游玩/换图时 resetPauseRuntime 会把 hasSongTimeSample 清掉；此时
+    // songTimeMs 仍是上一局的残值，不能拿它继续画进度。
+    if (!state.hasSongTimeSample || !Number.isFinite(state.songTimeMs) || state.songTimeReceiveTs <= 0) {
         return null;
     }
 
@@ -425,6 +438,8 @@ function notifyGraphRendered(series) {
 export function clearDiffGraph() {
     state.graphSeries = null;
     state.graphCursorMs = null;
+    state.graphPlaybackRate = 0;
+    resetCursorEasing();
     rateSamples = [];
     lastRateSampleTs = 0;
     dropGraphSeriesSource();
@@ -556,8 +571,10 @@ export function showDiffGraphError(message) {
 }
 
 function isGraphProgressSupported() {
-    const src = state.activeSource || state.cardOwner;
-    if (src === "malody" || src === "malody4" || src === "etterna" || src === "malody-bridge") {
+    // 卡片归属优先于路由结果：路由可能停留在已结束的源上，但当前图属于谁
+    // 才决定这条进度线有没有意义。
+    const src = normalizeCardOwnerSource(state.cardOwner) || state.activeSource || state.cardOwner;
+    if (src === "malody" || src === "malody4" || src === "etterna") {
         return false;
     }
     const client = String(state.gameClient || "").toLowerCase();
@@ -621,7 +638,16 @@ export function updateGraphCursor(explicitTimeMs = null) {
         return;
     }
 
-    const timeMs = Number.isFinite(explicitTimeMs) ? explicitTimeMs : getInterpolatedPlaybackTime();
+    const { times, values, minTime, maxTime, minYValue, maxYValue } = series;
+
+    let timeMs = Number.isFinite(explicitTimeMs) ? explicitTimeMs : getInterpolatedPlaybackTime();
+    if (state.clientStateName === "resultscreen") {
+        // 结算屏把进度画满：没有新的 live 样本时也不停在上一局最后的位置。
+        timeMs = Number.isFinite(state.songEndMs) ? state.songEndMs : maxTime;
+    } else if (!Number.isFinite(timeMs)) {
+        // 选歌/菜单没有 live 时间时仍显示游标，从谱面起点开始。
+        timeMs = Number.isFinite(state.songStartMs) ? state.songStartMs : minTime;
+    }
     if (!Number.isFinite(timeMs)) {
         forEachEnabledGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
@@ -631,15 +657,34 @@ export function updateGraphCursor(explicitTimeMs = null) {
     // 外推位置偶尔会比下一包样本略靠前；若直接回写，视觉上就是 10→11→10。
     // 小幅回退一律钳住（真正的 seek/换图超过阈值时重置）。
     const previousCursorMs = Number(state.graphCursorMs);
-    let displayTime = timeMs;
+    let targetTime = timeMs;
     if (Number.isFinite(previousCursorMs)
         && Math.abs(timeMs - previousCursorMs) <= GRAPH_SEEK_RESET_MS
         && timeMs < previousCursorMs) {
-        displayTime = previousCursorMs;
+        targetTime = previousCursorMs;
     }
+
+    // 只缓动显示时间，不改样本速率/外推逻辑：把 150ms 包间隔的离散目标
+    // 用指数缓动铺到每一帧。真正的 seek（跨度超过阈值）直接吸附，避免拖影。
+    const now = performance.now();
+    if (!Number.isFinite(smoothCursorMs)
+        || Math.abs(targetTime - smoothCursorMs) > GRAPH_SEEK_RESET_MS) {
+        smoothCursorMs = targetTime;
+        smoothCursorFrameTs = now;
+    } else {
+        const dt = smoothCursorFrameTs > 0
+            ? Math.min(80, Math.max(0, now - smoothCursorFrameTs))
+            : 16;
+        smoothCursorFrameTs = now;
+        const alpha = 1 - Math.exp(-dt / GRAPH_CURSOR_EASE_TAU_MS);
+        smoothCursorMs += (targetTime - smoothCursorMs) * alpha;
+        if (Math.abs(targetTime - smoothCursorMs) < 0.05) {
+            smoothCursorMs = targetTime;
+        }
+    }
+    const displayTime = Number.isFinite(smoothCursorMs) ? smoothCursorMs : targetTime;
     state.graphCursorMs = displayTime;
 
-    const { times, values, minTime, maxTime, minYValue, maxYValue } = series;
     const rangeStart = Number.isFinite(state.songStartMs) ? state.songStartMs : minTime;
     const rangeEnd = Number.isFinite(state.songEndMs) ? state.songEndMs : maxTime;
     const boundedTime = Math.max(rangeStart, Math.min(displayTime, rangeEnd));
@@ -734,6 +779,8 @@ export function renderDiffGraph(graphData, options = {}) {
     // trimSeriesStartToFirstObject），refreshGraphTimeline 用它按新时间线重画。
     state.graphSeriesSource = normalizedSeries;
     state.graphCursorMs = null;
+    state.graphPlaybackRate = 0;
+    resetCursorEasing();
     rateSamples = [];
     lastRateSampleTs = 0;
     // 记录这批 times 是按哪个倍速算出来的：换速率后 syncGraphSeriesRate 用它换算。
@@ -896,7 +943,7 @@ export function updateDiffTextVisibility() {
     } else if (showRightCapsule) {
         switch (mode) {
             case "MSD":
-                estDiffCaptionEl.textContent = "Mina Standard Difficulty";
+                estDiffCaptionEl.textContent = "Mina Standardized Difficulty";
                 break;
             case "Pattern":
                 estDiffCaptionEl.textContent = "Overall Pattern";

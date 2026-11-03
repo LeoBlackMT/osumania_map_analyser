@@ -337,6 +337,14 @@ function buildStrip() {
         button.title = item.title;
         buttonsEl.appendChild(button);
     }
+    const dismissCurrent = document.createElement("button");
+    dismissCurrent.type = "button";
+    dismissCurrent.className = "feedback-vote feedback-dismiss-current";
+    dismissCurrent.dataset.dismissCurrent = "1";
+    dismissCurrent.textContent = "Dismiss";
+    dismissCurrent.title = "Close this prompt without turning feedback off";
+    buttonsEl.appendChild(dismissCurrent);
+
     const dismiss = document.createElement("button");
     dismiss.type = "button";
     dismiss.className = "feedback-vote feedback-dismiss";
@@ -346,6 +354,12 @@ function buildStrip() {
     buttonsEl.appendChild(dismiss);
 
     buttonsEl.addEventListener("click", (event) => {
+        if (event.target.closest("button[data-dismiss-current]")) {
+            // 只收起本次提示，保留 enableDifficultyFeedback；lastPromptToken
+            // 不清空，同一局不会因为下一帧又弹回来。
+            hideStrip({ resetToken: false });
+            return;
+        }
         if (event.target.closest("button[data-dismiss]")) {
             optOutForGood();
             return;

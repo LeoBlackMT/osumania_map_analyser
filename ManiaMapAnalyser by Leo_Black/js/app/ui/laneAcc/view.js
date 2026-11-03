@@ -11,6 +11,10 @@ import { formatAcc, formatMiss } from "../../../laneAcc/format.js";
 import { createPopoverController } from "./popover.js";
 import { renderHands } from "./hands.js";
 
+// 分轨柱状图的自适应下限：少于这个判定数的轨道不参与范围计算，
+// 避免开局几个垃圾判定把 lower bound 永久拉到很低。
+const LANE_BOUNDS_MIN_JUDGED = 8;
+
 const ERROR_TEXT = {
     shell: "LaneAcc needs the desktop shell.",
     contract: "Update the shell to use LaneAcc (contract v10).",
@@ -66,6 +70,8 @@ export const laneAccView = (() => {
     let renderHandle = 0;
     let laneButtons = [];
     let laneKey = "";
+    let lastColumnCount = 4;
+    let loadingChangeKind = "difficulty";
     let spaceModeSetting = "auto";
     let latestSnapshot = null;
     let laneBounds = null;
@@ -177,8 +183,11 @@ export const laneAccView = (() => {
         if (!nodes) {
             return;
         }
+        loadingChangeKind = changeKind === "song" ? "song" : "difficulty";
         nodes.wrap.dataset.state = "loading";
+        nodes.wrap.dataset.changeKind = changeKind;
         if (nodes.summary) nodes.summary.hidden = false;
+        if (nodes.popover) nodes.popover.hidden = true;
         if (nodes.stage) {
             nodes.stage.hidden = false;
             nodes.stage.classList.remove(
@@ -188,6 +197,18 @@ export const laneAccView = (() => {
                 "is-loading-difficulty",
             );
             nodes.stage.classList.add("is-loading", `is-loading-${changeKind}`);
+            nodes.stage.dataset.changeKind = changeKind;
+            // 还没有真实轨道时先铺占位轨道，保证“切图加载”本身有动画，
+            // 而不是空白等分析完成后再突然弹出。
+            if (!nodes.stage.querySelector(".laneacc-lane")) {
+                for (let index = 0; index < lastColumnCount; index += 1) {
+                    const placeholder = document.createElement("div");
+                    placeholder.className = "laneacc-lane is-placeholder";
+                    placeholder.dataset.col = String(index);
+                    placeholder.style.setProperty("--lane-index", String(index));
+                    nodes.stage.append(placeholder);
+                }
+            }
         }
         if (nodes.error) {
             nodes.error.hidden = true;
@@ -212,6 +233,7 @@ export const laneAccView = (() => {
             return;
         }
         nodes.wrap.dataset.state = "ready";
+        loadingChangeKind = "difficulty";
         if (nodes.summary) nodes.summary.hidden = false;
         if (nodes.stage) nodes.stage.hidden = false;
         if (nodes.error) {
@@ -344,18 +366,20 @@ export const laneAccView = (() => {
             ? Math.floor(activeChart.columnCount / 2)
             : -1;
         const judgedAccs = snapshot.lanes
-            .map((lane) => (lane.judged > 0 && Number.isFinite(lane.acc) ? lane.acc : null))
-            .filter((value) => value != null);
+            .filter((lane) => lane.judged >= LANE_BOUNDS_MIN_JUDGED && Number.isFinite(lane.acc))
+            .map((lane) => lane.acc);
         if (judgedAccs.length > 0) {
-            const nextLow = Math.floor(Math.min(...judgedAccs) - 1);
-            const nextHigh = Math.ceil(Math.max(...judgedAccs));
+            const nextLow = Math.max(0, Math.floor(Math.min(...judgedAccs) - 1));
+            const nextHigh = Math.min(100, Math.ceil(Math.max(...judgedAccs)));
             if (!laneBounds) {
                 if (Math.min(...judgedAccs) < 99.999) {
                     laneBounds = { low: nextLow, high: nextHigh };
                 }
             } else {
-                laneBounds.low = Math.min(laneBounds.low, nextLow);
-                laneBounds.high = Math.max(laneBounds.high, nextHigh);
+                // 每次都用当前分段重新计算，而不是只让 lower bound 下降：
+                // 开局低准度过后，后续高准度会把范围重新收紧，柱状图恢复区分度。
+                laneBounds.low = nextLow;
+                laneBounds.high = nextHigh;
             }
             if (laneBounds && laneBounds.high <= laneBounds.low) {
                 laneBounds.high = laneBounds.low + 1;
@@ -397,6 +421,7 @@ export const laneAccView = (() => {
         if (latestSnapshot) {
             popoverCtrl.refreshStatPopover();
         }
+        popoverCtrl.refreshPopover();
         const visible = laneAccWrapEl.offsetParent !== null;
         if (visible && !stageVisible) {
             replayEntrance();
@@ -480,6 +505,7 @@ export const laneAccView = (() => {
             "is-loading-difficulty",
         );
         activeChart = chart;
+        lastColumnCount = chart.columnCount;
         accumulator = createAccumulator(chart, options());
         rawAccumulator = createAccumulator(chart, options());
         feedIndex = 0;
@@ -718,12 +744,18 @@ export const laneAccView = (() => {
         pump();
     }
 
-    /** 结算：只冻结显示，分母仍是已判定计数。 */
-    function finishSession() {
+    /**
+     * 结算：只冻结显示，分母仍是已判定计数。
+     *
+     * `complete=true`（真正进入结算屏）才把剩余原始帧/未判定 note 纳入
+     * SV1 结算；中途退到选歌必须 `complete=false`，否则当前时钟之后的
+     * 未游玩 note 会被 framesToSv1Events 当成“已到期”全部记 Miss。
+     */
+    function finishSession(complete = true) {
         if (!accumulator) {
             return;
         }
-        allEvents = true;
+        allEvents = complete;
         pump();
         rawAccumulator?.finish();
         accumulator.finish();
@@ -768,21 +800,13 @@ export const laneAccView = (() => {
         pendingBatches = [];
         popoverCtrl.hidePopover();
         popoverCtrl.hideStatPopover();
-        clearLoading();
-        clearError();
         const nodes = dom();
         if (nodes) {
-            nodes.sv1.textContent = "--";
-            delete nodes.sv1.dataset.displayValue;
-            nodes.od.hidden = true;
-            nodes.hands.replaceChildren();
-            const popover = nodes.popover;
-            nodes.stage.replaceChildren();
-            if (popover) {
-                nodes.stage.append(popover);
-            }
+            // 切图只清内部数据，不清显示值：旧 ScoreV1、左右手和轨道保持可见，
+            // 由 loading 动画负责过渡；否则会先变成空白再突然弹入。
             laneButtons = [];
             laneKey = "";
+            showLoading(state.pendingChangeKind === "song" ? "song" : "difficulty");
         }
     }
 
@@ -791,7 +815,12 @@ export const laneAccView = (() => {
         if (!nodes) {
             return;
         }
-        const changeKind = state.pendingChangeKind === "song" ? "song" : "difficulty";
+        const pending = state.pendingChangeKind;
+        const changeKind = pending === "song"
+            ? "song"
+            : (pending === "difficulty" || pending === "mod")
+                ? "difficulty"
+                : loadingChangeKind;
         showLoading(changeKind);
     }
 

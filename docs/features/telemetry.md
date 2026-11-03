@@ -72,7 +72,8 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - **只对刚打完的一局提问**：进入本次结算屏前必须经过 play/pause 态（页面 `state.resultsFromPlay`，由 `socketHandlers.js` 的状态迁移计算）。从选曲/本地排行榜直接打开的结算屏（查看历史成绩）不是刚打出的成绩，直接跳过（`reason: "not_fresh_play"`）；壳在结算屏中途启动、没有 play 前态时同样不提问。
 - **lazer 的 mods 在结算屏沿用 play 帧**：lazer 进入结算屏会清空 `SelectedMods`；壳把 play 状态最后一次读全的 mods 缓存在 `Attach.last_lazer_mods`，结算时用它签名，避免把 DT 签成 NM。没有 play 帧时 `no_mods` 拒绝；DT/NC 无 `speed_change` 时按 1.5、HT/DC 按 0.75 兜底。
 - 本地联调：壳用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback` 启动即可把投票发到本地后端（`/shell-config` 的 `feedback.endpoint` 下发给页面，无需控制台）。需要在壳窗口里开控制台时，用 `cargo build --release --features devtools` 构建并设 `MMA_DEVTOOLS=1` 启动；默认发布构建不含 devtools。
-- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
+- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；`Dismiss` 只收起本次提示，不关闭反馈功能；`Don't ask again` 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
+- `no_bid`（通常是本地/未提交谱面）直接不弹反馈条，也不显示“无法获取谱面”的提示：这类谱面后续无法通过 osu! API 校验，弹条只会制造无效反馈。
 - 本地同一谱面同一倍速同一侧 30 天内只询问一次；6K/7K 的另一侧仍可被询问，两侧都问过后不再提示。服务端另有 HMAC 去重与 IP/每图限流。
 
 **字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`target_side`（6K/7K；4K 旧载荷为空=RC）、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
@@ -95,7 +96,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 **公开统计页**：`/feedback-stats`（与使用统计 `/` 同一套设计系统，页头选项卡切换）只展示**已接受**事件的聚合：总量（票数 / 谱面数 / 有票天数 / 平均票 / 加权平均残差）、按日票数、五档票分布、按 estimator 与键数的加权残差（`Σweight·(target−displayed)/Σweight`）。任何分组 **N < 5 不返回**，且**不含 per-map 明细**（那只在私有 admin 页）。数据由 `GET /api/v1/feedback/summary?days=30` 提供（60s 内存缓存，`days` 允许 1–90）；页面不加载任何第三方脚本。
 
-**签名与密钥**：Ed25519，签名串 v1 为固定字段串；6K/7K 带 `target_side` 时使用 `v2` 并在末尾追加 `|target_side`（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
+**签名与密钥**：Ed25519，签名串 v1 为固定字段串；6K/7K 带 `target_side` 时使用 `v2` 并在末尾追加 `|target_side`（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。开发中间版若需要明确禁止上传反馈，应使用**不入服务端公钥表**的独立测试 key；若要让一组已分发的开发版失效，则从 `FEEDBACK_PUBLIC_KEYS` 删除对应旧 key（只改成新 key id、仍保留旧公钥不会阻止旧版本）。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
 
 **去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；查询时同时匹配 `target_side`，因此同一安装的 RC 和 LN 各可提交一次，同侧 30 天窗口内重复仍拒绝。服务端只存 token，窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
 

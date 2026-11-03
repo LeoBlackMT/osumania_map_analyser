@@ -17,7 +17,10 @@
 
 .star-value.pp-capsule {
     box-sizing: border-box;
-    width: var(--pp-capsule-width, 140px);
+    /* 让胶囊按当前字体/字号/数值自然定宽；固定测量宽度会在空卡片与
+       有主体（bars-none 52px → bars-etterna 48px）或切换 osu 字体后错位。 */
+    width: auto;
+    white-space: nowrap;
     text-align: center;
 }
 

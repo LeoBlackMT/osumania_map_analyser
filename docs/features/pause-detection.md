@@ -19,7 +19,7 @@
 `ManiaMapAnalyser by Leo_Black/js/app/net/socketHandlers.js:51` 的 `updateSongTimeState(data)` 是暂停检测的唯一驱动入口。每个 tosu 数据帧到达时：
 
 1. 记录 `state.songStartMs` / `state.songEndMs`（谱面第一个/最后一个物件的谱面时间，按 `state.speedRate` 缩放），作为判定时间轴边界。该步**不依赖 live 时间**，位于 `liveTimeMs` 的 early-return 之前（`socketHandlers.js:52-70`）；时间线变化还会触发 `refreshGraphTimeline()` 重建难度图表（见 [graph-visualization.md](graph-visualization.md) §4.5）。
-2. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:72-76`）；无 live 时间的帧到此为止。
+2. 从 tosu payload 提取实时谱面时间，并按倍速缩放为**谱面时间**（除以 `state.speedRate`，见 `socketHandlers.js:72-76`）；无 live 时优先回退到选歌 `menu.bm.time.current`，所有有效时间都缺失的帧到此为止。
 3. 读取 **双层暂停判定**（优先原生标志，缺省时自动 500ms 停滞兜底，`socketHandlers.js:107-154`）：
    - **优先层**：若数据源提供原生的 `typeof data?.game?.paused === "boolean"`（官方 tosu 或桌面壳 native 传输），同样要求本局谱面时钟已经真正前进过（`state.playbackAdvanced`），并持续为真达到 `PAUSE_FALLBACK_THRESHOLD_MS`（500ms）才认定为暂停。Stable 的 `paused` 是“两次读取时间相同”的推导值，开局加载阶段会连续出现相同时间，必须靠这两道门过滤，否则会误记 +1/+2 次暂停。
    - **兜底层**：若数据源缺失 `game.paused`（`undefined`），当游玩中谱面时间连续停滞达 `PAUSE_FALLBACK_THRESHOLD_MS`（500ms）时，自动推断进入暂停；时间重新推进时自动解除。

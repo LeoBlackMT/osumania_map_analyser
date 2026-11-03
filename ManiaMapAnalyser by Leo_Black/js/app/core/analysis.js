@@ -358,16 +358,13 @@ function resetSourceContext() {
 /**
  * 清空卡片（Malody 选曲桥从"有谱面的场景"回到 `other` 稳态时的唯一清空动作）。
  *
- * 复用两条既有清空路径的调用组合，不新造渲染逻辑：
- * - `resetReworkDisplay()`（内含 `clearDiffGraph()` → `resetPlayedFill` / `clearAllPauseMarkers`
- *   / `setModeTag("Mix")` 等）；
- * - 三个栏位的空占位（`patternClustersEl` / `ettSkillBarsEl` / `ppBarsEl`）+ 状态行。
+ * 保留最后一次渲染的 DOM，只标成 stale：Malody V/4.3.7 回主页时直接
+ * 清空会改变组合模式卡片高度，造成大幅伸缩。新数据开始分析后由
+ * fetchBeatmapFile 移除该标记。
  */
 export function clearSourceCard() {
-    resetReworkDisplay();
-    patternClustersEl.innerHTML = "";
-    ettSkillBarsEl.innerHTML = "";
-    ppBarsEl.innerHTML = "";
+    mainCardEl?.classList.add("card-source-stale");
+    hideOverlay();
     setStatus("Waiting for a data source…", "ok");
     resetSourceContext();
 }
@@ -402,6 +399,7 @@ export { toTelemetryActualAlgorithm } from "../net/telemetrySpec.js";
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    mainCardEl?.classList.remove("card-source-stale");
     // 本次分析的谱面身份快照：fetch/worker 期间可能切图，所有原文缓存与
     // 结果缓存键都必须锚在请求开始时的那张图，不能用可变的
     // `state.lastBeatmapIdentity`（否则旧图原文会写进新图键下，之后永远

@@ -19,8 +19,8 @@ export function createHandBlock(label) {
     acc.className = "laneacc-hand-acc";
     acc.textContent = "--";
     const miss = document.createElement("span");
-    miss.className = "laneacc-hand-miss";
-    miss.hidden = true;
+    miss.className = "laneacc-hand-miss is-zero";
+    miss.textContent = "Miss 0";
     block.append(name, acc, miss);
     return block;
 }
@@ -56,11 +56,13 @@ export function renderHands(handsContainer, snapshot, animateNumber) {
         animateNumber(acc, hand?.acc, (value) => formatAcc(value));
         const miss = block.querySelector(".laneacc-hand-miss");
         const missCount = Number(hand?.miss) || 0;
-        miss.hidden = missCount <= 0;
+        // 两侧始终保留同一行 Miss，0 也用占位文案显示；只改变颜色，
+        // 避免一边有 Miss、一边没有时左右手卡片高度不一致。
+        miss.classList.toggle("is-zero", missCount <= 0);
         if (missCount > 0) {
             animateNumber(miss, missCount, (value) => `Miss ${formatMiss(value)}`);
         } else {
-            miss.textContent = "";
+            miss.textContent = "Miss 0";
             delete miss.dataset.displayValue;
         }
     }

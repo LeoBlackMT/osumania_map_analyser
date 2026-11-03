@@ -11,6 +11,7 @@ import {
     statusEl,
     svTagEl,
 } from "../core/appContext.js";
+import { isSourcePlaying } from "../sources/sourceActivity.js";
 
 const SV_TAG_EXIT_DURATION_MS = 220;
 let svTagHideTimerId = 0;
@@ -278,73 +279,18 @@ export function updatePauseCountVisibility() {
     pauseCountEl.hidden = false;
 }
 
-function resolveEffectiveSource() {
-    if (state.activeSource) {
-        return state.activeSource;
-    }
-    if (state.malody4Alive) {
-        return "malody4";
-    }
-    if (state.malodyAlive) {
-        return "malody";
-    }
-    if (state.etternaAlive) {
-        return "etterna";
-    }
-    return null;
-}
-
-export function isCurrentSourcePlaying() {
-    const source = resolveEffectiveSource();
-    switch (source) {
-        case "osu":
-            return Boolean(state.isInPlayState);
-        case "malody":
-            return Boolean(state.malodyPlaying);
-        case "malody4":
-            return Boolean(state.malody4Playing);
-        case "etterna":
-            return Boolean(state.etternaPlaying);
-        default:
-            return false;
-    }
-}
-
-export function isCurrentSourceMenu() {
-    const source = resolveEffectiveSource();
-    switch (source) {
-        case "osu":
-            return state.clientStateName === "menu";
-        case "malody":
-            return state.malodyScreen === "other";
-        case "malody4":
-            return state.malody4Screen === "other";
-        default:
-            return false;
-    }
+/** 任一存活数据源处于游玩态；所有壳侧 playing 位都带存活/过期门。 */
+export function isAnySourcePlaying() {
+    return isSourcePlaying("osu")
+        || isSourcePlaying("etterna")
+        || isSourcePlaying("malody")
+        || isSourcePlaying("malody4");
 }
 
 export function hasActiveErrorOrNotice() {
-    if (state.statusKind === "error") {
-        return true;
-    }
-    if (overlayEl && !overlayEl.hidden && overlayEl.classList.contains("error")) {
-        return true;
-    }
-    if (state.malody4Reason === "chart-unknown-identity" || state.malody4Reason === "chart-unresolved") {
-        return true;
-    }
-    if (typeof state.statusText === "string" && state.statusText.length > 0 && (
-        state.statusText.startsWith("Malody 4:") ||
-        state.statusText.startsWith("[Error]") ||
-        state.statusText.startsWith("Failed to")
-    )) {
-        return true;
-    }
-    if (typeof state.shellOsuNotice === "string" && state.shellOsuNotice.length > 0) {
-        return true;
-    }
-    return false;
+    // 只有致命加载失败使用的 overlay 能压过显示控制；状态行的长期提示
+    // （osu 扫描、动态 OD 未启用等）不能把卡片永久钉在显示状态。
+    return Boolean(overlayEl && !overlayEl.hidden && overlayEl.classList.contains("error"));
 }
 
 export function updateCardPlayVisibility() {
@@ -352,31 +298,16 @@ export function updateCardPlayVisibility() {
         return;
     }
 
-    // 存在明确的错误、异常或未解析提示时，绝不隐藏卡片，确保用户能够及时看到状态与错误说明
+    const isPlaying = isAnySourcePlaying();
+
+    // 致命错误必须让用户看到；其余显隐完全由 cardVisibility 决定。
     if (hasActiveErrorOrNotice()) {
         mainCardEl.classList.toggle("card-hidden-by-play", false);
         mainCardEl.setAttribute("aria-hidden", "false");
         return;
     }
 
-    const currentSource = resolveEffectiveSource();
-
-    // 无活跃数据源时（如未开游戏、已退出游戏）：始终显示卡片以展示等待提示，防止卡片位置丢失
-    if (!currentSource) {
-        mainCardEl.classList.toggle("card-hidden-by-play", false);
-        mainCardEl.setAttribute("aria-hidden", "false");
-        return;
-    }
-
-    // 活跃游戏处于主菜单时，始终隐藏卡片
-    if (isCurrentSourceMenu()) {
-        mainCardEl.classList.toggle("card-hidden-by-play", true);
-        mainCardEl.setAttribute("aria-hidden", "true");
-        return;
-    }
-
     let shouldHide = false;
-    const isPlaying = isCurrentSourcePlaying();
     if (state.cardVisibility === "DuringPlay") {
         shouldHide = !isPlaying;
     } else if (state.cardVisibility === "OutsidePlay") {

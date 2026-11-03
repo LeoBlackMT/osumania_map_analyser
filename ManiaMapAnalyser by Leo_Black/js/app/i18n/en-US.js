@@ -28,4 +28,6 @@ export default {
     "ui.shell.offsets.generatedMissingScore": "Offsets generated and verified, but the score section required by LaneAcc/LivePP is missing. Enter a play/replay and generate again.",
     "ui.shell.offsets.generatedMissingResults": "Offsets generated and verified, but the results section required by result-screen feedback is missing. Stay on the result screen and generate again.",
     "ui.shell.offsets.generatedMissingBoth": "Offsets generated and verified, but this run only captured the base fields. Enter a play/replay and generate once, then stay on the result screen and generate again to fill score/results.",
+    "ui.shell.offsets.generatedSections": "Offsets generated and verified ({sections}).",
+    "ui.shell.offsets.workflowHint": "Generate twice: ① in play/replay; ② stay on the result screen and generate again.",
 };

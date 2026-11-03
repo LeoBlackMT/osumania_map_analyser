@@ -110,8 +110,8 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（≤2048 条/帧分块，首帧 reset）。
 - 壳读取 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；表 `score` 段缺失时
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
-  生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但会从同目录旧表保留该段，避免一键生成
-  把 LaneAcc 的表结构覆盖掉。
+  生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但只会从**同版本**同目录旧表保留该段，避免一键生成
+  把 LaneAcc 的表结构覆盖掉。新版本完整流程：先在游玩/回放生成 `score`，再在结算屏生成 `results`；跨版本旧表不参与补段。
 - 只在 `client == lazer` 且 `state.name == play` 时推送；非 play 清空日志并发空 reset。
 - 功能与公式见 [lane-acc.md](lane-acc.md)，协议细节见 `desktop/docs/CONTRACT.md` §16。
 

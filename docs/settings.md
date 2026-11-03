@@ -33,6 +33,7 @@
     - **Live Generator**：生成 lazer 偏移表。
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
+      - **新版本完整生成**：先在游玩/回放界面生成一次（得到基础表和 `score` 段，LaneAcc/LivePP 可用），再打完/回放结束停在结算屏生成一次（得到 `results` 段，结算反馈可用）。选歌页只能得到基础字段；旧版本表不会跨版本补段，页面会提示还缺哪一段。生成完成后的状态会显示 `score / results / mods` 三段是否就绪，不再只显示一句“已生成”。
     - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
 - **壳专属卡片配置**（Desktop-shell card settings）
   - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
@@ -106,7 +107,7 @@
     - **Reverse Card Extension**: 是否反转卡片延展方向。
         - 启用后卡片底边保持锚定，扩展时向上生长；关闭时默认向下扩展。
     - **Card Visibility**: 控制卡片的显示时机。
-        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。
+        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。所有界面（含主菜单）都按该设置控制，不再强制隐藏。游玩态按各数据源独立判定，并叠加壳桥存活、Etterna `playingExpireAt` 与 Malody 4 selection 心跳新鲜度；断连或超时后不会沿用旧的 `playing` 位。状态行的错误/提示（包括壳的 osu 扫描提示、Malody V 动态 OD 未启用提示）不会覆盖显示控制；无数据源的等待态在 `OutsidePlay` 下正常显示，在 `DuringPlay` 下隐藏。
     - **Card Opacity**: 设置卡片整体透明度。
         - 可选范围：100% / 95% / 90% / 80% / 70%。
     - **Content Background Blur**: 是否启用背景图片模糊效果。
@@ -220,6 +221,7 @@
     - **Live Generator**: Generate lazer offset tables.
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
+      - **Full generation for a new version**: generate once during play/replay for the base table and `score` section (LaneAcc/LivePP), then finish/replay and generate again while staying on the result screen for `results` (result-screen feedback). Song select only produces the base fields; old-version tables are never reused across versions, and the page tells you which section is still missing. After generation the status shows whether `score / results / mods` are ready instead of only saying "generated".
     - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
 - **Shell-exclusive Card Configuration**:
   - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
@@ -293,7 +295,7 @@
     - **Reverse Card Extension**: Whether to reverse the card expansion direction.
         - When enabled, the card stays anchored at the bottom and grows upward; when disabled, it expands downward by default.
     - **Card Visibility**: Control when the card is shown.
-        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
+        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`. The setting applies everywhere, including the main menu; no screen is force-hidden. Play state is detected per source and gated by shell liveness, Etterna `playingExpireAt`, and Malody 4 selection-heartbeat freshness, so a disconnected or finished source cannot leave a stale `playing` flag. Status-line errors/notices (including the shell's osu scan hint and Malody V's dynamic-OD-disabled notice) never override this setting; the no-source waiting state is visible with `OutsidePlay` and hidden with `DuringPlay`.
     - **Card Opacity**: Set the overall card opacity.
         - Available values: 100% / 95% / 90% / 80% / 70%.
     - **Content Background Blur**: Whether to enable background image blur for content sections.

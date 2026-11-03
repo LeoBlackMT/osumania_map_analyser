@@ -119,7 +119,7 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 裁剪矩形 `playClipRectEl` 的宽度由游标 x 决定，每帧跟随：
 
 - `graph.js:565-567`：`view.playClipRectEl.setAttribute("width", x.toFixed(2))`，其中 `x` 是当前播放时间插值出的 viewBox 横坐标（`graph.js:545`）。注释（`graph.js:564`）说明：clip 宽度 = 已玩边界，暂停时 x 冻结、回退时 x 收缩，自动跟随。
-- 游标更新在 `graph/index.js updateGraphCursor(explicitTimeMs)`：播放时间经 `getInterpolatedPlaybackTime()` 获取（基于 WebSocket 时间戳 + `performance.now()` 插值；原生包可能连续重复同一 `live` 值，重复样本不刷新锚点，速率用最近约 1.2s 的首尾样本平均；暂停时返回冻结值 `state.frozenInterpMs`）；小幅回退被钳住（`state.graphCursorMs`），避免 10→11→10 抖动；时间限定在 `[songStartMs, songEndMs]` 再 clamp 到系列范围；y 值经 `interpolateSeriesValue` + 归一化得出。
+- 游标更新在 `graph/index.js updateGraphCursor(explicitTimeMs)`：播放时间经 `getInterpolatedPlaybackTime()` 获取（基于 WebSocket 时间戳 + `performance.now()` 插值；原生包可能连续重复同一 `live` 值，重复样本不刷新锚点，速率用最近约 1.2s 的首尾样本平均；暂停时返回冻结值 `state.frozenInterpMs`）。`hasSongTimeSample` 为假时（刚离开游玩/换图）不拿 `songTimeMs` 残值画进度。小幅回退被钳住（`state.graphCursorMs`），避免 10→11→10 抖动；随后用 **90ms 时间常数的指数缓动**把离散目标铺到每一帧（`GRAPH_CURSOR_EASE_TAU_MS`，`smoothCursorMs`），真实 seek 跨度超过阈值时直接吸附；时间限定在 `[songStartMs, songEndMs]` 再 clamp 到系列范围；y 值经 `interpolateSeriesValue` + 归一化得出。选歌帧的 `beatmap.time.live` 常为 0，时间提取优先回退到 `menu.bm.time.current`；选歌/菜单没有任何有效时间时游标画在谱面起点，结算屏直接画在谱面终点，而不是隐藏白色进度线或停在上一局末尾。进度只在卡片归属为 osu! 时启用（`isGraphProgressSupported` 优先读取 `state.cardOwner`，避免已结束源的残留路由把 osu 进度关掉）。
 - 动画循环：`graph.js:585 syncGraphAnimationLoop()` 只在**存在任一图表模式**时用 `requestAnimationFrame` 每帧调用 `updateGraphCursor()`（`graph.js:575-583`）；无图表模式时 `cancelAnimationFrame` 停掉循环，避免常驻空转。`startGraphAnimationLoop()`（`graph.js:600`）在初始化时调用，`updateDiffTextVisibility`/`setRuntimeContentBar`/`setEffectiveContentBarForMap` 在模式切换时同步启停。
 
 ### 5.2 resetPlayedFill 调用点（共 6 处，清空/加载/错误路径）
@@ -135,7 +135,7 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 | 3 | `graph.js:472` | `showDiffGraphError`（错误路径） |
 | 4 | `graph.js:501` | `updateGraphCursor` 且 `hasAnyGraphModeEnabled()` 为假（全视图） |
 | 5 | `graph.js:519` | `updateGraphCursor` 且 `state.graphSeries` 为空（启用视图） |
-| 6 | `graph.js:526` | `updateGraphCursor` 且播放时间不可得（启用视图） |
+| 6 | `graph.js:526` | `updateGraphCursor` 且系列时间轴无有效值（防御分支） |
 
 > 维护提醒：任何新增的"清空图表"路径都必须调用 `resetPlayedFill`（或复用 `clearDiffGraph`），否则会出现已玩亮层残留在空白图上的视觉 bug。
 

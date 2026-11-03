@@ -25,6 +25,7 @@
 import { state } from "../core/appContext.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 import { updateCardPlayVisibility } from "../ui/hud.js";
+import { isSourcePlaying } from "./sourceActivity.js";
 
 const FRESH_WINDOW_MS = 60000;
 const DEBOUNCE_MS = 200;
@@ -101,13 +102,13 @@ function normalizeClient(value) {
 }
 
 function decide() {
-    // L1
-    if (state.isInPlayState) return "osu";
+    // L1：所有壳侧 playing 位都经过存活/过期判定，避免已结束的源继续抢占路由。
+    if (isSourcePlaying("osu")) return "osu";
     // Malody 选曲桥的游玩态：`alive` 门控防止游戏关闭后路由被钉死在 Malody
     // （壳在桥静默时会把 playing 置假，这里的 alive 是第二道保险）。
-    if (state.malodyPlaying && state.malodyAlive) return "malody";
-    if (state.etternaPlaying) return "etterna";
-    if (state.malody4Playing) return "malody4";
+    if (isSourcePlaying("malody")) return "malody";
+    if (isSourcePlaying("etterna")) return "etterna";
+    if (isSourcePlaying("malody4")) return "malody4";
     // L2/L3：窗口 + hold/抢占
     const now = Date.now();
     const events = state.sourceEvents || {};
