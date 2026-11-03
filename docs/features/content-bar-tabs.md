@@ -26,7 +26,7 @@ Tab 栏仅在以下全部条件成立时可见：
 
 ## 3. 状态模型
 
-`js/app/appContext.js`：
+`js/app/core/appContext.js`：
 
 ```js
 tabContentBar: null,          // 会话级 Tab 覆盖；null = 跟随 contentBar
@@ -53,7 +53,7 @@ contentBarShows(section) =
 
 ## 4. 点击语义
 
-`js/app/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / `键盘` / `拖拽`；闲置淡化用的 `pointerenter/move/down` 只做可见性恢复，不参与点击判定）：
+`js/app/ui/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / `键盘` / `拖拽`；闲置淡化用的 `pointerenter/move/down` 只做可见性恢复，不参与点击判定）：
 
 ```js
 contentBarTabsEl.addEventListener("click", (event) => {
@@ -63,7 +63,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 });
 ```
 
-`js/app/settings.js` 的 `setTabContentBar(module)`：
+`js/app/core/settings.js` 的 `setTabContentBar(module)`：
 
 1. 非壳或 Combined 开启 → 拒绝；
 2. 计算 `isActive = getActiveContentBar() === module`；

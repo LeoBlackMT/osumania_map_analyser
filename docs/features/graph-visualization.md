@@ -6,7 +6,7 @@
 
 ## 1. 功能概述
 
-难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
+难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
 
 **时间轴契约（重要）**：`rework.graph.times` 必须与 `state.songStartMs` / `state.songTimeMs` 同域，即**按 `speedRate` 缩放后的原始谱面时间**（`rawTime / speedRate`）。Sunny / Daniel / Azusa 天然如此；Roxy 的分析文本会被 `canonicalizeOsuTiming` 平移，因此它在返回前会把 `graph.times` 逆变换回原始时间轴（见 [roxy_algorithm.md](../roxy_algorithm.md) §4、§17）。**新增/修改估算器时若输出 graph，必须遵守该契约**——否则裁剪窗口、游标映射、暂停标记全部按错误的时间轴走。
 
@@ -24,7 +24,7 @@
 
 ### 2.1 DOM refs
 
-所有 SVG 元素引用在 `ManiaMapAnalyser by Leo_Black/js/app/appContext.js` 中段（`state` 定义之前，:112-131）通过 `getElementById` 一次性获取：
+所有 SVG 元素引用在 `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js` 中段（`state` 定义之前，:112-131）通过 `getElementById` 一次性获取：
 
 - header 图：`appContext.js:113 diffGraphSvgEl`（`rework-diff-graph`）、`appContext.js:114 diffGraphFillEl`、`appContext.js:115 diffGraphFillPlayEl`、`appContext.js:116 diffGraphPlayClipRectEl`、`appContext.js:117 diffGraphLineEl`、`appContext.js:118 diffGraphCursorEl`、`appContext.js:119 diffGraphCursorDotEl`、`appContext.js:120 diffGraphPauseMarkersEl`、`appContext.js:121 diffGraphErrorEl`，包裹层 `appContext.js:112 diffGraphWrapEl`。
 - body 图：`appContext.js:123 bodyGraphSvgEl`（`body-graph`）、`appContext.js:124 bodyGraphFillEl`、`appContext.js:125 bodyGraphFillPlayEl`、`appContext.js:126 bodyGraphPlayClipRectEl`、`appContext.js:127 bodyGraphLineEl`、`appContext.js:128 bodyGraphCursorEl`、`appContext.js:129 bodyGraphCursorDotEl`、`appContext.js:130 bodyGraphPauseMarkersEl`、`appContext.js:131 bodyGraphErrorEl`，包裹层 `appContext.js:122 bodyGraphWrapEl`。
@@ -34,7 +34,7 @@
 `appContext.js:340 GRAPH_VIEW_DEFS` 是视图定义的统一描述数组，每个视图含 `key`、各 DOM ref 字段与 `isEnabled()` 判定：
 
 - header 视图：`isEnabled: () => state.diffText === "Graph"`（`appContext.js:353`）。
-- body 视图：`isEnabled: () => contentBarShows("Graph")`（`js/app/appContext.js` 的 `contentBarShows()`：组合模式读 `combinedModeModules`，紧凑模式读 `getActiveContentBar()` 的 `tabContentBar || effectiveContentBar || contentBar`）。
+- body 视图：`isEnabled: () => contentBarShows("Graph")`（`js/app/core/appContext.js` 的 `contentBarShows()`：组合模式读 `combinedModeModules`，紧凑模式读 `getActiveContentBar()` 的 `tabContentBar || effectiveContentBar || contentBar`）。
 
 遍历工具：
 
@@ -46,7 +46,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ## 3. 图形数学（graphMath.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/graphMath.js` 是纯函数模块（无 DOM），供 graph.js 与加载骨架共用：
+`ManiaMapAnalyser by Leo_Black/js/app/graph/math.js` 是纯函数模块（无 DOM），供 graph.js 与加载骨架共用：
 
 - `graphMath.js:1 f2(v)`：数值转字符串，非有限值返回 `"0.00"`（两位小数，用于加载骨架等路径构建）。
 - `graphMath.js:5 buildLinePath(points)`：由 `[[x, y], ...]` 点数组构建折线 SVG path 字符串（`M x0 y0 L x1 y1 ...`），空数组返回 `""`。
@@ -58,7 +58,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ### 4.1 主渲染 renderDiffGraph
 
-入口 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:609 renderDiffGraph(graphData)`（被 `analysis.js:802` 调用）：
+入口 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:609 renderDiffGraph(graphData)`（被 `analysis.js:802` 调用）：
 
 1. `hasAnyGraphModeEnabled()` 为假直接返回 `false`（`graph.js:610`）。
 2. `normalizeGraphSeries(graphData, GRAPH_RESAMPLE_INTERVAL_MS)` 归一化（`graph.js:616`）；失败 → `graph.js:618 showDiffGraphError("Graph unavailable")`。

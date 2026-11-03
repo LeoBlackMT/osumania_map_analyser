@@ -390,6 +390,7 @@ export function resetPauseRuntime(clearMarkers = false) {
     state.pauseFreezeStartRealMs = 0;
     state.frozenInterpMs = 0;
     state.hasSongTimeSample = false;
+    state.playbackAdvanced = false;
     if (clearMarkers) {
         clearAllPauseMarkers();
     }

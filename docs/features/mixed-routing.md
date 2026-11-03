@@ -93,7 +93,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 ---
 
-## 5. 主线程 Companella 阶段（`js/app/analysis.js`）
+## 5. 主线程 Companella 阶段（`js/app/core/analysis.js`）
 
 `Mixed` 只留计划；推理在主线程、且依赖 Etterna MSD 与 Interlude 星数。
 
@@ -116,7 +116,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 
 ## 6. 胶囊（`state.actualEstimatorAlgorithm`）取值总表
 
-渲染位置：`js/app/graph.js formatEstimateDifficultyCaption()`（当前只在 `actualAlgorithm !== selectedAlgorithm` 时加 `[算法]` 前缀）。
+渲染位置：`js/app/graph/index.js formatEstimateDifficultyCaption()`（当前只在 `actualAlgorithm !== selectedAlgorithm` 时加 `[算法]` 前缀）。
 
 | 命中路径 | 胶囊 |
 | --- | --- |
@@ -174,6 +174,6 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | `buildLowBandCompanellaPlan` | 同上 | 低难融合计划（`fuseRc` / `onDisagree` / `rcNumeric`） |
 | `applyCompanellaToMixedResult` | 同上 | C6–C9 的采用/保持/加权融合 |
 | `LOW_BAND_COMPANELLA_STAR_MAX` (9) / `RC_FUSION_LOW_BAND_MAX` (11) / `RC_AZUSA_COMPANELLA_FUSION_WEIGHT` (0.5) | 同上 | 融合阈值与权重 |
-| `shouldRunCompanella` | `js/app/analysis.js` | C1 执行门（C2 的 `lnRatio > 0.18` 跳过已于 2026-09-20 移除） |
-| `formatEstimateDifficultyCaption` | `js/app/graph.js` | 胶囊渲染（仅回退时加 `[算法]` 前缀） |
-| `state.actualEstimatorAlgorithm` | `js/app/appContext.js` | 胶囊状态（缓存命中由快照恢复） |
+| `shouldRunCompanella` | `js/app/core/analysis.js` | C1 执行门（C2 的 `lnRatio > 0.18` 跳过已于 2026-09-20 移除） |
+| `formatEstimateDifficultyCaption` | `js/app/graph/index.js` | 胶囊渲染（仅回退时加 `[算法]` 前缀） |
+| `state.actualEstimatorAlgorithm` | `js/app/core/appContext.js` | 胶囊状态（缓存命中由快照恢复） |

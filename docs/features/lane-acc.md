@@ -171,7 +171,7 @@ Stable 的原始按键时间。v10 起壳同时读取 `Player.Score.Replay.Frame
 - `List._items +0x08` / `_size +0x10`；`ManiaAction` Key1=0 → `keys` 位掩码
 
 下行帧 `mania_replay_frames` 与 `mania_hit_events` 并列：前者只用于 SV1，后者继续负责 Lazer 305
-口径与 gameCounts。页面在 `js/app/laneAcc/rawFrames.js` 把原始帧转换成 Stable 等价的
+口径与 gameCounts。页面在 `js/laneAcc/rawFrames.js` 把原始帧转换成 Stable 等价的
 head/tail/14/15/13 事件，再交给同一套 `accumulator.js` SV1 状态机；没有第二套判定公式。
 
 对拍结果（原始帧 → `rawFrames.js` → accumulator）：

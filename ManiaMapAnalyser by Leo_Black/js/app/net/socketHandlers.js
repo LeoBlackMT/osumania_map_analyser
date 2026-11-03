@@ -104,13 +104,32 @@ function updateSongTimeState(data) {
         return;
     }
 
+    if (scaledLiveTimeMs > previousTime + PAUSE_DETECT_EPSILON_MS) {
+        state.playbackAdvanced = true;
+    }
+
     if (state.pauseDetectionEnabled && state.isInPlayState) {
-        let gamePaused = false;
+        // 初始值必须继承当前暂停态：原生 paused 的防抖等待期间不能把已有暂停解除。
+        let gamePaused = state.isPaused;
 
         if (typeof data?.game?.paused === "boolean") {
-            // 优先层：数据源有原生/推导标志（官方 tosu 或桌面壳 native 24062），零延迟响应且免除卡顿误判
-            gamePaused = data.game.paused;
-            state.pauseFreezeStartRealMs = 0;
+            // 优先层：数据源有原生/推导标志（官方 tosu 或桌面壳 native 24062）。
+            // Stable 的 `paused` 是“两次读取时间相同”的推导值，开局加载阶段
+            // 常连续出现相同时间；必须等谱面真正前进过并持续 500ms，才认定为暂停。
+            const nativePaused = data.game.paused;
+            if (!state.playbackAdvanced) {
+                gamePaused = false;
+                state.pauseFreezeStartRealMs = 0;
+            } else if (nativePaused) {
+                if (!state.pauseFreezeStartRealMs) {
+                    state.pauseFreezeStartRealMs = now;
+                } else if ((now - state.pauseFreezeStartRealMs) >= PAUSE_FALLBACK_THRESHOLD_MS) {
+                    gamePaused = true;
+                }
+            } else {
+                state.pauseFreezeStartRealMs = 0;
+                gamePaused = false;
+            }
         } else {
             // 兜底层：数据源无 game.paused 字段时（旧版 tosu 或缺失字段的数据源），以 500ms 谱面时间停滞推测
             const isTimeFrozen = Math.abs(scaledLiveTimeMs - previousTime) <= PAUSE_DETECT_EPSILON_MS;

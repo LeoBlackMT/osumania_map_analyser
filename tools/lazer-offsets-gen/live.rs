@@ -45,9 +45,13 @@ pub fn run_live(options: &Options) -> i32 {
                 Some(score) => format!(r#","score":{score}"#),
                 None => r#","score":null"#.to_string(),
             };
+            let sections_json = format!(
+                r#","sections":{{"results":{},"mods":{},"score":{}}}"#,
+                info.has_results, info.has_mods, info.has_score
+            );
             if json_output {
                 println!(
-                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}{}{}}}"#,
+                    r#"{{"status":"ok","lazer_version":"{}","runtime_version":"{}","arch":"{}","file":"{}","verified":true{}{}{}{}}}"#,
                     info.lazer_version,
                     info.runtime_version,
                     info.arch,
@@ -55,6 +59,7 @@ pub fn run_live(options: &Options) -> i32 {
                     results_json,
                     mods_json,
                     score_json,
+                    sections_json,
                 );
             } else {
                 println!("Live offset generation succeeded!");
@@ -111,6 +116,10 @@ pub struct GenerationOutcome {
     /// 游玩/回放界面捕获到的 `score` 段（JSON 对象文本）。`None` = 没有可自证的
     /// `ScoreProcessor.hitEvents` 列表（例如不在 play/replay）。
     pub score: Option<String>,
+    /// 落盘后的表实际是否包含三个可选段（同版本旧表补段后重新计算）。
+    pub has_results: bool,
+    pub has_mods: bool,
+    pub has_score: bool,
 }
 
 pub struct LiveError {
@@ -334,6 +343,30 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
     })?;
 
     let out_file = target_dir.join(&file_name);
+
+    // `live` 只有在对应界面才能发现 `results` / `score` / `mods` 段：
+    // 在选歌页生成时这些段会缺席。绝不能因此用一张缺段的表覆盖随包完整表，
+    // 否则 LaneAcc（score）与结算反馈/结果屏判定（results）会一起失效。
+    // 这里把旧表中本次没有测到的顶层次段补回来，再做落盘。
+    let mut table_json = table_json;
+    let existing = fs::read_to_string(&out_file).ok().or_else(|| {
+        let appdata = std::env::var("APPDATA").ok()?;
+        fs::read_to_string(
+            PathBuf::from(appdata)
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+                .join("lazer")
+                .join(&file_name),
+        )
+        .ok()
+    });
+    if let Some(existing) = existing {
+        table_json = merge_preserved_sections(&table_json, &existing);
+    }
+    let has_results = top_level_json_object(&table_json, "results").is_some();
+    let has_mods = top_level_json_object(&table_json, "mods").is_some();
+    let has_score = top_level_json_object(&table_json, "score").is_some();
+
     fs::write(&out_file, &table_json).map_err(|e| {
         LiveError::new("io_error", format!("failed to write table {}: {e}", out_file.display()), 4)
     })?;
@@ -371,7 +404,152 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         results: results.as_ref().map(|found| found.to_json()),
         mods: mods.as_ref().map(|found| found.to_json()),
         score: score.as_ref().map(|found| found.to_json()),
+        has_results,
+        has_mods,
+        has_score,
     })
+}
+
+/// 取顶层 `"key": {...}` 的完整对象文本（含花括号）。只用于表生成器的
+/// “旧表补段”逻辑，格式固定为两空格缩进，不需要完整 JSON 解析器。
+#[cfg(windows)]
+fn top_level_json_object(text: &str, key: &str) -> Option<String> {
+    let marker = format!("\n  \"{key}\":");
+    let mut i = text.find(&marker)? + marker.len();
+    let bytes = text.as_bytes();
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return None;
+    }
+    let start = i;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    while i < bytes.len() {
+        let byte = bytes[i];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+        } else if byte == b'"' {
+            in_string = true;
+        } else if byte == b'{' {
+            depth += 1;
+        } else if byte == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(text[start..=i].to_string());
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+#[cfg(windows)]
+fn top_level_json_string(text: &str, key: &str) -> Option<String> {
+    let marker = format!("\n  \"{key}\": \"");
+    let start = text.find(&marker)? + marker.len();
+    let end = text[start..].find('"')? + start;
+    Some(text[start..end].to_string())
+}
+
+/// 版本键：旧表只能给**同版本**新表补段。lazer 更新后 `score`/`results`
+/// 的字段位移可能变化，跨版本合并等于把旧偏移冒充成新偏移。
+#[cfg(windows)]
+fn table_version_key(text: &str) -> Option<(String, String, String)> {
+    fn normalize(value: &str) -> String {
+        value.trim_end_matches(".0").to_string()
+    }
+    Some((
+        normalize(&top_level_json_string(text, "lazer_version")?),
+        normalize(&top_level_json_string(text, "runtime_version")?),
+        top_level_json_string(text, "arch")?,
+    ))
+}
+
+/// 把旧表里本次没有捕获到的顶层可选段补回生成的表。
+///
+/// `live` 的 `results` 只在结算屏、`score` 只在 play/replay 时可见；在选歌页
+/// 生成不能因此丢掉这些段。只补 `results` / `mods` / `score`，其余字段仍以
+/// 本次活体验证的结果为准。
+///
+/// **只允许同版本补段**：lazer 更新后旧表的字段位移不再可信，必须在新版本
+/// 的游玩/回放与结算屏分别生成，不能拿旧表冒充新表。
+#[cfg(windows)]
+fn merge_preserved_sections(generated: &str, existing: &str) -> String {
+    if table_version_key(generated).is_none()
+        || table_version_key(generated) != table_version_key(existing)
+    {
+        return generated.to_string();
+    }
+    let mut out = generated.to_string();
+    for key in ["results", "mods", "score"] {
+        if out.contains(&format!("\n  \"{key}\":")) {
+            continue;
+        }
+        let Some(section) = top_level_json_object(existing, key) else {
+            continue;
+        };
+        let Some(insert_at) = out.find("  \"runtime\": {") else {
+            continue;
+        };
+        out.insert_str(insert_at, &format!("  \"{key}\": {section},\n"));
+    }
+    out
+}
+
+#[cfg(all(test, windows))]
+mod preserve_tests {
+    use super::merge_preserved_sections;
+
+    #[test]
+    fn partial_generation_keeps_existing_optional_sections() {
+        let generated = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"runtime\": {\n    \"eetype\": {}\n  }\n}\n";
+        let existing = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"results\": {\"score_offset\": 1},\n  \"mods\": {\"player_mods\": 2},\n  \"score\": {\"hit_events\": 3},\n  \"runtime\": {\"old\": true}\n}\n";
+        let merged = merge_preserved_sections(generated, existing);
+        assert!(merged.contains("\n  \"results\": {\"score_offset\": 1},"));
+        assert!(merged.contains("\n  \"mods\": {\"player_mods\": 2},"));
+        assert!(merged.contains("\n  \"score\": {\"hit_events\": 3},"));
+        assert!(!merged.contains("\"old\""));
+    }
+
+    #[test]
+    fn captured_sections_are_not_overwritten() {
+        let generated = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"score\": {\"hit_events\": 9},\n  \"runtime\": {}\n}\n";
+        let existing = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"score\": {\"hit_events\": 3},\n  \"runtime\": {}\n}\n";
+        let merged = merge_preserved_sections(generated, existing);
+        assert!(merged.contains("\"hit_events\": 9"));
+        assert!(!merged.contains("\"hit_events\": 3"));
+    }
+
+    #[test]
+    fn old_version_sections_are_never_reused() {
+        let generated = "{\n  \"lazer_version\": \"2026.1100.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"runtime\": {}\n}\n";
+        let existing = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"results\": {\"score_offset\": 1},\n  \"score\": {\"hit_events\": 3},\n  \"runtime\": {}\n}\n";
+        let merged = merge_preserved_sections(generated, existing);
+        assert!(!merged.contains("\"results\": {"));
+        assert!(!merged.contains("\"score\": {"));
+    }
+
+    #[test]
+    fn shipped_table_sections_survive_a_partial_generation() {
+        let existing = std::fs::read_to_string(
+            "desktop/offsets/lazer/2026.1005.0.0__10.0.12__x64.json",
+        )
+        .expect("shipped lazer table");
+        let generated = "{\n  \"lazer_version\": \"2026.1005.0.0\",\n  \"runtime_version\": \"10.0.12\",\n  \"arch\": \"x64\",\n  \"runtime\": {}\n}\n";
+        let merged = merge_preserved_sections(generated, &existing);
+        assert!(merged.contains("\"results\": {"));
+        assert!(merged.contains("\"score\": {"));
+        assert!(merged.contains("\"score_result_counts\":"));
+    }
 }
 
 #[cfg(not(windows))]

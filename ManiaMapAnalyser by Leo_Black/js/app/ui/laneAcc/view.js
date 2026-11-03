@@ -451,14 +451,8 @@ export const laneAccView = (() => {
         if (state.laneAccScoreReady === false) {
             return "offsets";
         }
-        if (state.externalBridgeAvailable && state.shellOsuAlive === false) {
+        if (state.externalBridgeAvailable && state.shellOsuNativeAlive === false) {
             return "native";
-        }
-        const degraded = Array.isArray(state.shellOsuDegradedFields)
-            ? state.shellOsuDegradedFields
-            : [];
-        if (degraded.includes("hitEvents")) {
-            return "offsets";
         }
         if (activeChart && (activeChart.columnCount < 4 || activeChart.columnCount > 18)) {
             return "keys";

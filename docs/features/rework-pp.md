@@ -110,7 +110,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 ## 4. Max vs Live 切换
 
-`js/app/livePp.js`（浏览器专属，每消息更新器）：
+`js/app/live/livePp.js`（浏览器专属，每消息更新器）：
 
 - **模式判定** `resolveLiveMode`（:52）：`isPlayStateName(state.clientStateName) || isResultScreenStateName(state.clientStateName)` → **live**；其他（menu/selectplay 等）→ **max**。注意 resultscreen 归一化为 "resultscreen"（勿硬编码 "resultScreen"）。
 - **Max PP**：`calculateReworkPp({...ppMetrics, perfect: totalNotes, 其余 0, noFail: modCodes.includes("NF"), easy: modCodes.includes("EZ")})`——100% acc 上限值，数据组装在 analysis.js `buildReworkPpDisplay`（:147）。

@@ -114,7 +114,7 @@ temp/lazer-offsets-gen.exe live --json
 # 表里多出 "results" 段；stderr 会打印解析出的判定摘要
 ```
 
-> 不在结算屏时：表的其余部分照常生成，`results` 段缺席（`"results":null`），读侧对 `resultsScreen.hits` 整段降级并给页面提示——**不会**用 0 或上一帧占位。完整 dump 链路（`extract → emit`）目前**不产出**这一段（`spec.rs` 的链还不支持数组元素步）。
+> 不在结算屏时：表的其余部分照常生成，`results` 段本次不会重新测量。生成器只会从**版本键完全相同**（lazer 版本 / runtime / 架构）的同目录旧表补回该段；跨版本旧表的 `results` 位移不可信，**绝不**拿来冒充新版本。若旧表也没有该段，则保持缺席（`"results":null`），读侧对 `resultsScreen.hits` 整段降级并给页面提示——**不会**用 0 或上一帧占位。完整 dump 链路（`extract → emit`）目前**不产出**这一段（`spec.rs` 的链还不支持数组元素步）。
 
 ### `live` 的 `score` 段（LaneAcc 逐判定事件）
 
@@ -137,7 +137,7 @@ temp/lazer-offsets-gen.exe live --json
 `List<HitEvent>` 形状与 `ScoreResultCounts`（`Dictionary<HitResult, int>`）；用尾部最多 64 条事件验证 `TimeOffset`/`Result`/`HitObject` 与
 `LastHitObject == 上一事件 HitObject` 的链，选命中率最高的布局。`HitEvent` 是 64 字节顺序
 值类型（2026.1005 live 实测：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`），
-`Column` 在 `HitObject+0x48`；`ScoreResultCounts` 记录当前判定的字典映射，供原生内存读取在局内发布 `play.hits`（支持 Live PP 实时计算）。不在 play/replay 时 `score` 段缺席，其余表照常生成。
+`Column` 在 `HitObject+0x48`；`ScoreResultCounts` 记录当前判定的字典映射，供原生内存读取在局内发布 `play.hits`（支持 Live PP 实时计算）。不在 play/replay 时 `score` 段本次不会重新测量；生成器只在**同版本**旧表中把该段补回，跨版本不补。旧表也没有该段时才会缺席，其余表照常生成。
 `gen.exe` 与 `lazer-offsets-gen live` 共用这一实现；`extract/emit` 与 `results` 一样不产出
 `score`。
 
@@ -148,6 +148,17 @@ temp/lazer-offsets-gen.exe live --json
 > `live` 会因值域/类型校验失败而**不写**这一段（读侧回落到旧倍速启发式，DA OD 留空），
 > 此时用 `MMA_LAZER_MODS_PROBE=1` 的壳日志重新核对，见
 > `desktop/docs/lazer-mod-settings.md`。完整 dump 链路（`extract → emit`）不产出它。
+
+### 新版本或首次生成的完整流程
+
+lazer 更新后，旧表的所有位移（包括 `results`/`score` 段）都不能当作新版本的依据；生成器只做**同版本补段**。要得到完整表，请按界面状态分两次生成：
+
+1. **游玩/回放中**：进入一张 mania 谱面（或回放）并保持 play/replay 状态，运行 `live`。本次得到基础表 + `score` 段（以及能看到的 `mods`），可供 LaneAcc/LivePP 使用。
+2. **结算屏**：打完这一局或回放结束，**停在结算屏不要退回选歌**，再运行一次 `live`。本次测出 `results` 段；因为第一步的新版本表已经存在，`score` 段会从**同版本**表保留下来。
+3. **先停在选歌页**：第一次生成只会得到基础字段（可能带 `mods`）；请再进入游玩/回放生成 `score`，然后到结算屏生成 `results`。
+4. **先停在结算屏但没有新版本 `score`**：先完成第 1 步；否则结算反馈可用，但 LaneAcc/LivePP 仍缺 `score`。
+
+缺少段的表不是“坏表”，但对应功能会降级；页面会明确提示缺少 `score` 或 `results`，不会显示成生成成功即完整。`--json` 输出的 `sections` 字段可用于自动化判断三个段是否齐全。
 
 `live` 支持 `--out`（落点）、`--lazer-dir`（指定安装目录）、`--pid`（指定进程）三个选项，另有 `--json`（机器可读输出）与 `--dry-run`（只解析不落盘）。需要**跨版本 IL 差分**或**双见证 provenance 记录**时，仍应走完整的 `collect → extract → il → emit` 链路。
 

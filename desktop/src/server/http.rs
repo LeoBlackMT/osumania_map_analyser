@@ -531,7 +531,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             respond_json(
                 &mut stream,
                 404,
-                r#"{"status":"error","message":"gen.exe not found (neither next to mma-shell.exe nor in dev tree)"}"#,
+                r#"{"status":"error","code":"gen_not_found","message":"gen.exe not found (neither next to mma-shell.exe nor in dev tree)"}"#,
             );
             return;
         };
@@ -570,24 +570,35 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
                 if output.status.success() {
-                    respond_json(&mut stream, 200, if stdout.is_empty() { r#"{"status":"ok"}"# } else { &stdout });
+                    respond_json(&mut stream, 200, if stdout.is_empty() { r#"{"status":"ok","code":"ok"}"# } else { &stdout });
                 } else {
-                    let err_msg = if !stdout.is_empty() {
-                        stdout
+                    let detail = if !stdout.is_empty() {
+                        serde_json::from_str::<serde_json::Value>(&stdout)
+                            .ok()
+                            .and_then(|value| value.get("message").and_then(|m| m.as_str()).map(str::to_string))
+                            .unwrap_or(stdout)
                     } else if !stderr.is_empty() {
-                        format!(r#"{{"status":"error","message":{}}}"#, serde_json::to_string(&stderr).unwrap_or_default())
+                        stderr
                     } else {
-                        r#"{"status":"error","message":"generator failed or game process not running"}"#.to_string()
+                        String::new()
                     };
-                    respond_json(&mut stream, 400, &err_msg);
+                    let err_msg = serde_json::json!({
+                        "status": "error",
+                        "code": "gen_failed",
+                        "detail": detail,
+                        "message": "generator failed or game process not running"
+                    });
+                    respond_json(&mut stream, 400, &err_msg.to_string());
                 }
             }
             Err(e) => {
-                respond_json(
-                    &mut stream,
-                    500,
-                    &format!(r#"{{"status":"error","message":"failed to run gen.exe: {e}"}}"#),
-                );
+                let err_msg = serde_json::json!({
+                    "status": "error",
+                    "code": "gen_spawn_failed",
+                    "detail": e.to_string(),
+                    "message": "failed to run gen.exe"
+                });
+                respond_json(&mut stream, 500, &err_msg.to_string());
             }
         }
         return;
@@ -754,8 +765,10 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
         _ => {
             return serde_json::json!({
                 "status": "offline_fallback",
+                "code": "network_unavailable",
                 "message": "Network unavailable or remote host unreachable; keeping existing local offsets",
-                "updated": 0
+                "updated": 0,
+                "skipped": 0
             });
         }
     };
@@ -764,8 +777,10 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
     let Ok(manifest) = serde_json::from_slice::<crate::osu::offsets::RemoteManifest>(&manifest_bytes) else {
         return serde_json::json!({
             "status": "error",
+            "code": "manifest_unreadable",
             "message": "Remote manifest unreadable or malformed",
-            "updated": 0
+            "updated": 0,
+            "skipped": 0
         });
     };
 
@@ -822,6 +837,7 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
 
     serde_json::json!({
         "status": "ok",
+        "code": "ok",
         "message": format!(
             "Offsets check complete: {updated_count} table(s) updated, {skipped_count} already current"
         ),

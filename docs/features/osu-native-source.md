@@ -51,7 +51,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 
 - **结构常数**（来自我们自己的 P4 探针，`osu/lazer/fields.rs:5,7,8-12`）：12 字节标记模式 `MARKER_PATTERN`、站点位移候选表 `SITE_DELTAS`（首项 `0x24`）、GameBase 多跳 `GAME_BASE_HOPS`（`site → +0x0 → +0x218 → +0x310`）。
 - **偏移表**（来自 `tools/lazer-offsets-gen/`，SOS + IL 双见证）：每个 `Type.Field → offset`、`game_base_vtable`、版本键 `(lazer 版本, runtime 版本, 架构)`。
-- **表梯子**（`desktop/src/osu/offsets/lazer_table.rs`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`DEFAULT_LAZER_TABLE_JSON`，`offsets/lazer_table.rs:5` 以 `include_str!` 内嵌，**绝不回落到不存在的状态**）。
+- **表梯子**（`desktop/src/osu/lazer/table.rs`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`DEFAULT_LAZER_TABLE_JSON`，`offsets/lazer_table.rs:5` 以 `include_str!` 内嵌，**绝不回落到不存在的状态**）。同键多张表时按可选段完整度（`results` / `score` / `mods`）优先完整表，避免 APPDATA 里的旧版局部生成表遮住壳目录的随包完整表；**跨版本旧表绝不参与补段**（旧偏移不可信）。
 - **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`desktop/src/osu/lazer/resolve.rs:220` 的 `vtable_witness_note`）。
 - **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`desktop/src/osu/lazer/resolve.rs` 的 L1 结构证明；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
@@ -75,6 +75,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
    - 基于 `tools/lazer-offsets-gen/main.rs` 与 `live.rs` 编译为轻量独立工具随 `release.ps1` 一同打包。
    - **零 .NET SDK、零游戏挂起**：通过 `OpenProcess` 只读句柄在 1 秒内完成内存扫描定位，解析 MethodTable 与字段布局。
    - **活体自校验门禁**：生成后立即在运行中游戏的真实内存上执行解引用多跳验证：`site → GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash`，唯有验证出 32 字符合法十六进制哈希并成功解析屏幕栈顶部状态名，才允许落盘。
+   - **分段保留**：`results` / `score` / `mods` 只在对应界面（结算屏 / play / 选歌）才能测到；生成器会把同目录旧表中本次未测到的段补回新表，避免在选歌页一键生成时把 LaneAcc 或结算反馈的段覆盖掉。
    - 提供 HTTP 端点 `POST /offsets/generate` 与壳设置页一键按钮。
 4. **Ed25519 签名远端表与静默离线回落**：
    - 壳内固化 Master 公钥（32 字节 Ed25519 公钥）。
@@ -143,8 +144,8 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 ### 5.2 页面侧：socket 层运行时切换
 
 - `shellState.applyShellState` 读 `payload.sources.osu`（`js/app/sources/shellState.js:70-79`）。
-- `appContext.applyOsuTransport`（`js/app/appContext.js:89-98`）做**唯一**的切换动作：`state.runtimeOsuHost = "host:port"`（或清空）+ `socket.setHost(getSocketHost(), true)`。
-- `getSocketHost()`（`js/app/appContext.js:25-31`）是**唯一** host 派生点：WS URL（`socket.js:37` 的 `createConnection`，实际调用点 `socket.js:77` 传入 `/websocket/v2`）、`.osu` 端点（`appContext.js:49-51`）、背景图（`coverTheme.js`）全部由它派生，因此一次覆盖即三处跟随（DEC-20）。
+- `appContext.applyOsuTransport`（`js/app/core/appContext.js:89-98`）做**唯一**的切换动作：`state.runtimeOsuHost = "host:port"`（或清空）+ `socket.setHost(getSocketHost(), true)`。
+- `getSocketHost()`（`js/app/core/appContext.js:25-31`）是**唯一** host 派生点：WS URL（`socket.js:37` 的 `createConnection`，实际调用点 `socket.js:77` 传入 `/websocket/v2`）、`.osu` 端点（`appContext.js:49-51`）、背景图（`coverTheme.js`）全部由它派生，因此一次覆盖即三处跟随（DEC-20）。
 - **绝不写 `state.wsEndpoint`**：它在 `SETTING_CACHE_KEYS` 里，走设置路径会每次切换 `clearResultCache()`（DEC-12）。运行时覆盖另存 `state.runtimeOsuHost`，`state.wsEndpoint` 始终是用户设置的权威值 ⇒ **切传输不清结果缓存**（真机实测 `resultCacheGeneration()` 1→1，见计划 Step 9 进度记录）。
 - **只接受合格端点（fail-closed）**：必须 `mode:"native"`、必须当前页是**壳页**（`location.port === "24061"`，`appContext.js:43-47`）、host 非空、端口 1..=65535、且 `wsPath`/`filesPath` **逐字等于**页面自己的 `/websocket/v2` 与 `/files/beatmap`；任一不符即拒绝覆盖（仍走 tosu）。浏览器 tosu 页（24050）永不接受覆盖。
 - `socket.setHost` 关闭**曾创建过的全部** socket（`this.allSockets` 集合，`js/app/socket.js:13-35`）——`sockets` 以 URL 为键、`/websocket/commands` 可能被打开两次，只遍历 map 会漏掉被覆盖的那条（A11 的修法）。
@@ -165,7 +166,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 6.1 stable（32 位）
 
-已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13）。
+已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13；页面侧会等时钟真正前进并持续 500ms 再确认，避免 Stable 开局加载误判）。
 
 - **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（本机证据集（不入库）/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
 - **`firstObject`/`lastObject` 由我们解析 `.osu`**，口径见 DEC-22：首个对象的 `startTime` / **文件顺序最后一个对象的 `endTime`**（不是 `max(endTime)`），都不做 rate 缩放；回退与不变量在 `osu/beatmap_file.rs` + `osu/invariants.rs`。
@@ -181,8 +182,8 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 | 载荷字段 | 降级原因字面量 | 机制原因 |
 |---|---|---|
-| `resultsScreen.hits` | `resultsScreen.hits:offsets-missing-results-section` | 计数域在 `ScoreInfo.<StatisticsJson>`（入库过的成绩）与 `ScoreInfo.statistics` 字典（刚打完的活成绩）里。表的 `results` 段由 `live` 在**结算屏上**实测写入（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）；`live` 生成表时游戏不在结算屏 ⇒ 这一段缺席 ⇒ 整段降级（反馈条给出非交互提示）。dump 链路（`extract → emit`）尚未产出这一段 |
-| `play.hits` | `play.hits:offsets-missing-score-chain` | 局内游玩判定数：从 `Player.ScoreProcessor.ScoreResultCounts` 字典读取（表里 `score.score_result_counts` 偏移）。偏移表缺失该字段或游戏处于非 play 状态时降级 |
+| `resultsScreen.hits` | `resultsScreen.hits:offsets-missing-results-section` | 计数域在 `ScoreInfo.<StatisticsJson>`（入库过的成绩）与 `ScoreInfo.statistics` 字典（刚打完的活成绩）里。表的 `results` 段由 `live` 在**结算屏上**实测写入（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）；`live` 生成表时游戏不在结算屏 ⇒ 本次不测这一段，但生成器会从同目录旧表保留该段，不会把随包完整表覆盖成缺段表。旧表也没有该段时才整段降级（反馈条给出非交互提示）。dump 链路（`extract → emit`）尚未产出这一段 |
+| `play.hits` | `play.hits:offsets-missing-score-chain` | 局内游玩判定数：从 `Player.ScoreProcessor.ScoreResultCounts` 字典读取（表里 `score.score_result_counts` 偏移）。偏移表缺失该字段或游戏处于非 play 状态时降级；生成器同样会用旧表保留 `score` 段 |
 | `files.background` / `files.audio` | `files.background:offsets-missing-BeatmapSetInfo.Files` | 需要 `BeatmapSetInfo.<Files>` 列表的**元素**（`filename` + `hash`），而 `dumpobj` 对数组只回 `Fields: None` ⇒ 需要"数组元素布局"的表格式扩展（`dumparray` 见证） |
 
 ⇒ `mods` 已接通（`SelectedMods` 链 + `lazer_mods`），`resultsScreen.hits` 在表含 `results` 段时可用，`play.hits` 在表含 `score.score_result_counts` 时可用（Live PP 面完整支持）；未接通表或非 play 状态时仍遵循"**绝不编造**"的取舍（缺字段 = 不出现在载荷里 + 上报原因，绝不发 0/占位/沿用上一帧）。
@@ -312,7 +313,7 @@ rustc --edition 2021 -O -A dead_code -o %TEMP%\lazer-offsets-gen.exe tools/lazer
                                 --deploy "<放着 mma-shell.exe 的目录>" --allow-version-mismatch
 ```
 
-- **结算屏判定数（`results` 段）**：`resultsScreen.hits` 的链路是 `ResultsScreen.Score → ScoreInfo` 的 `<StatisticsJson>`（入库过的成绩）或 `statistics` 字典（刚打完的活成绩）；位移（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）由 `live` 在**结算屏上**实测后写进表的 `results` 段；`collect → extract → il → emit` 这条 dump 链路目前**不产出**这一段。所以更新表时请在游戏停在结算屏（真实游玩或回放结束都行）时再跑一次 `temp/lazer-offsets-gen.exe live`：它按 IL 的字段相邻关系 + 运行时类型名定位，并当场用测出的偏移把判定数读回来做自校验（摘要是 `results.witness`）；不在结算屏时表的其余部分照常生成，只是 lazer 上发不出 `resultsScreen.hits`（页面对应提示，不静默）。
+- **结算屏判定数（`results` 段）**：`resultsScreen.hits` 的链路是 `ResultsScreen.Score → ScoreInfo` 的 `<StatisticsJson>`（入库过的成绩）或 `statistics` 字典（刚打完的活成绩）；位移（`score_offset` / `statistics_offset` / `statistics_dict_offset` / `dict_entries_offset` / `hit_result_values` / `player_offset`）由 `live` 在**结算屏上**实测后写进表的 `results` 段；`collect → extract → il → emit` 这条 dump 链路目前**不产出**这一段。所以更新表时请在游戏停在结算屏（真实游玩或回放结束都行）时再跑一次 `temp/lazer-offsets-gen.exe live`：它按 IL 的字段相邻关系 + 运行时类型名定位，并当场用测出的偏移把判定数读回来做自校验（摘要是 `results.witness`）。不在结算屏时表的其余部分照常生成，生成器会把同目录旧表的 `results` 段保留下来；只有旧表也没有该段时，lazer 上才发不出 `resultsScreen.hits`（页面对应提示，不静默）。`score` 段同理：不在 play/replay 时保留旧表段，避免破坏 LaneAcc。
 - **dump 采集的代价与挂起**：`dotnet-dump collect` 会**短暂挂起游戏的全部线程**并 spawn `createdump` 子进程（不注入、不写内存、不挂调试器）；本机实测一次 **约 70 s**（最近一次 dump 2.696 GB / pid 22028），落盘前需 ≥4 GB 空闲（`--force` 可跳过检查）。因此采集**只在 dev-time、只在用户同意且在场时**执行；产品内一律走 `ReadProcessMemory`，工具不随发布产物分发。
 - **运行位置**：在受限的工作区上下文里 Toolhelp32 只能看到自己那一族进程（表现为"游戏没在跑"）——**从工作区外（如 `%TEMP%`）或普通 shell 启动**即可正常发现游戏（与壳自身的 B2 结论同族）。
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。

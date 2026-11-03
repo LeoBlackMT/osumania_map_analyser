@@ -262,6 +262,8 @@ export const state = {
     pauseFreezeStartRealMs: 0,
     frozenInterpMs: 0,
     hasSongTimeSample: false,
+    // 本局谱面时钟是否已真正前进过；用于过滤开局加载阶段的“时间不变”伪暂停。
+    playbackAdvanced: false,
     clientStateName: "",
     isInPlayState: false,
     songTimeMs: 0,
