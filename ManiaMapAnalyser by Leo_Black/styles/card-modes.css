@@ -17,11 +17,15 @@
     grid-template-rows: none;
     grid-auto-rows: auto;
     align-content: start;
+    align-self: start;
     gap: 10px;
     height: auto;
     min-height: 540px;
     max-height: none;
     overflow: visible;
+    /* 给底部的 Mix/Pause 绝对定位胶囊预留真实布局空间；否则最后一个
+       模块（ReworkPP/Graph/LaneAcc）会压到它们上面。 */
+    padding-bottom: 38px;
 }
 
 .main-card.bars-combined .cluster-bars,
@@ -29,11 +33,34 @@
     overflow-x: hidden;
     overflow-y: visible;
     max-height: none;
+    margin-bottom: 38px;
+}
+
+.main-card.bars-combined .pp-bars {
+    margin-bottom: 38px;
 }
 
 .main-card.bars-combined .body-graph-wrap {
     width: 100%;
-    margin: 0 auto 28px;
+    margin: 0 auto 38px;
+}
+
+/* LaneAcc 在组合模式里沿用单模块舞台高度，避免 stage 被 grid 行按
+   min-height:72px 压扁，导致轨道条像贴底的一小条。 */
+.main-card.bars-combined .laneacc-wrap {
+    flex: 0 0 auto;
+    /* summary 38 + gap 6 + stage 190；grid 的 auto 行在 flex 子项上会
+       只量到 summary，必须显式兜住 stage，否则轨道条溢出到卡片底部。 */
+    min-height: 234px;
+    /* 底部 Mix/Pause 是绝对定位，必须在最后一个模块之后留出真实空间。 */
+    margin-bottom: 38px;
+}
+
+.main-card.bars-combined .laneacc-stage {
+    flex: 0 0 auto;
+    height: 190px;
+    min-height: 190px;
+    max-height: 190px;
 }
 
 /* Combined mode section separators — hr-like with centered text */

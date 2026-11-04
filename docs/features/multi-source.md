@@ -43,7 +43,7 @@ osu 源在壳版里有**两条传输**，页面只看一条（`DECISIONS.md` DEC
 | `native` | 壳内只读内存读取器（`desktop/src/osu/**`）经 **24062** tosu 兼容子集 origin 供数（WS `/websocket/v2` + `GET /files/beatmap/{file,background}`，全部带 ACAO） | 读取器健康且 24062 已绑定、且壳配置没强制 tosu（`desktop/src/server/osu_source.rs:83-111`）；页面**只在壳页（24061）**接受覆盖 |
 | `tosu` | 用户设置里的 `wsEndpoint`（默认 24050），行为与无壳时逐字节相同 | 其余全部情形：未附着 / `unhealthy` 掉线超过 25 s / 24062 未绑定 / 壳配置显式 `"osuTransport": "tosu"` |
 
-- **端点怎么换**：壳把 `sources.osu.osuTransport{mode,host,port,wsPath,filesPath}` 放进 state 帧（值变即推，不等 30 s 周期），页面在 **socket 层**运行时切换（`js/app/appContext.js` 的 `applyOsuTransport` → `socket.setHost()`）——**绝不写 `state.wsEndpoint`**（它在 `SETTING_CACHE_KEYS` 里，走设置路径会每次切换清空结果缓存）。
+- **端点怎么换**：壳把 `sources.osu.osuTransport{mode,host,port,wsPath,filesPath}` 放进 state 帧（值变即推，不等 30 s 周期），页面在 **socket 层**运行时切换（`js/app/core/appContext.js` 的 `applyOsuTransport` → `socket.setHost()`）——**绝不写 `state.wsEndpoint`**（它在 `SETTING_CACHE_KEYS` 里，走设置路径会每次切换清空结果缓存）。
 - **原生位进路由**：`state.shellOsuNativeAlive` 是"覆盖真的生效"的位，进 L3' 存活回窗（`sourceManager.js:130`）与 osu 败方门控（`sourceManager.js:196-197`）——否则原生帧会被当"败方帧"静默缓冲（用户可见现象：换图不更新）。
 - **浏览器模式不变式（硬约束）**：无壳 / 浏览器 tosu 页（24050）永不接受端点覆盖（`isShellPage()` 门控），`state.wsEndpoint` 与结果缓存的语义一字不变；原生传输的失败面（reason 闭集、`degradedFields`、冻结/保持）只出现在壳页。
 - **能力边界（逐客户端）**：stable 供计划 §3.3 的完整字段表；lazer 供身份/状态/时间/`.osu` 解析面，mods 三槽 / hits 两枚 / 背景音频共 **7 条字段缺口**逐条进 `sources.osu.degradedFields`（详见 [osu-native-source.md](osu-native-source.md) §6）。
@@ -60,7 +60,7 @@ osu 源在壳版里有**两条传输**，页面只看一条（`DECISIONS.md` DEC
 
 - 设置 `gameClient`：`Auto`（默认）/ `Osu!` / `Etterna` / `Malody` / `Malody 4`。
 - Auto 决策表（`js/app/sources/sourceManager.js`）：
-  - L1 游玩态抢占（osu=isInPlayState 信号豁免照读；etterna=playing 外推；malody4=壳 state 帧的 `playing` 位（场景 3 且新鲜 ≤10s）；malody=无游玩态信号）；
+  - L1 游玩态抢占（osu=isInPlayState 信号豁免照读；etterna=playing 外推且未超过 `playingExpireAt`；malody4=壳 state 帧的 `playing` 位（场景 3 且 selection 心跳新鲜 ≤6s）；malody=桥 `alive` + `playing`）；所有壳侧位都要求壳桥在线，断连后不再采信；
   - L2 60s 新鲜事件窗口（osu=换谱/换 mod/改 rate；etterna=桥写入；malody=POST/song 帧；**malody4=非心跳且 `path` 非空的选曲帧——hidden 帧与心跳永不续约**，否则壳只要在跑就会把路由永久钉在 malody4）；
   - L3 hold 只作用于当前源，他源新鲜事件无游玩态可抢占；窗口过期按 osu > Etterna > Malody 4 > Malody 重选；
   - L3' 存活回窗（无窗口源时 tosu 在线 → osu）；

@@ -6,7 +6,7 @@
 
 ## 1. 功能概述
 
-难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
+难度图表（difficulty graph）将谱面难度随时间的变化渲染为 SVG 折线图。图表数据来自 `rework.graph`（由估算管线产出，见 [difficulty-estimation.md](difficulty-estimation.md)）。核心代码集中在浏览器专属模块 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js`（DOM 操作只发生在该模块，可安全使用 `document`）。
 
 **时间轴契约（重要）**：`rework.graph.times` 必须与 `state.songStartMs` / `state.songTimeMs` 同域，即**按 `speedRate` 缩放后的原始谱面时间**（`rawTime / speedRate`）。Sunny / Daniel / Azusa 天然如此；Roxy 的分析文本会被 `canonicalizeOsuTiming` 平移，因此它在返回前会把 `graph.times` 逆变换回原始时间轴（见 [roxy_algorithm.md](../roxy_algorithm.md) §4、§17）。**新增/修改估算器时若输出 graph，必须遵守该契约**——否则裁剪窗口、游标映射、暂停标记全部按错误的时间轴走。
 
@@ -24,7 +24,7 @@
 
 ### 2.1 DOM refs
 
-所有 SVG 元素引用在 `ManiaMapAnalyser by Leo_Black/js/app/appContext.js` 中段（`state` 定义之前，:112-131）通过 `getElementById` 一次性获取：
+所有 SVG 元素引用在 `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js` 中段（`state` 定义之前，:112-131）通过 `getElementById` 一次性获取：
 
 - header 图：`appContext.js:113 diffGraphSvgEl`（`rework-diff-graph`）、`appContext.js:114 diffGraphFillEl`、`appContext.js:115 diffGraphFillPlayEl`、`appContext.js:116 diffGraphPlayClipRectEl`、`appContext.js:117 diffGraphLineEl`、`appContext.js:118 diffGraphCursorEl`、`appContext.js:119 diffGraphCursorDotEl`、`appContext.js:120 diffGraphPauseMarkersEl`、`appContext.js:121 diffGraphErrorEl`，包裹层 `appContext.js:112 diffGraphWrapEl`。
 - body 图：`appContext.js:123 bodyGraphSvgEl`（`body-graph`）、`appContext.js:124 bodyGraphFillEl`、`appContext.js:125 bodyGraphFillPlayEl`、`appContext.js:126 bodyGraphPlayClipRectEl`、`appContext.js:127 bodyGraphLineEl`、`appContext.js:128 bodyGraphCursorEl`、`appContext.js:129 bodyGraphCursorDotEl`、`appContext.js:130 bodyGraphPauseMarkersEl`、`appContext.js:131 bodyGraphErrorEl`，包裹层 `appContext.js:122 bodyGraphWrapEl`。
@@ -34,7 +34,7 @@
 `appContext.js:340 GRAPH_VIEW_DEFS` 是视图定义的统一描述数组，每个视图含 `key`、各 DOM ref 字段与 `isEnabled()` 判定：
 
 - header 视图：`isEnabled: () => state.diffText === "Graph"`（`appContext.js:353`）。
-- body 视图：`isEnabled: () => contentBarShows("Graph")`（`js/app/appContext.js` 的 `contentBarShows()`：组合模式读 `combinedModeModules`，紧凑模式读 `getActiveContentBar()` 的 `tabContentBar || effectiveContentBar || contentBar`）。
+- body 视图：`isEnabled: () => contentBarShows("Graph")`（`js/app/core/appContext.js` 的 `contentBarShows()`：组合模式读 `combinedModeModules`，紧凑模式读 `getActiveContentBar()` 的 `tabContentBar || effectiveContentBar || contentBar`）。
 
 遍历工具：
 
@@ -46,7 +46,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ## 3. 图形数学（graphMath.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/graphMath.js` 是纯函数模块（无 DOM），供 graph.js 与加载骨架共用：
+`ManiaMapAnalyser by Leo_Black/js/app/graph/math.js` 是纯函数模块（无 DOM），供 graph.js 与加载骨架共用：
 
 - `graphMath.js:1 f2(v)`：数值转字符串，非有限值返回 `"0.00"`（两位小数，用于加载骨架等路径构建）。
 - `graphMath.js:5 buildLinePath(points)`：由 `[[x, y], ...]` 点数组构建折线 SVG path 字符串（`M x0 y0 L x1 y1 ...`），空数组返回 `""`。
@@ -58,7 +58,7 @@ graph.js 中通过 `view.svgEl` / `view.fillEl` / `view.fillPlayEl` / `view.play
 
 ### 4.1 主渲染 renderDiffGraph
 
-入口 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:609 renderDiffGraph(graphData)`（被 `analysis.js:802` 调用）：
+入口 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:609 renderDiffGraph(graphData)`（被 `analysis.js:802` 调用）：
 
 1. `hasAnyGraphModeEnabled()` 为假直接返回 `false`（`graph.js:610`）。
 2. `normalizeGraphSeries(graphData, GRAPH_RESAMPLE_INTERVAL_MS)` 归一化（`graph.js:616`）；失败 → `graph.js:618 showDiffGraphError("Graph unavailable")`。
@@ -119,7 +119,7 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 裁剪矩形 `playClipRectEl` 的宽度由游标 x 决定，每帧跟随：
 
 - `graph.js:565-567`：`view.playClipRectEl.setAttribute("width", x.toFixed(2))`，其中 `x` 是当前播放时间插值出的 viewBox 横坐标（`graph.js:545`）。注释（`graph.js:564`）说明：clip 宽度 = 已玩边界，暂停时 x 冻结、回退时 x 收缩，自动跟随。
-- 游标更新在 `graph.js:499 updateGraphCursor(explicitTimeMs)`：播放时间经 `graph.js:70 getInterpolatedPlaybackTime()` 获取（基于 WebSocket 时间戳 + `performance.now()` 插值，暂停时返回冻结值 `state.frozenInterpMs`）；时间限定在 `[songStartMs, songEndMs]`（`graph.js:532-534`）再 clamp 到系列范围；y 值经 `interpolateSeriesValue` + 归一化得出（`graph.js:545-548`）。
+- 游标更新在 `graph/index.js updateGraphCursor(explicitTimeMs)`：播放时间经 `getInterpolatedPlaybackTime()` 获取（基于 WebSocket 时间戳 + `performance.now()` 插值；原生包可能连续重复同一 `live` 值，重复样本不刷新锚点，速率用最近约 1.2s 的首尾样本平均；暂停时返回冻结值 `state.frozenInterpMs`）。`hasSongTimeSample` 为假时（刚离开游玩/换图）不拿 `songTimeMs` 残值画进度。小幅回退被钳住（`state.graphCursorMs`），避免 10→11→10 抖动；随后用 **90ms 时间常数的指数缓动**把离散目标铺到每一帧（`GRAPH_CURSOR_EASE_TAU_MS`，`smoothCursorMs`），真实 seek 跨度超过阈值时直接吸附；时间限定在 `[songStartMs, songEndMs]` 再 clamp 到系列范围；y 值经 `interpolateSeriesValue` + 归一化得出。选歌帧的 `beatmap.time.live` 常为 0，时间提取优先回退到 `menu.bm.time.current`；选歌/菜单没有任何有效时间时游标画在谱面起点，结算屏直接画在谱面终点，而不是隐藏白色进度线或停在上一局末尾。进度只在卡片归属为 osu! 时启用（`isGraphProgressSupported` 优先读取 `state.cardOwner`，避免已结束源的残留路由把 osu 进度关掉）。
 - 动画循环：`graph.js:585 syncGraphAnimationLoop()` 只在**存在任一图表模式**时用 `requestAnimationFrame` 每帧调用 `updateGraphCursor()`（`graph.js:575-583`）；无图表模式时 `cancelAnimationFrame` 停掉循环，避免常驻空转。`startGraphAnimationLoop()`（`graph.js:600`）在初始化时调用，`updateDiffTextVisibility`/`setRuntimeContentBar`/`setEffectiveContentBarForMap` 在模式切换时同步启停。
 
 ### 5.2 resetPlayedFill 调用点（共 6 处，清空/加载/错误路径）
@@ -135,7 +135,7 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 | 3 | `graph.js:472` | `showDiffGraphError`（错误路径） |
 | 4 | `graph.js:501` | `updateGraphCursor` 且 `hasAnyGraphModeEnabled()` 为假（全视图） |
 | 5 | `graph.js:519` | `updateGraphCursor` 且 `state.graphSeries` 为空（启用视图） |
-| 6 | `graph.js:526` | `updateGraphCursor` 且播放时间不可得（启用视图） |
+| 6 | `graph.js:526` | `updateGraphCursor` 且系列时间轴无有效值（防御分支） |
 
 > 维护提醒：任何新增的"清空图表"路径都必须调用 `resetPlayedFill`（或复用 `clearDiffGraph`），否则会出现已玩亮层残留在空白图上的视觉 bug。
 

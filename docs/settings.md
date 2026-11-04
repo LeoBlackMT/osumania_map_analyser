@@ -33,6 +33,7 @@
     - **Live Generator**：生成 lazer 偏移表。
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
+      - **使用方法**：先在游玩/回放界面生成一次，结束后停在结算屏再生成一次。如果缺失，会提示还缺哪一部分。在选歌界面直接生成只能得到基础字段，部分功能会不可用。
     - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
 - **壳专属卡片配置**（Desktop-shell card settings）
   - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
@@ -106,7 +107,7 @@
     - **Reverse Card Extension**: 是否反转卡片延展方向。
         - 启用后卡片底边保持锚定，扩展时向上生长；关闭时默认向下扩展。
     - **Card Visibility**: 控制卡片的显示时机。
-        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。
+        - 可选值：`DuringPlay`（仅在游玩时显示）、`OutsidePlay`（仅在非游玩时显示）、`Always`（始终显示）。默认值为 `Always`。所有界面（含主菜单）都按该设置控制，不再强制隐藏。游玩态按各数据源独立判定，并叠加壳桥存活、Etterna `playingExpireAt` 与 Malody 4 selection 心跳新鲜度；断连或超时后不会沿用旧的 `playing` 位。状态行的错误/提示（包括壳的 osu 扫描提示、Malody V 动态 OD 未启用提示）不会覆盖显示控制；无数据源的等待态在 `OutsidePlay` 下正常显示，在 `DuringPlay` 下隐藏。
     - **Card Opacity**: 设置卡片整体透明度。
         - 可选范围：100% / 95% / 90% / 80% / 70%。
     - **Content Background Blur**: 是否启用背景图片模糊效果。
@@ -148,7 +149,7 @@
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
         - Roxy: 面向4K RC的元结构估算器。使用结构分析对谱面进行建模，再通过GBDT元模型融合Azusa/Sunny/Daniel的参考预测。
         - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
-        - Polaris: 面向表映射的修正估算器。以Sunny为基线，用真实游玩数据修正段位映射的系统性偏差（变速响应、长条谱面、层级形状）。覆盖7K的RC与LN两侧；其他键数（含4K/6K）自动回退Sunny。
+        - Polaris: 面向Sunny表映射的修正估算器。覆盖7K的RC与LN两侧；其他键数自动回退Sunny。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
@@ -220,6 +221,7 @@
     - **Live Generator**: Generate lazer offset tables.
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
+      - **Usage**: generate once during play/replay, then generate again while staying on the result screen after finishing. If something is missing, the page tells you which part is missing. Generating directly from song select only produces the base fields and some features will be unavailable.
     - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
 - **Shell-exclusive Card Configuration**:
   - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
@@ -293,7 +295,7 @@
     - **Reverse Card Extension**: Whether to reverse the card expansion direction.
         - When enabled, the card stays anchored at the bottom and grows upward; when disabled, it expands downward by default.
     - **Card Visibility**: Control when the card is shown.
-        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`.
+        - Available values: `DuringPlay` (show only while playing), `OutsidePlay` (show only when not playing), `Always` (always show). Defaults to `Always`. The setting applies everywhere, including the main menu; no screen is force-hidden. Play state is detected per source and gated by shell liveness, Etterna `playingExpireAt`, and Malody 4 selection-heartbeat freshness, so a disconnected or finished source cannot leave a stale `playing` flag. Status-line errors/notices (including the shell's osu scan hint and Malody V's dynamic-OD-disabled notice) never override this setting; the no-source waiting state is visible with `OutsidePlay` and hidden with `DuringPlay`.
     - **Card Opacity**: Set the overall card opacity.
         - Available values: 100% / 95% / 90% / 80% / 70%.
     - **Content Background Blur**: Whether to enable background image blur for content sections.
@@ -335,7 +337,7 @@
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
         - Roxy: A 4K RC meta-structural estimator. It models the beatmap using structural analysis and then blends reference predictions from Azusa/Sunny/Daniel using a GBDT meta-model.
         - Sunny: Maps directly to Dan star ratings using Suuny Rework. Compatible with LN and RC Dans for 4/6/7K.
-        - Polaris: A table-calibration estimator. Builds on Sunny and corrects systematic dan-mapping deviations with real play data (speed-mod response, LN-heavy charts, level shape). Covers both the RC and LN sides on 7K; other key counts (including 4K/6K) fall back to Sunny.
+        - Polaris: A table-mapping correction estimator for Sunny. Covers both the RC and LN sides on 7K; other key counts automatically fall back to Sunny.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.

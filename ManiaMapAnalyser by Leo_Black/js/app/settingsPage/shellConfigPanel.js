@@ -12,7 +12,7 @@
  * shell with a mix of old and new bindings).
  */
 
-import { setLanguage, t } from "../i18n/index.js";
+import { setLanguage, t, tf } from "../i18n/index.js";
 import {
     COMBINED_MODE_LABELS,
     COMBINED_MODE_MODULES,
@@ -85,6 +85,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
     let offsetsInfo = null;
     let offsetsActionMsg = "";
     let offsetsActionKind = "info";
+    let lastGeneratedSections = null;
 
     async function requestJson(url, init) {
         try {
@@ -119,19 +120,96 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         }
     }
 
+    // 生成器 stderr/JSON 里的固定原因也走词典；未知技术细节保留原文便于排查。
+    function localizeGenDetail(detail) {
+        const text = String(detail || "");
+        if (!text) return "";
+        const rules = [
+            [/process is not currently running/i, "genProcessNotRunning", "osu! (lazer) 进程未运行。"],
+            [/access was denied/i, "genAccessDenied", "无法读取 osu! 进程，请以管理员身份运行。"],
+            [/lazer must be 64-bit|detected 32-bit/i, "genArchMismatch", "检测到 32 位 osu! 进程；lazer 必须是 64 位。"],
+            [/could not locate lazer directory/i, "genLazerDirMissing", "无法定位 osu!lazer 安装目录。"],
+            [/could not find lazer anchor pattern/i, "genAnchorNotFound", "在游戏内存中找不到 lazer 特征码。"],
+            [/live validation checks/i, "genValidationFailed", "找到候选 GameBase，但活体校验（MD5Hash / ScreenStack / VTable）失败。"],
+            [/failed to read IL metadata/i, "genIlMetadataFailed", "读取 lazer IL 元数据失败。"],
+            [/only supported on Windows/i, "genUnsupportedOs", "该功能仅支持 Windows。"],
+        ];
+        for (const [pattern, key, fallback] of rules) {
+            if (pattern.test(text)) return t(`ui.shell.offsets.${key}`, fallback);
+        }
+        return text;
+    }
+
+    // 壳端返回稳定 code，显示层负责本地化；message 只作为旧壳/未知错误的兜底。
+    function offsetsErrorMessage(body, error, status) {
+        const code = body && body.code;
+        const rawDetail = body && typeof body.detail === "string" ? body.detail : "";
+        const detail = localizeGenDetail(rawDetail);
+        const message = body && typeof body.message === "string" ? body.message : "";
+        if (code === "gen_not_found" || message === "gen.exe not found (neither next to mma-shell.exe nor in dev tree)") {
+            return t("ui.shell.offsets.genNotFound", "gen.exe was not found next to mma-shell.exe or in the dev tree.");
+        }
+        if (code === "gen_failed" || message === "generator failed or game process not running") {
+            const base = t("ui.shell.offsets.genFailed", "The generator failed or the game process is not running.");
+            return detail ? `${base} ${detail}` : base;
+        }
+        if (code === "gen_spawn_failed" || message.startsWith("failed to run gen.exe")) {
+            const base = t("ui.shell.offsets.genSpawnFailed", "Could not start gen.exe.");
+            return detail ? `${base} ${detail}` : base;
+        }
+        if (code === "manifest_unreadable" || (body && body.message === "Remote manifest unreadable or malformed")) {
+            return t("ui.shell.offsets.manifestUnreadable", "The remote manifest is unreadable or malformed; keeping existing local offsets.");
+        }
+        if (code === "network_unavailable" || (body && body.status === "offline_fallback")) {
+            return t("ui.shell.offsets.networkUnavailable", "Network unavailable or remote host unreachable; keeping existing local offsets.");
+        }
+        return (body && body.message) || (error && error.message) || `HTTP ${status || "?"}`;
+    }
+
+    function sectionStateText(sections) {
+        if (!sections || typeof sections !== "object") {
+            return "";
+        }
+        return ["score", "results", "mods"]
+            .map((name) => `${name} ${sections[name] ? "✓" : "—"}`)
+            .join(" · ");
+    }
+
     async function generateOffsets() {
         offsetsActionMsg = t("ui.shell.offsets.scanning", "Scanning running osu! and generating offsets…");
         offsetsActionKind = "saving";
         render();
         const result = await requestJson(OFFSETS_GENERATE_URL, { method: "POST" });
         if (!result.ok) {
-            const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
-            offsetsActionMsg = `${t("ui.shell.offsets.generateFailed", "Generation failed")}: ${detail}`;
+            offsetsActionMsg = `${t("ui.shell.offsets.generateFailed", "Generation failed")}: ${offsetsErrorMessage(result.body, result.error, result.status)}`;
             offsetsActionKind = "error";
         } else {
-            const msg = result.body && result.body.message ? result.body.message : t("ui.shell.offsets.generated", "Offsets generated and verified successfully.");
-            offsetsActionMsg = msg;
-            offsetsActionKind = "ok";
+            const sections = result.body && result.body.sections;
+            lastGeneratedSections = sections || null;
+            if (sections && (!sections.score || !sections.results)) {
+                const key = !sections.score && !sections.results
+                    ? "generatedMissingBoth"
+                    : !sections.score
+                        ? "generatedMissingScore"
+                        : "generatedMissingResults";
+                const fallback = !sections.score && !sections.results
+                    ? "Offsets generated, but this run only captured the base fields. Enter a play/replay and generate once, then stay on the result screen and generate again to fill score/results."
+                    : !sections.score
+                        ? "Offsets generated, but the score section required by LaneAcc/LivePP is missing. Enter a play/replay and generate again."
+                        : "Offsets generated, but the results section required by result-screen feedback is missing. Stay on the result screen and generate again.";
+                offsetsActionMsg = t(`ui.shell.offsets.${key}`, fallback);
+                offsetsActionKind = "info";
+            } else if (sections) {
+                offsetsActionMsg = tf(
+                    "ui.shell.offsets.generatedSections",
+                    { sections: sectionStateText(sections) },
+                    `Offsets generated and verified (${sectionStateText(sections)}).`,
+                );
+                offsetsActionKind = "ok";
+            } else {
+                offsetsActionMsg = t("ui.shell.offsets.generated", "Offsets generated and verified successfully.");
+                offsetsActionKind = "ok";
+            }
         }
         await fetchOffsetsStatus();
         render();
@@ -143,14 +221,33 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         render();
         const result = await requestJson(OFFSETS_UPDATE_URL, { method: "POST" });
         if (!result.ok) {
-            const detail = result.body && result.body.message ? result.body.message : (result.error ? result.error.message : `HTTP ${result.status}`);
-            offsetsActionMsg = `${t("ui.shell.offsets.updateFailed", "Update failed")}: ${detail}`;
+            offsetsActionMsg = `${t("ui.shell.offsets.updateFailed", "Update failed")}: ${offsetsErrorMessage(result.body, result.error, result.status)}`;
             offsetsActionKind = "error";
         } else {
+            const code = result.body && result.body.code;
             const updated = result.body && typeof result.body.updated === "number" ? result.body.updated : 0;
-            const msg = result.body && result.body.message ? result.body.message : (updated > 0 ? `${t("ui.shell.offsets.updatedCount", "Updated")} ${updated} ${t("ui.shell.offsets.tables", "table(s)")}` : t("ui.shell.offsets.upToDate", "Offsets are up to date."));
-            offsetsActionMsg = msg;
-            offsetsActionKind = "ok";
+            const skipped = result.body && typeof result.body.skipped === "number" ? result.body.skipped : 0;
+            if (code === "network_unavailable" || (result.body && result.body.status === "offline_fallback")) {
+                offsetsActionMsg = t("ui.shell.offsets.networkUnavailable", "Network unavailable or remote host unreachable; keeping existing local offsets.");
+                offsetsActionKind = "info";
+            } else if (code === "manifest_unreadable" || (result.body && result.body.message === "Remote manifest unreadable or malformed")) {
+                offsetsActionMsg = t("ui.shell.offsets.manifestUnreadable", "The remote manifest is unreadable or malformed; keeping existing local offsets.");
+                offsetsActionKind = "error";
+            } else if (code === "ok") {
+                offsetsActionMsg = tf(
+                    "ui.shell.offsets.updateSummary",
+                    { updated, skipped },
+                    `Offsets check complete: ${updated} table(s) updated, ${skipped} already current.`,
+                );
+                offsetsActionKind = "ok";
+            } else {
+                offsetsActionMsg = result.body && result.body.message
+                    ? result.body.message
+                    : (updated > 0
+                        ? `${t("ui.shell.offsets.updatedCount", "Updated")} ${updated} ${t("ui.shell.offsets.tables", "table(s)")}`
+                        : t("ui.shell.offsets.upToDate", "Offsets are up to date."));
+                offsetsActionKind = "ok";
+            }
         }
         await fetchOffsetsStatus();
         render();
@@ -645,8 +742,9 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         wrap.appendChild(buildRow("offsetsStable", t("ui.shell.offsets.stableTitle", "osu!stable Offsets"), stableDesc, stableBadge));
 
         const lazerInfo = offsetsInfo.lazer || {};
+        const generatedSections = lastGeneratedSections ? ` · ${sectionStateText(lastGeneratedSections)}` : "";
         const lazerDesc = lazerInfo.loaded
-            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)`
+            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)${generatedSections}`
             : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
@@ -681,6 +779,14 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             statusEl.textContent = offsetsActionMsg;
             actionsWrap.appendChild(statusEl);
         }
+
+        const workflowHint = document.createElement("div");
+        workflowHint.className = "shell-config-workflow-hint";
+        workflowHint.textContent = t(
+            "ui.shell.offsets.workflowHint",
+            "New lazer version: generate once in play/replay for score, then once on the result screen for results.",
+        );
+        actionsWrap.appendChild(workflowHint);
 
         wrap.appendChild(buildRow("offsetsActions", t("ui.shell.offsets.actionsTitle", "Offsets Actions"), t("ui.shell.offsets.actionsDescription", "Update or generate memory layout tables for osu! clients."), actionsWrap));
 

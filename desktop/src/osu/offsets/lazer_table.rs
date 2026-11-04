@@ -208,6 +208,9 @@ pub struct ScoreSection {
     /// `Actions` 列表的 `_size` 位移（实测 0x10）。
     #[serde(default)]
     pub actions_size: i64,
+    /// `ScoreProcessor` 对象上 `ScoreResultCounts`（`Dictionary<HitResult, int>`）的字段位移。
+    #[serde(default)]
+    pub score_result_counts: Option<i64>,
     #[serde(default)]
     pub witness: String,
 }
@@ -224,6 +227,7 @@ impl ScoreSection {
         };
         field(self.player_score_processor)
             && field(self.hit_events)
+            && self.score_result_counts.map_or(true, field)
             && (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET)
                 .contains(&self.column)
             && self.column % 4 == 0

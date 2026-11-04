@@ -24,13 +24,36 @@ import {
 } from "./math.js";
 import { updatePauseCountVisibility } from "../ui/hud.js";
 import { updateStarTipDots } from "../ui/display.js";
+import { normalizeCardOwnerSource } from "../sources/sourceActivity.js";
 
 const GRAPH_SCAN_ENTER_DURATION_MS = 400;
 const GRAPH_LOADING_TEXT_CLASS = "star-graph-loading-text";
 const GRAPH_TIME_EPSILON_MS = 1e-3;
+// 原生读取器送来的 live 时间是 150ms 一包、且可能连续重复；只允许向前
+// 外推这么多毫秒，避免长时间无新样本时游标跑飞。超过 STALE_SAMPLE_MS 没有
+// 任何时间前进 ⇒ 认为时钟停滞（暂停/结算），回到原始样本值。
+const GRAPH_MAX_EXTRAPOLATION_MS = 400;
+const GRAPH_STALE_SAMPLE_MS = 600;
+const GRAPH_SEEK_RESET_MS = 1500;
+// 读数包间隔约 150ms，直接按目标时间画会让游标一跳一跳。用时间常数
+// 约 90ms 的指数缓动把离散目标铺到每一帧；真实 seek 仍由上面的阈值直接吸附。
+const GRAPH_CURSOR_EASE_TAU_MS = 90;
 
 /** 当前这批 times 是按哪个倍速算的（换速率后靠它等比换算）。 */
 let graphSeriesRate = 1;
+
+// 播放速率窗口：原生读取器的 live 时间包间隔在 150/300ms 间抖动，单包
+// 速率会 0.8↔1.6 跳变。用最近 ~1.2s 的首尾样本求平均，得到稳定倍率。
+const RATE_WINDOW_MS = 1200;
+let rateSamples = [];
+let lastRateSampleTs = 0;
+let smoothCursorMs = null;
+let smoothCursorFrameTs = 0;
+
+function resetCursorEasing() {
+    smoothCursorMs = null;
+    smoothCursorFrameTs = 0;
+}
 
 const currentSpeedRate = () => (Number.isFinite(state.speedRate) && state.speedRate > 0 ? Number(state.speedRate) : 1);
 
@@ -77,21 +100,44 @@ function getInterpolatedPlaybackTime() {
         return state.frozenInterpMs;
     }
 
-    if (!Number.isFinite(state.songTimeMs) || state.songTimeReceiveTs <= 0) {
+    // 离开游玩/换图时 resetPauseRuntime 会把 hasSongTimeSample 清掉；此时
+    // songTimeMs 仍是上一局的残值，不能拿它继续画进度。
+    if (!state.hasSongTimeSample || !Number.isFinite(state.songTimeMs) || state.songTimeReceiveTs <= 0) {
         return null;
     }
 
     const now = performance.now();
-    const receiveDelta = state.songTimeReceiveTs - state.prevSongTimeReceiveTs;
-    const songDelta = state.songTimeMs - state.prevSongTimeMs;
-
-    let rate = 1;
-    if (receiveDelta > 5 && songDelta >= 0 && Math.abs(songDelta) <= 4000) {
-        rate = songDelta / receiveDelta;
+    const receiveTs = state.songTimeReceiveTs;
+    if (receiveTs !== lastRateSampleTs) {
+        lastRateSampleTs = receiveTs;
+        rateSamples.push({ song: state.songTimeMs, recv: receiveTs });
+        while (rateSamples.length > 2 && receiveTs - rateSamples[0].recv > RATE_WINDOW_MS) {
+            rateSamples.shift();
+        }
     }
-    rate = Math.max(0, Math.min(rate, 5));
 
-    return state.songTimeMs + rate * (now - state.songTimeReceiveTs);
+    let rate = Number(state.graphPlaybackRate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+        rate = 1;
+    }
+    if (rateSamples.length >= 2) {
+        const first = rateSamples[0];
+        const last = rateSamples[rateSamples.length - 1];
+        const receiveDelta = last.recv - first.recv;
+        const songDelta = last.song - first.song;
+        if (receiveDelta > 80 && songDelta > 0 && songDelta <= 4000 * (receiveDelta / 1000 + 1)) {
+            rate = Math.max(0, Math.min(songDelta / receiveDelta, 5));
+            state.graphPlaybackRate = rate;
+        }
+    }
+
+    const lastMoveAt = Number(state.songTimeLastMoveAt);
+    if (Number.isFinite(lastMoveAt) && lastMoveAt > 0 && now - lastMoveAt > GRAPH_STALE_SAMPLE_MS) {
+        return state.songTimeMs;
+    }
+
+    const elapsed = Math.max(0, now - state.songTimeReceiveTs);
+    return state.songTimeMs + rate * Math.min(elapsed, GRAPH_MAX_EXTRAPOLATION_MS);
 }
 
 function buildGraphLoadingPaths() {
@@ -357,6 +403,7 @@ export function resetPauseRuntime(clearMarkers = false) {
     state.pauseFreezeStartRealMs = 0;
     state.frozenInterpMs = 0;
     state.hasSongTimeSample = false;
+    state.playbackAdvanced = false;
     if (clearMarkers) {
         clearAllPauseMarkers();
     }
@@ -365,9 +412,15 @@ export function resetPauseRuntime(clearMarkers = false) {
 // 图表被清空的回调（由 graphSection 注册）：选区依赖全谱曲线坐标系，曲线没了必须一起复位，
 // 否则会留下「空白图 + 遮罩 + 胶囊」的幽灵选区。
 let graphClearedHandler = null;
+let graphRenderedHandler = null;
 
 export function setGraphClearedHandler(handler) {
     graphClearedHandler = typeof handler === "function" ? handler : null;
+}
+
+/** 新曲线渲染完成（选区复位用：换图后旧 armed 态不能带进新坐标系）。 */
+export function setGraphRenderedHandler(handler) {
+    graphRenderedHandler = typeof handler === "function" ? handler : null;
 }
 
 function notifyGraphCleared() {
@@ -376,8 +429,19 @@ function notifyGraphCleared() {
     }
 }
 
+function notifyGraphRendered(series) {
+    if (graphRenderedHandler) {
+        graphRenderedHandler(series);
+    }
+}
+
 export function clearDiffGraph() {
     state.graphSeries = null;
+    state.graphCursorMs = null;
+    state.graphPlaybackRate = 0;
+    resetCursorEasing();
+    rateSamples = [];
+    lastRateSampleTs = 0;
     dropGraphSeriesSource();
     notifyGraphCleared();
 
@@ -507,8 +571,10 @@ export function showDiffGraphError(message) {
 }
 
 function isGraphProgressSupported() {
-    const src = state.activeSource || state.cardOwner;
-    if (src === "malody" || src === "malody4" || src === "etterna" || src === "malody-bridge") {
+    // 卡片归属优先于路由结果：路由可能停留在已结束的源上，但当前图属于谁
+    // 才决定这条进度线有没有意义。
+    const src = normalizeCardOwnerSource(state.cardOwner) || state.activeSource || state.cardOwner;
+    if (src === "malody" || src === "malody4" || src === "etterna") {
         return false;
     }
     const client = String(state.gameClient || "").toLowerCase();
@@ -572,17 +638,56 @@ export function updateGraphCursor(explicitTimeMs = null) {
         return;
     }
 
-    const timeMs = Number.isFinite(explicitTimeMs) ? explicitTimeMs : getInterpolatedPlaybackTime();
+    const { times, values, minTime, maxTime, minYValue, maxYValue } = series;
+
+    let timeMs = Number.isFinite(explicitTimeMs) ? explicitTimeMs : getInterpolatedPlaybackTime();
+    if (state.clientStateName === "resultscreen") {
+        // 结算屏把进度画满：没有新的 live 样本时也不停在上一局最后的位置。
+        timeMs = Number.isFinite(state.songEndMs) ? state.songEndMs : maxTime;
+    } else if (!Number.isFinite(timeMs)) {
+        // 选歌/菜单没有 live 时间时仍显示游标，从谱面起点开始。
+        timeMs = Number.isFinite(state.songStartMs) ? state.songStartMs : minTime;
+    }
     if (!Number.isFinite(timeMs)) {
         forEachEnabledGraphView((view) => resetPlayedFill(view));
         setGraphCursorVisible(false);
         return;
     }
 
-    const { times, values, minTime, maxTime, minYValue, maxYValue } = series;
+    // 外推位置偶尔会比下一包样本略靠前；若直接回写，视觉上就是 10→11→10。
+    // 小幅回退一律钳住（真正的 seek/换图超过阈值时重置）。
+    const previousCursorMs = Number(state.graphCursorMs);
+    let targetTime = timeMs;
+    if (Number.isFinite(previousCursorMs)
+        && Math.abs(timeMs - previousCursorMs) <= GRAPH_SEEK_RESET_MS
+        && timeMs < previousCursorMs) {
+        targetTime = previousCursorMs;
+    }
+
+    // 只缓动显示时间，不改样本速率/外推逻辑：把 150ms 包间隔的离散目标
+    // 用指数缓动铺到每一帧。真正的 seek（跨度超过阈值）直接吸附，避免拖影。
+    const now = performance.now();
+    if (!Number.isFinite(smoothCursorMs)
+        || Math.abs(targetTime - smoothCursorMs) > GRAPH_SEEK_RESET_MS) {
+        smoothCursorMs = targetTime;
+        smoothCursorFrameTs = now;
+    } else {
+        const dt = smoothCursorFrameTs > 0
+            ? Math.min(80, Math.max(0, now - smoothCursorFrameTs))
+            : 16;
+        smoothCursorFrameTs = now;
+        const alpha = 1 - Math.exp(-dt / GRAPH_CURSOR_EASE_TAU_MS);
+        smoothCursorMs += (targetTime - smoothCursorMs) * alpha;
+        if (Math.abs(targetTime - smoothCursorMs) < 0.05) {
+            smoothCursorMs = targetTime;
+        }
+    }
+    const displayTime = Number.isFinite(smoothCursorMs) ? smoothCursorMs : targetTime;
+    state.graphCursorMs = displayTime;
+
     const rangeStart = Number.isFinite(state.songStartMs) ? state.songStartMs : minTime;
     const rangeEnd = Number.isFinite(state.songEndMs) ? state.songEndMs : maxTime;
-    const boundedTime = Math.max(rangeStart, Math.min(timeMs, rangeEnd));
+    const boundedTime = Math.max(rangeStart, Math.min(displayTime, rangeEnd));
     const clampedTime = Math.max(minTime, Math.min(boundedTime, maxTime));
 
     const xMin = GRAPH_PADDING_X;
@@ -673,6 +778,11 @@ export function renderDiffGraph(graphData, options = {}) {
     // 未裁剪的归一化序列留作重建源：渲染时的时间线只是快照（见
     // trimSeriesStartToFirstObject），refreshGraphTimeline 用它按新时间线重画。
     state.graphSeriesSource = normalizedSeries;
+    state.graphCursorMs = null;
+    state.graphPlaybackRate = 0;
+    resetCursorEasing();
+    rateSamples = [];
+    lastRateSampleTs = 0;
     // 记录这批 times 是按哪个倍速算出来的：换速率后 syncGraphSeriesRate 用它换算。
     graphSeriesRate = currentSpeedRate();
 
@@ -773,6 +883,7 @@ export function renderDiffGraph(graphData, options = {}) {
 
         state.graphSeries = { times, values, minTime, maxTime, minYValue, maxYValue };
         state.graphSeriesTimelineStartMs = currentTimelineStartMs();
+        notifyGraphRendered({ minTime, maxTime });
 
         if (animate) {
             forEachEnabledGraphView((view) => { triggerGraphScanEnter(view); });
@@ -832,7 +943,7 @@ export function updateDiffTextVisibility() {
     } else if (showRightCapsule) {
         switch (mode) {
             case "MSD":
-                estDiffCaptionEl.textContent = "Mina Standard Difficulty";
+                estDiffCaptionEl.textContent = "Mina Standardized Difficulty";
                 break;
             case "Pattern":
                 estDiffCaptionEl.textContent = "Overall Pattern";

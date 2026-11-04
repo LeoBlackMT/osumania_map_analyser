@@ -173,25 +173,23 @@ pub fn hits_from_statistics_json(text: &str) -> Option<Hits> {
     Some(hits)
 }
 
-/// 活成绩的判定字典（`Dictionary<HitResult,int>`）。
+/// 通用：从 `Dictionary<HitResult, int>` 对象指针中读取判定计数映射为 `Hits`。
 ///
-/// 读法：`ScoreInfo.statistics_dict_offset` → 字典对象；`dict_entries_offset` → entry 数组；
-/// 数组长度 @ `+0x08`、元素 @ `+0x10`、每个 entry 16 字节（`hashCode/next/key/value`）。
-/// 跳过 `hashCode < 0` 的释放槽；key 按表里的 `hit_result_values` 映射成判定名。
-fn read_statistics_dict(
+/// `allow_zero`: 为 true 时允许全 0 判定（局内 play 刚开局或全 miss 前有效）；
+/// 为 false 时全 0 视为无效（结算屏无成绩场景）。
+pub fn read_dictionary_hits(
     source: &dyn Source,
-    score: u64,
-    results: &ResultsSection,
+    dict: u64,
+    entries_offset: i64,
+    hit_result_values: &BTreeMap<String, u32>,
+    allow_zero: bool,
 ) -> Option<Hits> {
-    let dict_offset = results.statistics_dict_offset?;
-    let entries_offset = results.dict_entries_offset?;
-    if results.hit_result_values.is_empty() {
+    if dict == 0 || hit_result_values.is_empty() {
         return None;
     }
-    let dict = read_ptr_field(source, score, dict_offset)?;
     let entries = read_ptr_field(source, dict, entries_offset)?;
     let length = read_i32(source, entries + ARRAY_LENGTH_OFFSET)?;
-    if length <= 0 || length > STATISTICS_ENTRY_MAX {
+    if length < 0 || length > STATISTICS_ENTRY_MAX {
         return None;
     }
     let mut counts: BTreeMap<u32, u32> = BTreeMap::new();
@@ -208,12 +206,11 @@ fn read_statistics_dict(
         }
         counts.insert(key as u32, value as u32);
     }
-    if counts.is_empty() {
+    if !allow_zero && counts.is_empty() {
         return None;
     }
     let value_for = |name: &str| -> u32 {
-        results
-            .hit_result_values
+        hit_result_values
             .get(name)
             .and_then(|key| counts.get(key))
             .copied()
@@ -227,10 +224,26 @@ fn read_statistics_dict(
         n50: value_for("meh"),
         miss: value_for("miss"),
     };
-    if hits.is_zero() {
+    if !allow_zero && hits.is_zero() {
         return None;
     }
     Some(hits)
+}
+
+/// 活成绩的判定字典（`Dictionary<HitResult,int>`）。
+///
+/// 读法：`ScoreInfo.statistics_dict_offset` → 字典对象；`dict_entries_offset` → entry 数组；
+/// 数组长度 @ `+0x08`、元素 @ `+0x10`、每个 entry 16 字节（`hashCode/next/key/value`）。
+/// 跳过 `hashCode < 0` 的释放槽；key 按表里的 `hit_result_values` 映射成判定名。
+fn read_statistics_dict(
+    source: &dyn Source,
+    score: u64,
+    results: &ResultsSection,
+) -> Option<Hits> {
+    let dict_offset = results.statistics_dict_offset?;
+    let entries_offset = results.dict_entries_offset?;
+    let dict = read_ptr_field(source, score, dict_offset)?;
+    read_dictionary_hits(source, dict, entries_offset, &results.hit_result_values, false)
 }
 
 #[cfg(test)]
@@ -436,5 +449,21 @@ mod tests {
         put_i(&mut image, BASE, entries + 8, 4096); // > STATISTICS_ENTRY_MAX
         let memory = Mem { base: BASE, bytes: image };
         assert!(read_statistics_dict(&memory, score, &dict_results()).is_none());
+    }
+
+    #[test]
+    fn dictionary_with_all_zero_hits_allowed_when_flag_is_true() {
+        const BASE: u64 = 0x1000_0000;
+        let mut image = vec![0u8; 0x4000];
+        let dict = BASE + 0x1000;
+        let entries = BASE + 0x2000;
+        put_q(&mut image, BASE, dict + 0x10, entries);
+        put_i(&mut image, BASE, entries + 8, 17);
+        let memory = Mem { base: BASE, bytes: image };
+        let results = dict_results();
+        let hits = read_dictionary_hits(&memory, dict, 0x10, &results.hit_result_values, true);
+        assert!(hits.is_some());
+        assert_eq!(hits.unwrap(), Hits::default());
+        assert!(read_dictionary_hits(&memory, dict, 0x10, &results.hit_result_values, false).is_none());
     }
 }

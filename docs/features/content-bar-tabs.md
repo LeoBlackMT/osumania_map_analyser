@@ -26,7 +26,7 @@ Tab 栏仅在以下全部条件成立时可见：
 
 ## 3. 状态模型
 
-`js/app/appContext.js`：
+`js/app/core/appContext.js`：
 
 ```js
 tabContentBar: null,          // 会话级 Tab 覆盖；null = 跟随 contentBar
@@ -53,7 +53,7 @@ contentBarShows(section) =
 
 ## 4. 点击语义
 
-`js/app/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / `键盘` / `拖拽`；闲置淡化用的 `pointerenter/move/down` 只做可见性恢复，不参与点击判定）：
+`js/app/ui/contentBarTabs.js` 只注册一个 `click` 监听（不挂 `wheel` / `touchstart` / `pointerdown` / `键盘` / `拖拽`；闲置淡化用的 `pointerenter/move/down` 只做可见性恢复，不参与点击判定）：
 
 ```js
 contentBarTabsEl.addEventListener("click", (event) => {
@@ -63,7 +63,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 });
 ```
 
-`js/app/settings.js` 的 `setTabContentBar(module)`：
+`js/app/core/settings.js` 的 `setTabContentBar(module)`：
 
 1. 非壳或 Combined 开启 → 拒绝；
 2. 计算 `isActive = getActiveContentBar() === module`；
@@ -110,9 +110,11 @@ contentBarTabsEl.addEventListener("click", (event) => {
 ```
 
 - 数组顺序即卡片显示顺序；token 只认五个规范值（Pattern / Etterna / Graph / ReworkPP / LaneAcc；大小写不敏感）；
+- 组合模式卡片按内容自增高（`align-self:start`，不随窗口高度拉伸）；底部为 Mix/Pause 绝对定位胶囊预留 38px，且各模块末尾留出同类安全距，最后一个模块不会压住胶囊或暂停文字；LaneAcc 在组合模式保持单模块的 190px 舞台高度；
 - 缺失/非数组/空数组/全非法 → 默认四模块；
 - UI 禁止取消最后一个已勾选模块；
 - 设置页写入整对象 `{enabled, modules}`，避免 `merge_json` 递归合并残留旧数组；
+- 外部源回到主菜单（如 Malody V `other`）时保留最后渲染的 DOM 并加 stale 标记（保留内容、不压暗），不再清空模块；这样组合模式的卡片高度不会因清空而大幅伸缩，新分析开始时再移除 stale 标记；
 - 旧 `contentBar: "Full"` 只按 §1 降级为 Auto；组合模式使用独立的新键 `combinedMode`。
 
 设置页 `Shell Configuration` 中该区块位于「内存偏移表管理」之后；模块列表显示名为 键型 / Etterna技能组（Etterna Skillsets）/ 曲线 / PP。

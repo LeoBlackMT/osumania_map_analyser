@@ -6,7 +6,7 @@
 
 ## 1. 功能与范围
 
-- **仅桌面壳**：入口是 `js/app/graphSection/index.js` 的 `initGraphSection()`，内部用 `isShellRuntime()`（`js/app/feedback/feedbackSpec.js`）判定「24061 端口 **或** 壳追加的 `#mma-shell`」。浏览器 / OBS 模式下函数直接返回：不挂监听、不改 DOM、保留全文（`rememberFullChartText` / `notifySectionAnalysis` 也各自早退）。
+- **仅桌面壳**：入口是 `js/app/graph/section.js` 的 `initGraphSection()`，内部用 `isShellRuntime()`（`js/app/feedback/feedbackSpec.js`）判定「24061 端口 **或** 壳追加的 `#mma-shell`」。浏览器 / OBS 模式下函数直接返回：不挂监听、不改 DOM、保留全文（`rememberFullChartText` / `notifySectionAnalysis` 也各自早退）。
 - **图表始终显示全谱波形**：区间跑批只刷新卡片指标，**不重画图表**（详见 §5.3）。
 - **不改分析管线语义**：`runAnalysisPipeline` 签名/输出不变，区间能力完全由「输入文本被切片」实现。
 - **不改缓存键、不新增设置项**：没有 `settings.json` 条目，也没有 `clearResultCache()` 变更。
@@ -36,7 +36,7 @@
 | 物理轴（谱面轴） | `.osu` 文件毫秒 | 切片器、`[TimingPoints]`、`[HitObjects]` |
 | 真实播放轴 | = 显示轴（DT/HT 已折算） | 状态行时间胶囊 |
 
-**像素 → viewBox**：`js/app/graphMath.js clientXToViewBoxX()`。两图 `preserveAspectRatio` 不同（header=`none` 拉伸、body=`xMidYMid meet` 可能左右留黑边），所以按 `getBoundingClientRect` + viewBox + PAR 解算；用比例而非 `getScreenCTM`，CSS `zoom` 的缩放因子在比值里自然抵消。
+**像素 → viewBox**：`js/app/graph/math.js clientXToViewBoxX()`。两图 `preserveAspectRatio` 不同（header=`none` 拉伸、body=`xMidYMid meet` 可能左右留黑边），所以按 `getBoundingClientRect` + viewBox + PAR 解算；用比例而非 `getScreenCTM`，CSS `zoom` 的缩放因子在比值里自然抵消。
 
 **viewBox → 绘图带比例**：`u = clamp01((xVb - GRAPH_PADDING_X) / (GRAPH_VIEWBOX_WIDTH - 2 * GRAPH_PADDING_X))`，`GRAPH_PADDING_X = 6`、有效宽度 248。用户拖到图表边框附近也会被钳到绘图带两端（消除「边框与绘图区之间的间隙」）。
 
@@ -84,7 +84,7 @@
 
 ### 5.1 全谱原文缓存
 
-- `rememberFullChartText(rawText)`：**只在非区间跑批**成功后写入 `identity → text` 的 LRU（最多 4 张，`js/app/graphSection/index.js`）。浏览器模式早退，不占内存。
+- `rememberFullChartText(rawText)`：**只在非区间跑批**成功后写入 `identity → text` 的 LRU（最多 4 张，`js/app/graph/section.js`）。浏览器模式早退，不占内存。
 - `getFullChartText()`：按当前 `state.lastBeatmapIdentity` 取；取不到返回 `null`。
 - 为什么按 identity 存多张：换图后再切回来时结果缓存命中、那一轮**拿不到原文**（`rawText=null`），只留一张会让选区稳定触发 `text-missing`。
 - 兜底：区间跑批未命中且当前是 osu 源时，直接抓一次 `/files/beatmap/file` 再切片并回填缓存；外部源没有可重抓端点，取不到时提示 `text-missing` 并复位。
@@ -143,8 +143,9 @@
 | 进入结算屏 | `socketHandlers.applySignalState`（`nextIsResultScreen` 首次为真） | `clearSection("results", { recompute: true })` |
 | 清卡 | `analysis.js invokeCardClear` | `clearSection("card-clear", { recompute: false })` |
 | 图表被清空 | `graph.js clearDiffGraph` / `showDiffGraphError` → `setGraphClearedHandler` | `clearSection("graph-cleared", { recompute: false })`（否则会留下「空白图 + 遮罩」的幽灵选区） |
+| 新曲线渲染且身份/时间轴变化 | `graph/index.js renderDiffGraph` → `setGraphRenderedHandler` | `clearSection("graph-axis", { recompute: false })`（换图后旧 armed 态不能带进新坐标系，否则双击会被当成「再次双击退出」） |
 
-> 身份比较只看稳定段 `id:` / `hash:`（`isSameBeatmapIdentity`）：tosu 部分包可能缺 `path:`，字符串变了但不是换图，不能复位选区。
+> 身份比较只看稳定段（`isSameBeatmapIdentity`）：两边都有 `id:` 时只比 ID；否则比 `hash:`；只有完全没有稳定段时才退回整串。tosu/原生部分包可能缺 `path:` 或 `hash:`，字符串变了但不是换图，不能复位选区。
 > 仅改 mod（含 DT/HT/自定义速率）**不复位**：选区按物理时间保存，速率变化要保留选区并按新速率重算。
 
 ## 9. 已知限制

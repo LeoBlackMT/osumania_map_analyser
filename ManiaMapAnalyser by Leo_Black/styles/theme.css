@@ -231,6 +231,15 @@ html.ma-theme-osu .cluster-fill {
 }
 
 /* ---- etterna 块：accent 描边 + 主题底色 --------------------------------- */
+/* 主题给主体条加了 12px 内边距；头部不能仍贴卡片边缘，否则 PP 胶囊
+   会相对主体向左错位。空卡片没有主体块时不加这段 padding。 */
+html.ma-theme-osu .main-card:not(.bars-none) .star-block {
+    box-sizing: border-box;
+    width: 100%;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
 html.ma-theme-osu #ett-skill-bars.ett-skill-bars:not([hidden]) {
     position: relative;
     border-radius: 14px;

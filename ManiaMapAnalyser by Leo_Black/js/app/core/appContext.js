@@ -252,6 +252,9 @@ export const state = {
     // 未裁剪的归一化序列 + 渲染时用的谱面时间线：时间线补全后据此重画 x 轴窗口。
     graphSeriesSource: null,
     graphSeriesTimelineStartMs: null,
+    // 图表游标上一次绘制的谱面时间（防外推回跳）与最近一次正向播放速率。
+    graphCursorMs: null,
+    graphPlaybackRate: 0,
     pauseMarkerTimes: [],
     pauseCount: 0,
     isPaused: false,
@@ -259,12 +262,16 @@ export const state = {
     pauseFreezeStartRealMs: 0,
     frozenInterpMs: 0,
     hasSongTimeSample: false,
+    // 本局谱面时钟是否已真正前进过；用于过滤开局加载阶段的“时间不变”伪暂停。
+    playbackAdvanced: false,
     clientStateName: "",
     isInPlayState: false,
     songTimeMs: 0,
     prevSongTimeMs: 0,
     songTimeReceiveTs: 0,
     prevSongTimeReceiveTs: 0,
+    // 谱面时钟最近一次真正前进/回跳的接收时刻（重复样本不刷新）。
+    songTimeLastMoveAt: 0,
     songStartMs: null,
     songEndMs: null,
     graphAnimationStarted: false,

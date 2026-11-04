@@ -17,8 +17,8 @@
       "game_version": "2026.1005.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
-      "sha256": "8c3bd428c55eee1ff8e3207a5104bb05cd35a71b344d7a8695b7ffe3b7d187e4",
-      "signature": "176def155afac3f43986dec3bce48f189f02419dcb242565f48b71929eadf91e287a33510ad559246e1ba8daaf3c081a81f5e2eea030af5eb290356e28388702"
+      "sha256": "5ee833958abd6c5a722a509db5d7b9a772839857ec342b710f3e9c06bb47a27c",
+      "signature": "006b64fa824d9bcb846599876a4dcb60ee184ce499492cb09dc4030d4b600ffe66e82d8acb087896f8a812f981ccd72ce65ebdfe7df5256476fd5e4f2f0dff07"
     },
     {
       "filename": "2026.921.0.0__10.0.12__x64.json",
@@ -26,8 +26,8 @@
       "game_version": "2026.921.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
-      "sha256": "9bd3f47f7f9f3209fbd8b6cf55e2f89596a2e32523d561f83844c0840ecd9803",
-      "signature": "9a72bd065b614114e99b86e55bdf52b291c77ec647eac5d724cd87d1d51d06d11e3a58484115a6b5781cf88a5662809177bc1a8cbbd0d04348995786da90f90f"
+      "sha256": "f5b6110fd41b76025a8fcb3e2afc869cc2c73cf7258b78486bac233e2ca0afee",
+      "signature": "d9cefba061427ed9d577aff7f837d7c5504c4025f6c561c1e703abff1ddbeef74b8343935789a0c2134f51dee127b40a6d1dcd5817bd2f173c78e3402def1d0c"
     }
   ]
 }

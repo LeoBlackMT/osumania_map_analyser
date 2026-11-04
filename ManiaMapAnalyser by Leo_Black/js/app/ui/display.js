@@ -559,45 +559,12 @@ function ppToColorScaleValue(ppValue) {
 // number, which reads as a continuation, not a flash.
 let lastShownPp = null;
 
-// PP capsule fixed width: PP renders 4 significant digits (toPrecision(4)),
-// i.e. 4 digits + 1 decimal point (e.g. "735.6"/"250.0"/"999.9"). With
-// tabular-nums every digit is the same width, so measuring the widest common
-// candidate "999.9" and caching it as --pp-capsule-width makes the capsule
-// strictly match real content with zero slack. The rare low-PP form "0.0200"
-// (6 chars) overflows by one digit — acceptable, PP < 0.1 is extremely rare.
-let ppCapsuleWidth = null;
-
-function measurePpCapsuleWidth() {
-    if (ppCapsuleWidth != null) return ppCapsuleWidth;
-    if (!reworkStarEl || !document.body) return 140;
-    const probe = document.createElement("span");
-    const cs = getComputedStyle(reworkStarEl);
-    probe.style.position = "absolute";
-    probe.style.visibility = "hidden";
-    probe.style.whiteSpace = "nowrap";
-    probe.style.fontFamily = cs.fontFamily;
-    probe.style.fontSize = cs.fontSize;
-    probe.style.fontWeight = cs.fontWeight;
-    probe.style.fontVariantNumeric = cs.fontVariantNumeric;
-    probe.style.lineHeight = cs.lineHeight;
-    probe.style.padding = cs.padding;
-    // cs.border is empty for shorthand (borderWidth/style/Color are the
-    // exposed longhands); .star-value has a uniform 1px border on all sides
-    // and the box is border-box, so include it or the probe measures 2px short.
-    probe.style.borderWidth = cs.borderTopWidth || "1px";
-    probe.style.borderStyle = "solid";
-    probe.style.borderColor = "transparent";
-    probe.textContent = "999.9";
-    document.body.appendChild(probe);
-    const width = Math.ceil(probe.getBoundingClientRect().width);
-    probe.remove();
-    ppCapsuleWidth = width;
-    return width;
-}
+// PP capsule uses intrinsic width: font/theme/card-mode changes and numeric
+// animations cannot leave a stale measured width behind. Tabular digits keep
+// ordinary values stable, and the padding still gives the capsule its shape.
 
 export function showReworkPpValue(ppValue) {
     reworkStarEl.classList.remove("category-mode");
-    reworkStarEl.style.setProperty("--pp-capsule-width", `${measurePpCapsuleWidth()}px`);
     const from = lastShownPp != null ? lastShownPp : 0;
     // PP capsule: 250ms (medium speed-up vs. default 400ms)
     animateNumericCapsuleValue(reworkStarEl, ppValue, formatPpValue, from, 250);

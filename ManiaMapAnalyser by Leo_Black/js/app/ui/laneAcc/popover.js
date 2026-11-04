@@ -16,6 +16,31 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
     let popoverCol = -1;
     let popoverTimer = 0;
 
+    /**
+     * MAX : 300 的比值。两端点单独处理，避免 0/0 的 NaN 与 x/0 的 Infinity：
+     * - 0:0 显示 0.00；
+     * - MAX>0 且 300=0 显示 ∞；
+     * - 其余保留两位小数。
+     */
+    function maxTo300Ratio(maxCount, count300) {
+        const max = Math.max(0, Number(maxCount) || 0);
+        const n300 = Math.max(0, Number(count300) || 0);
+        if (n300 === 0) {
+            return max === 0 ? "0.00" : "∞";
+        }
+        return (max / n300).toFixed(2);
+    }
+
+    function appendComboAndRatio(parent, combo, maxCount, count300) {
+        const comboLine = document.createElement("div");
+        comboLine.className = "laneacc-popover-combo";
+        comboLine.textContent = `Max Combo ${combo ?? 0}`;
+        const ratioLine = document.createElement("div");
+        ratioLine.className = "laneacc-popover-ratio";
+        ratioLine.textContent = `Ratio ${maxTo300Ratio(maxCount, count300)}`;
+        parent.append(comboLine, ratioLine);
+    }
+
     function ensureStatPopover() {
         const nodes = getDom();
         if (!nodes) {
@@ -68,10 +93,8 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
             cell.textContent = `${labels[index]} ${values[index] ?? 0}`;
             grid.append(cell);
         }
-        const comboLine = document.createElement("div");
-        comboLine.className = "laneacc-popover-combo";
-        comboLine.textContent = `Max Combo ${combo ?? 0}`;
-        popover.replaceChildren(title, grid, comboLine);
+        popover.replaceChildren(title, grid);
+        appendComboAndRatio(popover, combo, values[0], values[1]);
         popover.hidden = false;
 
         const wrapRect = nodes.wrap.getBoundingClientRect();
@@ -97,7 +120,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
         }
         const anchor = statKind === "sv1"
             ? nodes.wrap.querySelector(".laneacc-sv1")
-            : nodes.hands.querySelector(`.laneacc-hand[data-hand="${statKind}"]`);
+            : nodes.hands?.querySelector(`.laneacc-hand[data-hand="${statKind}"]`);
         if (anchor) {
             showStatPopover(anchor, statKind);
         }
@@ -106,7 +129,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
     function showPopover(col, lane) {
         const nodes = getDom();
         const activeChart = getActiveChart();
-        if (!nodes || !lane || !activeChart) {
+        if (!nodes?.popover || !lane || !activeChart) {
             return;
         }
         popoverCol = col;
@@ -128,10 +151,8 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
             cell.textContent = `${labels[index]} ${values[index]}`;
             grid.append(cell);
         }
-        const comboLine = document.createElement("div");
-        comboLine.className = "laneacc-popover-combo";
-        comboLine.textContent = `Max Combo ${lane.maxCombo ?? 0}`;
-        nodes.popover.append(title, grid, comboLine);
+        nodes.popover.append(title, grid);
+        appendComboAndRatio(nodes.popover, lane.maxCombo, values[0], values[1]);
 
         const stageWidth = nodes.stage?.clientWidth || 0;
         const popWidth = nodes.popover.offsetWidth || 0;
@@ -142,6 +163,19 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
             nodes.popover.style.left = `${clamped}px`;
         }
         schedulePopoverHide();
+    }
+
+    function refreshPopover() {
+        const nodes = getDom();
+        const popover = nodes?.popover;
+        if (popoverCol < 0 || !popover || popover.hidden) {
+            return;
+        }
+        const lane = getSnapshot()?.lanes?.[popoverCol];
+        const anchor = nodes.stage?.querySelector(`.laneacc-lane[data-col="${popoverCol}"]`);
+        if (anchor && lane) {
+            showPopover(popoverCol, lane);
+        }
     }
 
     function schedulePopoverHide() {
@@ -161,7 +195,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
             clearTimeout(popoverTimer);
             popoverTimer = 0;
         }
-        if (nodes) {
+        if (nodes?.popover) {
             nodes.popover.hidden = true;
         }
     }
@@ -176,6 +210,7 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
         hideStatPopover,
         refreshStatPopover,
         showPopover,
+        refreshPopover,
         hidePopover,
         schedulePopoverHide,
         isPopoverOpen,

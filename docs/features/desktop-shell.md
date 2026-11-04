@@ -93,13 +93,13 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ## 3d. osu 原生传输（24062 兼容 origin + 端点下发，契约 v6）
 
-**动机**：壳内已能**只读**读取 osu!stable / osu!lazer（`desktop/src/osu/**`），需要一个页面零改动就能消费的数据面；页面只有**一个 host 字符串**（`js/app/appContext.js:getSocketHost()`，DEC-20），所以"换数据面"必须由壳**下发端点**、页面在 **socket 层**运行时切换。走设置路径会踩 `wsEndpoint ∈ SETTING_CACHE_KEYS` ⇒ 每次切换清空结果缓存，故**绝不写 `wsEndpoint`**（DEC-12）。
+**动机**：壳内已能**只读**读取 osu!stable / osu!lazer（`desktop/src/osu/**`），需要一个页面零改动就能消费的数据面；页面只有**一个 host 字符串**（`js/app/core/appContext.js:getSocketHost()`，DEC-20），所以"换数据面"必须由壳**下发端点**、页面在 **socket 层**运行时切换。走设置路径会踩 `wsEndpoint ∈ SETTING_CACHE_KEYS` ⇒ 每次切换清空结果缓存，故**绝不写 `wsEndpoint`**（DEC-12）。
 
 - **端点**：`127.0.0.1:24062` 的 tosu 兼容子集——WS `/websocket/v2`（每 150 ms 一帧）、WS `/websocket/commands`（接受握手后一帧不发，黑洞）、`GET /files/beatmap/{file,background}`；全部响应带 `Access-Control-Allow-Origin: *`（含 403/404/405/500），Host 头只放行 `127.0.0.1:24062` / `localhost:24062` / `[::1]:24062` / 无 Host 头，其余 403（`desktop/src/server/osu_compat.rs:169-202,545-611`）。
 - **实时为默认**：帧来自壳内读取线程的最新载荷；`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定谱面回放（测试开关，`osu_compat.rs:17-24,78-82`）。**没有当前谱面 ⇒ 一帧不发 + 文件路由 404**（绝不回落到别的图）。
 - **`sources.osu`**：`{alive, osuTransport{mode,host,port,wsPath,filesPath}, gate?, client?, reason?, degradedFields?, phase?, notice?, progress?}`；`alive ≡ mode == "native"`；**值变即推**（2 s 一拍检测），不等 30 s 周期帧。
 - **`mode` 决策**（`desktop/src/server/osu_source.rs:83-111`）：24062 未绑定 / 壳配置强制 `tosu` ⇒ 立即 `tosu`；读取器健康 ⇒ 立即 `native`；刚掉线且此前健康过（< 25 s 抗抖动窗口）⇒ 保持 `native`（页面保留最后一张好卡片）；掉线 ≥25 s 或从未健康过 ⇒ `tosu`。
-- **页面侧**（`js/app/appContext.js:25-98`、`js/app/sources/shellState.js:70-79`）：只有**壳页**（`location.port === "24061"`）接受覆盖，且要求 `wsPath`/`filesPath` **逐字等于** `/websocket/v2` 与 `/files/beatmap`（不符即拒绝，fail-closed 仍走 tosu）；切换只做 `socket.setHost()`（关闭曾创建过的全部 socket），**不清结果缓存**。native 位同时进路由存活回窗与 osu 败方门控（`js/app/sources/sourceManager.js:127,186`），否则原生帧会被当"败方帧"缓冲掉（换图不更新）。
+- **页面侧**（`js/app/core/appContext.js:25-98`、`js/app/sources/shellState.js:70-79`）：只有**壳页**（`location.port === "24061"`）接受覆盖，且要求 `wsPath`/`filesPath` **逐字等于** `/websocket/v2` 与 `/files/beatmap`（不符即拒绝，fail-closed 仍走 tosu）；切换只做 `socket.setHost()`（关闭曾创建过的全部 socket），**不清结果缓存**。native 位同时进路由存活回窗与 osu 败方门控（`js/app/sources/sourceManager.js:127,186`），否则原生帧会被当"败方帧"缓冲掉（换图不更新）。
 - **扫描提示**：L0 附着/锚点扫描会持续 13–23 s（冷启动与游戏重启各一次），壳下发 `phase`/`notice`/`progress`，页面写进**自己的元素** `#osu-scan-hint`（`js/app/sources/osuScanHint.js`；`notice` 为空就不显示）。相位三项是**向后兼容追加**（契约版本仍 v6）。
 - **字段级冻结 / 身份保持**：冻结时 WS 只发 `client`+`state`、文件路由 404；身份指针瞬态失败时（<2.5 s）改发**最后一张好图**的 `beatmap` 块、文件路由供奉同一张图（200）；`unhealthy` 一帧不发。详见 [osu-native-source.md](osu-native-source.md) §7.3。
 - **完整架构、reason 闭集、健康机（L0–L3）、两本操作手册与自检清单**：见 [osu-native-source.md](osu-native-source.md)。
@@ -110,6 +110,8 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（≤2048 条/帧分块，首帧 reset）。
 - 壳读取 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；表 `score` 段缺失时
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
+  生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但只会从**同版本**同目录旧表保留该段，避免一键生成
+  把 LaneAcc 的表结构覆盖掉。新版本完整流程：先在游玩/回放生成 `score`，再在结算屏生成 `results`；跨版本旧表不参与补段。
 - 只在 `client == lazer` 且 `state.name == play` 时推送；非 play 清空日志并发空 reset。
 - 功能与公式见 [lane-acc.md](lane-acc.md)，协议细节见 `desktop/docs/CONTRACT.md` §16。
 
@@ -160,4 +162,4 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **契约 v10 与版本号（当前状态）**：桥契约已升到 **v10**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.0`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,10]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
-**本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时静默重试一次；④ lazer 目标上的 7 条字段缺口（mods/hits/背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-10 更新：lazer 的 mods 与 `resultsScreen.hits` 已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段；仍缺的是 `play.hits` 与背景/音频，见 osu-native-source.md §6.3。）
+**本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时静默重试一次；④ lazer 目标上的字段缺口（背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-11 更新：lazer 的 mods、`resultsScreen.hits` 与 `play.hits` 均已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段，`play.hits` 走 `score.score_result_counts`；一键生成只在同版本内保留旧表的 `score`/`results` 段；lazer 更新后需在新版本游玩/回放与结算屏分别生成，跨版本旧表不参与补段；仅缺背景/音频，见 osu-native-source.md §6.3。）

@@ -9,7 +9,7 @@
 
 `js/patterns/` 模块负责把 `.osu` 谱面文本转换为**键型分析报告**（RC/LN 模式分布），是插件"键型分析"功能的计算核心。其 RC 键型分析算法移植自 [Interlude (YAVSRG)](https://github.com/YAVSRG/YAVSRG)，并在其基础上**新增了 LN 检测算法**（见 [第 5 节](#5-ln-检测说明)）。
 
-对外入口为 `analyzePatternFromText`，被 `js/app/analysis.js` 调用；产出 `report`（含 `Clusters`、`Category`、`LNPercent`、`ModeTag`、`SVAmount`、`Duration`），由 `display.js` 渲染为界面上的 5 条模式进度条，`Category` 与 `ModeTag` 还会参与模式标签与自动显示档位的决策。
+对外入口为 `analyzePatternFromText`，被 `js/app/core/analysis.js` 调用；产出 `report`（含 `Clusters`、`Category`、`LNPercent`、`ModeTag`、`SVAmount`、`Duration`），由 `display.js` 渲染为界面上的 5 条模式进度条，`Category` 与 `ModeTag` 还会参与模式标签与自动显示档位的决策。
 
 ## 2. 数据流总览（完整管线）
 
@@ -76,10 +76,10 @@
   │
   ▼
 消费端（浏览器侧，非共享模块）:
-  • js/app/analysis.js:887  调用 analyzePatternFromText(rawText)（applyPatternData）
-  • js/app/display.js:309   mergeDuplicateClusters 合并同 Pattern 簇
-  • js/app/display.js:739   renderPatternClusters 渲染 5 条进度条
-  • js/app/analysis.js:1139-1141 report.ModeTag 参与模式标签决策（见第 7 节）
+  • js/app/core/analysis.js:887  调用 analyzePatternFromText(rawText)（applyPatternData）
+  • js/app/ui/display.js:309   mergeDuplicateClusters 合并同 Pattern 簇
+  • js/app/ui/display.js:739   renderPatternClusters 渲染 5 条进度条
+  • js/app/core/analysis.js:1139-1141 report.ModeTag 参与模式标签决策（见第 7 节）
 ```
 
 ## 3. 各模块职责表
@@ -195,8 +195,8 @@
 
 ## 7. `debugUseAmount` 设置的影响
 
-- 定义：`settings.json:452` `debugUseAmount`（checkbox，"Use Amount For Category"，默认 false；属于 `settings.json:436` 的 Debug Options 分组），运行时状态见 `js/app/appContext.js:173`，解析器 `js/parser/settingsParser.js`。
-- 作用位置：`js/app/analysis.js:842-856`（**浏览器侧消费逻辑，不在共享的 `js/patterns/` 内**）。在 `mergeDuplicateClusters`（`display.js:309`，按 `Pattern` 合并同型簇、Amount 求和、BPM 取最大、子类型占比按 Amount 加权归一）之后：
+- 定义：`settings.json:452` `debugUseAmount`（checkbox，"Use Amount For Category"，默认 false；属于 `settings.json:436` 的 Debug Options 分组），运行时状态见 `js/app/core/appContext.js:173`，解析器 `js/parser/settingsParser.js`。
+- 作用位置：`js/app/core/analysis.js:842-856`（**浏览器侧消费逻辑，不在共享的 `js/patterns/` 内**）。在 `mergeDuplicateClusters`（`display.js:309`，按 `Pattern` 合并同型簇、Amount 求和、BPM 取最大、子类型占比按 Amount 加权归一）之后：
   - **默认（false）**：`Category` 保持 `categoriseChart` 基于 **Importance** 的判定结果；
   - **开启（true）**：`mergedClusters` 改为按 **Amount** 降序（`analysis.js:846`），并把 `report.Category` 强制改为 Amount 最大的簇——其 `SpecificTypes[0]` 占比 > 0.05 时取具体子类型名，否则取核心模式名（`analysis.js:847-854`）。
 - 即：默认分类看"重要程度（Importance）"，开启后改看"时间总量（Amount）"。该设置**只改分类来源，不改簇本身的计算**；且它不参与结果缓存键，切换时会触发 `clearResultCache()`。
@@ -206,8 +206,8 @@
 模式标签判定存在**两层**，需注意区分：
 
 1. **`js/patterns/` 内部（共享层）**：`summary.js:28` `resolveModeTag` 基于 `lnPercent`/`hbRowRatio` 产出 `report.ModeTag`（RC/LN/HB/Mix，阈值 `config.js:95-97`），并据此过滤 LN 模式（`summary.js:41-43`）与选择倍率表（第 6 节）。
-2. **`js/app/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（由 `modeLogic.js:3` 从 `js/patterns/config.js:128` 再导出；仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:1138` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar === "None") ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:1139-1141`）——即只要显示 Pattern 内容，优先用 `js/patterns/` 内部更完整的判定。
-3. 标签渲染：`setModeTag`（`js/app/hud.js:142`）/ `setModeTagAdvanced`（`hud.js:170`，基于 typePercentageData）；`resolveAutoDisplayProfile`（`modeLogic.js:22`）据此决定自动档位（RC → Etterna/MSD，其余 → Pattern/ReworkSR）。
+2. **`js/app/core/modeLogic.js`（浏览器层）**：`modeTagFromLnRatio`（由 `modeLogic.js:3` 从 `js/patterns/config.js:128` 再导出；仅按 LN 比例 0.15/0.9 二分 RC/Mix/LN，无 HB）作为**兜底**（`analysis.js:1138` 用 `rework.lnRatio ?? parsedInfo.lnRatio`）；最终 `resolvedModeTag = (activeContentBar === "None") ? fallbackModeTag : (report.ModeTag || fallbackModeTag)`（`analysis.js:1139-1141`）——即只要显示 Pattern 内容，优先用 `js/patterns/` 内部更完整的判定。
+3. 标签渲染：`setModeTag`（`js/app/ui/hud.js:142`）/ `setModeTagAdvanced`（`hud.js:170`，基于 typePercentageData）；`resolveAutoDisplayProfile`（`modeLogic.js:22`）据此决定自动档位（RC → Etterna/MSD，其余 → Pattern/ReworkSR）。
 
 详细模式标签功能见 [mode-tagging.md](mode-tagging.md)。
 
@@ -224,6 +224,6 @@
 ## 10. 相关文件
 
 - 共享计算：`ManiaMapAnalyser by Leo_Black/js/patterns/`（service/summary/primitives/findPatterns/clustering/categorise/patternsDef/config/chart/chartVibro）、`ManiaMapAnalyser by Leo_Black/js/parser/patternOsuParser.js`
-- 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js`、`js/app/display.js`、`js/app/hud.js`、`js/app/modeLogic.js`、`js/app/appContext.js`（vibro 纯函数统一在共享模块 `js/patterns/chartVibro.js`，原 `js/app/vibro.js` 已并入）
+- 浏览器消费：`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js`、`js/app/ui/display.js`、`js/app/ui/hud.js`、`js/app/core/modeLogic.js`、`js/app/core/appContext.js`（vibro 纯函数统一在共享模块 `js/patterns/chartVibro.js`，原 `js/app/vibro.js` 已并入）
 - 设置定义：`ManiaMapAnalyser by Leo_Black/settings.json`（`debugUseAmount` :452）、`js/parser/settingsParser.js`
 - 上游参考：Interlude (YAVSRG) RC 算法 → `ManiaMapAnalyser by Leo_Black/js/interlude/`

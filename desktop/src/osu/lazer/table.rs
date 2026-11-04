@@ -272,25 +272,38 @@ pub fn load_table(
     ];
 
     // ② 文件命名约定的精确命中
+    //
+    // 同一文件名可能同时存在于 APPDATA 缓存和壳目录：APPDATA 优先是产品约定，
+    // 但旧版 `gen.exe` 在选歌页生成过缺 `score`/`results` 的局部表。不能因为
+    // APPDATA 里先找到局部表就丢掉壳目录里的完整表；同键候选按可选段完整度
+    // 选最完整的一张（平手仍保持候选目录的原始优先级）。
+    let mut exact_best: Option<(PathBuf, OffsetTable, u8)> = None;
     for dir in &candidate_dirs {
         for name in &expected_names {
             let expected = dir.join(name);
             if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
                 if usable(&table).is_ok() {
-                    return Ok(LoadedTable {
-                        mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
-                        table,
-                        origin: TableOrigin::Exact,
-                        path: expected,
-                    });
+                    let score = optional_section_score(&table);
+                    if exact_best.as_ref().map_or(true, |(_, _, best)| score > *best) {
+                        exact_best = Some((expected, table, score));
+                    }
+                } else {
+                    eprintln!(
+                        "[osu] lazer offsets: {} rejected: {}",
+                        expected.display(),
+                        usable(&table).err().unwrap_or_default()
+                    );
                 }
-                eprintln!(
-                    "[osu] lazer offsets: {} rejected: {}",
-                    expected.display(),
-                    usable(&table).err().unwrap_or_default()
-                );
             }
         }
+    }
+    if let Some((path, table, _)) = exact_best {
+        return Ok(LoadedTable {
+            mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
+            table,
+            origin: TableOrigin::Exact,
+            path,
+        });
     }
 
     // ③ 同目录下任意同键表
@@ -318,10 +331,20 @@ pub fn load_table(
     }
 
     let target = info.target();
-    if let Some((path, table)) = tables
-        .iter()
-        .find(|(_, table)| table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch).is_none())
-    {
+    let mut same_key_best: Option<&(PathBuf, OffsetTable)> = None;
+    for candidate in &tables {
+        let (_, table) = candidate;
+        if table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch).is_some() {
+            continue;
+        }
+        let better = same_key_best
+            .map(|(_, best)| optional_section_score(table) > optional_section_score(best))
+            .unwrap_or(true);
+        if better {
+            same_key_best = Some(candidate);
+        }
+    }
+    if let Some((path, table)) = same_key_best {
         return Ok(LoadedTable {
             table: table.clone(),
             origin: if path == &PathBuf::from("<embedded>") { TableOrigin::Exact } else { TableOrigin::SameKey },
@@ -376,6 +399,22 @@ pub fn usable(table: &OffsetTable) -> Result<(), String> {
     Ok(())
 }
 
+/// 可选段完整度：用于同键多张表时优先完整表，避免 APPDATA 里的旧版局部
+/// 生成结果（缺 `score`/`results`）遮住壳目录里的随包完整表。
+fn optional_section_score(table: &OffsetTable) -> u8 {
+    let mut score = 0;
+    if table.results.is_some() {
+        score += 2;
+    }
+    if table.score.is_some() {
+        score += 2;
+    }
+    if table.mods.is_some() {
+        score += 1;
+    }
+    score
+}
+
 pub fn shell_exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -408,4 +447,19 @@ pub fn env_table_path() -> Option<PathBuf> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod optional_section_tests {
+    use super::*;
+
+    #[test]
+    fn full_table_outranks_a_partial_one() {
+        let full = crate::osu::offsets::default_lazer_table();
+        let mut partial = full.clone();
+        partial.results = None;
+        partial.score = None;
+        partial.mods = None;
+        assert!(optional_section_score(&full) > optional_section_score(&partial));
+    }
 }

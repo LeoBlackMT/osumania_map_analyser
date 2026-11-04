@@ -7,18 +7,18 @@
 卡片主体新增 `contentBar = "LaneAcc"`（也可作为壳内 Tab 或 Combined 可选模块）：
 
 - 顶部：**ScoreV1 转换 Acc**（Stable Classic 窗口；开局 100.00%）+ 单个等效 `OD` 胶囊；不显示倍速、MOD 或原始 OD 箭头，避免窄卡片截断。
-- 手牌行：**L / R**（奇数键的中列由 `laneAccSpaceMode` 决定：`independent` 时独立显示为 **M** 手牌块；也可选并入左/右手）；无 Miss 时不显示 Miss 字样。
+- 手牌行：**L / R**（奇数键的中列由 `laneAccSpaceMode` 决定：`independent` 时独立显示为 **M** 手牌块；也可选并入左/右手）；Miss 行始终保留占位，0 不消失，只用灰色显示，避免左右手有/无 Miss 时卡片高度不一致。
 - 4K–18K 分轨舞台：每轨一条彩条，颜色按**主题色 / 副主题色交替**；条内显示两位小数 Acc，Miss 用右下角红色徽标（11px，窄轨自适应）。
-  条高按**动态上下限**放大（上限 = 本局最好轨道，下限 = 本局最差轨道 −1），所以 99.5–100 这种窄区间也能一眼分开。
+  条高按**分段动态上下限**放大：只有累计判定数 ≥ 8 的轨道参与范围计算，上限 = 当前有效轨道最好 Acc，下限 = 当前有效轨道最差 Acc −1，并随当前分段重新计算（不会只因开局坏判定把下限永久拉低）；所以 99.5–100 这种窄区间也能一眼分开。
 - 轨道条宽度自适应：≥34px 两位小数、≥26px 一位、≥17px 整数、更窄只留色条 + Miss 圆点。
 - 悬浮 / 聚焦 / 点击显示该轨 MAX/300/200/100/50/Miss 明细；弹窗贴在该轨上方、4 秒自动消失，按轨道居中并钳制在卡片内。ScoreV1、L、R 的悬浮明细会在实时渲染时自动刷新，不需要移开再 hover。
 - 顶部数字使用固定宽度（ScoreV1 / OD / L/R 手牌），数值变化不推动 OD 位置；所有可变动数字（ScoreV1、L/R、轨道 Acc、Miss）带平滑数值过渡，轨道填充使用 transform 缩放避免布局抖动。
 - 单模块卡片布局：Tab 条收成自然高度，舞台固定 190px，轨道条落到卡片底部；4K–18K 自适应，<4K 显示占位提示。
 - 局内实时；重试/换图/刷新自动重建；结算后保留终态；失败局分母保持**已判定音符**。
-- 切图/跨图包：谱面身份变化时保留卡片结构和旧内容，叠加懒加载态（跨图包更快的扫光/下滑，图包内换难度更慢的呼吸），新谱面准备完成后轨道重新播放入场动画；不播放清空收缩动画，卡片高度保持不变。分析完成即准备谱面模型，切到 LaneAcc 页签时不需要切图重载。
+- 切图/跨图包：谱面身份变化时保留卡片结构和旧内容，叠加懒加载态；图包内换难度保留旧轨道播放呼吸/懒加载动画，跨图包则让旧轨道播放淡出退出动画，新谱面准备完成后重新播放入场动画。若舞台还没有旧轨道，会先按上次键数铺 `.laneacc-lane.is-placeholder` 占位轨道，不会显示空白。不播放清空收缩动画，卡片高度保持不变；分析完成即准备谱面模型，切到 LaneAcc 页签时不需要切图重载。
 - **LN 口径**：真实 lazer 事件是 `head(1..6) → tail(1..6) → 14(IgnoreHit)` 或 `head(1..6) → 15(ComboBreak) → 13(IgnoreMiss)` 等。非计分事件 `13/14/15` 不推进判定槽位游标与游戏判定计数；尾事件（`part === 1`）只记录释放偏移，长条的**唯一 ScoreV1 判定**等收到 `13/14` 或同列下一条音符头时再结算，避免 body break 信息丢失或非计分事件过早消耗槽位导致后续音符错位。
   游戏口径按**判定事件**计数：LN 的 head 和 tail 各算一个可判定事件（与结果屏一致；判定数 = tap 数 + 2×LN 数），SV1 按每个音符的头尾偏移合并。
-- **MaxCombo 口径**：ScoreV1 tooltip 的 MaxCombo 按 stable V1 统计：每个非 Miss 判定 +1 combo，LN 按住期间每 100 ms 再 +1 tick combo；断持（15/掉落）、Miss 或 13 清零 combo。LN 头按下不计数。
+- **MaxCombo 口径**：ScoreV1 tooltip 的 MaxCombo 按 stable V1 统计：每个非 Miss 判定 +1 combo，LN 按住期间每 100 ms 再 +1 tick combo；断持（15/掉落）、Miss 或 13 清零 combo。LN 头按下不计数。每个轨道/手部/SV1 tooltip 的 MaxCombo 下另有一行 `Ratio` = MAX 判定数 ÷ 300 判定数，保留两位小数；`0:0` 显示 `0.00`，`MAX>0` 且 `300=0` 显示 `∞`。
 - **ScoreV1 口径**：按 osu!stable mania V1 规则对齐：窗口为 stable 原值经 HR/EZ/DT/HT 缩放后**整数截断**；tap 按按下时刻的 `|Δ|` 立即定档（50 档只有早按侧可达，晚按被 100 窗到期闸截断为 Miss）；LN 头按下不计数，尾释放时用 `num2/num3` 合并公式给出唯一判定（含头按过深钉尾、尾镜像、掉落赎回线），尾早于 `tail−50` 窗为掉落，逾 `tail+50` 窗仍在按则以 `now` 结算；MAX 与 300 都按 300 计权。
 - **OD 口径**：谱面/DA 的 OD 范围是 `[-15, 15]`；顶部显示的是 Lazer Mania `GetAdjustedDisplayDifficulty` 的等效 OD（HR/EZ 直接缩放 perfect 窗口后反解，例如 `7.8 + HR → 12.04`）。判定窗口仍按 HR/EZ 的 `1.4` / `1/1.4` 缩放，窗口公式内部把 `10-OD` 夹在 `0..10`。
 - **对拍**：以 Stable 实机结果为唯一目标。10K Anti Safety Zone（3540 note / 242 LN，stable .osr 重建）
@@ -116,7 +116,7 @@ LN 合并（stable mania V1）：
 
 - 游戏口径：`305*N1 + 300*N2 + 200*N3 + 100*N4 + 50*N5` / `305*gameTotal`。
 - SV1 口径：`300*(N1+N2) + 200*N3 + 100*N4 + 50*N5` / `300*sv1Total`。
-- 0 事件时显示 100.00%。**失败局**：`gameTotal`/`sv1Total` 恒为已判定计数；`finish()` 只冻结显示。
+- 0 事件时显示 100.00%。**失败/中途退出局**：`gameTotal`/`sv1Total` 恒为已判定计数；`finishSession(false)` 只按当前时钟冻结显示，不会把未到达的音符补成 Miss；只有真正进入结算屏的 `finishSession(true)` 才应用全量终态。
 
 ## 5. 设置与降级
 
@@ -143,7 +143,8 @@ LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js`
 - 开局 0 个判定 → 显示 100.00%；
 - 游玩/回放过程中判定数和 ScoreV1 逐步增加；
 - 回放不再开局冻结为最终值，seek 回跳时重建并重放到新位置；
-- 结算 `finishSession()` 才强制应用全量并冻结。
+- 真正进入结算屏才调用 `finishSession(true)` 强制应用全量并冻结；中途退回选歌/选曲界面调用 `finishSession(false)`，只按当前 `songTimeMs` 冻结，未到达的 note 不会补成 Miss。
+- 全量快照按 2048 条分块到达；谱面模型尚未准备好时先排队，`prepareChart` 建好累加器后再按 reset/events 顺序回放，不能只保留最后一块。
 - 切图/换难度时按 `chart.identity + columnCount + noteCount + OD + 首尾时间` 检测谱面变化，清空 hitEvents/replayFrames 并重建累加器；旧谱面的事件不会按新 note 索引落成 Miss，卡片从 100.00% 重新开始。
 
 ## 6. 测试
@@ -170,7 +171,7 @@ Stable 的原始按键时间。v10 起壳同时读取 `Player.Score.Replay.Frame
 - `List._items +0x08` / `_size +0x10`；`ManiaAction` Key1=0 → `keys` 位掩码
 
 下行帧 `mania_replay_frames` 与 `mania_hit_events` 并列：前者只用于 SV1，后者继续负责 Lazer 305
-口径与 gameCounts。页面在 `js/app/laneAcc/rawFrames.js` 把原始帧转换成 Stable 等价的
+口径与 gameCounts。页面在 `js/laneAcc/rawFrames.js` 把原始帧转换成 Stable 等价的
 head/tail/14/15/13 事件，再交给同一套 `accumulator.js` SV1 状态机；没有第二套判定公式。
 
 对拍结果（原始帧 → `rawFrames.js` → accumulator）：

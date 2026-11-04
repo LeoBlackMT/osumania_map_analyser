@@ -1,5 +1,33 @@
 // Copied from sunnyAlgorithm.js
 import { OsuFileParser } from "../parser/osuFileParser.js";
+import {
+    crossMatrix,
+    interpSingle,
+    findNextNoteInColumn,
+    cloneOsuParser,
+    getCorners,
+    getKeyUsage,
+    computeAnchor,
+    lnBodiesCountSparseRepresentation,
+    lnSum,
+    computeXbar,
+    computeAbar,
+    computeRbar,
+} from "./sunnyCore.js";
+import {
+    bisectLeft,
+    bisectRight,
+    cumulativeSum,
+    queryCumsum,
+    smoothOnCorners,
+    interpValues,
+    gaussianFilter1d,
+    rescaleHigh,
+    mergeByHead,
+    applyProximityEnvelope,
+    smoothDForGraph,
+    targetPercentiles,
+} from "./reworkMathCore.js";
 
 const BREAK_ZERO_THRESHOLD_MS = 400;
 const GRAPH_RESAMPLE_INTERVAL_MS = 100;

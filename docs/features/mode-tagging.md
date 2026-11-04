@@ -13,7 +13,7 @@
 ```
 模式标签（HB/RC/LN/Mix）:
   patternReport.ModeTag (js/patterns/summary.js resolveModeTag)
-  或回退 modeTagFromLnRatio(rework.lnRatio) (js/patterns/config.js，js/app/modeLogic.js 再导出)
+  或回退 modeTagFromLnRatio(rework.lnRatio) (js/patterns/config.js，js/app/core/modeLogic.js 再导出)
   → analysis.js 决定 resolvedModeTag
   → setModeTag / setModeTagAdvanced 渲染
 
@@ -39,7 +39,7 @@ Vibro:
 
 其中 `hbRatio` 由 `summary.js:11 hbRowRatio(chart)` 计算：同一行内同时存在 HOLDHEAD 与 NORMAL 记为 HB 行，`hbRows / 总行数` 即为 HB 行占比。阈值常量位于 `ManiaMapAnalyser by Leo_Black/js/patterns/config.js:95-97`（`LN_MODE_LOW_THRESHOLD: 0.15`、`LN_MODE_HIGH_THRESHOLD: 0.9`、`HB_ROW_RATIO_THRESHOLD: 0.1`）。
 
-**b) `ManiaMapAnalyser by Leo_Black/js/patterns/config.js:128 modeTagFromLnRatio(lnRatio)`** — 简易回退判定（无 HB 分支）；浏览器侧由 `js/app/modeLogic.js:3` 再导出：
+**b) `ManiaMapAnalyser by Leo_Black/js/patterns/config.js:128 modeTagFromLnRatio(lnRatio)`** — 简易回退判定（无 HB 分支）；浏览器侧由 `js/app/core/modeLogic.js:3` 再导出：
 
 - `config.js:129-131` — `lnRatio` 非有限数 → `"Mix"`
 - `config.js:132-134` — `lnRatio <= LN_MODE_LOW_THRESHOLD (0.15)` → `"RC"`
@@ -50,7 +50,7 @@ Vibro:
 
 ### 2.2 最终标签的解析（analysis.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1138-1141`：
+`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1138-1141`：
 
 ```js
 const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
@@ -68,7 +68,7 @@ let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))
 
 ## 3. modeLogic.js 职责
 
-`ManiaMapAnalyser by Leo_Black/js/app/modeLogic.js`（全文 34 行）包含：
+`ManiaMapAnalyser by Leo_Black/js/app/core/modeLogic.js`（全文 34 行）包含：
 
 | 行号 | 符号 | 职责 |
 |---|---|---|
@@ -87,10 +87,10 @@ let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))
 
 调用链（仅当用户将 `contentBar` 或 `srText` 设为 `"Auto"` 时生效）：
 
-- `ManiaMapAnalyser by Leo_Black/js/app/settings.js:84 isAutoDisplayEnabled()` — 任一 user 字段为 "Auto" 即开启。
+- `ManiaMapAnalyser by Leo_Black/js/app/core/settings.js:84 isAutoDisplayEnabled()` — 任一 user 字段为 "Auto" 即开启。
 - `settings.js:88 resolveRuntimeDisplayProfile(modeTag)` — 将 Auto 字段替换为 `resolveAutoDisplayProfile` 的输出，非 Auto 字段保持用户选择。
 - `settings.js:501 refreshAutoDisplayProfile(modeTag = state.currentModeTag || "Mix")` — 运行时刷新入口；在 `analysis.js:1175` 每次分析完成后调用（`refreshAutoDisplayProfile(resolvedModeTag)`），以及在 `settings.js:856` 等用户设置变更时调用。
-- 注意：`refreshAutoDisplayProfile` 的默认参数取 `state.currentModeTag`（`ManiaMapAnalyser by Leo_Black/js/app/appContext.js:215 currentModeTag: "Mix"`），而分析路径显式传入 `resolvedModeTag` 以保证与实际判定一致。
+- 注意：`refreshAutoDisplayProfile` 的默认参数取 `state.currentModeTag`（`ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:215 currentModeTag: "Mix"`），而分析路径显式传入 `resolvedModeTag` 以保证与实际判定一致。
 
 ## 4. Vibro 检测
 
@@ -116,7 +116,7 @@ let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))
 
 ### 4.2 主流程接入（analysis.js）
 
-`ManiaMapAnalyser by Leo_Black/js/app/analysis.js` 分两处判定，结果**取或**（`||`，后者不覆盖前者）：
+`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js` 分两处判定，结果**取或**（`||`，后者不覆盖前者）：
 
 ```js
 // 1) 元数据关键词通道（analysis.js:689-691）：解析结果一到手就判，不受 star 门控
@@ -138,7 +138,7 @@ if (state.vibroDetection && vibroEligible) {
 - **MSD 通道**：`state.vibroDetection` + `vibroEligible`（rework 星数 `> 5.0`，用归一化前的算法自身 star）+ `detectVibro(...)` 命中，三个条件缺一不可。`vibroValues` 来源（`resolveVibroMsdValues`）：**4K 固定 0.72.3**（主结果已是 0.72.3 直接复用，否则 0.72.3 补算，失败回退主结果）；**非 4K 直接用主结果**（= 0.74.0 n-key，0.72.3 对非 4K 输出全 0 无法判定）。
 - **取或而非覆盖**：MSD 通道只补充信号——若写成纯赋值，关键词命中但 JackSpeed 未达阈值的谱会被赋回 `false`。
 
-阈值来源链：`ManiaMapAnalyser by Leo_Black/config.js:53 vibroJackspeedRatioThreshold: 0.95`（小驼峰命名）→ `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:260 VIBRO_JACKSPEED_RATIO_THRESHOLD = APP_CONFIG.etterna.vibroJackspeedRatioThreshold` → `analysis.js:932`/`:949` 使用。
+阈值来源链：`ManiaMapAnalyser by Leo_Black/config.js:53 vibroJackspeedRatioThreshold: 0.95`（小驼峰命名）→ `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:260 VIBRO_JACKSPEED_RATIO_THRESHOLD = APP_CONFIG.etterna.vibroJackspeedRatioThreshold` → `analysis.js:932`/`:949` 使用。
 
 依赖关系：`analysis.js:706 needVibroDetection = state.vibroDetection` 会使键型分析（`:707-712`）与 Etterna 分析（`:717-720`）按需开启，保证 `ettResult.values` 与 `patternReport` 可用。
 
@@ -146,7 +146,7 @@ if (state.vibroDetection && vibroEligible) {
 
 检测为 vibro 谱面后（`isVibroMap = true`）：
 
-- `analysis.js:1170 setForceHideNumericDifficulty(isVibroMap)` — 隐藏数值难度（实现见 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:835 setForceHideNumericDifficulty(value)`）。vibro 谱面的数值难度会被极度拉高，无参考价值。
+- `analysis.js:1170 setForceHideNumericDifficulty(isVibroMap)` — 隐藏数值难度（实现见 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:835 setForceHideNumericDifficulty(value)`）。vibro 谱面的数值难度会被极度拉高，无参考价值。
 - `analysis.js:1289-1290` — 当 `diffText === "Difficulty"` 时，难度文本直接显示 `"VIBRO"`。
 
 > 关联设置说明见 `docs/settings.md:74-75`：不启用 vibro 检测时，"您将看到被极度拉高的难度估计"。这与 [difficulty-estimation.md](difficulty-estimation.md) 中数值难度（Numeric Difficulty）显示逻辑相互影响。
@@ -167,7 +167,7 @@ if (state.vibroDetection && vibroEligible) {
 
 ### 5.2 useSvDetection 触发 SV 标签
 
-`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1144-1152`：
+`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1144-1152`：
 
 ```js
 if (state.useSvDetection) {
@@ -202,13 +202,13 @@ if (state.useSvDetection) {
 - `sunnyWindowAlgorithm.js:380` / `:402` — 无 LN 段 / 正常路径各自按开关计算（`shouldCalcData ? getTypePercentageData(...) : null`）。
 - `sunnyWindowAlgorithm.js:336-360` — `getTypePercentageData` 的百分比列表格式：`[["All", 总列数], ["RC", n], ["Mix", n], ["HB", n], ["LN", n]]`，按类型列数计数。
 
-分析侧：`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:724`（`shouldForceSunnyWindow = state.forceSunnyWindow` 分支）调用 SunnyWindow 估算器并在 `analysis.js:768 typePercentageData = sunnyWindowRework.typePercentageData` 取出。命中缓存时 `analysis.js:744` 从快照恢复。
+分析侧：`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:724`（`shouldForceSunnyWindow = state.forceSunnyWindow` 分支）调用 SunnyWindow 估算器并在 `analysis.js:768 typePercentageData = sunnyWindowRework.typePercentageData` 取出。命中缓存时 `analysis.js:744` 从快照恢复。
 
 > ⚠️ **前置依赖**：设置 `enableAnalyzeLN` 依赖 `forceSunnyWindow`（"Improve Sunny LN Estimation"）。`settings.json:359` 的 description 明确标注 `[Require Improve Sunny LN Estimation]`。若 `forceSunnyWindow` 关闭，`typePercentageData` 保持 `null`（`analysis.js:696`），标签胶囊退化为单一模式标签。
 
 ### 6.2 渲染切换
 
-`ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1154-1160`：
+`ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1154-1160`：
 
 ```js
 if (typePercentageData) {
@@ -226,7 +226,7 @@ setSvTagVisible(shouldShowSvTag);
 
 ### 7.1 DOM 元素
 
-- `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:145 modeTagSubGroupEl = document.getElementById("mode-tag-subgroup")` — 模式标签容器（内含多个 `span.mode-tag`）。
+- `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:145 modeTagSubGroupEl = document.getElementById("mode-tag-subgroup")` — 模式标签容器（内含多个 `span.mode-tag`）。
 - `appContext.js:146 svTagEl = document.getElementById("sv-tag")` — 独立 SV 徽章。
 - `appContext.js:211 showModeTagCapsule` — 胶囊显示开关（settings.json `showModeTagCapsule`）。
 - `appContext.js:212 showSvTag` — SV 徽章显示状态（运行时标志）。
@@ -235,7 +235,7 @@ setSvTagVisible(shouldShowSvTag);
 
 ### 7.2 setModeTag — 单标签渲染
 
-`ManiaMapAnalyser by Leo_Black/js/app/hud.js:142 setModeTag(tag)`：
+`ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:142 setModeTag(tag)`：
 
 1. — 写入 `state.currentModeTag = tag`。
 2. — `modeTagSubGroupEl.hidden = !state.showModeTagCapsule`（胶囊关闭时整个容器隐藏）。
@@ -246,14 +246,14 @@ setSvTagVisible(shouldShowSvTag);
 
 ### 7.3 setModeTagAdvanced — 多标签百分比渲染
 
-`ManiaMapAnalyser by Leo_Black/js/app/hud.js:170 setModeTagAdvanced(tag, lnRatio)`：
+`ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:170 setModeTagAdvanced(tag, lnRatio)`：
 
 1. — 兼容旧调用：传入普通字符串时构造 `[["All", 1], [realTag, 1]]`，非法 tag 回退 `"Mix"`。
 2. — `shift()` 取出总计数 `allCount`。
 3. — 按计数降序排序，相等时按 `MODE_TAG_OPTIONS` 索引序。
 4. — 各类型计数换算为百分比：`count * 100 / allCount`。
 5. — 过滤掉 0% 的类型。
-6. — **currentModeTag 更新**（用于 graph 着色，见 `ManiaMapAnalyser by Leo_Black/js/app/graph.js:237` 中 `state.currentModeTag === "RC"` 判断）：`lnRatio > 0.15` 时取占比列表中第一个 LN/HB 标签，否则 `"RC"`。
+6. — **currentModeTag 更新**（用于 graph 着色，见 `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:237` 中 `state.currentModeTag === "RC"` 判断）：`lnRatio > 0.15` 时取占比列表中第一个 LN/HB 标签，否则 `"RC"`。
 7. — 胶囊显隐同步。
 8. — 逐项渲染 `span`，文本为 `"TAG"`（100%）或 `"TAG 45%"`，类名 `mode-tag mode-{tag.toLowerCase()}`，变化时重放 `capsule-switch`。
 9. — 多余的旧子元素加 `hidden-tag`。
@@ -267,13 +267,13 @@ setSvTagVisible(shouldShowSvTag);
 
 ### 7.5 updateModeTagVisibility — 统一显隐刷新
 
-`ManiaMapAnalyser by Leo_Black/js/app/hud.js:215 updateModeTagVisibility()`：
+`ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:215 updateModeTagVisibility()`：
 
 1. — 模式标签容器跟随 `showModeTagCapsule`。
 2. — 胶囊关闭时 SV 徽章立即隐藏（**SV 标签依赖胶囊开关**）。
 3. — 胶囊开启时按 `state.showSvTag` 决定动画显示/隐藏。
 
-调用点：`settings.js:628`（设置变更后）与 `ManiaMapAnalyser by Leo_Black/js/app/main.js`（初始化）。
+调用点：`settings.js:628`（设置变更后）与 `ManiaMapAnalyser by Leo_Black/js/app/core/main.js`（初始化）。
 
 ## 8. 相关设置（settings.json）
 
@@ -303,8 +303,8 @@ setSvTagVisible(shouldShowSvTag);
 
 | 路径:行 | 符号 |
 |---|---|
-| `ManiaMapAnalyser by Leo_Black/js/app/modeLogic.js:3` | `modeTagFromLnRatio`（再导出） |
-| `ManiaMapAnalyser by Leo_Black/js/app/modeLogic.js:22` | `resolveAutoDisplayProfile` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/modeLogic.js:3` | `modeTagFromLnRatio`（再导出） |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/modeLogic.js:22` | `resolveAutoDisplayProfile` |
 | `ManiaMapAnalyser by Leo_Black/js/patterns/config.js:128` | `modeTagFromLnRatio`（定义） |
 | `ManiaMapAnalyser by Leo_Black/js/patterns/summary.js:28` | `resolveModeTag` |
 | `ManiaMapAnalyser by Leo_Black/js/patterns/summary.js:11` | `hbRowRatio` |
@@ -319,31 +319,31 @@ setSvTagVisible(shouldShowSvTag);
 | `ManiaMapAnalyser by Leo_Black/js/patterns/config.js:103` | `SV_SPEED_EPS: 0.05` |
 | `ManiaMapAnalyser by Leo_Black/config.js:53` | `vibroJackspeedRatioThreshold: 0.95` |
 | `ManiaMapAnalyser by Leo_Black/config.js:16` | `options.modeTag` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:260` | `VIBRO_JACKSPEED_RATIO_THRESHOLD` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:212` | `showSvTag` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:215` | `currentModeTag` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:145` | `modeTagSubGroupEl` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:146` | `svTagEl` |
-| `ManiaMapAnalyser by Leo_Black/js/app/appContext.js:256` | `MODE_TAG_OPTIONS` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:260` | `VIBRO_JACKSPEED_RATIO_THRESHOLD` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:212` | `showSvTag` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:215` | `currentModeTag` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:145` | `modeTagSubGroupEl` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:146` | `svTagEl` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/appContext.js:256` | `MODE_TAG_OPTIONS` |
 | `ManiaMapAnalyser by Leo_Black/js/patterns/chartVibro.js` | `detectVibro`（Etterna MSD 口径）、`detectVibroFromLongjackPattern`（pattern report 口径）、`detectVibroFromMetadata`（元数据关键词直判） |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1138` | `fallbackModeTag` |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1144-1152` | SV 检测块 |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:689-691 / :910-949` | `isVibroMap` 判定（关键词通道 + MSD 通道取或） |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1170` | `setForceHideNumericDifficulty(isVibroMap)` |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1289-1290` | `setEstimateDifficultyText("VIBRO")` |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:768` | `typePercentageData = sunnyWindowRework.typePercentageData` |
-| `ManiaMapAnalyser by Leo_Black/js/app/analysis.js:1154-1160` | 标签渲染分派 |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:142` | `setModeTag` |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:170` | `setModeTagAdvanced` |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:215` | `updateModeTagVisibility` |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:236` | `setSvTagVisible` |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:15` | `SV_TAG_EXIT_DURATION_MS` |
-| `ManiaMapAnalyser by Leo_Black/js/app/hud.js:35/45/62` | `hideSvTagImmediately`/`showSvTagAnimated`/`hideSvTagAnimated` |
-| `ManiaMapAnalyser by Leo_Black/js/app/settings.js:84` | `isAutoDisplayEnabled` |
-| `ManiaMapAnalyser by Leo_Black/js/app/settings.js:88` | `resolveRuntimeDisplayProfile` |
-| `ManiaMapAnalyser by Leo_Black/js/app/settings.js:501` | `refreshAutoDisplayProfile` |
-| `ManiaMapAnalyser by Leo_Black/js/app/graph.js:237` | `state.currentModeTag === "RC"` 门控 |
-| `ManiaMapAnalyser by Leo_Black/js/app/graph.js:835` | `setForceHideNumericDifficulty` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1138` | `fallbackModeTag` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1144-1152` | SV 检测块 |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:689-691 / :910-949` | `isVibroMap` 判定（关键词通道 + MSD 通道取或） |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1170` | `setForceHideNumericDifficulty(isVibroMap)` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1289-1290` | `setEstimateDifficultyText("VIBRO")` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:768` | `typePercentageData = sunnyWindowRework.typePercentageData` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/analysis.js:1154-1160` | 标签渲染分派 |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:142` | `setModeTag` |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:170` | `setModeTagAdvanced` |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:215` | `updateModeTagVisibility` |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:236` | `setSvTagVisible` |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:15` | `SV_TAG_EXIT_DURATION_MS` |
+| `ManiaMapAnalyser by Leo_Black/js/app/ui/hud.js:35/45/62` | `hideSvTagImmediately`/`showSvTagAnimated`/`hideSvTagAnimated` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/settings.js:84` | `isAutoDisplayEnabled` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/settings.js:88` | `resolveRuntimeDisplayProfile` |
+| `ManiaMapAnalyser by Leo_Black/js/app/core/settings.js:501` | `refreshAutoDisplayProfile` |
+| `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:237` | `state.currentModeTag === "RC"` 门控 |
+| `ManiaMapAnalyser by Leo_Black/js/app/graph/index.js:835` | `setForceHideNumericDifficulty` |
 | `ManiaMapAnalyser by Leo_Black/js/rework/sunnyWindowAlgorithm.js:366` | `shouldCalcData = enableAnalyzeLN` |
 | `ManiaMapAnalyser by Leo_Black/js/rework/sunnyWindowAlgorithm.js:336-360` | `getTypePercentageData` 输出格式 |
 | `ManiaMapAnalyser by Leo_Black/settings.json:138` | `showModeTagCapsule` |

@@ -358,16 +358,13 @@ function resetSourceContext() {
 /**
  * 清空卡片（Malody 选曲桥从"有谱面的场景"回到 `other` 稳态时的唯一清空动作）。
  *
- * 复用两条既有清空路径的调用组合，不新造渲染逻辑：
- * - `resetReworkDisplay()`（内含 `clearDiffGraph()` → `resetPlayedFill` / `clearAllPauseMarkers`
- *   / `setModeTag("Mix")` 等）；
- * - 三个栏位的空占位（`patternClustersEl` / `ettSkillBarsEl` / `ppBarsEl`）+ 状态行。
+ * 保留最后一次渲染的 DOM，只标成 stale：Malody V/4.3.7 回主页时直接
+ * 清空会改变组合模式卡片高度，造成大幅伸缩。新数据开始分析后由
+ * fetchBeatmapFile 移除该标记。
  */
 export function clearSourceCard() {
-    resetReworkDisplay();
-    patternClustersEl.innerHTML = "";
-    ettSkillBarsEl.innerHTML = "";
-    ppBarsEl.innerHTML = "";
+    mainCardEl?.classList.add("card-source-stale");
+    hideOverlay();
     setStatus("Waiting for a data source…", "ok");
     resetSourceContext();
 }
@@ -402,6 +399,13 @@ export { toTelemetryActualAlgorithm } from "../net/telemetrySpec.js";
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    mainCardEl?.classList.remove("card-source-stale");
+    // 本次分析的谱面身份快照：fetch/worker 期间可能切图，所有原文缓存与
+    // 结果缓存键都必须锚在请求开始时的那张图，不能用可变的
+    // `state.lastBeatmapIdentity`（否则旧图原文会写进新图键下，之后永远
+    // 只显示上一张图的结果）。
+    const requestIdentity = state.lastBeatmapIdentity || "";
+    const requestModSignature = state.modSignature || "";
     // 点击已激活 Tab = 手动重算：本次跳过结果缓存一次。入口立即清零，避免
     // 早退/失败/下一次分析被这个一次性标志污染。
     const forceRecompute = state.tabForceRecompute === true;
@@ -548,12 +552,15 @@ export async function fetchBeatmapFile(reason) {
     //   (b) Polaris 的 4K LN 曲线删除，4K 选 Polaris 回退 Sunny、Mixed 的 4K LN 半回到
     //       Sunny 表原值。
     //   4K 的 numeric/estDiff 语义再次变化 → 旧快照必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v12";
-    const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
-    const isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:");
+    // star-v13：修复 `sunnyCore.computeXbar` 的 crossMatrix（重构时误用另一套
+    //   矩阵，Eviternity 从 8.29/Delta mid-low 漂到 8.96/Epsilon）→ Sunny 与
+    //   所有以 Sunny 为基线的 Mixed 星数/estDiff 语义恢复，旧快照全部失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v13";
+    const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestIdentity}|${requestModSignature}`;
+    const isMetaDegraded = requestIdentity.startsWith("meta:");
     let cached = null;
     // ⚠️ 区间跑批不读缓存（且不读 enableResultCache）：短路顺序保证该设置项完全不被求值。
-    if (!isSectionRun && state.enableResultCache && state.lastBeatmapIdentity && !forceRecompute) {
+    if (!isSectionRun && state.enableResultCache && requestIdentity && !forceRecompute) {
         const snapshot = resultCache.get(cacheKey);
         if (snapshot
             && snapshot.computed.graph === needComputed.graph
@@ -594,7 +601,7 @@ export async function fetchBeatmapFile(reason) {
             applyContentBarOverride(parsedInfo.columnCount);
         } else if (isSectionRun) {
             // 区间分析：优先复用某次全谱跑批留下的原文（外部源没有可重抓的端点）。
-            rawText = getFullChartText();
+            rawText = getFullChartText(requestIdentity);
             if (!rawText && (state.activeSource ?? "osu") === "osu") {
                 // 原文缓存未命中（切图来回被淘汰等）：osu 端点还在，直接抓一次整谱再切片。
                 const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
@@ -608,7 +615,7 @@ export async function fetchBeatmapFile(reason) {
                 rawText = await response.text();
                 if (isStaleRequest()) return;
                 if (rawText) {
-                    rememberFullChartText(rawText);
+                    rememberFullChartText(rawText, requestIdentity);
                 }
             }
             if (!rawText) {
@@ -626,7 +633,7 @@ export async function fetchBeatmapFile(reason) {
         } else {
             // 同图重算（Tab 切换/设置变更）优先复用上次全谱跑批留下的原文：外部源没有
             // 可重抓的端点；osu 也省一次整谱抓取。原文按 identity 存 LRU，换图不会串。
-            rawText = getFullChartText();
+            rawText = getFullChartText(requestIdentity);
             if (!rawText) {
                 // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
                 if (isShellOfflinePage
@@ -657,7 +664,7 @@ export async function fetchBeatmapFile(reason) {
         // 全谱跑批成功后留存原文：区间跑批切片要用（外部源无端点可重抓）。
         // 缓存命中的那轮 rawText 为 null：绝不能拿 null 覆盖已有原文。
         if (!isSectionRun && rawText) {
-            rememberFullChartText(rawText);
+            rememberFullChartText(rawText, requestIdentity);
         }
         // 区间跑批：把整谱文本截成 [start, end] 片段后再进管线（唯一的输入变换）。
         if (isSectionRun) {
@@ -1257,12 +1264,12 @@ export async function fetchBeatmapFile(reason) {
                 try {
                     const laneAccParser = new OsuFileParser(rawText);
                     laneAccParser.process();
-                    laneAccChart = buildChart(laneAccParser.getParsedData(), state.lastBeatmapIdentity);
+                    laneAccChart = buildChart(laneAccParser.getParsedData(), requestIdentity);
                 } catch {
                     laneAccChart = null;
                 }
             }
-            if (!isSectionRun && !cached && state.enableResultCache && state.lastBeatmapIdentity
+            if (!isSectionRun && !cached && state.enableResultCache && requestIdentity
                 && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
@@ -1475,7 +1482,7 @@ export async function fetchBeatmapFile(reason) {
         // 否则用户在分析完成后才切到 LaneAcc，会命中“Chart text unavailable”，只能切图重载。
         // 复用本轮的 rawText；缓存命中时回落到本图留存的全谱原文。
         {
-            let laneAccText = rawText || getFullChartText();
+            let laneAccText = rawText || getFullChartText(requestIdentity);
             if (!laneAccChart && cached?.laneAccChart) {
                 laneAccChart = cached.laneAccChart;
             }
@@ -1494,19 +1501,23 @@ export async function fetchBeatmapFile(reason) {
                     if (response.ok) {
                         laneAccText = await response.text();
                         if (isStaleRequest()) return;
-                        if (laneAccText) rememberFullChartText(laneAccText);
+                        if (laneAccText) rememberFullChartText(laneAccText, requestIdentity);
                     }
                 } catch {
                     // 端点暂时不可用：保持固定高度的 loading 占位，下一帧再试。
                 }
             }
             if (laneAccChart) {
-                laneAccView.prepareChart(laneAccChart);
+                try {
+                    laneAccView.prepareChart(laneAccChart);
+                } catch {
+                    laneAccView.setPending();
+                }
             } else if (laneAccText) {
                 try {
                     const laneAccParser = new OsuFileParser(laneAccText);
                     laneAccParser.process();
-                    laneAccChart = buildChart(laneAccParser.getParsedData(), state.lastBeatmapIdentity);
+                    laneAccChart = buildChart(laneAccParser.getParsedData(), requestIdentity);
                     laneAccView.prepareChart(laneAccChart);
                 } catch {
                     laneAccView.setPending();

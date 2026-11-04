@@ -254,7 +254,10 @@ export function getModData(data, {
 
 export function extractCurrentSongTimeMs(data) {
     const liveTime = Number(data?.beatmap?.time?.live);
-    if (Number.isFinite(liveTime)) {
+
+    // 选歌帧常见 beatmap.time.live=0（字段存在但尚未播放），此时不能
+    // 用它遮住 menu.bm.time.current；否则 Graph 进度在选歌界面永远停在 0。
+    if (Number.isFinite(liveTime) && liveTime > 0) {
         return liveTime;
     }
 
@@ -267,10 +270,14 @@ export function extractCurrentSongTimeMs(data) {
 
     for (const value of candidates) {
         const num = Number(value);
-        if (Number.isFinite(num)) {
+        if (Number.isFinite(num) && num > 0) {
             return num;
         }
     }
 
+    // 保留合法的 0（真正的播放起点）；全无有效时间才返回 null。
+    if (Number.isFinite(liveTime)) {
+        return liveTime;
+    }
     return null;
 }

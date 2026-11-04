@@ -132,7 +132,7 @@ export async function initialize() {
         },
         onHello: (payload) => {
             state.shellContractVersion = Number(payload?.contract) || 0;
-            if (state.shellContractVersion < 9) {
+            if (state.shellContractVersion < 10) {
                 laneAccView.setUnavailable("contract");
             }
             sendLaneAccSync();

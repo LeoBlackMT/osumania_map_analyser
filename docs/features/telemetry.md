@@ -18,7 +18,7 @@
 - **明确不采**：用户名、玩家 id、分数/acc、谱面 md5/标题、IP（后端不存，连哈希都不存）、UA/OS、时区。
 - **采集字段白名单**（`analyze.data`，与后端 `backend/internal/telemetry/handler.go` 的 `allowedDataKeys` 严格一致）：
   `algorithm`、`actualAlgorithm`、`keycount`、`mods`、`speedRate`、`mode`、`star`、`lnRatio`、`typeBreakdown`、`durationMs`、`numericDifficulty`、`client`。
-  - `client` 语义：本次分析实际生效的**数据源**，取值 = **`lazer` / `stable`（壳内 native 内存读取）/ `lazer(tosu)` / `stable(tosu)`（tosu 供数）/ `malody` / `malody4` / `etterna`**（`js/app/analysis.js` 在请求开始时快照）。Malody / Etterna 源直接取 `state.activeSource`（`malody` 覆盖 BepInEx 通道与编辑器插件两类）；osu 源先定**游戏客户端**（`state.client`，native 下取自我们自己的载荷、tosu 下取自 tosu 的载荷，两处都是 `stable`/`lazer`，非 lazer 一律计 stable），再定**谁在供数** —— 壳的 native 端点生效 ⇒ 裸值，否则（无壳 / 浏览器 tosu 页 / 旧壳 ≤v5 / native 已回落）⇒ 加 `(tosu)` 后缀。**后端不为此新增字段或维度**：`daily_agg` 仍以 `client` 为维度聚合，dashboard 的 Client 饼图与 Version 并列一行。
+  - `client` 语义：本次分析实际生效的**数据源**，取值 = **`lazer` / `stable`（壳内 native 内存读取）/ `lazer(tosu)` / `stable(tosu)`（tosu 供数）/ `malody` / `malody4` / `etterna`**（`js/app/core/analysis.js` 在请求开始时快照）。Malody / Etterna 源直接取 `state.activeSource`（`malody` 覆盖 BepInEx 通道与编辑器插件两类）；osu 源先定**游戏客户端**（`state.client`，native 下取自我们自己的载荷、tosu 下取自 tosu 的载荷，两处都是 `stable`/`lazer`，非 lazer 一律计 stable），再定**谁在供数** —— 壳的 native 端点生效 ⇒ 裸值，否则（无壳 / 浏览器 tosu 页 / 旧壳 ≤v5 / native 已回落）⇒ 加 `(tosu)` 后缀。**后端不为此新增字段或维度**：`daily_agg` 仍以 `client` 为维度聚合，dashboard 的 Client 饼图与 Version 并列一行。
   - `actualAlgorithm` 与 `algorithm` 值域守卫：统一由 `js/app/telemetrySpec.js` 约束并与后端 `backend/internal/spec/spec.go` 保持镜像对齐。主算法 `algorithm` 仅放行 `Mixed/Sunny/Azusa/Daniel/Roxy/Polaris/Companella`，其余草稿/魔改名不上报；实际算法 `actualAlgorithm` 仅放行 `Sunny/Daniel/Azusa/Roxy/Polaris/Companella`，胶囊标签 `"Azusa+Companella"` 自动映射归入 `"Azusa"`。不在白名单的字段不予发送。
   - `version` 防污染守卫：仅正式 SemVer 版本（`^v?[0-9]+\.[0-9]+(?:\.[0-9]+)?$`）允许激活遥测；任何带 `-dev`, `-test`, `debug`, `dirty`, `local` 等后缀的非正式版本客户端一律不发送遥测，服务端若收到也静默丢弃（204），防止本地开发与魔改数据污染大盘。
   - `durationMs` 异常防污染：上限阈值设为 30000ms（30 秒）。超过 30 秒（例如断点调试或休眠恢复）的分析耗时直接整项丢弃，不截断、不上报、不参与耗时与极值统计，避免产生假峰或极值失真。
@@ -72,7 +72,8 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 - **只对刚打完的一局提问**：进入本次结算屏前必须经过 play/pause 态（页面 `state.resultsFromPlay`，由 `socketHandlers.js` 的状态迁移计算）。从选曲/本地排行榜直接打开的结算屏（查看历史成绩）不是刚打出的成绩，直接跳过（`reason: "not_fresh_play"`）；壳在结算屏中途启动、没有 play 前态时同样不提问。
 - **lazer 的 mods 在结算屏沿用 play 帧**：lazer 进入结算屏会清空 `SelectedMods`；壳把 play 状态最后一次读全的 mods 缓存在 `Attach.last_lazer_mods`，结算时用它签名，避免把 DT 签成 NM。没有 play 帧时 `no_mods` 拒绝；DT/NC 无 `speed_change` 时按 1.5、HT/DC 按 0.75 兜底。
 - 本地联调：壳用 `MMA_FEEDBACK_ENDPOINT=http://127.0.0.1:8080/api/v1/feedback` 启动即可把投票发到本地后端（`/shell-config` 的 `feedback.endpoint` 下发给页面，无需控制台）。需要在壳窗口里开控制台时，用 `cargo build --release --features devtools` 构建并设 `MMA_DEVTOOLS=1` 启动；默认发布构建不含 devtools。
-- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；"Don't ask again" 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
+- 交互：反馈条停靠在卡片内底边，顶部倒计时条随 `STRIP_TIMEOUT_MS` 收缩、**hover 时暂停**（倒计时与自动收起一起暂停）；鼠标穿透时按钮全部禁用并显示提示；`Dismiss` 只收起本次提示，不关闭反馈功能；`Don't ask again` 会写入本机 opt-out 并尽力关闭设置项（离线壳可写，tosu 在线只读）。
+- `no_bid`（通常是本地/未提交谱面）直接不弹反馈条，也不显示“无法获取谱面”的提示：这类谱面后续无法通过 osu! API 校验，弹条只会制造无效反馈。
 - 本地同一谱面同一倍速同一侧 30 天内只询问一次；6K/7K 的另一侧仍可被询问，两侧都问过后不再提示。服务端另有 HMAC 去重与 IP/每图限流。
 
 **字段**：`bid`、`checksum`、`rate`、`mods`、`key_count`、`ln_ratio`、`pattern`、`mode_tag`、`target_side`（6K/7K；4K 旧载荷为空=RC）、`od`、`actual_algorithm`、`selected_algorithm`、`displayed_val`、`vote`、`weight`、`weight_version`、`passed`、`client`、`classic`、`plugin_version`、`settings_hash`、`install_id`（仅用于 HMAC）、`timestamp`、`nonce`。**不采集**准度、分数、用户名、session、IP 落库。
@@ -95,7 +96,7 @@ CLAUDE.md 原规定「不应当使用除 tosu 之外的第三方工具获取数�
 
 **公开统计页**：`/feedback-stats`（与使用统计 `/` 同一套设计系统，页头选项卡切换）只展示**已接受**事件的聚合：总量（票数 / 谱面数 / 有票天数 / 平均票 / 加权平均残差）、按日票数、五档票分布、按 estimator 与键数的加权残差（`Σweight·(target−displayed)/Σweight`）。任何分组 **N < 5 不返回**，且**不含 per-map 明细**（那只在私有 admin 页）。数据由 `GET /api/v1/feedback/summary?days=30` 提供（60s 内存缓存，`days` 允许 1–90）；页面不加载任何第三方脚本。
 
-**签名与密钥**：Ed25519，签名串 v1 为固定字段串；6K/7K 带 `target_side` 时使用 `v2` 并在末尾追加 `|target_side`（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
+**签名与密钥**：Ed25519，签名串 v1 为固定字段串；6K/7K 带 `target_side` 时使用 `v2` 并在末尾追加 `|target_side`（见 `backend/internal/feedback/spec.go` 的 `CanonicalSignString`）。seed（私钥）只从发布机构建环境变量 `MMA_FEEDBACK_SIGNING_SEED` 读取并编译进壳；`MMA_FEEDBACK_KEY_ID` 标识这一把钥匙。seed **绝不入库**（`.gitignore` 覆盖 `.secrets/` 与 `*.feedback-seed`），公钥进服务端 `.env`。轮换时把新 `key_id:公钥` 追加到 `FEEDBACK_PUBLIC_KEYS`（逗号分隔），发布新壳，再删旧条目。开发中间版若需要明确禁止上传反馈，应使用**不入服务端公钥表**的独立测试 key；若要让一组已分发的开发版失效，则从 `FEEDBACK_PUBLIC_KEYS` 删除对应旧 key（只改成新 key id、仍保留旧公钥不会阻止旧版本）。注意 seed 会被编译进壳二进制，可被提取——签名证明"来自官方壳"，不是保密机制。
 
 **去重**：`dedup_token = HMAC-SHA256(FEEDBACK_DEDUP_SECRET, install_id|bid|rate)`；查询时同时匹配 `target_side`，因此同一安装的 RC 和 LN 各可提交一次，同侧 30 天窗口内重复仍拒绝。服务端只存 token，窗口由 `created_at` 判断。`install_id` 是壳本地生成的 32 hex，独立于遥测 `installId`。
 

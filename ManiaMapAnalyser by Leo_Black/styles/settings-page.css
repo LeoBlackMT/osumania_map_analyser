@@ -493,6 +493,15 @@ body {
     font-size: 12px;
 }
 
+.shell-config-workflow-hint {
+    width: 100%;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--settings-muted);
+    opacity: 0.8;
+}
+
 .shell-config-diff-tag {
     font-family: Consolas, monospace;
     font-size: 12px;
