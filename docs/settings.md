@@ -33,7 +33,7 @@
     - **Live Generator**：生成 lazer 偏移表。
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
-      - **新版本完整生成**：先在游玩/回放界面生成一次（得到基础表和 `score` 段，LaneAcc/LivePP 可用），再打完/回放结束停在结算屏生成一次（得到 `results` 段，结算反馈可用）。选歌页只能得到基础字段；旧版本表不会跨版本补段，页面会提示还缺哪一段。生成完成后的状态会显示 `score / results / mods` 三段是否就绪，不再只显示一句“已生成”。
+      - **使用方法**：先在游玩/回放界面生成一次，结束后停在结算屏再生成一次。如果缺失，会提示还缺哪一部分。在选歌界面直接生成只能得到基础字段，部分功能会不可用。
     - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
 - **壳专属卡片配置**（Desktop-shell card settings）
   - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
@@ -149,7 +149,7 @@
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
         - Roxy: 面向4K RC的元结构估算器。使用结构分析对谱面进行建模，再通过GBDT元模型融合Azusa/Sunny/Daniel的参考预测。
         - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
-        - Polaris: 面向表映射的修正估算器。以Sunny为基线，用真实游玩数据修正段位映射的系统性偏差（变速响应、长条谱面、层级形状）。覆盖7K的RC与LN两侧；其他键数（含4K/6K）自动回退Sunny。
+        - Polaris: 面向Sunny表映射的修正估算器。覆盖7K的RC与LN两侧；其他键数自动回退Sunny。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
@@ -221,7 +221,7 @@
     - **Live Generator**: Generate lazer offset tables.
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
-      - **Full generation for a new version**: generate once during play/replay for the base table and `score` section (LaneAcc/LivePP), then finish/replay and generate again while staying on the result screen for `results` (result-screen feedback). Song select only produces the base fields; old-version tables are never reused across versions, and the page tells you which section is still missing. After generation the status shows whether `score / results / mods` are ready instead of only saying "generated".
+      - **Usage**: generate once during play/replay, then generate again while staying on the result screen after finishing. If something is missing, the page tells you which part is missing. Generating directly from song select only produces the base fields and some features will be unavailable.
     - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
 - **Shell-exclusive Card Configuration**:
   - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
@@ -337,7 +337,7 @@
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
         - Roxy: A 4K RC meta-structural estimator. It models the beatmap using structural analysis and then blends reference predictions from Azusa/Sunny/Daniel using a GBDT meta-model.
         - Sunny: Maps directly to Dan star ratings using Suuny Rework. Compatible with LN and RC Dans for 4/6/7K.
-        - Polaris: A table-calibration estimator. Builds on Sunny and corrects systematic dan-mapping deviations with real play data (speed-mod response, LN-heavy charts, level shape). Covers both the RC and LN sides on 7K; other key counts (including 4K/6K) fall back to Sunny.
+        - Polaris: A table-mapping correction estimator for Sunny. Covers both the RC and LN sides on 7K; other key counts automatically fall back to Sunny.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.

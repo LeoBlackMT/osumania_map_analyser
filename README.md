@@ -1,7 +1,7 @@
 # osumania_map_analyser
 **[English](README_EN.md) | 中文**
 ****
-本仓库是一个纯AI打造的VSRG游戏内叠加界面，实时在 osu!mania(4/6/7K/Lazer/Stable)、Etterna、Malody V、Malody 4.3.7下，提供估算难度、RC/LN键型分析、多MSD版本计算、难度分布等多种实用功能。
+本仓库是一个纯AI打造的VSRG游戏内叠加界面，实时在 osu!mania(4/6/7K/Lazer/Stable)、Etterna、Malody V（及其编辑器）、Malody 4.3.7下，提供估算难度、RC/LN键型分析、MSD计算、难度分布、区间分析和分轨准确度等多种实用功能。
 
 本项目同时支持在[tosu](https://tosu.app)中作为ppcounter使用。
 
@@ -37,6 +37,8 @@
 5. 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
 6. 阅读[设置说明](docs/settings.md)、[预设系统教程](docs/presets-guide.md)和[桌面壳完整教程](docs/shell-guide.md)（含注意事项和常见问题），开始使用。
 
+- 在OBS中捕获窗口时，如果捕获到黑屏，请在设置中使用 Windows 11 捕获方式。
+
 | 操作 | 方法 |
 | --- | --- |
 | 拖动整个窗口 | 按住窗口顶部拖动条（发光细条，中间有 `⋮⋮` 标志）拖动。鼠标移上去会显示一圈描边，标出即将移动的整扇窗口范围 |
@@ -49,7 +51,7 @@
 | 刷新卡片 | 选中窗口后按下 `F5` |
 
 - 标注全局快捷键的操作在窗口失焦或点击穿透时同样有效。
-- 卡片右上小圆点：粉色 osu!(Stable/Lazer)、紫色 Etterna、亮青色 Malody 4.3.7、蓝色 Malody V、灰色空心 当前没有数据源。
+- 卡片右上小圆点为当前激活的数据来源，包含：粉色-osu!(Stable/Lazer)、紫色-Etterna、亮青色-Malody 4.3.7、蓝色-Malody V、灰色空心-当前没有数据源。
 
 ### 在tosu中使用
 1. 前往[Release](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest)下载不带shell的最新版本。
@@ -60,18 +62,12 @@
 
 ## 注意事项
 1. 本插件依赖于谱面数据的正确解析，某些特殊或非标准的谱面可能会导致分析结果不准确。
-2. 难度估计算法虽然经过调整，但仍然可能存在不准确的情况，请仅将其作为参考。对于4K，一般情况下在 Reform beta 开始比较准确，整体误差不超过半个段位，低难相对没那么准确；在Minijack、Stamina和Anchor等键型中，估计结果可能会有较大的偏差。对于6K和7K，整体表现相对一般。建议玩家结合自己的实际游玩体验进行判断，不要过于依赖估计结果，将算法视为一个真正的玩家给出的参考结果。
-3. 该插件的性能会受到谱面复杂度、物件总数和所选功能的影响，在某些情况下可能会出现卡顿或延迟的情况，请根据实际情况调整设置以获得更好的体验。
+2. 本程序主要设计作为独立程序在 osu 中运行。在非 osu 来源或未使用桌面壳的前提下，部分功能可能会不可用或降级。
+3. 从 Etterna 转换得到的谱面默认取 OD 9；Malody 4.3.7 与 Malody V 的转换 OD 由游戏内判定档（A~E或Pro）与谱面倍速（模组或Turbo Mode）共同决定。详见[docs/features/malody-od.md](docs/features/malody-od.md)。
 4. 当Lazer更新，内存无法正常读取时，请尝试在设置中点击`壳设置 -> 内存偏移表管理 -> 偏移表操作 -> 检查 GitHub 远程更新`。若开发者尚未发布shell/偏移表更新时，点击旁边的`实时生成`可快速根据当前运行的Lazer进程尝试生成偏移表。使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
-5. 端口占用情况：默认占用 24061（壳页面）、24062（osu! 原生读取兼容端点）、17653（Malody V 选曲桥）；tosu 使用 24050。若 24061 被其他程序占用，壳会提示端口被占用而无法启动，请先用 `Get-NetTCPConnection -LocalPort 24061`（或 `netstat -ano | findstr :24061`）查占用进程 PID ，随后在任务管理器中关闭占用程序。24062/17653 被占用时对应原生传输/桥功能会被降级，其他功能仍可用。若修改了 tosu 端口，请在插件设置 `wsEndpoint` 中填写相同的 host:port。
+5. 当无法启动桌面壳，日志中提示端口被占用时，请先用 `Get-NetTCPConnection -LocalPort 24061`（或 `netstat -ano | findstr :24061`）查占用进程 PID ，随后在任务管理器中关闭占用程序。所有的端口占用情况为：24061（壳页面）、24062（osu! 原生读取兼容端点）、17653（Malody V 选曲桥）；tosu 使用 24050。若 24061 被占用，壳无法启动。24062/17653 被占用时对应原生传输/桥功能会被降级。若修改了 tosu 端口，请在插件设置 `wsEndpoint` 中填写相同的 host:port。
 6. 如果你无法使用 `Ctrl + Shift + S` 打开设置页，请检查是否有其他程序占用了该快捷键，或尝试打开 `mma-shell-config.json` 文件，手动修改 `hotkeys` 中的 `settings` 键值为其他组合键（如 `"settings": "Ctrl+Alt+S"`）。
-7. 如果存在问题欢迎提交issue。
-
-## 难度估计算法基准测试
-- 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
-- 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
-- 受限于人工标注误差以及玩家个人差异，目前在1300+样本量下的难度估计准确度已经接近极限。我们添加了对算法的反馈功能，欢迎广大玩家在游玩时对其进行反馈，这有助于我们寻找偏离较大的谱面并针对优化，谢谢！
-- 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
+7. 如果存在问题欢迎提交issue。我们也欢迎任何人在遵守[CONTRIBUTING.md](CONTRIBUTING.md)的前提下提交PR！
 
 ## 设置说明
 注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。  
@@ -79,10 +75,26 @@
 预设系统教程见 [docs/presets-guide.md](docs/presets-guide.md)。  
 桌面壳教程见 [docs/shell-guide.md](docs/shell-guide.md)。
 
-## 算法说明
+## 难度估计算法说明
+
+- 难度估计算法虽然经过调整，但仍然可能存在不准确的情况，请仅将其作为参考。对于4K，一般情况下在 Reform Beta 开始比较准确，整体误差不超过半个段位，低难相对没那么准确；在Minijack、Stamina和Anchor等键型中，估计结果可能会有较大的偏差。对于6K和7K，整体表现相对一般。建议玩家结合自己的实际游玩体验进行判断，不要过于依赖估计结果，将算法视为一个真正的玩家给出的参考结果。
+
+### 基准测试
+- 基准测试已迁移至独立仓库 [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，测试结果可以在[此处](https://benchmark.leoblack.top/)查看。测试涵盖了多个算法在不同类型谱面上的表现，帮助玩家选择适合自己的算法。
+- 需要注意的是，虽然基准测试提供了算法表现的参考，但实际使用中可能会受到谱面特征、mod组合等多种因素的影响，建议玩家结合自己的游玩体验进行判断。
+- 受限于人工标注误差以及玩家个人差异，目前在1300+样本量下的难度估计准确度已经接近极限。我们添加了对算法的反馈功能，欢迎广大玩家在游玩时对其进行反馈，这有助于我们寻找偏离较大的谱面并针对优化，谢谢！
+- 你可以在[此处](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark/tree/main/samples/samples.7z)下载用于基准测试的谱面数据，但是请注意阅读免责声明，合理使用这些数据。
+
+### 特色算法
+- Sunny 是一个星数直接映射到难度的表。请注意与 SunnyRework 进行区分，后者只是星数与PP计算。本表格通过计算对应段位的星数，直接划分出多个映射区间，详细的表格请查阅 `js/estimator/intervals`。
 - Roxy 是一个 4K RC 元结构估算器，聚焦高难区间（Alpha 至 Emik Zeta high）。其核心分为两层：第一层对谱面进行 7 个方面结构分析，产出结构化数值难度；第二层通过 Ridge 线性元模型融合 Azusa/Daniel 的参考预测，并在最终输出上与 Azusa 预测按 0.4/0.6 加权平均，输出最终难度。元模型按段位 0.5 序数刻度校准，使结果更贴近段位判定。如有需要，请前往[此处](docs/roxy_algorithm.md)(英文)查看算法文档。
 - Azusa 算法在谱面本身的基础上，融合了Daniel和Sunny Rework的结果，并针对4K RC谱面进行了特定的调整。如有需要，请前往[此处](docs/azusa_algorithm.md)(英文)查看算法文档。
 - Polaris 是一个表修正估算器。以 Sunny 为基线，修正“星数 → 段位”映射的系统性偏差。覆盖 7K 的 RC 与 LN 两侧；如有需要，请前往[此处](docs/polaris_algorithm.md)(英文)查看算法文档。
+- Mixed 是一个路由器。通过智能识别谱面信息来自动路由到内置最佳算法，在必要情况下会进行修正和融合。拥有全局最优准确度。
+
+### 第三方算法
+- [Daniel](https://thebagelofman.github.io/Daniel/): SunnyRework 的改进版本。仅支持 4K RC。
+- [Companella](https://github.com/Leinadix/companella): 基于 Etterna MinaCalc 的 4K 段位 onnx 估算模型。
 
 ## 隐私
 - 本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容不含用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
@@ -104,11 +116,11 @@
 ## 贡献者/致谢
 - [inuiyumegan](https://github.com/inuiyumegan): 提供了大量谱面数据用于算法调试和Benchmark。
 - [greycsont](https://github.com/greycsont): 提供了部分功能。
-- [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式。
+- [ZHAO20060708](https://github.com/ZHAO20060708): 提供了精美的Lazer主题和Full模式（现已更新为Combined模式）。
 - [SST-03](https://github.com/SST-03) & [AkutaZehy](https://github.com/AkutaZehy): 提供了改进的 Sunny LN 算法。
 - [未来lk](https://space.bilibili.com/419035379): 赞助了300M Token。
-- [Entitley](https://space.bilibili.com/3546767926758173)于[Malody V小卡片](https://www.bilibili.com/video/BV1S6et6EEND/)视频下方发表的[评论](https://www.bilibili.com/video/BV1S6et6EEND/#reply314476062705)：提供了灵感来源和 BepInEx 插件的部分源码。
-- [aleju03](https://github.com/aleju03)：通过其项目 [mania-hub](https://github.com/aleju03/mania-hub) 免费提供了大规模真实游玩行为数据集（4.84M plays，4K/7K），用于难度判定与玩家实际成绩的对照分析，是 Polaris 的数据基础。
+- [Entitley](https://space.bilibili.com/3546767926758173)于[Malody V小卡片](https://www.bilibili.com/video/BV1S6et6EEND/)视频下方发表的[评论](https://www.bilibili.com/video/BV1S6et6EEND/#reply314476062705)：提供了 MalodyV 支持的灵感来源和 BepInEx 插件部分源码。
+- [aleju03](https://github.com/aleju03)：通过其项目 [mania-hub](https://github.com/aleju03/mania-hub) 提供了大规模真实游玩行为数据集（约484万次4K/7K游玩），用于难度判定与玩家实际成绩的对照分析，是 Polaris 的数据基础。
 
 ---------
 本页自2026/6/21起累计访问量，感谢大家的支持！
