@@ -95,6 +95,7 @@
 ### 第三方算法
 - [Daniel](https://thebagelofman.github.io/Daniel/): SunnyRework 的改进版本。仅支持 4K RC。
 - [Companella](https://github.com/Leinadix/companella): 基于 Etterna MinaCalc 的 4K 段位 onnx 估算模型。
+- [XDC1](https://github.com/TheBagelOfMan/xdc1): 构建 4K 单手模型，综合手指、手腕与抖动三种维度并计入LN代价与体力消耗估计难度。支持 4K RC/LN（Alpha 至 Theta）。
 
 ## 隐私
 - 本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容不含用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。
@@ -111,6 +112,7 @@
 - [Interlude](https://github.com/YAVSRG/YAVSRG): 使用了Interlude的RC键型分析算法并在基础上新增LN检测算法。
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
+- [XDC1](https://github.com/TheBagelOfMan/xdc1): 使用了 XDC1 的算法进行 4K 难度估计。
 - [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)：参考了其获取Etterna数据的方法。
 
 ## 贡献者/致谢

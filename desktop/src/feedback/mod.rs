@@ -253,14 +253,14 @@ fn sanitize_text(value: &str, max_len: usize) -> String {
 fn is_allowed_actual(value: &str) -> bool {
     matches!(
         value,
-        "Sunny" | "Daniel" | "Azusa" | "Roxy" | "Companella" | "Azusa+Companella"
+        "Sunny" | "Daniel" | "Azusa" | "Roxy" | "XDC1" | "Companella" | "Azusa+Companella"
     )
 }
 
 fn is_allowed_selected(value: &str) -> bool {
     matches!(
         value,
-        "Mixed" | "Sunny" | "Daniel" | "Azusa" | "Roxy" | "Companella"
+        "Mixed" | "Sunny" | "Daniel" | "Azusa" | "Roxy" | "XDC1" | "Companella"
     )
 }
 

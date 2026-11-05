@@ -21,12 +21,13 @@ import { runDanielEstimatorFromText } from "../estimator/danielEstimator.js";
 import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
 import { runPolarisEstimatorFromText } from "../estimator/polarisEstimator.js";
+import { runXdc1EstimatorFromText } from "../estimator/xdc1Estimator.js";
 import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
 import { calculateInterludeStar } from "../interlude/index.js";
 
-const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed"]);
+const NORMALIZATION_ALGORITHMS = new Set(["Azusa", "Roxy", "Mixed", "XDC1"]);
 
 // Sunny 结果的 numericDifficulty 恒为 null；Azusa/Roxy 无效回退后的 Sunny 结果同样如此。
 // 允许 null 通过可避免主线程冗余重算（与 analysis.js 旧 isValidEstimatorResult 一致）。
@@ -70,12 +71,19 @@ function sanitizePatternResult(result) {
     };
 }
 
+function splitEstDiffParts(value) {
+    return String(value ?? "")
+        .split("||")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+}
+
 /**
  * 运行完整分析管线（异步：ett WASM 与 interlude 均为异步）。
  *
  * @param {object} input
  * @param {string} input.rawText  .osu 文件文本
- * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Polaris / Mixed / Companella
+ * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Polaris / XDC1 / Mixed / Companella
  * @param {object} input.options  显式传入的估算选项（禁止读 state）：speedRate, odFlag, cvtFlag,
  *   withGraph, forceSunnyReferenceHo, forceSunnyWindow, enableAnalyzeLN,
  *   enableAlwaysShowLNDifficulty, display6kLevel, extendedEstimationRange,
@@ -204,6 +212,11 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
             selectedRework = runSunnyEstimatorFromText(rawText, options, parser);
             actualEstimatorAlgorithm = "Sunny";
         }
+    } else if (estimatorAlgorithm === "XDC1") {
+        // XDC1（独立 4K 数值估算器）：不支持的谱面由估算器返回
+        // `unsupported: true` + "Unsupported: ..." 文案，不切换到 Sunny。
+        selectedRework = runXdc1EstimatorFromText(rawText, options, parser);
+        actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || "XDC1";
     } else if (estimatorAlgorithm === "Mixed") {
         const mixedOpts = sharedSunnyResult
             ? { ...options, precomputedSunnyResult: sharedSunnyResult }
@@ -229,7 +242,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         eligible: Number.isFinite(vibroStar) && vibroStar > 5.0,
     };
 
-    // 4. 归一化：Azusa/Roxy/Mixed 未回退时 star 统一为 Sunny 原始 sr（星数胶囊恒显 Sunny 口径；
+    // 4. 归一化：Azusa/Roxy/Mixed/XDC1 未回退时 star 统一为 Sunny 原始 sr（星数胶囊恒显 Sunny 口径；
     //    Daniel 独立算法排除；Companella/Sunny 本就是 Sunny sr）。
     //    保留 sunnyResult 对象引用（含 ppMetrics 挂载），下方 ppMetrics 组装复用同一份结果。
     let rework = selectedRework;
@@ -241,6 +254,18 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         rework = { ...selectedRework, star: sunnyStar };
     }
 
+    // 4a. XDC1 的 RC 半段保持自身标定；LN 半段不采用 XDC1 的 numeric 投影，
+    //     而始终拼接 Sunny 的 LN 区间表结果（与 Sunny 卡片同源、同 star）。
+    if (actualEstimatorAlgorithm === "XDC1" && selectedRework?.unsupported !== true) {
+        const sunnyParts = splitEstDiffParts(normalizationSunnyResult?.estDiff);
+        const sunnyLnLabel = sunnyParts.length > 1 ? sunnyParts[sunnyParts.length - 1] : null;
+        const showLn = Number(normalizationSunnyResult?.lnRatio) >= 0.15
+            || options.enableAlwaysShowLNDifficulty === true;
+        if (sunnyLnLabel && showLn) {
+            rework = { ...rework, estDiff: `${selectedRework.estDiff} || ${sunnyLnLabel}` };
+        }
+    }
+
     // 4b. ppMetrics（withPpMetrics，Task 9）：全部字段来自同一个 Sunny 结果对象，star 取该结果 star
     //    （Sunny 原始 sr，与星数胶囊口径一致）。来源按算法：
     //    - Azusa/Roxy/Mixed：归一化 sunnyResult（sharedSunnyResult 或上方独立计算）
@@ -248,7 +273,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     //    - Sunny/Companella / Azusa/Roxy 回退后的 Sunny：selectedRework 即 Sunny 结果
     //    失败/无 ppMetrics → null（软失败，不进 errors[]）；关闭时零额外计算、零输出字段。
     let ppMetrics = null;
-    if (options.withPpMetrics === true) {
+    if (options.withPpMetrics === true && rework?.unsupported !== true) {
         try {
             let sunnySrc = null;
             if (NORMALIZATION_ALGORITHMS.has(actualEstimatorAlgorithm) || estimatorAlgorithm === "Mixed") {

@@ -152,6 +152,7 @@
         - Polaris: 面向Sunny表映射的修正估算器。覆盖7K的RC与LN两侧；其他键数自动回退Sunny。
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
+        - [XDC1](https://github.com/TheBagelOfMan/xdc1): 使用XDC1算法进行估计，支持4K RC/LN，范围为Alpha至Theta；非4K谱面自动回退Sunny。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
@@ -340,6 +341,7 @@
         - Polaris: A table-mapping correction estimator for Sunny. Covers both the RC and LN sides on 7K; other key counts automatically fall back to Sunny.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
+        - [XDC1](https://github.com/TheBagelOfMan/xdc1): Uses the XDC1 algorithm for estimation, supporting 4K RC/LN from Alpha to Theta; non-4K beatmaps automatically fall back to Sunny.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.

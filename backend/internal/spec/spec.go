@@ -15,6 +15,7 @@ var AllowedAlgorithms = map[string]bool{
 	"Daniel":     true,
 	"Roxy":       true,
 	"Polaris":    true,
+	"XDC1":       true,
 	"Companella": true,
 }
 
@@ -26,6 +27,7 @@ var AllowedActualAlgorithms = map[string]bool{
 	"Azusa":      true,
 	"Roxy":       true,
 	"Polaris":    true,
+	"XDC1":       true,
 	"Companella": true,
 }
 

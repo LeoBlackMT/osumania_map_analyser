@@ -97,6 +97,7 @@ Desktop shell guide: [docs/shell-guide.md](docs/shell-guide.md).
 ### Third-party Algorithms
 - [Daniel](https://thebagelofman.github.io/Daniel/): An improved version of SunnyRework. Supports 4K RC only.
 - [Companella](https://github.com/Leinadix/companella): A 4K Dan ONNX estimation model based on Etterna MinaCalc.
+- [XDC1](https://github.com/TheBagelOfMan/xdc1): A from-scratch 4K one-hand model that blends finger, wrist, and jitter techniques with hold costs and stamina drain; supports 4K RC/LN (Alpha to Theta).
 
 ## Privacy
 - Anonymous usage statistics are enabled by default to track active users, online distribution, and usage patterns. Telemetry contains no usernames, player IDs, scores, beatmap identities (titles/MD5), or IP addresses; data is strictly used for aggregated statistics. To opt out, disable "Anonymous Usage Statistics" under Settings → Network.
@@ -113,6 +114,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Interlude](https://github.com/YAVSRG/YAVSRG): RC pattern analysis algorithm, with added LN detection logic.
 - [Daniel](https://thebagelofman.github.io/Daniel/): Algorithm used for difficulty estimation.
 - [Companella](https://github.com/Leinadix/companella): Algorithm used for difficulty estimation.
+- [XDC1](https://github.com/TheBagelOfMan/xdc1): Algorithm used for 4K difficulty estimation.
 - [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna): Reference for Etterna data retrieval methods.
 
 ## Contributors / Acknowledgements

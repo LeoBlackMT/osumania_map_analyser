@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-插件提供 **7 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Polaris、Daniel、Companella），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
+插件提供 **8 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Polaris、Daniel、Companella、XDC1），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
 
 估算器内部依赖以下共享模块（这些模块同时被 Node benchmark runner 使用，不含任何浏览器 API）：
 
@@ -26,6 +26,7 @@
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，**7K 专用**：RC + LN 两半都校准（7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`；4K 曲线集已随实机否决删除）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
+| **XDC1** | worker | `xdc1Estimator.js runXdc1EstimatorFromText` | 4K RC + LN（第三方，TheBagelOfMan）：手指/手腕/抖动混合的双手 strain + 长条代价 + 体力，按 98% 期望准确率聚合 | 仅 4K；不支持（非 4K、解析失败、音符不足、低于 Alpha Low）时返回 `Unsupported: ...`，不切换到 Sunny；固定 OD9 判定窗；复用 pipeline 的 parsed（IN/HO 在 clone 上转换，speedRate 生效）；star 由 pipeline 归一化为 Sunny sr；RC 半段用自身 rating→dan 标定，LN 半段始终拼接 Sunny 的 LN 区间表结果；graph 走 Sunny/Daniel 同套 800ms 平滑 |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
 | **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`） |
 
@@ -91,10 +92,10 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
-左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:795` `showNumericStarValue`；其余调用点 :1230/:1241/:1264/:1268）；归一化逻辑已迁入 `runAnalysisPipeline.js:225-229`。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：
+左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:795` `showNumericStarValue`；其余调用点 :1230/:1241/:1264/:1268）；归一化逻辑已迁入 `runAnalysisPipeline.js`。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：
 
-- Azusa / Roxy / Mixed 的 `star` 字段是自身 numeric 难度的线性映射（`3.4 + 0.38 * numericDifficulty`，`azusaEstimator.js:992`、`roxyEstimator.js:1634`），**不是** Sunny sr；Mixed 的 star 还可能继承被选中的 Roxy/Azusa/Daniel 子算法（`mixedEstimator.js:380-388`）；
-- `runAnalysisPipeline.js:225-229`：当 `actualEstimatorAlgorithm` 为 Azusa/Roxy/Mixed（即未回退 Sunny）时，用与"Sunny 算法选择"完全相同的调用 `runSunnyEstimatorFromText(rawText, estimatorOptions)` 重算 sr 并覆盖 `rework.star`（同一函数、同一 options，逐位一致）；
+- Azusa / Roxy / Mixed / XDC1 的 `star` 字段是自身 numeric 难度的线性映射（`3.4 + 0.38 * numericDifficulty`，`azusaEstimator.js:992`、`roxyEstimator.js:1634`、`xdc1Estimator.js`），**不是** Sunny sr；Mixed 的 star 还可能继承被选中的 Roxy/Azusa/Daniel 子算法（`mixedEstimator.js:380-388`）；
+- `runAnalysisPipeline.js`：当 `actualEstimatorAlgorithm` 为 Azusa/Roxy/Mixed/XDC1（即未回退 Sunny）时，用与"Sunny 算法选择"完全相同的调用 `runSunnyEstimatorFromText(rawText, estimatorOptions)` 重算 sr 并覆盖 `rework.star`（同一函数、同一 options，逐位一致）；
 - **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
 - **Polaris 排除**：star 本就是 Sunny sr（4/7K 生效时与 Sunny 选择逐位一致；非 4/7K 与 cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`runAnalysisPipeline.js:204`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
@@ -114,6 +115,8 @@ worker 估算器的调用统一经 `runAnalysisPipeline` 内部分派（pipeline
 - Daniel：`runAnalysisPipeline.js:173`
 - Azusa：`runAnalysisPipeline.js:180`
 - Roxy：`runAnalysisPipeline.js:188`
+- Polaris：`runAnalysisPipeline.js:197`
+- XDC1：`runAnalysisPipeline.js` 的 XDC1 分派块（不支持时返回 `Unsupported: ...`，不回退 Sunny）
 - Sunny：`runAnalysisPipeline.js:204` / `:207`
 
 回退后走同一套结果校验与 `actualEstimatorAlgorithm` 更新逻辑（`runAnalysisPipeline.js:182-186` Azusa / `:190-193` Roxy）。
@@ -151,6 +154,7 @@ export const DAN_INDEX = {
 **不受影响**：
 
 - Azusa / Roxy 的最终段位标签（由各自算法内部产出，不经过 `estDiff` 的 extended 选择）；
+- XDC1 的最终段位标签（由自身 rating→dan 标定产出，`extendedEstimationRange` 不参与）；
 - Mixed 仅经其 Sunny 基线间接受影响（`mixedEstimator.js:237` 的 `sunnyBaseline`）。
 
 ## 7. RC 标签格式（rcDifficultyFormat.js）
@@ -173,6 +177,7 @@ export const DAN_INDEX = {
 - **Azusa** → [docs/azusa_algorithm.md](../azusa_algorithm.md)（英文）
 - **Roxy** → [docs/roxy_algorithm.md](../roxy_algorithm.md)（英文）
 - **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，表修正估算器：**7K 专用** RC+LN）
+- **XDC1** → [README.md 参考内容区](../../README.md#参考内容)（第三方 4K 单手模型：RC+LN，固定 OD9）
 - **Sunny / Etterna / Daniel / Companella / Interlude** → [README.md 参考内容区](../../README.md#参考内容)（原文链接：Sunny Rework、Etterna、Daniel、Companella、Interlude 仓库）
 
 ## 9. 注意事项
@@ -182,8 +187,9 @@ export const DAN_INDEX = {
 3. **LN 阈值**：`estDiff` 中 LN 标签仅在 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时展示，否则只返回 RC 标签（`reworkEstimatorUtils.js:104`）；SunnyWindow 用 `estDiff2` 以 LN 星数为准（`reworkEstimatorUtils.js:113` 的 `estDiff2`）。
 4. **标签结构**：RC/LN 复合标签以 `"RC || LN"` 形式返回（`reworkEstimatorUtils.js:110`），解析时按 `||` 分割。
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
-6. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed 的 star 仅是内部口径，不作为显示值。
-7. **Etterna MSD 上限突破**：MinaCalc 内置 SSR 技能值上限 40.0 已通过 wasm 二进制等长替换（`f32.const 40.0` → `f32.const 100.0`）提升至 100.0（工具见 `tools/patch-minaclac-msd-cap.mjs`，`tools/README.md`）；显示刻度 `config.js:52 etterna.maxSkillValue = 45.0`（技能条宽度与 MSD 胶囊颜色映射按 45 标定）。浏览器加载 wasm 带 `?v=` cache-bust（`js/ett/constants.js WASM_ASSET_VERSION`，bump 时机：wasm 字节变更）。实测效果：技能值低于饱和区（Overall ≲ 37）的谱面输出逐位不变；处于饱和区（~37–40）的谱面数值随上限平滑上升；触顶谱面（技能值被钳在 40.000）突破 40/42 上限。`minaclac-68.0-unofficial.wasm` 未 patch（其 40.0 常量非技能上限，patch 会改变普通谱面输出）；0.70.0 的 Stream 技能值存在旧版独立的饱和行为（不在本 patch 常量内），其 Overall 与其余技能值正常突破。
+6. **XDC1 标签拼接**：XDC1 只提供 RC 标签；pipeline 在归一化后把 Sunny `estDiff` 的 LN 半段拼到后面（无 LN 半段时只保留 RC）。LN 半段沿用旧显示门控：`lnRatio >= 0.15` 或开启 `enableAlwaysShowLNDifficulty` 时才显示；`analysis.js` 的 `forceSunnyWindow` 只在该门控通过且结果非 `Unsupported` 时替换第二段，避免低 LN% 谱面凭空多出 LN 标签。XDC1 自身的 LN 投影不参与。
+7. **显示星数恒为 Sunny sr**：星数胶囊只显示 Sunny 原始 sr（§3.4），Azusa/Roxy/Mixed/XDC1 的 star 仅是内部口径，不作为显示值。
+8. **Etterna MSD 上限突破**：MinaCalc 内置 SSR 技能值上限 40.0 已通过 wasm 二进制等长替换（`f32.const 40.0` → `f32.const 100.0`）提升至 100.0（工具见 `tools/patch-minaclac-msd-cap.mjs`，`tools/README.md`）；显示刻度 `config.js:52 etterna.maxSkillValue = 45.0`（技能条宽度与 MSD 胶囊颜色映射按 45 标定）。浏览器加载 wasm 带 `?v=` cache-bust（`js/ett/constants.js WASM_ASSET_VERSION`，bump 时机：wasm 字节变更）。实测效果：技能值低于饱和区（Overall ≲ 37）的谱面输出逐位不变；处于饱和区（~37–40）的谱面数值随上限平滑上升；触顶谱面（技能值被钳在 40.000）突破 40/42 上限。`minaclac-68.0-unofficial.wasm` 未 patch（其 40.0 常量非技能上限，patch 会改变普通谱面输出）；0.70.0 的 Stream 技能值存在旧版独立的饱和行为（不在本 patch 常量内），其 Overall 与其余技能值正常突破。
 
 ## 10. 反馈信号（研究用，RC-only，不自动应用）
 

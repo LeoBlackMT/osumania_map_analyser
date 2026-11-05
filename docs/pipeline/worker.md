@@ -145,7 +145,9 @@ worker 端处理（compute.worker.js:21-37）：
 
 ### 4.5 归一化与 vibro 顺序约束
 
-**归一化**（runAnalysisPipeline.js:219-229）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr）。
+**归一化**（runAnalysisPipeline.js:219-229）：`actualEstimatorAlgorithm ∈ {Azusa, Roxy, Mixed, XDC1}` 且未回退时，`rework.star` 覆盖为 `runSunnyEstimatorFromText(rawText, options, parser).star`（星数胶囊恒显 Sunny 口径；Daniel 排除；Companella/Sunny 本就是 Sunny sr）。
+
+**XDC1 标签拼接**：同一份 `normalizationSunnyResult` 的 `estDiff` 若包含 LN 半段（`"RC || LN"` 的第二段），pipeline 把它拼到 XDC1 的 RC 标签后面；仅当 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时生效。XDC1 自己只提供 RC 标签，不输出 LN 标签。
 
 **vibro 顺序约束（关键）**：
 
@@ -161,6 +163,7 @@ worker 端处理（compute.worker.js:21-37）：
 | Azusa, `forceSunnyReferenceHo=false` | `sunnyOptions = options` | 是 | 同上 |
 | Azusa, `forceSunnyReferenceHo=true` | `sunnyOptions = {...options, cvtFlag:"HO"}` | **否**（cvtFlag 不一致） | 独立计算；**不可**传 `precomputedSunnyResult`（会改变数值语义） |
 | Roxy | canonicalizeOsuTiming 改写文本 + `precomputedSunnyResult: null` 硬编码 | **否**（文本被改写） | 独立计算 |
+| XDC1 | 估算器内部不调用 Sunny；归一化 pass 独立运行 | 否（无内部 Sunny 结果） | 独立计算 Sunny sr 用于星数胶囊 |
 | Sunny/Daniel/Companella | 无归一化 | 不适用 | 无 |
 
 决策表证据：task-11 实测记录 §2。
