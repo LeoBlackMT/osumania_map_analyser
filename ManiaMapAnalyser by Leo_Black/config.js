@@ -6,7 +6,7 @@ export const APP_CONFIG = {
         contentBar: ["None", "Auto", "Pattern", "Etterna", "Graph", "ReworkPP", "LaneAcc"],
         srText: ["Auto", "ReworkSR", "MSD", "Pattern", "InterludeSR", "ReworkPP"],
         diffText: ["None", "Graph", "Difficulty", "MSD", "Pattern", "ReworkSR", "InterludeSR"],
-        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Polaris", "Daniel", "Companella", "XDC1"],
+        estimatorAlgorithm: ["Azusa", "Roxy", "Mixed", "Sunny", "Polaris", "Daniel", "Companella", "XDC1", "Proj7k"],
         etternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0", "0.75.0"],
         companellaEtternaVersion: ["0.68.0-Unofficial", "0.70.0", "0.72.0", "0.72.3", "0.74.0", "0.75.0"],
         cardOpacity: ["100%", "95%", "90%", "80%", "70%"],

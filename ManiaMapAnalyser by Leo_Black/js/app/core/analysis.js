@@ -1662,14 +1662,15 @@ export async function fetchBeatmapFile(reason) {
 
         // ⚠️ 区间跑批不上报遥测（连 payload 都不构造）：局部结果不是整图样本。
         if (!isSectionRun && rework && metadataErrors.length === 0 && !isStaleRequest()) {
-            // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy/Polaris/XDC1 的原生值已是
+            // 数值化难度（Reform 段位体系，.0 = mid）：Azusa/Roxy/Polaris/XDC1/Proj7k 的原生值已是
             // 标准尺度，直接用；其余算法（Sunny/Companella/Daniel——Daniel 的
             // 原生值是其 DP 尺度，比标准约高 0.5）用 estDiff 标签反向换算。
             // 边界标签（< Alpha Low 等）反解为 null → 不上报该字段。
             const rcNative = state.actualEstimatorAlgorithm === "Azusa"
                 || state.actualEstimatorAlgorithm === "Roxy"
                 || state.actualEstimatorAlgorithm === "Polaris"
-                || state.actualEstimatorAlgorithm === "XDC1";
+                || state.actualEstimatorAlgorithm === "XDC1"
+                || state.actualEstimatorAlgorithm === "Proj7k";
             const numericDifficulty = rcNative
                 && typeof resolvedNumericDifficulty === "number"
                 && Number.isFinite(resolvedNumericDifficulty)
