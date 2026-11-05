@@ -6,7 +6,7 @@
 
 | 键数 | 可用算法 | 反馈范围 | 4K 旧行为 |
 |---|---|---|---|
-| 4K | Azusa / Roxy / Sunny / Daniel / Companella / Mixed | RC-only，`lnRatio <= 0.15`，单标签 | **完全不变** |
+| 4K | Azusa / Roxy / Sunny / Daniel / Companella / XDC1 / Mixed | RC-only，`lnRatio <= 0.15`，单标签 | **完全不变** |
 | 6K | Sunny | RC / LN / Mix / HB / SV，单/双标签 | 不适用 |
 | 7K | Polaris（Sunny 基线） | RC / LN / Mix / HB / SV，单/双标签 | 不适用 |
 

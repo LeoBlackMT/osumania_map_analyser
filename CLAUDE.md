@@ -34,7 +34,7 @@
     - js/laneAcc/: 独立通用数据与计算模型（无 DOM，按键回放帧解析与精度累加，accumulator、chart、format、rawFrames）。
     - js/pipeline/: runAnalysisPipeline.js——一次调用完成解析 → 估算 → 标准化 → 附属段的纯函数管线。
     - js/debug/: 插件的调试目录，包含插件的调试工具和调试代码。应当保留。
-    - js/estimator/: 七个难度估算算法的实现及共享数学工具（estimatorMath）。
+    - js/estimator/: 八个难度估算算法的实现及共享数学工具（estimatorMath）。
         - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。
         - js/estimator/intervals/: Sunny 难度估计算法的星数映射表。
     - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的六个版本WASM运行时。

@@ -134,6 +134,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
   - `"HO"`：HO（Hidden 类）转换——`osuFileParser.js:327 modHO()` 将 LN 一律拆为普通 note（LN→RC）。
 - 消费方：
   - **Sunny 系估算器**：`js/rework/sunnyAlgorithm.js:87 preprocessFile(osuText, speedRate, odFlag, cvtFlag, parsed)` 内 `String(cvtFlag).includes("IN")` → `pObj.modIN()`、`.includes("HO")` → `pObj.modHO()`（sunnyAlgorithm.js:107、:115）。`sunnyWindowAlgorithm.js:218 preprocessFile(..., enableAnalyzeLN, parsed)` 同构（sunnyWindowAlgorithm.js:232、:239；另见 :1115-1130 的第二处同构分支）。注意用 `includes` 判断，未来若出现组合值（如 `"IN|HO"`）也能命中。
+  - **XDC1**：复用 pipeline 的 parsed；`IN`/`HO` 在 `cloneOsuParser` 副本上执行 `modIN()`/`modHO()`，共享 parser 不被修改。
   - **Interlude**：`cvtFlag` 作为第三参数传入（analysis.js:830）。
   - **Etterna**：`buildEtternaAnalyzeOptions` 的 `cvtFlag: state.cvtFlag`（analysis.js:203）。
   - **Auto 显示档位同步**：`analysis.js:1211` 在 `state.cvtFlag` 激活时强制使用根据转换后 `lnRatio` 计算的 `fallbackModeTag`（而不是未转换文本的 `patternResult.report.ModeTag`），避免 Auto 档位在 RC/Pattern 间反复横跳重算震荡。

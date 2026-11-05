@@ -7,6 +7,7 @@ export const ALLOWED_ALGORITHMS = Object.freeze([
     "Daniel",
     "Roxy",
     "Polaris",
+    "XDC1",
     "Companella",
 ]);
 
@@ -16,6 +17,7 @@ export const ALLOWED_ACTUAL_ALGORITHMS = Object.freeze([
     "Azusa",
     "Roxy",
     "Polaris",
+    "XDC1",
     "Companella",
 ]);
 
