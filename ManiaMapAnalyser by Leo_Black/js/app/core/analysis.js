@@ -93,12 +93,17 @@ import { fetchBeatmapTextWithRetry } from "../sources/beatmapFetchRetry.js";
 // 区间分析（Graph Section Analysis）：选区状态、全谱原文缓存、切片器。
 // 只在桌面壳里会有非 null 的 getSectionRange()；浏览器模式下恒为 null（零行为变化）。
 import {
+    clearFullChartTexts,
     clearSection,
     getFullChartText,
     getSectionRange,
     notifySectionAnalysis,
     rememberFullChartText,
 } from "../graph/section.js";
+import {
+    beatmapTextMatchesFrame,
+    parseBeatmapIdentityFrame,
+} from "./beatmapIdentity.js";
 import { sliceOsuTextByTimeRange } from "../../parser/osuTimeSlice.js";
 
 function escapeHtml(value) {
@@ -351,8 +356,12 @@ function resetSourceContext() {
     state.pendingSourceRequestId = null;
     state.pendingSourceActive = null;
     state.externalSourceActive = null;
+    state.externalSourceOsuLike = false;
     state.analysisRate = null;
     state.speedRate = 1;
+    // 清卡/换源：在途分析立即作废，原文 LRU 一并清空（不能跨结果缓存清空存活）。
+    state.analysisEpoch = (state.analysisEpoch || 0) + 1;
+    clearFullChartTexts();
 }
 
 /**
@@ -399,13 +408,24 @@ export { toTelemetryActualAlgorithm } from "../net/telemetrySpec.js";
 export async function fetchBeatmapFile(reason) {
     const requestSeq = (state.analysisRequestSeq || 0) + 1;
     state.analysisRequestSeq = requestSeq;
+    // 卡片状态代数：换图/换 mod 时 socketHandlers/externalSource 立即自增。
+    // 仅靠 requestSeq 不够——它只在新 fetch 开始时推进，换图后的 200ms 防抖窗口里
+    // 旧请求仍能拿到新图 body 并按旧 identity 渲染/写缓存。
+    const requestEpoch = state.analysisEpoch || 0;
     mainCardEl?.classList.remove("card-source-stale");
     // 本次分析的谱面身份快照：fetch/worker 期间可能切图，所有原文缓存与
     // 结果缓存键都必须锚在请求开始时的那张图，不能用可变的
     // `state.lastBeatmapIdentity`（否则旧图原文会写进新图键下，之后永远
     // 只显示上一张图的结果）。
-    const requestIdentity = state.lastBeatmapIdentity || "";
+    const requestFrame = state.lastBeatmapIdentityInfo
+        || parseBeatmapIdentityFrame(state.lastBeatmapIdentity || "");
+    const requestIdentity = requestFrame.identity || state.lastBeatmapIdentity || "";
+    // contentKey：hash > folder-qualified path > id > meta。缓存键/原文 LRU 用它，
+    // 弱帧合并后同一张文件的键稳定，换文件（hash 变）时键必变。
+    const requestContentKey = requestFrame.contentKey || requestIdentity;
+    const requestMetaKey = requestFrame.metaKey || "";
     const requestModSignature = state.modSignature || "";
+    const requestBeatmapKey = state.lastBeatmapKey || "";
     // 点击已激活 Tab = 手动重算：本次跳过结果缓存一次。入口立即清零，避免
     // 早退/失败/下一次分析被这个一次性标志污染。
     const forceRecompute = state.tabForceRecompute === true;
@@ -427,7 +447,33 @@ export async function fetchBeatmapFile(reason) {
         setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
         return;
     }
-    const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+    const isStaleRequest = () => requestSeq !== state.analysisRequestSeq
+        || requestEpoch !== (state.analysisEpoch || 0);
+    // 本次 body 是否真的做过元数据比对：path/id 键的缓存写入必须以它为前提，
+    // hash 键本身已能证明内容，允许在元数据缺失时继续缓存。
+    let contentVerified = false;
+    // 请求开始时快照的 frame 是唯一可信身份；fetch 回来的 .osu 必须与它一致。
+    // 不一致 = 请求期间已切图（端点按“当前谱面”供奉），丢弃本次 body：
+    // 不 remember、不渲染、不写缓存，等新图的帧触发下一次分析。
+    const acceptFetchedText = (text, { markVerified = true } = {}) => {
+        if (!text) {
+            return false;
+        }
+        if (!requestFrame.identity) {
+            return true;
+        }
+        const check = beatmapTextMatchesFrame(text, requestFrame);
+        if (!check.ok) {
+            console.warn("[mma] beatmap file identity mismatch; discarding", {
+                requestIdentity,
+                requestMetaKey,
+                checked: check.checked,
+            });
+        } else if (check.checked && markVerified) {
+            contentVerified = true;
+        }
+        return check.ok;
+    };
     // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
     // ⚠️ 区间跑批不消费 pendingSource*：那份文本/请求号属于外部源帧自己的跑批，
     // 消费会让区间结果被当成壳应答（result 帧）回给桌面壳。
@@ -555,14 +601,20 @@ export async function fetchBeatmapFile(reason) {
     // star-v13：修复 `sunnyCore.computeXbar` 的 crossMatrix（重构时误用另一套
     //   矩阵，Eviternity 从 8.29/Delta mid-low 漂到 8.96/Epsilon）→ Sunny 与
     //   所有以 Sunny 为基线的 Mixed 星数/estDiff 语义恢复，旧快照全部失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v13";
-    const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestIdentity}|${requestModSignature}`;
-    const isMetaDegraded = requestIdentity.startsWith("meta:");
+    // star-v14：缓存键从可变 identity 改为请求作用域的 contentKey（hash > 目录限定 path > id > meta），
+    //   快照新增 contentKey/metaKey 并在命中时校验。旧键会把“请求期间切图”抓到的另一张图
+    //   整份快照写到当前图上，必须全部失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v14";
+    const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
+    const isMetaDegraded = requestContentKey.startsWith("meta:");
     let cached = null;
     // ⚠️ 区间跑批不读缓存（且不读 enableResultCache）：短路顺序保证该设置项完全不被求值。
-    if (!isSectionRun && state.enableResultCache && requestIdentity && !forceRecompute) {
+    if (!isSectionRun && state.enableResultCache && requestContentKey && !forceRecompute) {
         const snapshot = resultCache.get(cacheKey);
         if (snapshot
+            && snapshot.contentKey === requestContentKey
+            && (snapshot.contentVerified === true || requestContentKey.startsWith("hash:"))
+            && (!requestMetaKey || !snapshot.metaKey || snapshot.metaKey === requestMetaKey)
             && snapshot.computed.graph === needComputed.graph
             && snapshot.computed.pattern === needComputed.pattern
             && snapshot.computed.ett === needComputed.ett
@@ -601,7 +653,10 @@ export async function fetchBeatmapFile(reason) {
             applyContentBarOverride(parsedInfo.columnCount);
         } else if (isSectionRun) {
             // 区间分析：优先复用某次全谱跑批留下的原文（外部源没有可重抓的端点）。
-            rawText = getFullChartText(requestIdentity);
+            rawText = getFullChartText(requestContentKey, requestMetaKey);
+            if (rawText && !acceptFetchedText(rawText)) {
+                rawText = null;
+            }
             if (!rawText && (state.activeSource ?? "osu") === "osu") {
                 // 原文缓存未命中（切图来回被淘汰等）：osu 端点还在，直接抓一次整谱再切片。
                 const response = await fetchBeatmapTextWithRetry(getEndpoint(), {
@@ -614,8 +669,11 @@ export async function fetchBeatmapFile(reason) {
                 }
                 rawText = await response.text();
                 if (isStaleRequest()) return;
+                if (rawText && !acceptFetchedText(rawText)) {
+                    rawText = null;
+                }
                 if (rawText) {
-                    rememberFullChartText(rawText, requestIdentity);
+                    rememberFullChartText(rawText, requestContentKey, requestMetaKey);
                 }
             }
             if (!rawText) {
@@ -630,10 +688,17 @@ export async function fetchBeatmapFile(reason) {
             if (!rawText || !rawText.trim()) {
                 throw new Error("Empty external beatmap content.");
             }
+            // 外部源文本由壳/桥按当前帧直接注入，没有“端点供奉另一张图”的问题；
+            // 视作已校验，保留外部源的结果缓存（其 identity 自带内容摘要）。
+            contentVerified = true;
         } else {
             // 同图重算（Tab 切换/设置变更）优先复用上次全谱跑批留下的原文：外部源没有
-            // 可重抓的端点；osu 也省一次整谱抓取。原文按 identity 存 LRU，换图不会串。
-            rawText = getFullChartText(requestIdentity);
+            // 可重抓的端点；osu 也省一次整谱抓取。原文按 contentKey 存 LRU，换图不会串。
+            rawText = getFullChartText(requestContentKey, requestMetaKey);
+            // 缓存的原文也要过一遍内容校验：metaKey 只能证明元信息一致，不能证明文本没被错误写入过。
+            if (rawText && !acceptFetchedText(rawText)) {
+                rawText = null;
+            }
             if (!rawText) {
                 // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
                 if (isShellOfflinePage
@@ -657,6 +722,11 @@ export async function fetchBeatmapFile(reason) {
                 if (!rawText || !rawText.trim()) {
                     throw new Error("Empty beatmap content.");
                 }
+                // 端点供奉的是“请求时的当前谱面”，可能已不是 requestFrame 那张图。
+                // 校验失败直接放弃本次 body（不渲染/不缓存），等新图的帧触发重算。
+                if (!acceptFetchedText(rawText)) {
+                    return;
+                }
             }
             // parse-once：解析在 pipeline 内完成一次，parsedSummary 回传后（下方）才做 override。
         }
@@ -664,7 +734,7 @@ export async function fetchBeatmapFile(reason) {
         // 全谱跑批成功后留存原文：区间跑批切片要用（外部源无端点可重抓）。
         // 缓存命中的那轮 rawText 为 null：绝不能拿 null 覆盖已有原文。
         if (!isSectionRun && rawText) {
-            rememberFullChartText(rawText, requestIdentity);
+            rememberFullChartText(rawText, requestContentKey, requestMetaKey);
         }
         // 区间跑批：把整谱文本截成 [start, end] 片段后再进管线（唯一的输入变换）。
         if (isSectionRun) {
@@ -864,12 +934,13 @@ export async function fetchBeatmapFile(reason) {
             state.lnStar = cached.rework.lnStar;
             typePercentageData = cached.rework.typePercentageData;
         } else if (pipelineResult) {
+            // 先判 stale 再写 state：旧请求不能把另一张图的算法标签/PP 指标写到当前卡片。
+            if (isStaleRequest()) return;
             rework = pipelineResult.rework;
             state.actualEstimatorAlgorithm = pipelineResult.actualEstimatorAlgorithm;
             state.ppMetrics = pipelineResult.ppMetrics || null;
             vibroEligible = pipelineResult.vibro.eligible;
             errors.push(...pipelineResult.errors);
-            if (isStaleRequest()) return;
 
             resolvedEstDiff = pipelineResult.rework.estDiff;
             resolvedNumericDifficulty = pipelineResult.rework.numericDifficulty;
@@ -1275,7 +1346,8 @@ export async function fetchBeatmapFile(reason) {
                     laneAccChart = null;
                 }
             }
-            if (!isSectionRun && !cached && state.enableResultCache && requestIdentity
+            if (!isSectionRun && !cached && state.enableResultCache && requestContentKey
+                && (contentVerified || requestContentKey.startsWith("hash:"))
                 && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
@@ -1284,6 +1356,10 @@ export async function fetchBeatmapFile(reason) {
                 // 快照只存渲染所需的普通字段。
                 const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
                 resultCache.put(cacheKey, {
+                    // 命中时按这两个字段再验一次：缓存键相同但内容/元信息不符的快照绝不复用。
+                    contentKey: requestContentKey,
+                    metaKey: requestMetaKey,
+                    contentVerified,
                     rework: {
                         star: rework.star,
                         estDiff: resolvedEstDiff,
@@ -1366,7 +1442,8 @@ export async function fetchBeatmapFile(reason) {
             // ⚠️ 区间跑批不写：局部结果绝不能成为 RC 反馈签名依据（保留上一轮全谱值）。
             if (!isSectionRun) {
                 state.feedbackContext = {
-                    beatmapKey: state.lastBeatmapKey,
+                    // 请求作用域快照：渲染期间若已换图，不能把旧指标记到新谱面名下。
+                    beatmapKey: requestBeatmapKey,
                     numericDifficulty: Number.isFinite(state.numericDifficulty) ? state.numericDifficulty : null,
                     estDiff: typeof resolvedEstDiff === "string" ? resolvedEstDiff : "",
                     slotCount: slotCount(resolvedEstDiff),
@@ -1488,7 +1565,7 @@ export async function fetchBeatmapFile(reason) {
         // 否则用户在分析完成后才切到 LaneAcc，会命中“Chart text unavailable”，只能切图重载。
         // 复用本轮的 rawText；缓存命中时回落到本图留存的全谱原文。
         {
-            let laneAccText = rawText || getFullChartText(requestIdentity);
+            let laneAccText = rawText || getFullChartText(requestContentKey, requestMetaKey);
             if (!laneAccChart && cached?.laneAccChart) {
                 laneAccChart = cached.laneAccChart;
             }
@@ -1507,7 +1584,12 @@ export async function fetchBeatmapFile(reason) {
                     if (response.ok) {
                         laneAccText = await response.text();
                         if (isStaleRequest()) return;
-                        if (laneAccText) rememberFullChartText(laneAccText, requestIdentity);
+                        if (laneAccText && !acceptFetchedText(laneAccText, { markVerified: false })) {
+                            laneAccText = null;
+                        }
+                        if (laneAccText) {
+                            rememberFullChartText(laneAccText, requestContentKey, requestMetaKey);
+                        }
                     }
                 } catch {
                     // 端点暂时不可用：保持固定高度的 loading 占位，下一帧再试。

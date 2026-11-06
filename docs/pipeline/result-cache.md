@@ -57,22 +57,24 @@ fetchBeatmapFile() → 查缓存（analysis.js:492-502）
 `analysis.js:489`：
 
 ```js
-const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v13"; // 星数统一为 Sunny 原始 sr 后作废旧快照（版本沿革见下）
-const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v14"; // 请求作用域 contentKey（版本沿革见下）
+const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
 ```
 
 版本前缀 + 三段含义：
 
 | 段 | 来源 | 说明 |
 | --- | --- | --- |
-| `star-v13` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js:489） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed/XDC1 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Etterna junk 文件（技能值全零）不再显示 `0.00`——快照里 `ettResult` 的语义变化，旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）**；**v8：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1**；**v9：4K LN 后修正（lnCorrection——Companella 输出之后 +0.5 门控修正）+ 新估算器 Polaris——Mixed 在 4K LN 主导图上的 numeric/estDiff 语义变化，旧快照必须失效**；**v10：Mixed 进 Polaris 两层——(a) 4K 的 LN 半标签改由 Polaris 的 4K LN 曲线校准（建计划前替换 lnDifficulty）；(b) 7K 的整条路线改走 Polaris（L5 与 RC 早退都指向它，RC/LN 两半与 numeric 全部校准，胶囊由 Sunny 变 Polaris）；另 Companella RC 偏移由常数改为层级依赖（level 两段 + 斜坡）——Mixed 在 4K/7K 上的 estDiff 与 numeric 语义都变了，旧快照会显示未校准的标签与旧偏移，必须失效**；**v11：Companella 后修正收敛为低段Only——偏移只在 level < 2.5 施加 +0.19（斜坡与高段 +0.804 移除，实机测试否决）、4K LN 后修正（lnCorrection）整体移除——4K Companella 路由谱面的 numeric/estDiff 会比旧快照偏低，必须失效**；**v12：4K 算法侧全部回退、Polaris 收敛为 7K 专用——Companella 偏移整体移除（低段 +0.19 也撤销，实机复测仍见高段受影响）、Polaris 的 4K LN 曲线删除（4K 选 Polaris 回退 Sunny、Mixed 的 4K LN 半回到 Sunny 表原值）——4K 的 numeric/estDiff 回到无修正基线，必须失效**；**v13：修复 `sunnyCore.computeXbar` 的 `crossMatrix`（重构时误用另一套矩阵，Sunny/Mixed 星数与 estDiff 漂移）——所有以 Sunny 为基线的结果语义恢复，旧快照必须失效** |
+| `star-v14` | 常量 `CACHE_KEY_STAR_UNIFIED_VERSION`（analysis.js） | 缓存语义版本。v3 前：星数统一为 Sunny 原始 sr（Azusa/Roxy/Mixed/XDC1 的 star 被归一化，见 difficulty-estimation.md §显示星数）后旧快照失效；**v4（2.1.0 修复）：转换器难度别名修复（Etterna 桥 `Difficulty_*` 前缀此前匹配失败 → 恒取 .sm 首块）使同 identity 的旧快照（错误首块结果）必须作废**；v5：Mixed 低难 RC 段 Azusa⊕Companella 融合 + Azusa LN 门控；**v6：Roxy 的 `graph` 时间轴还原为原始谱面时间（此前是被 `canonicalizeOsuTiming` 平移过的分析文本时间轴，见 roxy_algorithm.md），旧快照的 `times` 会让图表 x 轴窗口与进度线整体错位**；**v7：Etterna junk 文件（技能值全零）不再显示 `0.00`——快照里 `ettResult` 的语义变化，旧快照没有 `junkFile` 字段，命中后会静默退回 `0.00`（见 [breakings/2026-09-20](../breakings/2026-09-20-ett-ux-and-companella-capsule.md)）**；**v8：Roxy meta 头对退化修正项 `corr_lowCj` 改用「特征关闭状态取值」截断（`|z| <= |mean/scale|`）——该系数是在特征恒为常数处拟合的（beta/scale = -134），遇到正常触发值即外推出极端离群项，单张图实测被压低 2.49 分，见 roxy_algorithm.md §11.1**；**v9：4K LN 后修正（lnCorrection——Companella 输出之后 +0.5 门控修正）+ 新估算器 Polaris——Mixed 在 4K LN 主导图上的 numeric/estDiff 语义变化，旧快照必须失效**；**v10：Mixed 进 Polaris 两层——(a) 4K 的 LN 半标签改由 Polaris 的 4K LN 曲线校准（建计划前替换 lnDifficulty）；(b) 7K 的整条路线改走 Polaris（L5 与 RC 早退都指向它，RC/LN 两半与 numeric 全部校准，胶囊由 Sunny 变 Polaris）；另 Companella RC 偏移由常数改为层级依赖（level 两段 + 斜坡）——Mixed 在 4K/7K 上的 estDiff 与 numeric 语义都变了，旧快照会显示未校准的标签与旧偏移，必须失效**；**v11：Companella 后修正收敛为低段Only——偏移只在 level < 2.5 施加 +0.19（斜坡与高段 +0.804 移除，实机测试否决）、4K LN 后修正（lnCorrection）整体移除——4K Companella 路由谱面的 numeric/estDiff 会比旧快照偏低，必须失效**；**v12：4K 算法侧全部回退、Polaris 收敛为 7K 专用——Companella 偏移整体移除（低段 +0.19 也撤销，实机复测仍见高段受影响）、Polaris 的 4K LN 曲线删除（4K 选 Polaris 回退 Sunny、Mixed 的 4K LN 半回到 Sunny 表原值）——4K 的 numeric/estDiff 回到无修正基线，必须失效**；**v13：修复 `sunnyCore.computeXbar` 的 `crossMatrix`（重构时误用另一套矩阵，Sunny/Mixed 星数与 estDiff 漂移）——所有以 Sunny 为基线的结果语义恢复，旧快照必须失效**；**v14：缓存键从可变 identity 改为请求作用域的 contentKey（hash > 目录限定 path > id > meta），快照新增 contentKey/metaKey 并在命中时校验——修复“请求期间切图时端点返回另一张图，整份快照被写到当前图键下”的错误结果，旧键必须失效** |
 | `estimatorAlgorithm` | `state.estimatorAlgorithm`（appContext.js:179） | 用户选择的算法。注意不是实际算法——Azusa 回退 Sunny 时 key 仍含 "Azusa"，快照内用 `actualEstimatorAlgorithm` 记录实况（§10） |
-| `lastBeatmapIdentity` | `state.lastBeatmapIdentity` | 谱面身份，由 socketHandlers.js 构建（见下）。**含 beatmap 的 md5 hash → 谱面文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换** |
+| `lastBeatmapIdentity` → `requestContentKey` | `state.lastBeatmapIdentityInfo.contentKey`（analysis.js 请求开始时快照） | 请求作用域的内容键：`hash:${md5}` > `path:${folder/filename}` > `id:${id}` > `meta:${artist::title::version::mapper}`。**含 md5 时文件被替换（内容变化）后 hash 变、键变，天然免疫文件替换**；缺 hash 时用目录限定路径，避免同名 `.osu` 跨目录碰撞。用请求开始时快照而不是可变的 `state.lastBeatmapIdentity`，防止请求期间切图把另一张图的 body 写进当前键 |
 | `modSignature` | `state.modSignature` | mod 签名，modData.js 构建（见下） |
 
-**identity 构成**（`socketHandlers.js:252-266`）：按可用性拼接 `id:${beatmapId}`（:253-255）、`hash:${beatmapHash}`（:256-258）、`path:${beatmapPath}`（:259-261），三者皆无时回退 `meta:${beatmapTitleKey}`（:263-266，见 §8），最终 `identityParts.join("|")`（:268）。空 identity 直接 return 不触发分析（:269）。
+**identity 构成**（`js/app/core/beatmapIdentity.js` + `socketHandlers.js applyBeatmapState`）：`createBeatmapIdentityFrame()` 把 id/hash/path/meta 分开保存，再拼展示用 `identity`（`id:${id}` / `hash:${md5}` / `path:${folder/filename}`，三者皆无时 `meta:${artist::title::version::mapper}`）。`contentKey` 只用于缓存键/原文 LRU：hash > 目录限定 path > id > meta。弱帧（缺 hash/path）由 `mergeBeatmapIdentityFrames()` 用上一帧补齐；同 id 但 hash 或元数据冲突时判为换图（导入/替换同 id 文件的场景）。空 identity 直接 return 不触发分析。
 
-**modSignature 构成**（`modData.js:234-239`）：
+**body 身份校验（v14）**：`/files/beatmap/file` 供奉的是请求那一刻的当前谱面，与 WS 帧不是原子快照。`analysis.js fetchBeatmapFile` 在请求开始时快照 frame，fetch 回来后用 `beatmapTextMatchesFrame()` 读取 `.osu [Metadata]` 的 Artist/Title/Version/Creator/BeatmapID/BeatmapSetID（Artist/Title 同时接受 Unicode 变体），与请求 frame 比对。不一致就丢弃本次 body：不 remember 原文、不渲染、不写缓存，等新图的帧触发下一次分析。这是“整张卡片显示另一张图”的主修复点。
+
+**modSignature 构成**（`modData.js`）：
 
 ```js
 const modSignature = [
@@ -87,17 +89,20 @@ const modSignature = [
 
 ## 6. 命中判定：覆盖检查
 
-查缓存的前提（`analysis.js:492`）：`state.enableResultCache && state.lastBeatmapIdentity`。随后 `resultCache.get(cacheKey)`（`analysis.js:493`），取到快照后做**覆盖检查**（`analysis.js:494-499`）：
+查缓存的前提（`analysis.js`）：`state.enableResultCache && requestContentKey`。随后 `resultCache.get(cacheKey)`，取到快照后先做**内容身份校验**，再做**覆盖检查**：
 
 ```js
-snapshot.computed.graph === needComputed.graph
+snapshot.contentKey === requestContentKey
+&& (snapshot.contentVerified === true || requestContentKey.startsWith("hash:"))
+&& (!requestMetaKey || !snapshot.metaKey || snapshot.metaKey === requestMetaKey)
+&& snapshot.computed.graph === needComputed.graph
 && snapshot.computed.pattern === needComputed.pattern
 && snapshot.computed.ett === needComputed.ett
 && snapshot.computed.interlude === needComputed.interlude
 && snapshot.computed.pp === needComputed.pp
 ```
 
-**五项**全匹配才命中，任一不匹配视为 miss 走完整重算。
+**七项**全匹配才命中，任一不匹配视为 miss 走完整重算。前三项是 v14 新增：即使缓存键碰撞或快照来自旧语义，身份/内容不符也拒绝复用。
 
 - `needComputed` 是**本次分析需要哪些计算产物**的布尔集（`analysis.js:452-474`）：pattern（键型）、ett（Etterna MSD）、graph（难度图）、interlude（Interlude 星数）、pp（ReworkPP 谱面侧指标，`contentBarShows("ReworkPP")`，`analysis.js:473`）。各项由当前显示需求与算法需求推导（如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，`analysis.js:468`；Companella/Mixed 需要 ett 与 interlude，`analysis.js:459`、:469-472）。
 - `snapshot.computed` 在写入时保存：`analysis.js:1121` `computed: needComputed`。
@@ -106,10 +111,11 @@ snapshot.computed.graph === needComputed.graph
 
 ## 7. 写门
 
-`analysis.js:743-746`，全部条件同时满足才 `resultCache.put`（`analysis.js:751`）：
+`analysis.js`，全部条件同时满足才 `resultCache.put`：
 
 ```js
-if (!cached && state.enableResultCache && state.lastBeatmapIdentity
+if (!cached && state.enableResultCache && requestContentKey
+    && (contentVerified || requestContentKey.startsWith("hash:"))
     && errors.length === 0
     && rework && !isStaleRequest()
     && genAtStart === resultCacheGeneration()) {
@@ -119,13 +125,14 @@ if (!cached && state.enableResultCache && state.lastBeatmapIdentity
 | --- | --- |
 | `!cached` | 必须是 miss（命中的快照本来就在缓存里，无需再写） |
 | `state.enableResultCache` | 开关开启 |
-| `state.lastBeatmapIdentity` | 存在谱面身份（否则连键都不完整） |
-| `errors.length === 0` | 分析全程无错误（`errors` 数组定义于 `analysis.js:399`） |
-| `rework` | 估算结果真实存在（`rework` 对象在缓存分支由快照恢复 `analysis.js:727`，否则由估算器产出） |
-| `!isStaleRequest()` | 请求未过期（`analysis.js:392`：`requestSeq !== state.analysisRequestSeq` 即过期——换歌/新分析已覆盖本次请求） |
-| `genAtStart === resultCacheGeneration()` | **代数守卫**：`genAtStart` 捕获于分析开始（`analysis.js:400`），若期间 settings.js 调了 `clearResultCache()`（代数 +1）则拒绝写回——防止 clear 之后的旧分析结果污染新缓存 |
+| `requestContentKey` | 请求开始时快照的内容键存在（否则连键都不完整） |
+| `contentVerified \|\| contentKey.startsWith("hash:")` | body 已通过元数据比对，或键本身是 md5（内容自证）。path/id 键必须在本次请求里真的校验过，避免把未验证的 body 写进缓存 |
+| `errors.length === 0` | 分析全程无错误（`errors` 数组定义于请求开头） |
+| `rework` | 估算结果真实存在 |
+| `!isStaleRequest()` | 请求未过期：`requestSeq` 或 `analysisEpoch` 任一变化即过期——**换图/换 mod 会立即让在途请求失效，不必等下一次 fetch 开始** |
+| `genAtStart === resultCacheGeneration()` | **代数守卫**：期间 settings.js 调了 `clearResultCache()` 则拒绝写回 |
 
-写入内容（`analysis.js:1096-1122`）：`rework`（star/estDiff/numericDifficulty/numericDifficultyHint/graph/lnRatio/columnCount/lnStar/typePercentageData）、`patternReport`、`mergedClusters`、`ettResult`、`interludeStar`、`isVibroMap`、`sixKConst`、`actualEstimatorAlgorithm`（§10）、`parsedInfo`、`ppMetrics`（谱面侧 ReworkPP 指标 `{star, variety, accScalar, totalNotes, spikiness, switches}`，JSON-safe 纯数值对象，无需 jsonSafe）、`computed: needComputed`。
+写入内容：`contentKey`/`metaKey`/`contentVerified`（v14 新增的身份校验字段）、`rework`（star/estDiff/numericDifficulty/numericDifficultyHint/graph/lnRatio/columnCount/lnStar/typePercentageData）、`patternReport`、`mergedClusters`、`ettResult`、`interludeStar`、`isVibroMap`、`sixKConst`、`actualEstimatorAlgorithm`、`parsedInfo`、`ppMetrics`、`laneAccText`、`computed: needComputed`。
 
 **jsonSafe 包装**（`analysis.js:1092-1095`）：clustering.js 的 cluster 对象带 `format()`/`Importance` 方法，`structuredClone` 无法拷贝（违反 resultCache 的 JSON-safe 契约），故 `mergedClusters` 等经 `jsonSafe(value) = value == null ? value : JSON.parse(JSON.stringify(value))`（`analysis.js:1095`）只存渲染所需普通字段。
 
@@ -142,9 +149,9 @@ if (identityParts.length === 0 && hasMetadataIdentity) {
 
 处理链：
 
-1. `analysis.js:490 isMetaDegraded = String(state.lastBeatmapIdentity || "").startsWith("meta:")`——在 fetchBeatmapFile 开头判定。
-2. 查询侧：`analysis.js:492` 只要 identity 存在就会尝试查缓存（`meta:` 键也可能命中——但如果从未写入过，实际永远 miss）。
-3. 写入侧：`analysis.js:1122` `{ skip: isMetaDegraded }` → `put({skip:true})`（§3），**meta 降级快照永不进入缓存**。
+1. `analysis.js` 开头 `isMetaDegraded = requestContentKey.startsWith("meta:")`——由请求作用域的 contentKey 判定。
+2. 查询侧：只要 contentKey 存在就会尝试查缓存（`meta:` 键也可能命中——但如果从未写入过，实际永远 miss）。
+3. 写入侧：`resultCache.put(..., { skip: isMetaDegraded })` → `put({skip:true})`（§3），**meta 降级快照永不进入缓存**。
 
 原因：meta 键只含标题，**碰撞风险**（同标题不同谱面共用一键）；且 md5 缺失意味着无法检测文件替换。因此 meta 身份下的分析结果只读不写，缓存对该类谱面实际上不生效。
 
@@ -224,4 +231,4 @@ settings.js 的命令监听回调在**任何计算相关设置变化**时调 `cl
 - 不调用 `resultCache.put`（H9），不改变 `generation`，不清空缓存；
 - 退出选区后的全谱跑批仍按原缓存键命中，所以「拖一下再退出」能秒回整图口径。
 
-原因：缓存键是 `star-v13|算法|谱面身份|modSignature`，不含时间区间；写进去会让下一次整图分析命中半张谱面的快照。完整规格见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)。
+原因：缓存键是 `star-v14|算法|contentKey|modSignature`，不含时间区间；写进去会让下一次整图分析命中半张谱面的快照。完整规格见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)。

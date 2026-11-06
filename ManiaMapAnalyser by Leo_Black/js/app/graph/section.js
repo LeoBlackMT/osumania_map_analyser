@@ -34,6 +34,8 @@ let mode = "idle"; // "idle" | "armed"
 let selection = null; // { u0, u1, startMs, endMs, rateAtSelection }
 let drag = null; // { pointerId, anchorU, moved, prevSelection, view, axis }
 // identity → 全谱原文（LRU，最多 4 张）：换图后再切回来时结果缓存命中、拿不到原文，仍要能切片。
+// 键 = `contentKey`（hash > folder-qualified path > id > meta），值附带 `metaKey` 供读取时校验：
+// 即使某条记录被错误写入，另一张图的请求也会因 metaKey 不符而拒绝，不会把旧图原文当成新图。
 const fullChartTexts = new Map();
 const MAX_STORED_TEXTS = 4;
 let lastCommitAt = 0;
@@ -276,36 +278,51 @@ export function initGraphSection() {
 }
 
 /**
- * 判断两次谱面身份是否指向同一张图（用于「切图才复位选区」）。
+ * 全谱原文（供区间跑批切片）；contentKey 不匹配或为空时返回 null。
  *
- * `state.lastBeatmapIdentity` 是 `id|hash|path` 组合串，tosu 的部分包可能缺 path
- * （或 files/directPath 交替），字符串会变但谱面没变。这里只比较稳定段 id/hash；
- * 两者都缺失（meta: 降级身份）时退回整串比较。
+ * `contentKey` 必须由调用方在**请求开始时**快照传入：分析途中切图时，
+ * `state.lastBeatmapIdentity` 已经指向下一张图，再用它读写会把上一张
+ * 图的原文写到下一张图的键下，后续所有重算都会拿到旧谱面。
+ * `metaKey` 非空时还要与记录内保存的值一致（防止 path/id 键碰撞）。
  */
-export function isSameBeatmapIdentity(previous, next) {
-    const partsOf = (value) => {
-        const parts = String(value || "").split("|");
-        return {
-            id: parts.find((part) => part.startsWith("id:")),
-            hash: parts.find((part) => part.startsWith("hash:")),
-        };
-    };
-    const a = partsOf(previous);
-    const b = partsOf(next);
-    // 在线 ID 是唯一权威：两边都有 ID 时只比它。原生/部分包偶尔只在
-    // 某些帧带上 checksum（hash）或 path，旧实现把「缺 hash」当成换图，
-    // 于是每个包都 clearSection + 重排重算，200ms 防抖永远不触发。
-    if (a.id && b.id) {
-        return a.id === b.id;
+export function getFullChartText(contentKey = "", metaKey = "") {
+    const key = String(contentKey || "");
+    if (!key) {
+        return null;
     }
-    if (a.hash && b.hash) {
-        return a.hash === b.hash;
+    const entry = fullChartTexts.get(key);
+    if (!entry || typeof entry.text !== "string" || entry.text.length === 0) {
+        return null;
     }
-    if (a.id || a.hash || b.id || b.hash) {
-        // 一边有稳定段、一边完全没有：无法证明是同一张图，交给整串比较。
-        return String(previous || "") === String(next || "");
+    const expectedMeta = String(metaKey || "").trim();
+    if (expectedMeta && entry.metaKey && entry.metaKey !== expectedMeta) {
+        return null;
     }
-    return String(previous || "") === String(next || "");
+    return entry.text;
+}
+
+/** 全谱跑批成功后写入原文（只在非区间跑批时调用；浏览器模式不占用内存）。 */
+export function rememberFullChartText(rawText, contentKey = "", metaKey = "") {
+    if (!isShellRuntime()) {
+        return;
+    }
+    const key = String(contentKey || "");
+    const text = typeof rawText === "string" ? rawText : "";
+    if (!key || !text) {
+        return;
+    }
+    // 按 contentKey 存最近 MAX_STORED_TEXTS 张谱面：换图后再切回来（命中结果缓存、拿不到原文）
+    // 仍能切片；只留一张会在「切图来回」后稳定触发 text-missing。
+    fullChartTexts.delete(key);
+    fullChartTexts.set(key, { text, metaKey: String(metaKey || "").trim() });
+    while (fullChartTexts.size > MAX_STORED_TEXTS) {
+        fullChartTexts.delete(fullChartTexts.keys().next().value);
+    }
+}
+
+/** 清空原文 LRU（结果缓存失效/清卡时同一路径调用）。 */
+export function clearFullChartTexts() {
+    fullChartTexts.clear();
 }
 
 /** 当前生效的切片区间（物理谱面毫秒）；未 armed / 无选区时返回 null。 */
@@ -319,41 +336,6 @@ export function getSectionRange() {
         return null;
     }
     return { startMs: Math.min(startMs, endMs), endMs: Math.max(startMs, endMs) };
-}
-
-/**
- * 全谱原文（供区间跑批切片）；identity 不匹配或为空时返回 null。
- *
- * `identity` 必须由调用方在**请求开始时**快照传入：分析途中切图时，
- * `state.lastBeatmapIdentity` 已经指向下一张图，再用它读写会把上一张
- * 图的原文写到下一张图的键下，后续所有重算都会拿到旧谱面。
- */
-export function getFullChartText(identity = state.lastBeatmapIdentity) {
-    const key = String(identity || "");
-    if (!key) {
-        return null;
-    }
-    const text = fullChartTexts.get(key);
-    return typeof text === "string" && text.length > 0 ? text : null;
-}
-
-/** 全谱跑批成功后写入原文（只在非区间跑批时调用；浏览器模式不占用内存）。 */
-export function rememberFullChartText(rawText, identity = state.lastBeatmapIdentity) {
-    if (!isShellRuntime()) {
-        return;
-    }
-    const key = String(identity || "");
-    const text = typeof rawText === "string" ? rawText : "";
-    if (!key || !text) {
-        return;
-    }
-    // 按 identity 存最近 MAX_STORED_TEXTS 张谱面：换图后再切回来（命中结果缓存、拿不到原文）
-    // 仍能切片；只留一张会在「切图来回」后稳定触发 text-missing。
-    fullChartTexts.delete(key);
-    fullChartTexts.set(key, text);
-    while (fullChartTexts.size > MAX_STORED_TEXTS) {
-        fullChartTexts.delete(fullChartTexts.keys().next().value);
-    }
 }
 
 /**

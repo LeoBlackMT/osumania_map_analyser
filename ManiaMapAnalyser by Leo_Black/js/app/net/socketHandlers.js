@@ -35,7 +35,13 @@ import { isOsuSuppressed } from "../sources/sourceManager.js";
 import { notifySourceEvent } from "../sources/sourceManager.js";
 import { noteOsuScanPayloadArrival } from "../sources/osuScanHint.js";
 import { noteFeedbackFrame, resetFeedbackStrip } from "../feedback/feedbackStrip.js";
-import { clearSection, isSameBeatmapIdentity } from "../graph/section.js";
+import { clearSection } from "../graph/section.js";
+import {
+    createBeatmapIdentityFrame,
+    isSameBeatmapIdentityFrames,
+    mergeBeatmapIdentityFrames,
+    parseBeatmapIdentityFrame,
+} from "../core/beatmapIdentity.js";
 
 
 function getModData(data) {
@@ -300,29 +306,29 @@ export function applyBeatmapState(data) {
 
         const beatmapId = normalizeNumberText(beatmap?.id);
         const beatmapHash = normalizeText(beatmap?.md5 || beatmap?.checksum).toLowerCase();
-        const beatmapPath = normalizePathText(data?.files?.beatmap || data?.directPath?.beatmapFile);
-        const beatmapTitleKey = [
-            normalizeText(beatmap?.artist),
-            normalizeText(beatmap?.title),
-            normalizeText(beatmap?.version),
-            normalizeText(beatmap?.mapper),
-        ].join("::").toLowerCase();
+        // `files.beatmap` 只是裸文件名；`directPath.beatmapFile` 才是 folder\filename。
+        // 没有 directPath 时用 folders.beatmap + files.beatmap 拼，最后才退回裸名——
+        // 否则不同目录下的同名 .osu 会拼出相同 `path:` 身份（缓存键碰撞）。
+        const beatmapFileName = normalizeText(data?.files?.beatmap);
+        const beatmapFolderName = normalizeText(data?.folders?.beatmap);
+        const directBeatmapFile = normalizeText(data?.directPath?.beatmapFile);
+        const beatmapPath = normalizePathText(
+            directBeatmapFile
+            || (beatmapFolderName && beatmapFileName
+                ? (beatmapFolderName === "." ? beatmapFileName : `${beatmapFolderName}/${beatmapFileName}`)
+                : beatmapFileName)
+        );
 
         // 曲（mapset）单位的标识：不含 version/难度名，也不含 md5/id/path，
         // 这样同一 mapset 内切换难度时 songKey 保持不变，可据此区分
         // "换歌" 与 "换难度"。来源单一优先 set > dir > meta——
         // 避免 api_v2 各状态字段集合波动导致 key 变化（误判为换歌）。
         const beatmapSetId = normalizeNumberText(beatmap?.set || beatmap?.setId || beatmap?.beatmapSetId);
-        const beatmapFolderPath = (() => {
-            const folder = normalizePathText(data?.directPath?.beatmapBackground
-                || data?.directPath?.audioFile
-                || data?.folders?.beatmap);
-            if (folder) return folder;
-            if (!beatmapPath) return "";
-            // 退而求其次：取谱面文件所在目录作为 mapset 归属。
-            const lastSlash = beatmapPath.lastIndexOf("/");
-            return lastSlash > 0 ? beatmapPath.slice(0, lastSlash) : beatmapPath;
-        })();
+        // 目录只从 directPath.beatmapFolder / folders.beatmap 取；背景图文件名不是目录。
+        const rawBeatmapFolderPath = normalizePathText(data?.directPath?.beatmapFolder || data?.folders?.beatmap);
+        const beatmapFolderPath = (rawBeatmapFolderPath && rawBeatmapFolderPath !== ".")
+            ? rawBeatmapFolderPath
+            : (beatmapPath.includes("/") ? beatmapPath.slice(0, beatmapPath.lastIndexOf("/")) : "");
         const songMetaKey = [
             normalizeText(beatmap?.artist),
             normalizeText(beatmap?.title),
@@ -330,33 +336,45 @@ export function applyBeatmapState(data) {
         ].join("::").toLowerCase();
         const nextSongKey = buildSongKey({ beatmapSetId, beatmapFolderPath, songMetaKey });
 
+        // 结构化身份：id/hash/path/meta 分开保存。分析请求用它做内容校验，
+        // 弱帧合并也靠它（只靠字符串会把“同 id 换文件”误判为同图）。
+        const nextFrame = createBeatmapIdentityFrame({
+            id: beatmapId,
+            hash: beatmapHash,
+            path: beatmapPath,
+            set: beatmapSetId,
+            meta: {
+                artist: normalizeText(beatmap?.artist),
+                artistUnicode: normalizeText(beatmap?.artistUnicode),
+                title: normalizeText(beatmap?.title),
+                titleUnicode: normalizeText(beatmap?.titleUnicode),
+                version: normalizeText(beatmap?.version),
+                mapper: normalizeText(beatmap?.mapper),
+            },
+        });
+        if (!nextFrame.identity) return;
+
         const previousBeatmapIdentity = state.lastBeatmapIdentity || "";
+        const previousFrame = state.lastBeatmapIdentityInfo
+            || parseBeatmapIdentityFrame(previousBeatmapIdentity);
         const previousModSignature = state.modSignature || "";
         const previousSongKey = state.lastSongKey || "";
 
-        const identityParts = [];
-        if (beatmapId) {
-            identityParts.push(`id:${beatmapId}`);
-        }
-        if (beatmapHash) {
-            identityParts.push(`hash:${beatmapHash}`);
-        }
-        if (beatmapPath) {
-            identityParts.push(`path:${beatmapPath}`);
-        }
-
-        const hasMetadataIdentity = beatmapTitleKey.replace(/[:]/g, "").length > 0;
-        if (identityParts.length === 0 && hasMetadataIdentity) {
-            identityParts.push(`meta:${beatmapTitleKey}`);
-        }
-
-        const nextBeatmapIdentity = identityParts.join("|");
-        if (!nextBeatmapIdentity) return;
+        // 同图弱帧（缺 hash/path/meta）用旧帧补齐；同 id 但 hash/元数据冲突
+        // 则视为换图（导入/替换同 id 谱面的场景）。
+        const sameMap = Boolean(previousBeatmapIdentity)
+            && Boolean(previousFrame)
+            && isSameBeatmapIdentityFrames(previousFrame, nextFrame);
+        const mergedFrame = sameMap
+            ? mergeBeatmapIdentityFrames(previousFrame, nextFrame)
+            : nextFrame;
+        const nextBeatmapIdentity = mergedFrame.identity;
+        const identityChanged = nextBeatmapIdentity !== previousBeatmapIdentity;
 
         // 反馈条只认最近一次解析出的谱面身份：结算帧通常不带 beatmap，必须留档。
         // 但新谱面没有 bid（本地/未提交谱面）时必须清掉上一张图的缓存，否则
         // feedback gate 会拿旧 bid 把本地谱面当成可反馈。
-        const identityChangedForFeedback = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
+        const identityChangedForFeedback = identityChanged;
         if (beatmapId) {
             state.currentBeatmapId = Number(beatmapId);
         } else if (identityChangedForFeedback) {
@@ -382,14 +400,15 @@ export function applyBeatmapState(data) {
             ? modData.modSignature
             : previousModSignature;
 
-        // 只比稳定段（id 优先，其次 hash）：原生/部分包会在个别帧缺
-        // `checksum`/path。旧实现把这种「同一张图的弱帧」当成新图，每个包都
-        // 清选区、重置 LaneAcc 并重排 200ms 重算，防抖永远不触发（表现：
-        // 切图不重算、Graph 双击闪一下退出）。
-        const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, nextBeatmapIdentity);
+        // 身份比较：id 相同但 hash/songMeta 冲突 ⇒ 换图（导入/替换同 id 文件）；
+        // 弱帧（缺 hash/path）由 mergedFrame 补齐，不会每个包都判成换图。
         const hasStateMismatch = identityChanged
             || nextModSignature !== previousModSignature;
         if (!hasStateMismatch) return;
+        // 换图/换 mod 立即作废在途分析：analysisRequestSeq 只在新 fetch 开始时自增，
+        // 而换图后要等 200ms 防抖才发新请求；这段窗口里的旧请求会抓到新图 body
+        // 并按旧 identity 渲染/写缓存。epoch 让所有旧请求在下一个 await 后立刻退出。
+        state.analysisEpoch = (state.analysisEpoch || 0) + 1;
         // Step 9f：**带谱面身份、且真的改动了卡片**的载荷 ⇒ 壳相位提示（若有）撤掉。
         // 判据刻意收窄（两道门）：① 无 `beatmap` 的空帧、身份没变的重复帧都不是"真载荷"
         // ——Step 9e 把钩子挂在每条 v2 帧上（含空帧），提示因此被自己的清理规则打掉、且同一
@@ -444,29 +463,29 @@ export function applyBeatmapState(data) {
             }
         }
 
-        // 同一张图的弱帧（缺 hash/path）不覆盖更完整的旧身份：缓存键、
-        // 原文 LRU 与反馈上下文都按这个字符串索引，来回切换会让它们全部失效。
-        const adoptedIdentity = (!previousBeatmapIdentity || identityChanged)
-            ? nextBeatmapIdentity
-            : previousBeatmapIdentity;
-        state.lastBeatmapIdentity = adoptedIdentity;
+        // 同图弱帧（缺 hash/path）已由 mergedFrame 补齐；不同图使用 nextFrame。
+        // 缓存键、原文 LRU 与反馈上下文都按这个字符串索引。
+        state.lastBeatmapIdentity = nextBeatmapIdentity;
+        state.lastBeatmapIdentityInfo = mergedFrame;
         // 换图/换 mod：旧分析结果不再对应当前显示值，反馈条立即作废。
         state.feedbackContext = null;
         resetFeedbackStrip();
         // 空 key（partial 包）不污染历史，避免后续完整包比较被污染。
         if (nextSongKey) state.lastSongKey = nextSongKey;
-        state.lastBeatmapIdentitySource = identityParts.length > 1
+        const identityPartCount = [mergedFrame.id, mergedFrame.hash, mergedFrame.path]
+            .filter(Boolean).length;
+        state.lastBeatmapIdentitySource = identityPartCount > 1
             ? "composite"
-            : (identityParts[0]?.split(":")[0] || "");
+            : mergedFrame.id ? "id" : mergedFrame.hash ? "hash" : mergedFrame.path ? "path" : "meta";
         // 页面自身的 tosu 数据面收到了可用载荷（壳离线门控据此放行，见 analysis.js）。
         state.tosuDataSeen = true;
 
         // 仅在谱面本身（非单纯改 mod）发生变化时，重新取封面主色刷新主题。
         // 取色异步进行、失败自动退默认，绝不阻塞分析流程。
         if (state.enableCoverArt && identityChanged) {
-            applyCoverThemeForBeatmap(adoptedIdentity).catch(() => {});
+            applyCoverThemeForBeatmap(nextBeatmapIdentity).catch(() => {});
         }
-        const key = `${adoptedIdentity}|${nextModSignature}`;
+        const key = `${nextBeatmapIdentity}|${nextModSignature}`;
         resetPauseRuntime(true);
         state.lastBeatmapKey = key;
 

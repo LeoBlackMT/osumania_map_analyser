@@ -100,7 +100,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - **Polaris 排除**：star 本就是 Sunny sr（4/7K 生效时与 Sunny 选择逐位一致；非 4/7K 与 cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`runAnalysisPipeline.js:204`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`runAnalysisPipeline.js:213` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
-- 缓存快照存储的就是归一化后的 `rework.star`（`analysis.js:1096`），命中恢复一致；缓存键带 `star-v13` 版本前缀使旧快照失效（沿革见 [result-cache.md](../pipeline/result-cache.md) §5）。
+- 缓存快照存储的就是归一化后的 `rework.star`，命中恢复一致；缓存键带 `star-v14` 版本前缀使旧快照失效（沿革见 [result-cache.md](../pipeline/result-cache.md) §5）。
 
 ## 4. Worker 回退（主线程同步执行）
 

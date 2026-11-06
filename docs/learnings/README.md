@@ -15,6 +15,7 @@
 | 文档或路径 | 目标 | 说明 |
 | --- | --- | --- |
 | [difficulty-estimation.md](difficulty-estimation.md) | 人类/AI | 难度估计算法调优知识与教训（Roxy/Azusa/Mixed 实验史、量化/序数校准/路由规则的经验与陷阱） |
+| [beatmap-identity-cache.md](beatmap-identity-cache.md) | 人类/AI | 谱面卡片显示错图的排查与修复模式（请求身份与响应体不一致、同 id 换 hash、弱帧合并、缓存与原文 LRU 内容校验） |
 
 [返回 docs 索引](../README.md)
 
@@ -35,5 +36,6 @@ Use the links to jump to the corresponding document.
 | Document or Path | Target | Description |
 | --- | --- | --- |
 | [difficulty-estimation.md](difficulty-estimation.md) | Human/AI | Difficulty estimation tuning knowledge & lessons (Roxy/Azusa/Mixed experiment history, quantization/ordinal-calibration/routing-rule experiences and pitfalls) |
+| [beatmap-identity-cache.md](beatmap-identity-cache.md) | Human/AI | Diagnosing and fixing "the card shows the wrong map" (request identity vs response body, same id/different hash, weak-frame merge, result/text cache content validation) |
 
 [Back to docs index](../README.md)

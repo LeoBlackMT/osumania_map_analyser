@@ -28,8 +28,9 @@ scheduler.js:9 scheduleRecompute —— 200ms 防抖（config.js:74 socketRecalc
        ▼
 main.js:25 setRecomputeHandler(fetchBeatmapFile) → analysis.js:377 fetchBeatmapFile(reason)
        │
-       ├─ [1] 请求序号：analysis.js:378-392 requestSeq / isStaleRequest
-       │        （appContext.js:241 analysisRequestSeq 自增，过期请求一律 return）
+       ├─ [1] 请求作用域：analysis.js requestSeq / analysisEpoch / isStaleRequest
+       │        （appContext.js analysisRequestSeq / analysisEpoch；换图/换 mod 立即作废在途请求）
+       ├─ [1b] 内容校验：fetch 回来的 .osu [Metadata] 与请求 frame 比对，不一致丢弃 body
        ├─ [2] 缓存查找：analysis.js:492-500 —— 命中走快照（:524-527/:726-744），详见 result-cache.md
        ├─ [3] miss → fetch .osu：analysis.js:541 fetch(getEndpoint())（config.js:2 endpoint）
        ├─ [4] 全链路 pipeline：analysis.js:567-614 runAnalysisPipeline（pipeline/runAnalysisPipeline.js）
@@ -74,25 +75,20 @@ main.js:25 setRecomputeHandler(fetchBeatmapFile) → analysis.js:377 fetchBeatma
 
 ### 4.1 beatmapIdentity：id:/hash:/path: 组合 + meta: 降级
 
-`socketHandlers.js:252-266` 按可用性拼接三段（每段缺失则跳过）：
+`socketHandlers.js applyBeatmapState` 调用 `js/app/core/beatmapIdentity.js` 的 `createBeatmapIdentityFrame()` 构造结构化身份：
 
 ```js
-const identityParts = [];
-if (beatmapId)   identityParts.push(`id:${beatmapId}`);          // :253-255
-if (beatmapHash) identityParts.push(`hash:${beatmapHash}`);      // :256-258
-if (beatmapPath) identityParts.push(`path:${beatmapPath}`);      // :259-261
-// 三段全缺才降级 meta:
-if (identityParts.length === 0 && hasMetadataIdentity) {
-    identityParts.push(`meta:${beatmapTitleKey}`);               // :263-266
-}
-const nextBeatmapIdentity = identityParts.join("|");             // :268
-if (!nextBeatmapIdentity) return;                                // :269 空身份直接放弃
+beatmapId / beatmapHash / beatmapPath / beatmapMeta
+  → frame { identity, contentKey, id, hash, path, set, metaKey, meta }
+identity   = id:… | hash:… | path:…（全缺时 meta:artist::title::version::mapper）
+contentKey = hash:… > path:${folder/filename} > id:… > meta:…   // 缓存键/原文 LRU 用
 ```
 
-- **md5 免疫文件替换**：`hash:` 段来自 `beatmap?.md5 || beatmap?.checksum`（:217），谱面文件内容变化 → md5 变 → identity 变 → 缓存键变，天然免疫文件替换（这是缓存键安全性的基石，见 result-cache.md §5）。
-- **meta: 降级**：仅当 tosu 同时缺少 id/hash/path 时发生（:264）。此时身份只有标题元数据（artist::title::version::mapper 小写拼接，:219-224）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js:490 isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
-- 归一化：id 取正整数（`normalizeNumberText` :208-214，`Math.trunc` 去小数）；path 反斜杠转正斜杠、折叠重复斜杠、小写（:202-206）；hash 小写（:217）。
-- `socketHandlers.js:308-310 lastBeatmapIdentitySource`：记录身份是 composite（≥2 段）还是单段来源，供展示层区分。
+- **md5 免疫文件替换**：`hash:` 段来自 `beatmap?.md5 || beatmap?.checksum`，谱面文件内容变化 → md5 变 → contentKey 变 → 缓存键变，天然免疫文件替换（这是缓存键安全性的基石，见 result-cache.md §5）。
+- **弱帧合并**：部分包可能缺 hash/path；`mergeBeatmapIdentityFrames()` 用上一帧补齐缺失段，避免每个包都判成换图（原实现的“id-only 比较”会漏掉同 id 换文件，这里已改为 hash/元数据冲突即换图）。
+- **path 必须目录限定**：优先 `directPath.beatmapFile`，没有则 `folders.beatmap + files.beatmap`，最后才用裸文件名；否则不同目录的同名 `.osu` 会拼出相同 `path:` 身份（缓存键碰撞）。
+- **meta: 降级**：仅当 id/hash/path 全缺时发生。此时身份只有标题元数据（artist::title::version::mapper 小写拼接）——**更弱**：同标题不同谱面会共用同一键（碰撞风险），且无 md5 无法检测文件替换。对应处理：`analysis.js` 的 `isMetaDegraded` 判定，缓存侧永不写入（result-cache.md §8）。
+- `state.lastBeatmapIdentityInfo` 保存这份结构化 frame，`analysis.js` 在请求开始时快照它（见 §6）；`lastBeatmapIdentitySource` 记录 composite/id/hash/path/meta。
 
 ### 4.2 songKey：区分"换歌" vs "换难度"
 
@@ -107,7 +103,7 @@ const nextSongKey = songKeyParts.join("|");                          // changeKi
 ```
 
 - **set:** 用 mapset id（:230 `beatmap?.set || beatmap?.setId || beatmap?.beatmapSetId`）。
-- **dir:** 用谱面目录（:231-240 优先 directPath 的背景/音频文件路径，退而求其次取谱面文件所在目录）。
+- **dir:** 用谱面目录（`directPath.beatmapFolder` / `folders.beatmap`；退而取谱面文件所在目录。**不要用 `directPath.beatmapBackground`——它是 `folder\background.jpg`，不是目录**）。
 - **meta:** 是 songKey 的最后回退，只含 artist::title::mapper（:241-245，**不含 version**，所以同一歌的不同难度共享一个 songKey）。
 - 关键性质（:226-229 注释）：songKey 不含 version/md5/id/path——**同一 mapset 内切难度 songKey 不变**，可据此区分"换歌"（mapset 变了）与"换难度"（mapset 没变）。
 
@@ -125,7 +121,7 @@ if (identityChanged) {
 state.pendingChangeKind = changeKind;   // :298
 ```
 
-判定逻辑：
+判定逻辑（`identityChanged` 来自结构化 frame 比较：id 必须相同，hash 或可比元数据冲突即换图；弱帧已由 `mergeBeatmapIdentityFrames` 补齐）：
 
 - identity 没变（谱面难度与 mod 都没变）→ 什么都不做，提前 return（:281 `hasStateMismatch` 检查，:279-281）。
 - identity 变了 + songKey 变了 → `song`（换歌，或首次加载：任一 songKey 为空即视为换歌）。
@@ -138,7 +134,7 @@ state.pendingChangeKind = changeKind;   // :298
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:273-277 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:290-295`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:64 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:176-177）。
-- **modSignature 不参与换歌判定**，只进缓存键：`analysis.js:489` 缓存键 = `star-v13|estimatorAlgorithm|beatmapIdentity|modSignature`（`star-v13` 是缓存语义版本前缀；构成见 modData.js:234-239，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：缓存键 = `star-v14|estimatorAlgorithm|requestContentKey|modSignature`（`star-v14` 是缓存语义版本前缀；构成见 modData.js，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -149,20 +145,23 @@ state.pendingChangeKind = changeKind;   // :298
 - 延迟结束后调 `recomputeHandler(reason)`（:16-20），即 `analysis.js:377 fetchBeatmapFile`（main.js:25 注册）。
 - 调用方：换歌/换难度/改 mod → `useLazyDelay=true`（socketHandlers.js:325）；改设置 → 同样走懒延迟（settings.js:883 `scheduleRecompute("settings changed", true)`）；启动首分析 → `false` 立即执行（main.js:79）。
 
-## 6. 请求序号：analysisRequestSeq / isStaleRequest
+## 6. 请求序号与卡片状态代数：analysisRequestSeq / analysisEpoch / isStaleRequest
 
-`analysis.js:378-392`：
+`analysis.js fetchBeatmapFile` 开头：
 
 ```js
 const requestSeq = (state.analysisRequestSeq || 0) + 1;
 state.analysisRequestSeq = requestSeq;
-const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
+const requestEpoch = state.analysisEpoch || 0;
+const isStaleRequest = () => requestSeq !== state.analysisRequestSeq
+    || requestEpoch !== (state.analysisEpoch || 0);
 ```
 
-- 每次 `fetchBeatmapFile` 开始时自增全局序号（appContext.js:241 `analysisRequestSeq`），闭包捕获本次的 `requestSeq`。
-- 之后任何时刻（每个 await 之后）调用 `isStaleRequest()` 比对：一旦期间又发起了新分析（序号被推进），本次请求即过期，**立即 return 放弃渲染**，防止过期请求的结果覆盖新结果。
-- 检查点遍布异步边界：fetch 响应后（:530、:546-553）、估算后（:751）、Interlude（:930）、Etterna（:1031）、Companella（:1046、:1031）、异常路径（:1347）、finally（:1397）。
-- worker 内部还有**同等的过期丢弃**：`manager.js` 用 `pendingRequests` Map（:15）+ 共享 `message` 监听按 id 匹配；新请求先 `rejectAllPending`（:56-61）取消旧在途请求，过期/已取消响应直接忽略，30s 超时保护（manager.js:101-106）。
+- `analysisRequestSeq`：每次 `fetchBeatmapFile` 开始时自增；一旦期间又发起新分析，旧请求即过期。
+- `analysisEpoch`：`applyBeatmapState` / `externalSource.handleSongFrame` 在**换图或换 mod**时立即自增。它补上了 `analysisRequestSeq` 的窗口：换图后要等 200ms 防抖才发新 fetch，旧请求在这段窗口里仍能拿到新图 body；epoch 让它在下一个 await 后立刻退出。
+- 检查点遍布异步边界：fetch 响应后、估算后、Interlude、Etterna、Companella、异常路径、finally。
+- **fetch body 校验**：请求开始时快照 `state.lastBeatmapIdentityInfo` 作为 `requestFrame`；fetch 回来的 `.osu` 用 `beatmapTextMatchesFrame()` 校验 `[Metadata]`，不一致直接丢弃（不渲染/不写缓存）。这是 v14 的主修复点。
+- worker 内部还有同等的过期丢弃：`manager.js` 用 `pendingRequests` Map + 共享 `message` 监听按 id 匹配；新请求先 `rejectAllPending` 取消旧在途请求，过期/已取消响应直接忽略，30s 超时保护。
 
 ## 7. fetchBeatmapFile 主流程
 
@@ -171,9 +170,9 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq;
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:452-474 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:468；Companella/Mixed 需要 ett 与 interlude，:459-467；`contentBarShows("ReworkPP")` 需要 pp，:473）。
-- `analysis.js:489 cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`（版本前缀 `star-v13` + 三段，modSignature 四段含 classic）。
-- `analysis.js:490 isMetaDegraded`：identity 以 `meta:` 开头。
-- `analysis.js:492-500`：`state.enableResultCache && state.lastBeatmapIdentity` 时查 `resultCache.get(cacheKey)`，取到后比对快照 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中（`cached = snapshot`），任一不等视为 miss 走完整重算。
+- `analysis.js cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`（版本前缀 `star-v14` + 三段，modSignature 四段含 classic）。`requestContentKey` 是请求开始时快照的 `hash > 目录限定 path > id > meta`，不是可变的 `state.lastBeatmapIdentity`。
+- `analysis.js isMetaDegraded`：contentKey 以 `meta:` 开头。
+- 查缓存：`state.enableResultCache && requestContentKey` 时查 `resultCache.get(cacheKey)`，取到后先校验快照 `contentKey`/`metaKey`，再比对 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中。
 
 ### 7.2 fetch .osu
 
@@ -308,14 +307,14 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 ## 12. 注意事项
 
-- **stale 请求不写缓存**：写门含 `!isStaleRequest()`（analysis.js:1090）与代数守卫 `genAtStart === resultCacheGeneration()`（:1091）双保险——前者防"过期分析结果覆盖新结果"（含缓存），后者防"clear 之后旧分析写回"（result-cache.md §7）。
-- **meta 降级 identity 不缓存**：`analysis.js:1122` `put(cacheKey, {...}, { skip: isMetaDegraded })`——meta: 身份只读不写，碰撞风险下宁可每张图重算（result-cache.md §8）。
-- **分析失败路径**：估算块 catch → `analysis.js:1355/:1362 resetReworkDisplay()`（定义 :283-362）——重置 actualEstimatorAlgorithm、数值/胶囊/图/meta 全清、mode tag 回 "Mix"、SV 标签隐藏、必要时显示 "Graph unavailable"；外层 catch（:1347-1362，fetch/解析失败）同样调用并在 overlay 显示 "Load failed"。
-- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退（analysis.js:602/608），Worker 构造失败（manager.js:21-44）与 30s 超时（manager.js:101-106）都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
+- **stale 请求不写缓存**：写门含 `!isStaleRequest()`（requestSeq 或 analysisEpoch 变化即过期）与代数守卫 `genAtStart === resultCacheGeneration()` 双保险——前者防"过期分析结果覆盖新结果"（含缓存），后者防"clear 之后旧分析写回"（result-cache.md §7）。
+- **meta 降级 contentKey 不缓存**：`put(cacheKey, {...}, { skip: isMetaDegraded })`——meta: 身份只读不写，碰撞风险下宁可每张图重算（result-cache.md §8）。
+- **分析失败路径**：估算块 catch → `resetReworkDisplay()` 重置 actualEstimatorAlgorithm、数值/胶囊/图/meta 全清、mode tag 回 "Mix"、SV 标签隐藏、必要时显示 "Graph unavailable"；外层 catch（fetch/解析失败）同样调用并在 overlay 显示 "Load failed"。
+- **worker 失败不阻塞主线程**：`runInWorker` 返回 null 即同步回退，Worker 构造失败与 30s 超时都不会让分析中断——代价是主线程计算可能卡顿，这是"可用性优先"的取舍。
 - **缓存键不含显示类设置**：`display6kLevel`、`forceSunnyWindow`、etterna 版本等不进键，正确性依赖 settings.js 失效列表——任何新计算影响设置漏加失效 = 静默过期结果（result-cache.md §9）。
-- **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导（analysis.js:447-451 注释），仅供覆盖检查；实际 shows*/need* 在 override 后重算（:707-720）——修改 needComputed 推导时注意保持两处一致。
-- **changeKind 只消费一次**：`analysis.js:423-428` 取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理，避免换歌动画重复播放。
-- **身份为空的包直接丢弃**：`socketHandlers.js:269` 空 identity return——tosu 在谱面信息未就绪时发的包不会触发分析（mod 变化也进不来，此时 mod 状态保留旧值）。
+- **needComputed 是保守值**：fetch 前用上一张图的 effectiveContentBar 推导，仅供覆盖检查；实际 shows*/need* 在 override 后重算——修改 needComputed 推导时注意保持两处一致。
+- **changeKind 只消费一次**：取用后即清空 `state.pendingChangeKind`——后续纯设置 recompute 拿到的都是 undefined，按 difficulty 轻量过渡处理，避免换歌动画重复播放。
+- **身份为空的包直接丢弃**：空 identity return——tosu 在谱面信息未就绪时发的包不会触发分析（mod 变化也进不来，此时 mod 状态保留旧值）。
 ## 多数据源（外部源）补充
 
 多数据源场景（Etterna、Malody V、Malody 4.3.7，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
@@ -336,8 +335,8 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 「特定时间点谱面分析」复用 `fetchBeatmapFile` 全流程，只在文本进管线前做一次切片（详见 [../features/graph-section-analysis.md](../features/graph-section-analysis.md)）：
 
 - **入口**：`fetchBeatmapFile` 顶部 `getSectionRange()` → `isSectionRun`；`js/app/graphSection/index.js` 在桌面壳内维护选区（双击/拖拽）。
-- **文本来源优先级**：区间跑批 → `getFullChartText()`（按 identity 存的最近 4 张全谱原文；命中结果缓存的那轮拿不到原文，所以不能只留一张）；未命中且为 osu 源时直接抓一次 `/files/beatmap/file` 再切片；外部源取不到则 `text-missing` 复位。
+- **文本来源优先级**：区间跑批 → `getFullChartText(contentKey, metaKey)`（按 contentKey 存的最近 4 张全谱原文；命中结果缓存的那轮拿不到原文，所以不能只留一张）；未命中且为 osu 源时直接抓一次 `/files/beatmap/file` 再切片，抓回的文本先过 `beatmapTextMatchesFrame` 内容校验；外部源取不到则 `text-missing` 复位。
 - **切片点**：`sliceOsuTextByTimeRange(rawText, startMs, endMs)`（`js/parser/osuTimeSlice.js`），之后与整图分析完全同路径（worker / 主线程兜底 / 渲染）。
 - **跳过的副作用**：缓存读（H2）、缓存写（H9）、遥测（H10）、`state.feedbackContext`（H10）、壳 result 帧（不消费 `pendingSourceRequestId`，H4）、图表重画（H8）；失败路径保留图表（H12 `resetReworkDisplay({ keepGraph: true })`）。
 - **图表被清空即复位**：`clearDiffGraph` / `showDiffGraphError` 经 `setGraphClearedHandler` 通知选区控制器——否则设置切走 Graph 显示后会留下「空白图 + 遮罩」的幽灵选区。
-- **不复位的情况**：仅改 mod（含 DT/HT/自定义速率）不复位选区——选区按物理时间保存，速率变化后重算即反映新速率；身份比较只看 `id:`/`hash:` 稳定段，避免缺 `path:` 的部分包误判换图。
+- **不复位的情况**：仅改 mod（含 DT/HT/自定义速率）不复位选区——选区按物理时间保存，速率变化后重算即反映新速率；身份比较由结构化 frame 负责（id 相同且 hash/元数据不冲突；弱帧合并），避免缺 `path:` 的部分包误判换图。
