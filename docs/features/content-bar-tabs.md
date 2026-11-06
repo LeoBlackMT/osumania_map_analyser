@@ -84,7 +84,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 
 ### 4.3 复位
 
-- 换歌/换难度：`socketHandlers` 与 `sources/externalSource.js` 检测 `isSameBeatmapIdentity` 为 false → `resetContentBarTabOverride()`；
+- 换歌/换难度：`socketHandlers` 与 `sources/externalSource.js` 通过 `beatmapIdentity.js` 的 `isSameBeatmapIdentityFrames` 判定身份变化 → `resetContentBarTabOverride()`；
 - `cvtFlag`（IN/HO，含 Malody Holds/Taps）变化：同上；
 - 任何 `applyContentBarSetting()`：清空覆盖；
 - Combined 开启：清空覆盖；

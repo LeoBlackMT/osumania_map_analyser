@@ -84,9 +84,10 @@
 
 ### 5.1 全谱原文缓存
 
-- `rememberFullChartText(rawText)`：**只在非区间跑批**成功后写入 `identity → text` 的 LRU（最多 4 张，`js/app/graph/section.js`）。浏览器模式早退，不占内存。
-- `getFullChartText()`：按当前 `state.lastBeatmapIdentity` 取；取不到返回 `null`。
-- 为什么按 identity 存多张：换图后再切回来时结果缓存命中、那一轮**拿不到原文**（`rawText=null`），只留一张会让选区稳定触发 `text-missing`。
+- `rememberFullChartText(rawText, contentKey, metaKey)`：**只在非区间跑批**成功后写入 `contentKey → { text, metaKey }` 的 LRU（最多 4 张，`js/app/graph/section.js`）。浏览器模式早退，不占内存；`meta:` 降级键不写入（标题键碰撞风险）。
+- `getFullChartText(contentKey, metaKey)`：按请求开始时快照的 contentKey 取；metaKey 不一致或取不到返回 `null`。contentKey 是 `hash > 目录限定 path > id > meta`，不是可变的 `state.lastBeatmapIdentity`。
+- 为什么按 contentKey 存多张：换图后再切回来时结果缓存命中、那一轮**拿不到原文**（`rawText=null`），只留一张会让选区稳定触发 `text-missing`。metaKey 校验防止错误的原文记录被另一张图复用。
+- `clearResultCache()` / 关闭结果缓存 / 清卡时同一路径调用 `clearFullChartTexts()`，原文 LRU 不再跨缓存清空存活。
 - 兜底：区间跑批未命中且当前是 osu 源时，直接抓一次 `/files/beatmap/file` 再切片并回填缓存；外部源没有可重抓端点，取不到时提示 `text-missing` 并复位。
 
 ### 5.2 拦截点（H1–H12）
@@ -98,8 +99,8 @@
 | H1 | 入口 | 快照选区 |
 | H2 | 缓存读取 | 区间不读（短路在 `state.enableResultCache` 之前） |
 | H3 | 图表加载态 | 区间**跳过** `setGraphLoading`（保留曲线与 `graphSeriesSource`）；曲线已为空时 `clearSection("graph-missing")` 后 return |
-| H4 | 文本获取 + `pendingSource*` | 区间用 `getFullChartText()`；**不消费** `pendingSourceText/RequestId/Active`；取不到 ⇒ `clearSection("text-missing")` 后 return |
-| H5 | 文本获取后 | 非区间才 `rememberFullChartText(rawText)` |
+| H4 | 文本获取 + `pendingSource*` | 区间用 `getFullChartText(contentKey, metaKey)`；**不消费** `pendingSourceText/RequestId/Active`；取不到 ⇒ `clearSection("text-missing")` 后 return |
+| H5 | 文本获取后 | 非区间才 `rememberFullChartText(rawText, contentKey, metaKey)`；取到的原文先过 `beatmapTextMatchesFrame` 内容校验 |
 | H6 | 进管线前 | `rawText = sliceOsuTextByTimeRange(...).text`（唯一输入变换） |
 | H7 | `needComputed.graph` | 区间为 `false`（不产图） |
 | H8 | 渲染段 | 区间不调用 `renderDiffGraph` / `clearDiffGraph` |
@@ -145,7 +146,7 @@
 | 图表被清空 | `graph.js clearDiffGraph` / `showDiffGraphError` → `setGraphClearedHandler` | `clearSection("graph-cleared", { recompute: false })`（否则会留下「空白图 + 遮罩」的幽灵选区） |
 | 新曲线渲染且身份/时间轴变化 | `graph/index.js renderDiffGraph` → `setGraphRenderedHandler` | `clearSection("graph-axis", { recompute: false })`（换图后旧 armed 态不能带进新坐标系，否则双击会被当成「再次双击退出」） |
 
-> 身份比较只看稳定段（`isSameBeatmapIdentity`）：两边都有 `id:` 时只比 ID；否则比 `hash:`；只有完全没有稳定段时才退回整串。tosu/原生部分包可能缺 `path:` 或 `hash:`，字符串变了但不是换图，不能复位选区。
+> 身份比较由 `js/app/core/beatmapIdentity.js` 的 `isSameBeatmapIdentityFrames` 负责：两边都有 `id:` 时 id 必须相同，hash 或可比元数据冲突即换图；弱帧（缺 hash/path）由 `mergeBeatmapIdentityFrames` 补齐，不会每个包都判成换图。只有完全没有稳定段时才退回 meta/整串比较。tosu/原生部分包可能缺 `path:` 或 `hash:`，字符串变了但不是换图，不能复位选区。
 > 仅改 mod（含 DT/HT/自定义速率）**不复位**：选区按物理时间保存，速率变化要保留选区并按新速率重算。
 
 ## 9. 已知限制

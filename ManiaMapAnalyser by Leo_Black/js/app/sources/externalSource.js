@@ -28,7 +28,11 @@ import { sendResult, sendDiag } from "./bridgeClient.js";
 import { notifySourceEvent, routeAllowsExternal } from "./sourceManager.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 import { setStatus, updateCardPlayVisibility } from "../ui/hud.js";
-import { clearSection, isSameBeatmapIdentity } from "../graph/section.js";
+import { clearSection } from "../graph/section.js";
+import {
+    isSameBeatmapIdentityFrames,
+    parseBeatmapIdentityFrame,
+} from "../core/beatmapIdentity.js";
 import { laneAccView } from "../ui/laneAcc/view.js";
 
 function looksLikeOsu(text) {
@@ -211,10 +215,20 @@ export function handleSongFrame(payload) {
     // （与基线一致；"none" 字符串会被估算器 parseFloat 成 NaN）。
     // 切图（身份变化）→ 复位选区；同一张图重复上报（身份不变）不复位。
     const previousBeatmapIdentity = state.lastBeatmapIdentity;
+    const previousFrame = state.lastBeatmapIdentityInfo
+        || parseBeatmapIdentityFrame(previousBeatmapIdentity);
     const previousCvtFlag = state.cvtFlag;
-    state.lastBeatmapIdentity = String(payload.identity || "");
-    const identityChanged = !isSameBeatmapIdentity(previousBeatmapIdentity, state.lastBeatmapIdentity);
+    const nextBeatmapIdentity = String(payload.identity || "");
+    const nextFrame = parseBeatmapIdentityFrame(nextBeatmapIdentity);
+    const identityChanged = previousBeatmapIdentity
+        ? !isSameBeatmapIdentityFrames(previousFrame, nextFrame)
+        : Boolean(nextBeatmapIdentity);
+    state.lastBeatmapIdentity = nextBeatmapIdentity;
+    state.lastBeatmapIdentityInfo = nextFrame;
     if (identityChanged) {
+        // 立即作废在途分析（与 socketHandlers 同一语义：旧请求不能再渲染/写缓存）。
+        state.analysisEpoch = (state.analysisEpoch || 0) + 1;
+        state.identityMismatchRetries = 0;
         clearSection("beatmap", { recompute: false });
         if (state.lastBeatmapIdentity) {
             laneAccView.reset();

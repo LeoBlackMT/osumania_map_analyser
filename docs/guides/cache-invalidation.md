@@ -24,10 +24,10 @@
 缓存键是版本前缀 + 三段（`analysis.js:489`）：
 
 ```js
-const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
 ```
 
-即 `star-v13|算法|谱面身份|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v9 起因：4K LN 后修正 + 新估算器 Polaris；v10 起因：4K LN 半标签校准接入 Mixed，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
+即 `star-v14|算法|请求作用域 contentKey|mod 签名`（`CACHE_KEY_STAR_UNIFIED_VERSION` 常量是缓存语义版本前缀，改星数口径/输出时间轴/转换语义时 bump 它以作废旧快照；v14 起因：缓存键改为 contentKey 并校验请求体身份，见 result-cache.md §5）。**不含** `display6kLevel`、`extendedEstimationRange`、`forceSunnyWindow`、etterna 版本、debug 标志等一切其余设置（详见 result-cache.md §5、§11 注意事项）。
 
 键设计的取舍：键保持最小 → 无关设置切换不会误伤命中；代价是正确性完全委托给失效列表 + 命中重派生。漏加失效 = 设置变了但键没变 → 静默命中旧快照：
 
@@ -223,15 +223,15 @@ const jsonSafe = (value) => (value == null ? value : JSON.parse(JSON.stringify(v
 }, { skip: isMetaDegraded });
 ```
 
-`isMetaDegraded` 在 `analysis.js:490` 判定（identity 以 `meta:` 开头）。meta 降级身份的快照**永不写入**：标题键碰撞风险、无 md5 无法检测文件替换（见 result-cache.md §8）。`skip:true` 时 `resultCache.put` 直接返回（`resultCache.js:35`），不写入、不占容量、不驱逐。**新写缓存代码必须带上这个 skip 参数**，漏了会让 meta 身份的快照污染 LRU。
+`isMetaDegraded` 在 `analysis.js` 判定（请求作用域 contentKey 以 `meta:` 开头）。meta 降级身份的快照**永不写入**：标题键碰撞风险、无 md5 无法检测文件替换（见 result-cache.md §8）。`skip:true` 时 `resultCache.put` 直接返回（`resultCache.js:35`），不写入、不占容量、不驱逐。**新写缓存代码必须带上这个 skip 参数**，漏了会让 meta 身份的快照污染 LRU。
 
 ### 10.5 缓存键构造（`analysis.js:489`）
 
 ```js
-const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${state.lastBeatmapIdentity}|${state.modSignature}`;
+const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
 ```
 
-版本前缀 + 三段：缓存语义版本（`star-v13`，沿革见 result-cache.md §5）| 用户选择的算法 | 谱面身份（含 md5） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js:229-238）。**写前确认三段都在**——写门已校验 `state.lastBeatmapIdentity` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
+版本前缀 + 三段：缓存语义版本（`star-v14`，沿革见 result-cache.md §5）| 用户选择的算法 | 请求作用域 contentKey（hash > 目录限定 path > id > meta） | mod 签名（`speedRate|odFlag|cvtFlag|classic` 四段，classic 段反映 Classic 感知星数语义，modData.js）。**写前确认三段都在**——写门已校验 `requestContentKey` 存在；直接用 fetchBeatmapFile 开头构造好的 `cacheKey` 变量，不要自己重造键（键不含任何其他设置，正确性依赖失效列表，见 §2）。
 
 ### 10.6 needComputed 推导与随快照保存（`analysis.js:1121`、:322-340、:348-355）
 

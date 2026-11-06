@@ -66,6 +66,7 @@
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | 模块编写约定（共享模块约束、导入规范、兼容性要求） |
 | [learnings/README.md](learnings/README.md) | AI | 知识与教训文档类别索引（难度估计算法调优经验、失败记录、方法论） |
 | [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | 人类/AI | 难度估计算法调优知识与教训（量化/序数校准/路由规则经验、历史探针结论、方法论） |
+| [learnings/beatmap-identity-cache.md](learnings/beatmap-identity-cache.md) | 人类/AI | 谱面卡片显示错图的排查与修复模式（请求身份与响应体不一致、同 id 换 hash、弱帧合并、缓存/原文 LRU 内容校验） |
 | [breakings/README.md](breakings/README.md) | 人类/AI | 重大破坏性更改说明类别索引（时间戳+内容命名，双语五要素） |
 | [breakings/2026-08-09-perf-analysis-pipeline.md](breakings/2026-08-09-perf-analysis-pipeline.md) | 人类/AI | 分析管线性能优化破坏性说明（worker 单次往返协议、`runAnalysisPipeline` 纯函数、共享模块纯度、缓存失效收窄与命中重派生、vibro 修复披露、perf 验收口径修订） |
 | [breakings/2026-08-16-preset-system-and-settings-schema.md](breakings/2026-08-16-preset-system-and-settings-schema.md) | 人类/AI | 预设系统与设置 schema 破坏性说明（新增 presets 模块/presets.html/内置预设、设置监听器数据化 `SETTING_HANDLERS`、settings.json 预设分组与按钮、`presetStorage` 单一权威存储、快照系统键剥离、写回幂等化） |
@@ -146,6 +147,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [guides/module-conventions.md](guides/module-conventions.md) | AI | Module writing conventions (shared module constraints, import rules, compatibility requirements) |
 | [learnings/README.md](learnings/README.md) | AI | Index of knowledge & lessons-learned documents (difficulty estimation tuning experience, failed attempts, methodology) |
 | [learnings/difficulty-estimation.md](learnings/difficulty-estimation.md) | Human/AI | Difficulty estimation tuning knowledge & lessons (quantization/ordinal-calibration/routing-rule experiences, historical probe conclusions, methodology) |
+| [learnings/beatmap-identity-cache.md](learnings/beatmap-identity-cache.md) | Human/AI | Diagnosing and fixing "the card shows the wrong map" (request identity vs response body, same id/different hash, weak-frame merge, result/text cache content validation) |
 | [breakings/README.md](breakings/README.md) | Human/AI | Index of major breaking-changes documents (timestamp+description naming, bilingual five elements) |
 | [breakings/2026-08-09-perf-analysis-pipeline.md](breakings/2026-08-09-perf-analysis-pipeline.md) | Human/AI | Analysis pipeline perf optimization breaking note (worker single-round-trip protocol, `runAnalysisPipeline` pure function, shared-module purity, cache-invalidation narrowing + hit re-derivation, vibro fix disclosure, perf acceptance-criteria revision) |
 | [breakings/2026-08-16-preset-system-and-settings-schema.md](breakings/2026-08-16-preset-system-and-settings-schema.md) | Human/AI | Preset system & settings schema breaking note (new presets modules/presets.html/built-in presets, data-driven settings listener `SETTING_HANDLERS`, settings.json preset group & buttons, `presetStorage` single source of truth, snapshot system-key stripping, idempotent write-back) |

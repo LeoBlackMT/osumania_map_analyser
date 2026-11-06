@@ -89,7 +89,7 @@ import { clearResultCache } from "./resultCache.js";
 import { setTelemetryConfig } from "../net/telemetry.js";
 import { isCombinedModeModule, normalizeCombinedMode } from "../ui/combinedMode.js";
 import { syncContentBarTabs } from "../ui/contentBarTabs.js";
-import { clearSectionIfGraphHidden } from "../graph/section.js";
+import { clearFullChartTexts, clearSectionIfGraphHidden } from "../graph/section.js";
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
 import { normalizeSpaceMode } from "../../laneAcc/accumulator.js";
 import { laneAccView } from "../ui/laneAcc/view.js";
@@ -859,6 +859,7 @@ export function applyEnableResultCacheSetting(value) {
 
     if (changed && wasEnabled && !next) {
         clearResultCache();
+        clearFullChartTexts();
     }
 
     return changed;
@@ -1043,6 +1044,7 @@ export function applySettingsPayload(payload) {
         (handler) => SETTING_CACHE_KEYS.has(handler.key) && changedMap[handler.key],
     )) {
         clearResultCache();
+        clearFullChartTexts();
     }
 
     if (typeof state.initialSettingsResolver === "function") {

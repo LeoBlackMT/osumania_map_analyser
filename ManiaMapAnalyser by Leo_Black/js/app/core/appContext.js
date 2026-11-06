@@ -158,6 +158,9 @@ export const starTipEl = document.getElementById("star-tip");
 export const state = {
     lastBeatmapKey: "",
     lastBeatmapIdentity: "",
+    // 结构化身份快照（id/hash/path/meta + contentKey）：分析请求用它做内容校验，
+    // 不能只靠字符串——弱帧会缺 hash/path，字符串无法区分“同图弱帧”与“同 id 换文件”。
+    lastBeatmapIdentityInfo: null,
     lastBeatmapIdentitySource: "",
     // 本页面已通过自己的 tosu 数据面（直连 socket）收到过载荷——页面侧信号，
     // 与壳的 shellTosuOnline 探测位无关。
@@ -281,6 +284,10 @@ export const state = {
     settingsReceivedFromCommand: false,
     initialSettingsResolver: null,
     analysisRequestSeq: 0,
+    // 卡片状态代数：换图/换 mod 时自增，立即作废在途分析（不必等下一次 fetch 开始）。
+    analysisEpoch: 0,
+    // 内容校验失败的有限重试计数（换图/换 mod 时归零；成功后归零）。
+    identityMismatchRetries: 0,
     wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
     // 运行时 osu 端点覆盖（契约 v6 / DEC-12）：壳页的 state 帧写入；空 = 用 wsEndpoint。
     // 只被 getSocketHost() 读，绝不参与设置路径（见 applyOsuTransport）。
