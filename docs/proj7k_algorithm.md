@@ -25,7 +25,7 @@ Parse → notes (column, head, tail) → finger mapping → per-event physical d
 | `actualEstimatorAlgorithm` | string | `"Proj7k"` when applied; `"Sunny"` when the estimator fell back |
 | `debug` | object | `{ rate, proj7kStars, proj7kD, level, thumbHand, dominantSkill, dominanceMargin, skills }`; `skills` holds stars, level, coverage and dominance for each of the 8 skills |
 
-There is no separate LN half label. The engine has one dan scale shared by all of its technique pools, and it deliberately reads LN lower than RC by design, so an LN half label from the same stars would only repeat the RC label. For the same reason the page does not append SunnyWindow's LN half (`forceSunnyWindow`) to a Proj7k label.
+There is no separate LN half label. The engine places RC and LN charts on one dan scale shared by all of its technique pools, so an LN half label from the same stars would only repeat the RC label. (Relative to the tier, the engine reads LN charts lower than RC up to about 10th; above that its LN charts read higher, e.g. 14.10 vs 12.28 stars at Stellium on the upstream benchmark.) For the same reason the page does not append SunnyWindow's LN half (`forceSunnyWindow`) to a Proj7k label.
 
 ## 2. Scope & fallback
 
