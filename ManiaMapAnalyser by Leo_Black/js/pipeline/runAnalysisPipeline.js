@@ -22,6 +22,7 @@ import { runAzusaEstimatorFromText } from "../estimator/azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "../estimator/roxyEstimator.js";
 import { runPolarisEstimatorFromText } from "../estimator/polarisEstimator.js";
 import { runXdc1EstimatorFromText } from "../estimator/xdc1Estimator.js";
+import { runProj7kEstimatorFromText } from "../estimator/proj7kEstimator.js";
 import { runMixedEstimatorFromText } from "../estimator/mixedEstimator.js";
 import { analyzePatternFromText } from "../patterns/service.js";
 import { analyzeEtternaFromText, DEFAULT_SCORE_GOAL as ETT_DEFAULT_SCORE_GOAL } from "../ett/index.js";
@@ -83,7 +84,7 @@ function splitEstDiffParts(value) {
  *
  * @param {object} input
  * @param {string} input.rawText  .osu 文件文本
- * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Polaris / XDC1 / Mixed / Companella
+ * @param {string} input.estimatorAlgorithm  Sunny / Daniel / Azusa / Roxy / Polaris / XDC1 / Proj7k / Mixed / Companella
  * @param {object} input.options  显式传入的估算选项（禁止读 state）：speedRate, odFlag, cvtFlag,
  *   withGraph, forceSunnyReferenceHo, forceSunnyWindow, enableAnalyzeLN,
  *   enableAlwaysShowLNDifficulty, display6kLevel, extendedEstimationRange,
@@ -217,6 +218,15 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         // `unsupported: true` + "Unsupported: ..." 文案，不切换到 Sunny。
         selectedRework = runXdc1EstimatorFromText(rawText, options, parser);
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || "XDC1";
+    } else if (estimatorAlgorithm === "Proj7k") {
+        // Proj7k（proj7k 7K 物理引擎）：star / 标签 / numeric 都来自引擎自己的星数（与 Daniel 同，不进
+        // NORMALIZATION_ALGORITHMS）；Sunny sr 在 sunnyStar。非 7K 与 cvt 旗标由估算器内部回退 Sunny。
+        selectedRework = runProj7kEstimatorFromText(rawText, options, parser);
+        actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
+        if (!isValidResult(selectedRework)) {
+            selectedRework = runSunnyEstimatorFromText(rawText, options, parser);
+            actualEstimatorAlgorithm = "Sunny";
+        }
     } else if (estimatorAlgorithm === "Mixed") {
         const mixedOpts = sharedSunnyResult
             ? { ...options, precomputedSunnyResult: sharedSunnyResult }
@@ -270,6 +280,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     //    （Sunny 原始 sr，与星数胶囊口径一致）。来源按算法：
     //    - Azusa/Roxy/Mixed：归一化 sunnyResult（sharedSunnyResult 或上方独立计算）
     //    - Daniel：withPpMetrics 时在 pipeline 内跑专用 Sunny pass（同 options + withPpMetrics:true）
+    //    - Proj7k（未回退）：结果以同 options 的 Sunny 结果为底，ppMetrics 即其字段，star 取 sunnyStar
     //    - Sunny/Companella / Azusa/Roxy 回退后的 Sunny：selectedRework 即 Sunny 结果
     //    失败/无 ppMetrics → null（软失败，不进 errors[]）；关闭时零额外计算、零输出字段。
     let ppMetrics = null;
@@ -280,6 +291,8 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
                 sunnySrc = normalizationSunnyResult;
             } else if (estimatorAlgorithm === "Daniel") {
                 sunnySrc = runSunnyEstimatorFromText(rawText, { ...options, withPpMetrics: true }, parser);
+            } else if (actualEstimatorAlgorithm === "Proj7k") {
+                sunnySrc = { ...selectedRework, star: selectedRework.sunnyStar };
             } else {
                 sunnySrc = selectedRework;
             }
