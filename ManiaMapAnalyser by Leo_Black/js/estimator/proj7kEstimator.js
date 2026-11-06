@@ -2,8 +2,8 @@
 // Proj7k —— proj7k 7K 难度引擎的估算器（共享 DOM-free 纯函数模块；Node 与浏览器同一实现）。
 //
 // 定位：独立的 7K 物理模型（手指耦合 + 手部负荷 + 阈值求解），不依赖 Sunny 的星数。
-//   引擎本体见 proj7k/engine.js（与上游 Python 引擎逐位对齐，120 张锦锦 7K 标杆谱最大差 4e-15 星）；
-//   星数 → 段位：上游 dan_table.json 的 15 档锦锦 7K Regular 段位星数（4 个 RC 技法池的档位中位数），
+//   引擎本体见 proj7k/engine.js（与上游 Python 引擎逐位对齐，120 张 JinJin Dan 标杆谱最大差 4e-15 星）；
+//   星数 → 段位：上游 dan_table.json 的 15 档 JinJin Dan 段位星数（4 个 RC 技法池的档位中位数），
 //   相邻两档之间在 ln(star) 上线性插值得到连续 level（0 = Regular 0 … 14 = Regular Stellium），
 //   再按 Polaris 同一套 tier 偏移（low −0.4 … high +0.4）取子档标签。
 //

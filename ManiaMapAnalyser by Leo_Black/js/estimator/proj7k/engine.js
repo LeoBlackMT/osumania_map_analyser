@@ -6,7 +6,7 @@
 //   → per-skill cost series → per-skill D_k, stars and level (ADR-0056/0059)
 //   → memberships → coverage, shares; dominant skill by level.
 // Upstream: https://github.com/ka1z07/proj7k. Parameters below mirror engine/params.py;
-// numeric parity with the Python engine (upstream 915e5af) is checked on the 120-chart Jinjin 7K benchmark.
+// numeric parity with the Python engine (upstream 915e5af) is checked on the 120-chart JinJin Dan benchmark.
 
 export const PARAMS = Object.freeze({
     eps_rc: 0.04,
