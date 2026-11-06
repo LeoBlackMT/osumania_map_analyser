@@ -20,7 +20,8 @@ Parse → notes (column, head, tail) → finger mapping → per-event physical d
 |-------|------|-------------|
 | `estDiff` | string | One Regular label from the engine's stars, e.g. `Regular 6 mid/high`; outside the ladder `< Regular 0 low` / `> Regular Stellium high` |
 | `numericDifficulty` | number \| null | Continuous level, 0 = Regular 0 … 14 = Regular Stellium (Gamma 11, Azimuth 12, Zenith 13, same numbering as Polaris); `null` outside [−0.5, 14.5] |
-| `star` | number | Sunny raw sr (unchanged; the star capsule always shows the Sunny sr) |
+| `star` | number | The engine's own stars, shown in the star capsule (like Daniel, Proj7k is not normalized to the Sunny sr) |
+| `sunnyStar` | number | Sunny raw sr, used by Sunny-based consumers such as ppMetrics / ReworkPP |
 | `actualEstimatorAlgorithm` | string | `"Proj7k"` when applied; `"Sunny"` when the estimator fell back |
 | `debug` | object | `{ rate, proj7kStars, proj7kD, level, thumbHand, dominantSkill, dominanceMargin, skills }`; `skills` holds stars, level, coverage and dominance for each of the 8 skills |
 
@@ -30,7 +31,7 @@ There is no separate LN half label. The engine has one dan scale shared by all o
 
 | Condition | Behaviour |
 |---|---|
-| 7K chart | Proj7k applies |
+| 7K chart | Proj7k applies; the star capsule shows the engine's stars |
 | Any other key count | Sunny result returned, `actualEstimatorAlgorithm = "Sunny"` |
 | `cvtFlag` contains `IN` or `HO` | Sunny (the converted chart is not the chart the engine was calibrated on) |
 | Empty chart or non-finite result | Sunny |

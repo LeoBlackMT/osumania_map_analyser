@@ -25,7 +25,7 @@
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，**7K 专用**：RC + LN 两半都校准（7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`；4K 曲线集已随实机否决删除）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
-| **Proj7k** | worker | `proj7kEstimator.js runProj7kEstimatorFromText` | 独立的 7K 物理模型（proj7k 引擎移植，`proj7k/engine.js`）：手指耦合 + 手部负荷 + 阈值求解，星数按 JinJin Dan 段位星数（`PROJ7K_DAN_STARS`）在 ln(star) 上插值成 level 与单一 Regular 标签（无 LN 半标签：引擎只有一条段位刻度，且设计上有意把 LN 读低） | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；star 恒为 Sunny sr（不入 §4.5 归一化集合，引擎星数在 `debug.proj7kStars`）；算法文档见 [../proj7k_algorithm.md](../proj7k_algorithm.md) |
+| **Proj7k** | worker | `proj7kEstimator.js runProj7kEstimatorFromText` | 独立的 7K 物理模型（proj7k 引擎移植，`proj7k/engine.js`）：手指耦合 + 手部负荷 + 阈值求解，星数按 JinJin Dan 段位星数（`PROJ7K_DAN_STARS`）在 ln(star) 上插值成 level 与单一 Regular 标签（无 LN 半标签：引擎只有一条段位刻度，且设计上有意把 LN 读低） | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；star 为引擎自有星数（同 Daniel，不入 §4.5 归一化集合，星数胶囊显示该口径；Sunny sr 在 `sunnyStar`，ppMetrics 取它）；算法文档见 [../proj7k_algorithm.md](../proj7k_algorithm.md) |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **XDC1** | worker | `xdc1Estimator.js runXdc1EstimatorFromText` | 4K RC + LN（第三方，TheBagelOfMan）：手指/手腕/抖动混合的双手 strain + 长条代价 + 体力，按 98% 期望准确率聚合 | 仅 4K；不支持（非 4K、解析失败、音符不足、低于 Alpha Low）时返回 `Unsupported: ...`，不切换到 Sunny；固定 OD9 判定窗；复用 pipeline 的 parsed（IN/HO 在 clone 上转换，speedRate 生效）；star 由 pipeline 归一化为 Sunny sr；RC 半段用自身 rating→dan 标定，LN 半段始终拼接 Sunny 的 LN 区间表结果；graph 走 Sunny/Daniel 同套 800ms 平滑 |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
@@ -93,11 +93,12 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 
 ### 3.4 显示星数统一为 Sunny 原始 sr
 
-左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:795` `showNumericStarValue`；其余调用点 :1230/:1241/:1264/:1268）；归一化逻辑已迁入 `runAnalysisPipeline.js`。**无论选择哪种算法，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：
+左上角星数胶囊（`#rework-star`）显示的是 `rework.star`（`analysis.js:795` `showNumericStarValue`；其余调用点 :1230/:1241/:1264/:1268）；归一化逻辑已迁入 `runAnalysisPipeline.js`。**除 Daniel 与 Proj7k 外，只要显示的是星数，就一定是 Sunny 算法原始输出的 sr**：
 
 - Azusa / Roxy / Mixed / XDC1 的 `star` 字段是自身 numeric 难度的线性映射（`3.4 + 0.38 * numericDifficulty`，`azusaEstimator.js:992`、`roxyEstimator.js:1634`、`xdc1Estimator.js`），**不是** Sunny sr；Mixed 的 star 还可能继承被选中的 Roxy/Azusa/Daniel 子算法（`mixedEstimator.js:380-388`）；
 - `runAnalysisPipeline.js`：当 `actualEstimatorAlgorithm` 为 Azusa/Roxy/Mixed/XDC1（即未回退 Sunny）时，用与"Sunny 算法选择"完全相同的调用 `runSunnyEstimatorFromText(rawText, estimatorOptions)` 重算 sr 并覆盖 `rework.star`（同一函数、同一 options，逐位一致）；
 - **Daniel 排除**：使用独立改进算法（自己的 `sr`），不做归一化；
+- **Proj7k 排除**：7K 生效时 star 是 proj7k 引擎自有星数（星数胶囊显示该口径），不做归一化；Sunny sr 保留在 `sunnyStar`，ppMetrics 取它；非 7K 与 cvt 回退路径同 Sunny；
 - **Polaris 排除**：star 本就是 Sunny sr（4/7K 生效时与 Sunny 选择逐位一致；非 4/7K 与 cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`runAnalysisPipeline.js:204`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`runAnalysisPipeline.js:213` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；

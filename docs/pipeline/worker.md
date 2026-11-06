@@ -170,7 +170,7 @@ worker 端处理（compute.worker.js:21-37）：
 
 **Polaris（表修正：7K 的 RC+LN；4K/6K 回退 Sunny）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 
-**Proj7k（proj7k 7K 物理引擎移植；非 7K 回退 Sunny）同样不在归一化集合**：结果以 Sunny 结果为底（star 即 Sunny sr），只替换 `estDiff`/`numericDifficulty` 并附 `debug`；其他键数/cvt 回退路径即 Sunny 本体。
+**Proj7k（proj7k 7K 物理引擎移植；非 7K 回退 Sunny）同样不在归一化集合**：结果以 Sunny 结果为底，替换 `star`（引擎自有星数，星数胶囊显示该口径，同 Daniel）、`estDiff`、`numericDifficulty` 并附 `debug`，Sunny sr 保留在 `sunnyStar`（ppMetrics 取它）；其他键数/cvt 回退路径即 Sunny 本体。
 
 ## 5. 共享解析（parse-once）
 
