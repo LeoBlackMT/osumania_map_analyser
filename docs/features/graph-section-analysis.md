@@ -84,7 +84,7 @@
 
 ### 5.1 全谱原文缓存
 
-- `rememberFullChartText(rawText, contentKey, metaKey)`：**只在非区间跑批**成功后写入 `contentKey → { text, metaKey }` 的 LRU（最多 4 张，`js/app/graph/section.js`）。浏览器模式早退，不占内存。
+- `rememberFullChartText(rawText, contentKey, metaKey)`：**只在非区间跑批**成功后写入 `contentKey → { text, metaKey }` 的 LRU（最多 4 张，`js/app/graph/section.js`）。浏览器模式早退，不占内存；`meta:` 降级键不写入（标题键碰撞风险）。
 - `getFullChartText(contentKey, metaKey)`：按请求开始时快照的 contentKey 取；metaKey 不一致或取不到返回 `null`。contentKey 是 `hash > 目录限定 path > id > meta`，不是可变的 `state.lastBeatmapIdentity`。
 - 为什么按 contentKey 存多张：换图后再切回来时结果缓存命中、那一轮**拿不到原文**（`rawText=null`），只留一张会让选区稳定触发 `text-missing`。metaKey 校验防止错误的原文记录被另一张图复用。
 - `clearResultCache()` / 关闭结果缓存 / 清卡时同一路径调用 `clearFullChartTexts()`，原文 LRU 不再跨缓存清空存活。

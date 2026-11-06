@@ -404,7 +404,12 @@ export function applyBeatmapState(data) {
         // 弱帧（缺 hash/path）由 mergedFrame 补齐，不会每个包都判成换图。
         const hasStateMismatch = identityChanged
             || nextModSignature !== previousModSignature;
-        if (!hasStateMismatch) return;
+        if (!hasStateMismatch) {
+            // 身份/mod 没变：不触发重算，但把本帧新补齐的 meta/set 写回，
+            // 后续内容校验可用到更完整的字段。
+            state.lastBeatmapIdentityInfo = mergedFrame;
+            return;
+        }
         // 换图/换 mod 立即作废在途分析：analysisRequestSeq 只在新 fetch 开始时自增，
         // 而换图后要等 200ms 防抖才发新请求；这段窗口里的旧请求会抓到新图 body
         // 并按旧 identity 渲染/写缓存。epoch 让所有旧请求在下一个 await 后立刻退出。

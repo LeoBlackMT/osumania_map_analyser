@@ -295,7 +295,7 @@ export function getFullChartText(contentKey = "", metaKey = "") {
         return null;
     }
     const expectedMeta = String(metaKey || "").trim();
-    if (expectedMeta && entry.metaKey && entry.metaKey !== expectedMeta) {
+    if (expectedMeta && entry.metaKey !== expectedMeta) {
         return null;
     }
     return entry.text;
@@ -308,7 +308,8 @@ export function rememberFullChartText(rawText, contentKey = "", metaKey = "") {
     }
     const key = String(contentKey || "");
     const text = typeof rawText === "string" ? rawText : "";
-    if (!key || !text) {
+    // meta: 键只有标题元数据，碰撞风险高（同标题不同谱面共用一键）；不写入原文 LRU。
+    if (!key || !text || key.startsWith("meta:")) {
         return;
     }
     // 按 contentKey 存最近 MAX_STORED_TEXTS 张谱面：换图后再切回来（命中结果缓存、拿不到原文）

@@ -93,8 +93,8 @@ const modSignature = [
 
 ```js
 snapshot.contentKey === requestContentKey
-&& (snapshot.contentVerified === true || requestContentKey.startsWith("hash:"))
-&& (!requestMetaKey || !snapshot.metaKey || snapshot.metaKey === requestMetaKey)
+&& snapshot.contentVerified === true
+&& (!requestMetaKey || snapshot.metaKey === requestMetaKey)
 && snapshot.computed.graph === needComputed.graph
 && snapshot.computed.pattern === needComputed.pattern
 && snapshot.computed.ett === needComputed.ett
@@ -115,7 +115,7 @@ snapshot.contentKey === requestContentKey
 
 ```js
 if (!cached && state.enableResultCache && requestContentKey
-    && (contentVerified || requestContentKey.startsWith("hash:"))
+    && contentVerified
     && errors.length === 0
     && rework && !isStaleRequest()
     && genAtStart === resultCacheGeneration()) {
@@ -126,7 +126,7 @@ if (!cached && state.enableResultCache && requestContentKey
 | `!cached` | 必须是 miss（命中的快照本来就在缓存里，无需再写） |
 | `state.enableResultCache` | 开关开启 |
 | `requestContentKey` | 请求开始时快照的内容键存在（否则连键都不完整） |
-| `contentVerified \|\| contentKey.startsWith("hash:")` | body 已通过元数据比对，或键本身是 md5（内容自证）。path/id 键必须在本次请求里真的校验过，避免把未验证的 body 写进缓存 |
+| `contentVerified` | body 已通过元数据比对（或外部源注入文本被视为可信）。未验证的 body 即使 contentKey 是 hash 也不写缓存 |
 | `errors.length === 0` | 分析全程无错误（`errors` 数组定义于请求开头） |
 | `rework` | 估算结果真实存在 |
 | `!isStaleRequest()` | 请求未过期：`requestSeq` 或 `analysisEpoch` 任一变化即过期——**换图/换 mod 会立即让在途请求失效，不必等下一次 fetch 开始** |

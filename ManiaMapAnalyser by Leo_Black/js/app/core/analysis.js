@@ -627,8 +627,8 @@ export async function fetchBeatmapFile(reason) {
         const snapshot = resultCache.get(cacheKey);
         if (snapshot
             && snapshot.contentKey === requestContentKey
-            && (snapshot.contentVerified === true || requestContentKey.startsWith("hash:"))
-            && (!requestMetaKey || !snapshot.metaKey || snapshot.metaKey === requestMetaKey)
+            && snapshot.contentVerified === true
+            && (!requestMetaKey || snapshot.metaKey === requestMetaKey)
             && snapshot.computed.graph === needComputed.graph
             && snapshot.computed.pattern === needComputed.pattern
             && snapshot.computed.ett === needComputed.ett
@@ -1367,7 +1367,7 @@ export async function fetchBeatmapFile(reason) {
                 }
             }
             if (!isSectionRun && !cached && state.enableResultCache && requestContentKey
-                && (contentVerified || requestContentKey.startsWith("hash:"))
+                && contentVerified
                 && errors.length === 0
                 && rework && !isStaleRequest()
                 && genAtStart === resultCacheGeneration()) {
