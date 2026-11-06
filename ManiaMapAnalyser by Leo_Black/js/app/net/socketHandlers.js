@@ -409,6 +409,7 @@ export function applyBeatmapState(data) {
         // 而换图后要等 200ms 防抖才发新请求；这段窗口里的旧请求会抓到新图 body
         // 并按旧 identity 渲染/写缓存。epoch 让所有旧请求在下一个 await 后立刻退出。
         state.analysisEpoch = (state.analysisEpoch || 0) + 1;
+        state.identityMismatchRetries = 0;
         // Step 9f：**带谱面身份、且真的改动了卡片**的载荷 ⇒ 壳相位提示（若有）撤掉。
         // 判据刻意收窄（两道门）：① 无 `beatmap` 的空帧、身份没变的重复帧都不是"真载荷"
         // ——Step 9e 把钩子挂在每条 v2 帧上（含空帧），提示因此被自己的清理规则打掉、且同一

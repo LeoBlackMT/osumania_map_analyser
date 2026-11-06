@@ -228,6 +228,7 @@ export function handleSongFrame(payload) {
     if (identityChanged) {
         // 立即作废在途分析（与 socketHandlers 同一语义：旧请求不能再渲染/写缓存）。
         state.analysisEpoch = (state.analysisEpoch || 0) + 1;
+        state.identityMismatchRetries = 0;
         clearSection("beatmap", { recompute: false });
         if (state.lastBeatmapIdentity) {
             laneAccView.reset();

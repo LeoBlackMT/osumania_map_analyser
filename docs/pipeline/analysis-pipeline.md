@@ -160,7 +160,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq
 - `analysisRequestSeq`：每次 `fetchBeatmapFile` 开始时自增；一旦期间又发起新分析，旧请求即过期。
 - `analysisEpoch`：`applyBeatmapState` / `externalSource.handleSongFrame` 在**换图或换 mod**时立即自增。它补上了 `analysisRequestSeq` 的窗口：换图后要等 200ms 防抖才发新 fetch，旧请求在这段窗口里仍能拿到新图 body；epoch 让它在下一个 await 后立刻退出。
 - 检查点遍布异步边界：fetch 响应后、估算后、Interlude、Etterna、Companella、异常路径、finally。
-- **fetch body 校验**：请求开始时快照 `state.lastBeatmapIdentityInfo` 作为 `requestFrame`；fetch 回来的 `.osu` 用 `beatmapTextMatchesFrame()` 校验 `[Metadata]`，不一致直接丢弃（不渲染/不写缓存）。这是 v14 的主修复点。
+- **fetch body 校验**：请求开始时快照 `state.lastBeatmapIdentityInfo` 作为 `requestFrame`；fetch 回来的 `.osu` 用 `beatmapTextMatchesFrame()` 校验 `[Metadata]`，不一致直接丢弃（不渲染/不写缓存）。这是 v14 的主修复点。端点短暂供奉旧图时做有限重试（最多 3 次，换图/成功后归零），避免没有新身份帧时卡片永远停在旧图。
 - worker 内部还有同等的过期丢弃：`manager.js` 用 `pendingRequests` Map + 共享 `message` 监听按 id 匹配；新请求先 `rejectAllPending` 取消旧在途请求，过期/已取消响应直接忽略，30s 超时保护。
 
 ## 7. fetchBeatmapFile 主流程

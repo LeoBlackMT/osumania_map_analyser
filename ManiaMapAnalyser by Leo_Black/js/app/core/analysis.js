@@ -361,6 +361,7 @@ function resetSourceContext() {
     state.speedRate = 1;
     // 清卡/换源：在途分析立即作废，原文 LRU 一并清空（不能跨结果缓存清空存活）。
     state.analysisEpoch = (state.analysisEpoch || 0) + 1;
+    state.identityMismatchRetries = 0;
     clearFullChartTexts();
 }
 
@@ -469,10 +470,23 @@ export async function fetchBeatmapFile(reason) {
                 requestMetaKey,
                 checked: check.checked,
             });
-        } else if (check.checked && markVerified) {
-            contentVerified = true;
+        } else if (check.checked) {
+            if (markVerified) {
+                contentVerified = true;
+            }
+            state.identityMismatchRetries = 0;
         }
         return check.ok;
+    };
+    // 端点在换图瞬间可能仍供奉上一张图；没有新的身份帧时不会自动再跑分析。
+    // 有限重试（最多 3 次，换图/成功后归零），避免持续错图时无限请求。
+    const retryIdentityMismatch = () => {
+        const retries = state.identityMismatchRetries || 0;
+        if (retries >= 3) {
+            return;
+        }
+        state.identityMismatchRetries = retries + 1;
+        scheduleRecompute("beatmap identity mismatch", true);
     };
     // 外部源请求上下文快照（result 帧 finally 汇合用；沿用请求序号本地快照模式）。
     // ⚠️ 区间跑批不消费 pendingSource*：那份文本/请求号属于外部源帧自己的跑批，
@@ -695,6 +709,10 @@ export async function fetchBeatmapFile(reason) {
             // 同图重算（Tab 切换/设置变更）优先复用上次全谱跑批留下的原文：外部源没有
             // 可重抓的端点；osu 也省一次整谱抓取。原文按 contentKey 存 LRU，换图不会串。
             rawText = getFullChartText(requestContentKey, requestMetaKey);
+            // 外部源的原文由桥/壳直接注入，LRU 命中同样视为可信（osu 还要过元数据校验）。
+            if (rawText && (state.activeSource ?? "osu") !== "osu") {
+                contentVerified = true;
+            }
             // 缓存的原文也要过一遍内容校验：metaKey 只能证明元信息一致，不能证明文本没被错误写入过。
             if (rawText && !acceptFetchedText(rawText)) {
                 rawText = null;
@@ -723,8 +741,10 @@ export async function fetchBeatmapFile(reason) {
                     throw new Error("Empty beatmap content.");
                 }
                 // 端点供奉的是“请求时的当前谱面”，可能已不是 requestFrame 那张图。
-                // 校验失败直接放弃本次 body（不渲染/不缓存），等新图的帧触发重算。
+                // 校验失败直接放弃本次 body（不渲染/不缓存），并做一次有限重试；
+                // 若仍是错图，等新图的帧触发重算。
                 if (!acceptFetchedText(rawText)) {
+                    retryIdentityMismatch();
                     return;
                 }
             }

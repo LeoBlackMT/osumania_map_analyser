@@ -286,6 +286,8 @@ export const state = {
     analysisRequestSeq: 0,
     // 卡片状态代数：换图/换 mod 时自增，立即作废在途分析（不必等下一次 fetch 开始）。
     analysisEpoch: 0,
+    // 内容校验失败的有限重试计数（换图/换 mod 时归零；成功后归零）。
+    identityMismatchRetries: 0,
     wsEndpoint: APP_CONFIG.defaults.wsEndpoint || SOCKET_HOST,
     // 运行时 osu 端点覆盖（契约 v6 / DEC-12）：壳页的 state 帧写入；空 = 用 wsEndpoint。
     // 只被 getSocketHost() 读，绝不参与设置路径（见 applyOsuTransport）。

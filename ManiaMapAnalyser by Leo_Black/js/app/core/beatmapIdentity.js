@@ -224,10 +224,16 @@ export function mergeBeatmapIdentityFrames(previous, next) {
 /** 只读 [Metadata] 段（不跑完整 OsuFileParser，失败路径代价极低）。 */
 export function parseOsuMetadataHeader(osuText) {
     const metadata = {};
-    const lines = String(osuText || "").split(/\r?\n/);
+    const text = String(osuText || "");
+    let index = 0;
     let inMetadata = false;
-    for (const rawLine of lines) {
-        const line = rawLine.trim();
+    // 逐行扫描而非 split 整个文件：马拉松谱面可达数十 MB，缓存命中重算时
+    // 每次 split 都会分配整份行数组；这里只读到 [Metadata] 结束为止。
+    while (index < text.length) {
+        const newline = text.indexOf("\n", index);
+        const end = newline === -1 ? text.length : newline;
+        const line = text.slice(index, end).trim();
+        index = newline === -1 ? text.length : newline + 1;
         if (!line) continue;
         if (line.startsWith("[") && line.endsWith("]")) {
             inMetadata = line === "[Metadata]";
