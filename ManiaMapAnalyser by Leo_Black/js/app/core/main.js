@@ -57,9 +57,18 @@ export async function initialize() {
         fetch("http://127.0.0.1:24061/offsets/status")
             .then((response) => (response.ok ? response.json() : null))
             .then((body) => {
-                state.laneAccScoreReady = body?.lazer?.score_ready === true;
-                if (state.laneAccScoreReady === false) {
-                    laneAccView.setUnavailable("offsets");
+                state.laneAccReady = {
+                    lazer: body?.lazer?.score_ready === true,
+                    stable: body?.stable?.replay_frames_ready === true,
+                    stableNotes: body?.stable?.notes_ready === true,
+                };
+                state.laneAccScoreReady = state.laneAccReady.lazer;
+                const ready = String(state.client || "").toLowerCase().includes("stable")
+                    ? state.laneAccReady.stableNotes
+                    : state.laneAccReady.lazer;
+                if (ready === false) {
+                    const stableClient = String(state.client || "").toLowerCase().includes("stable");
+                    laneAccView.setUnavailable(stableClient ? "notes" : "offsets");
                 }
             })
             .catch(() => {});

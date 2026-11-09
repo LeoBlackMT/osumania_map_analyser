@@ -7,6 +7,9 @@ import { laneAccWrapEl, state } from "../../core/appContext.js";
 import { isShellRuntime } from "../../feedback/feedbackSpec.js";
 import { createAccumulator } from "../../../laneAcc/accumulator.js";
 import { framesToSv1Events } from "../../../laneAcc/rawFrames.js";
+import { framesToStableV2Events } from "../../../laneAcc/stableV2.js";
+import { maniaRandomColumnMap } from "../../../laneAcc/random.js";
+import { remapChartColumns } from "../../../laneAcc/chart.js";
 import { formatAcc, formatMiss } from "../../../laneAcc/format.js";
 import { createPopoverController } from "./popover.js";
 import { renderHands } from "./hands.js";
@@ -18,12 +21,14 @@ const LANE_BOUNDS_MIN_JUDGED = 8;
 const ERROR_TEXT = {
     shell: "LaneAcc needs the desktop shell.",
     contract: "Update the shell to use LaneAcc (contract v10).",
-    native: "The shell's Lazer memory reader is unavailable.",
+    native: "The shell's osu! memory reader is unavailable.",
     lazer: "LaneAcc works in osu!lazer only.",
     mania: "LaneAcc supports native mania maps only.",
     keys: "LaneAcc supports 4K–18K.",
-    offsets: "The Lazer offset table has no hit-event section.",
+    offsets: "The offset table has no LaneAcc section.",
+    notes: "Stable per-note data unavailable; update the offset table.",
     chart: "Chart text unavailable; switch maps to reload.",
+    random: "LaneAcc is unavailable while Random (RD) is active.",
 };
 
 function dom() {
@@ -45,6 +50,7 @@ function dom() {
     return {
         wrap: laneAccWrapEl,
         summary: laneAccWrapEl.querySelector(".laneacc-summary"),
+        badge: laneAccWrapEl.querySelector(".laneacc-badge"),
         sv1: laneAccWrapEl.querySelector("#laneacc-sv1-value"),
         hands: laneAccWrapEl.querySelector("#laneacc-hands"),
         stage,
@@ -59,6 +65,8 @@ export const laneAccView = (() => {
     let activeChart = null;
     let accumulator = null;
     let rawAccumulator = null;
+    let v2TopAccumulator = null;
+    let frozenTopSnapshot = null;
     let replayFrames = [];
     let hitEvents = [];
     let feedIndex = 0;
@@ -67,6 +75,7 @@ export const laneAccView = (() => {
     let lastRawSolveAt = 0;
     let sessionActive = false;
     let hasResult = false;
+    let sessionScoreMode = null;
     let renderHandle = 0;
     let laneButtons = [];
     let laneKey = "";
@@ -150,6 +159,103 @@ export const laneAccView = (() => {
         };
     }
 
+    /** 分轨/左右手的数据源：Stable V1 用壳直读的 per-note；Stable V2 用原始帧自己算。 */
+    function resolveScoreMode() {
+        const client = String(state.client || "").toLowerCase();
+        if (client.includes("stable")) {
+            const mods = Array.isArray(state.modCodes) ? state.modCodes : [];
+            const scoreV2 = mods.some((mod) => /^(SV2|V2)$/i.test(String(mod)));
+            return scoreV2 ? "stable-sim" : "stable-native";
+        }
+        return "lazer";
+    }
+
+    /** 本局开始时的模式；结算屏 mods 抖动时保持本局方向，不能 SV2→SV1。 */
+    function activeScoreMode() {
+        return (sessionActive || hasResult) && sessionScoreMode ? sessionScoreMode : resolveScoreMode();
+    }
+
+    /** stable-sim 用 accumulator 的 native 计数模式来消费自己算出的每 note 事件。 */
+    function accumulatorMode() {
+        const mode = activeScoreMode();
+        return mode === "stable-sim" ? "stable-native" : mode;
+    }
+
+    function accumulatorOptions(scoreMode, laneWeights = 305) {
+        return { ...options(), scoreMode, laneWeights };
+    }
+
+    function laneWeightsForMode(mode) {
+        return mode === "stable-native" ? 300 : 305;
+    }
+
+    function currentMods() {
+        return Array.isArray(state.modCodes) ? state.modCodes : [];
+    }
+
+    function hasRandomMod() {
+        return currentMods().some((mod) => /^(RD|RANDOM)$/i.test(String(mod)));
+    }
+
+    /** Lazer 有 seed 才支持 RD；Stable RD（无 seed）整模块禁用。 */
+    function randomSeed() {
+        const seed = Number(state.randomSeed);
+        return Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647 ? seed : null;
+    }
+
+    function randomModBlocked() {
+        return hasRandomMod() && !(activeScoreMode() === "lazer" && randomSeed() != null);
+    }
+
+    /** Lazer RD：谱面列按 ManiaModRandom 的置换变换；native 事件/帧保持游戏列。 */
+    function applyRandomColumns(chart) {
+        if (!chart || activeScoreMode() !== "lazer" || !hasRandomMod()) {
+            return;
+        }
+        const seed = randomSeed();
+        if (seed == null || chart.__randomSeed === seed) {
+            return;
+        }
+        const shuffled = maniaRandomColumnMap(chart.columnCount, seed);
+        if (!shuffled) {
+            return;
+        }
+        // 同一 chart 对象可能因 seed 变化再次进入；从原始列重新映射，避免二次置换。
+        if (!chart.__rdOriginalColumns) {
+            chart.__rdOriginalColumns = new Uint8Array(chart.columns);
+        } else {
+            chart.columns.set(chart.__rdOriginalColumns);
+        }
+        if (!remapChartColumns(chart, shuffled)) {
+            return;
+        }
+        chart.__randomSeed = seed;
+    }
+
+    function hasMirrorMod() {
+        return currentMods().some((mod) => /^MR$/i.test(String(mod)));
+    }
+
+    /** MR 下游戏事件列是镜像后的；转回谱面原始列，分轨/左右手才对得上。 */
+    function maybeMirrorEvents(events) {
+        if (!hasMirrorMod() || !Array.isArray(events)) {
+            return events;
+        }
+        const chart = activeChart || pendingChart;
+        if (!chart) {
+            return events;
+        }
+        const last = chart.columnCount - 1;
+        return events.map((event) => {
+            const col = Number(event?.col);
+            return Number.isInteger(col) ? { ...event, col: last - col } : event;
+        });
+    }
+
+    function rawScoreMode() {
+        return activeScoreMode() === "lazer" ? "lazer" : "stable-v1";
+    }
+
     function scheduleRender() {
         if (renderHandle) {
             return;
@@ -179,6 +285,10 @@ export const laneAccView = (() => {
     }
 
     function showLoading(changeKind = "song") {
+        // 结算后重算可能先走到 loading 占位：不能把已经冻结的终态盖掉。
+        if (hasResult) {
+            return;
+        }
         const nodes = dom();
         if (!nodes) {
             return;
@@ -334,19 +444,71 @@ export const laneAccView = (() => {
 
     function render() {
         const nodes = dom();
+        if (nodes && randomModBlocked()) {
+            showError("random");
+            return;
+        }
         if (!nodes || !accumulator || !activeChart) {
             return;
         }
         const currentOptions = options();
         accumulator.syncModifiers(currentOptions);
-        const snapshot = accumulator.snapshot();
-        if (rawAccumulator && replayFrames.length > 0) {
-            const raw = rawSnapshotWithLazerBoundary(rawAccumulator.snapshot());
+        const scoreMode = activeScoreMode();
+        // stable-native：分轨来自壳直读的游戏 per-note 判定（accumulator）；
+        // stable-v1：旧路径（分轨来自 rawAccumulator 的 V1 重判，仅作 fallback）。
+        const laneSource = scoreMode === "stable-v1" ? rawAccumulator : accumulator;
+        if (!laneSource) {
+            return;
+        }
+        const snapshot = laneSource.snapshot();
+        // Stable 无 SV2：顶部展示 SV1→SV2 折算值，分轨仍是 V1。
+        // Stable 有 SV2（同 Lazer）：顶部展示 SV2→SV1 折算值，分轨是 V2。
+        const topIsV2 = scoreMode === "stable-native";
+        if (nodes.badge) {
+            nodes.badge.textContent = topIsV2 ? "ScoreV2" : "ScoreV1";
+        }
+        if (topIsV2) {
+            const declaredHolds = Number(activeChart.holdCount);
+            const noHolds = Number.isFinite(declaredHolds)
+                ? declaredHolds === 0
+                : !Array.from(activeChart.isHold || []).some(Boolean);
+            // 0 LN 时 V1/V2 的 tap 判定相同，直接按 305 权重复算，不能再用
+            // 原始帧重建（帧流尾段缺失会被误判成 miss）。
+            if (noHolds && accumulator) {
+                const v1 = accumulator.snapshot();
+                const counts = v1.counts;
+                const weights = [0, 50, 100, 200, 300, 305];
+                let points = 0;
+                for (let i = 0; i < 6; i += 1) points += (counts[i] || 0) * weights[i];
+                const total = Number(v1.gameTotal) || 0;
+                snapshot.sv1Counts = [...counts].reverse();
+                snapshot.sv1Points = points;
+                snapshot.sv1Total = total;
+                snapshot.sv1Acc = total > 0 ? (points / (total * 305)) * 100 : 100;
+                snapshot.maxCombo = v1.gameMaxCombo;
+            } else {
+                const v2Top = frozenTopSnapshot || v2TopAccumulator?.snapshot();
+                if (v2Top) {
+                    // v2Top.counts 是 miss..MAX；popover 统一按 MAX..Miss 显示。
+                    snapshot.sv1Counts = [...v2Top.counts].reverse();
+                    snapshot.sv1Acc = v2Top.gameAcc;
+                    snapshot.sv1Total = v2Top.gameTotal;
+                    snapshot.sv1Points = v2Top.gamePoints;
+                    snapshot.maxCombo = v2Top.gameMaxCombo;
+                }
+            }
+            snapshot.sv1Label = "ScoreV2";
+        } else if (rawAccumulator && replayFrames.length > 0) {
+            // Lazer / Stable SV2：顶部取 rawAccumulator 的 V1 口径；Lazer 才做边界混合。
+            const raw = scoreMode === "lazer"
+                ? rawSnapshotWithLazerBoundary(rawAccumulator.snapshot())
+                : rawAccumulator.snapshot();
             snapshot.sv1Counts = raw.sv1Counts;
             snapshot.sv1Acc = raw.sv1Acc;
             snapshot.sv1Total = raw.sv1Total;
             snapshot.sv1Points = raw.sv1Points;
             snapshot.maxCombo = raw.maxCombo;
+            snapshot.sv1Label = "ScoreV1";
         }
         latestSnapshot = snapshot;
         clearError();
@@ -470,11 +632,19 @@ export const laneAccView = (() => {
             return "contract";
         }
         const client = String(state.client || "").toLowerCase();
-        if (client && !client.includes("lazer")) {
+        if (client.includes("lazer")) {
+            if (state.laneAccReady?.lazer === false) {
+                return "offsets";
+            }
+        } else if (client.includes("stable")) {
+            // Stable 分轨/左右手必须用游戏自己的 per-note 判定；
+            // 缺 notes 段时显示占位，绝不回退到近似的 V1 公式。
+            const notesReady = state.laneAccReady?.stableNotes === true;
+            if (!notesReady) {
+                return "notes";
+            }
+        } else if (client) {
             return "lazer";
-        }
-        if (state.laneAccScoreReady === false) {
-            return "offsets";
         }
         if (state.externalBridgeAvailable && state.shellOsuNativeAlive === false) {
             return "native";
@@ -506,8 +676,13 @@ export const laneAccView = (() => {
         );
         activeChart = chart;
         lastColumnCount = chart.columnCount;
-        accumulator = createAccumulator(chart, options());
-        rawAccumulator = createAccumulator(chart, options());
+        const mode = activeScoreMode();
+        accumulator = createAccumulator(chart, accumulatorOptions(accumulatorMode(), laneWeightsForMode(mode)));
+        rawAccumulator = createAccumulator(chart, accumulatorOptions(rawScoreMode(), 300));
+        // 正常 Stable：顶部 ScoreV2 必须从原始帧按 V2 重新判定，不能拿 V1 计数换权重。
+        v2TopAccumulator = mode === "stable-native"
+            ? createAccumulator(chart, accumulatorOptions("stable-native", 305))
+            : null;
         feedIndex = 0;
         lastCutoff = -Infinity;
         lastRawSolveAt = 0;
@@ -523,6 +698,11 @@ export const laneAccView = (() => {
                     hitEvents.push(...batch.events);
                 }
             }
+            if (activeScoreMode() === "stable-native") {
+                // native 事件已经是游戏判定结果，直接应用，不按 songTime 截断。
+                accumulator.applyBatch({ reset: true, events: hitEvents });
+                hitEvents = [];
+            }
         }
         pump();
         laneKey = "";
@@ -536,6 +716,24 @@ export const laneAccView = (() => {
 
     /** 分析完成：只暂存；若当前没有战报，则显示 100.00% 预览。 */
     function prepareChart(chart) {
+        // Stable RD 没有可读种子；Lazer RD 有 seed 时在下面按列置换还原。
+        if (randomModBlocked()) {
+            pendingChart = null;
+            activeChart = null;
+            accumulator = null;
+            hasResult = false;
+            sessionActive = false;
+            showError("random");
+            return;
+        }
+        applyRandomColumns(chart);
+        // 结算后重算可能暂时拿不到谱面原文/解析失败：保留已经冻结的终态，
+        // 不能把用户刚看到的转换成绩换成错误占位。真正换图会先离开 resultScreen。
+        if (hasResult && (!chart || chart.error)) {
+            clearLoading();
+            scheduleRender();
+            return;
+        }
         if (!isShellRuntime()) {
             pendingChart = null;
             activeChart = null;
@@ -569,6 +767,15 @@ export const laneAccView = (() => {
             return;
         }
         if (activeChart && !sameChart(activeChart, chart)) {
+            // 结算后重算可能带一张新谱面对象：先保留本局结算显示，
+            // 等下一次 startSession 再真正切图；否则用户刚看到的转换成绩会被清掉。
+            if (hasResult) {
+                pendingChart = chart;
+                clearLoading();
+                clearError();
+                scheduleRender();
+                return;
+            }
             // 切图/换难度：旧事件的 note 索引只对旧谱面有效，必须先清空并重建
             // 累加器；否则未匹配的旧头/尾会按新谱面落成 Miss。
             clearSessionEvents();
@@ -586,6 +793,7 @@ export const laneAccView = (() => {
         } else if (accumulator) {
             accumulator.syncModifiers(options());
             rawAccumulator?.syncModifiers(options());
+            v2TopAccumulator?.syncModifiers(options());
         }
         clearLoading();
         clearError();
@@ -594,6 +802,10 @@ export const laneAccView = (() => {
 
     /** 进入 play：采纳 pending 谱面并清空本局。 */
     function startSession() {
+        if (randomModBlocked()) {
+            showError("random");
+            return false;
+        }
         const chart = pendingChart || activeChart;
         if (!chart) {
             return false;
@@ -601,8 +813,11 @@ export const laneAccView = (() => {
         pendingChart = chart;
         sessionActive = true;
         hasResult = false;
+        sessionScoreMode = resolveScoreMode();
+        frozenTopSnapshot = null;
         allEvents = false;
         hitEvents = [];
+        replayFrames = [];
         feedIndex = 0;
         lastCutoff = -Infinity;
         createFor(chart);
@@ -619,18 +834,67 @@ export const laneAccView = (() => {
         return Number.isFinite(live) ? live : -Infinity;
     }
 
+    /** 壳 native 事件里每个 note 的第一个事件是头判；返回头 miss 的 note 集合。 */
+    function nativeHeadMissNotes() {
+        if (!Array.isArray(hitEvents) || hitEvents.length === 0) {
+            return null;
+        }
+        if (!hitEvents.some((event) => event?.note != null)) {
+            return null;
+        }
+        const seen = new Set();
+        const misses = new Set();
+        for (const event of hitEvents) {
+            const note = event?.note;
+            if (note == null || seen.has(note)) {
+                continue;
+            }
+            seen.add(note);
+            if (Number(event.result) === 1) {
+                misses.add(note);
+            }
+        }
+        return misses;
+    }
+
     /** 按时钟把 hitEvents 逐条喂给 accumulator；时钟回跳时重建。 */
     function pump() {
+        if (randomModBlocked()) {
+            return;
+        }
         if (!accumulator || !activeChart) {
             return;
         }
         const cutoff = currentCutoff();
         if (cutoff + 1 < lastCutoff) {
-            accumulator = createAccumulator(activeChart, options());
-            rawAccumulator = createAccumulator(activeChart, options());
+            const mode = activeScoreMode();
+            accumulator = createAccumulator(activeChart, accumulatorOptions(accumulatorMode(), laneWeightsForMode(mode)));
+            rawAccumulator = createAccumulator(activeChart, accumulatorOptions(rawScoreMode(), 300));
+            v2TopAccumulator = mode === "stable-native"
+                ? createAccumulator(activeChart, accumulatorOptions("stable-native", 305))
+                : null;
             feedIndex = 0;
             lastCutoff = -Infinity;
             lastRawSolveAt = 0;
+        }
+        if (activeScoreMode() === "stable-sim") {
+            // Stable V2 分轨/左右手：从原始帧自己算每 note 头/尾事件，再交给 native 计数。
+            if (replayFrames.length === 0) {
+                accumulator.reset();
+                lastCutoff = cutoff;
+                scheduleRender();
+                return;
+            }
+            const events = framesToStableV2Events(activeChart, replayFrames, {
+                ...options(),
+                cutoff,
+                headMissNotes: nativeHeadMissNotes(),
+            });
+            accumulator.applyBatch({ reset: true, events });
+            lastCutoff = cutoff;
+            rebuildRawAccumulator(true, cutoff);
+            scheduleRender();
+            return;
         }
         while (feedIndex < hitEvents.length) {
             const time = accumulator.eventTime(hitEvents[feedIndex]);
@@ -639,6 +903,15 @@ export const laneAccView = (() => {
             }
             accumulator.applyEvent(hitEvents[feedIndex]);
             feedIndex += 1;
+        }
+        if (v2TopAccumulator) {
+            if (replayFrames.length === 0) {
+                v2TopAccumulator.reset();
+            } else {
+                // 顶部 V1→V2 折算按 Lazer 式段归属重判（分轨仍是 Stable 规则）。
+                const events = framesToStableV2Events(activeChart, replayFrames, { ...options(), cutoff, judgementMode: "lazer" });
+                v2TopAccumulator.applyBatch({ reset: true, events });
+            }
         }
         lastCutoff = cutoff;
         rebuildRawAccumulator(true, cutoff);
@@ -655,7 +928,8 @@ export const laneAccView = (() => {
             return;
         }
         lastRawSolveAt = now;
-        const windows = accumulator?.snapshot()?.windows;
+        // rawAccumulator 永远是 V1 窗口；不能用 native/V2 accumulator 的窗口。
+        const windows = rawAccumulator?.snapshot()?.windows;
         if (!windows) {
             return;
         }
@@ -664,7 +938,7 @@ export const laneAccView = (() => {
             ? replayFrames
             : replayFrames.filter((frame) => frame.time <= cutoff + 250);
         if (visible.length === 0) {
-            rawAccumulator = createAccumulator(activeChart, options());
+            rawAccumulator = createAccumulator(activeChart, accumulatorOptions(rawScoreMode()));
             return;
         }
         const currentOptions = options();
@@ -697,6 +971,11 @@ export const laneAccView = (() => {
     }
 
     function applyReplayFrames(payload) {
+        // 结算后壳 detach 会发空 reset；保留终态，等下一局 startSession 再清。
+        const emptyReset = payload?.reset && !(Array.isArray(payload.frames) && payload.frames.length > 0);
+        if (emptyReset && (hasResult || sessionActive)) {
+            return;
+        }
         if (payload?.reset) {
             replayFrames = [];
         }
@@ -715,7 +994,38 @@ export const laneAccView = (() => {
     }
 
     function applyBatch(payload) {
+        if (randomModBlocked()) {
+            return;
+        }
         const batch = Array.isArray(payload) ? { events: payload } : (payload || {});
+        // 结算后壳 detach 会发空 reset；保留终态，等下一局 startSession 再清。
+        const emptyReset = batch.reset && !(Array.isArray(batch.events) && batch.events.length > 0);
+        if (emptyReset && (hasResult || sessionActive)) {
+            return;
+        }
+        // Stable V2 的每 note 事件由原始帧自己算；但壳的 native 头判仍要保留，
+        // 用来覆盖 V2 LN 预选把按下沿路由给前一条 LN 的头 miss（分轨才精确）。
+        if (activeScoreMode() === "stable-sim") {
+            if (batch.reset) {
+                hitEvents = [];
+            }
+            if (Array.isArray(batch.events)) {
+                hitEvents.push(...maybeMirrorEvents(batch.events));
+            }
+            if (accumulator) {
+                pump();
+            } else {
+                scheduleRender();
+            }
+            return;
+        }
+        const native = activeScoreMode() === "stable-native";
+        if (native && accumulator) {
+            // Stable per-note 判定已是游戏最终结果：直接应用，不做时钟截断。
+            accumulator.applyBatch({ ...batch, events: maybeMirrorEvents(batch.events) });
+            scheduleRender();
+            return;
+        }
         if (batch.reset) {
             hitEvents = [];
             feedIndex = 0;
@@ -726,7 +1036,7 @@ export const laneAccView = (() => {
             }
         }
         if (Array.isArray(batch.events)) {
-            hitEvents.push(...batch.events);
+            hitEvents.push(...maybeMirrorEvents(batch.events));
         }
         if (!accumulator) {
             // 全量快照按 2048 事件分块到达；谱面还没准备好时必须全部排队，
@@ -734,7 +1044,7 @@ export const laneAccView = (() => {
             if (batch.reset) {
                 pendingBatches = [];
             }
-            pendingBatches.push(batch);
+            pendingBatches.push({ ...batch, events: maybeMirrorEvents(batch.events) });
             if (!startSession()) {
                 return;
             }
@@ -755,9 +1065,15 @@ export const laneAccView = (() => {
         if (!accumulator) {
             return;
         }
+        // 结算补齐全谱面会把 live 未收到的尾段记成 miss；正常 Stable 的
+        // ScoreV2 转换保留 live 终值，避免结算瞬间无故下降。
+        if (complete && v2TopAccumulator) {
+            frozenTopSnapshot = v2TopAccumulator.snapshot();
+        }
         allEvents = complete;
         pump();
         rawAccumulator?.finish();
+        v2TopAccumulator?.finish();
         accumulator.finish();
         sessionActive = false;
         hasResult = true;
@@ -769,6 +1085,7 @@ export const laneAccView = (() => {
         if (accumulator) {
             accumulator.setSpaceMode(mode);
             rawAccumulator?.setSpaceMode(mode);
+            v2TopAccumulator?.setSpaceMode(mode);
             laneKey = "";
             scheduleRender();
         }
@@ -785,10 +1102,13 @@ export const laneAccView = (() => {
     function reset() {
         sessionActive = false;
         hasResult = false;
+        sessionScoreMode = null;
+        frozenTopSnapshot = null;
         pendingChart = null;
         activeChart = null;
         accumulator = null;
         rawAccumulator = null;
+        v2TopAccumulator = null;
         replayFrames = [];
         hitEvents = [];
         feedIndex = 0;
@@ -874,6 +1194,7 @@ export const laneAccView = (() => {
         render,
         replayEntrance,
         reset,
+        isSessionActive: () => sessionActive || hasResult,
         setPending: showLoading,
     };
 })();

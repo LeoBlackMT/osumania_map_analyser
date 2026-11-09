@@ -15,6 +15,7 @@ import {
     getModData as getModDataFromPayload,
 } from "../../parser/modData.js";
 import {
+    isPauseStateName,
     isPlayStateName,
     isResultScreenStateName,
     normalizeClientStateName,
@@ -204,13 +205,14 @@ function updateSongTimeState(data) {
 export function applySignalState(data) {
     noteTelemetryActivity();
     let laneAccEnteredPlay = false;
-    let laneAccEnteredResult = false;
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;
+            const wasPauseState = isPauseStateName(state.clientStateName);
             const wasResultScreen = state.clientStateName === "resultscreen";
             const nextInPlayState = isPlayStateName(normalizedClientStateName);
             const nextIsResultScreen = isResultScreenStateName(normalizedClientStateName);
+            const nextIsPauseState = isPauseStateName(normalizedClientStateName);
             const enteredPlayState = !wasInPlayState && nextInPlayState;
             const leftPlayState = wasInPlayState && !nextInPlayState;
 
@@ -221,8 +223,17 @@ export function applySignalState(data) {
             // 从选曲/本地排行榜直接打开的结算屏（查看历史成绩）没有 play 前态 ⇒
             // 不允许反馈；页面启动时已在结算屏（壳中途重启）也判为不确定。
             if (nextIsResultScreen && !wasResultScreen) {
-                state.resultsFromPlay = leftPlayState;
-                laneAccEnteredResult = true;
+                // 结算屏来源：正常是 play → resultScreen。但 Stable/Lazer 在进结算前
+                // 可能先经过一个未识别的过渡态，`leftPlayState` 会丢；只要本局
+                // LaneAcc 会话还活着（sessionActive 或已冻结），就按“刚打完”处理，
+                // 否则结算重算会把刚看到的成绩清掉。
+                const hadLaneAccSession = typeof laneAccView.isSessionActive === "function"
+                    && laneAccView.isSessionActive();
+                state.resultsFromPlay = leftPlayState || hadLaneAccSession;
+                // 先冻结 LaneAcc 终态，再触发结算重算；否则重算会先把本局累加器重置。
+                if (state.resultsFromPlay) {
+                    laneAccView.finishSession();
+                }
                 // 结算屏不保留选区（D2）：复位后由重算把卡片恢复成整图口径。
                 clearSection("results", { recompute: true });
             } else if (!nextIsResultScreen) {
@@ -231,15 +242,16 @@ export function applySignalState(data) {
 
             updateCardPlayVisibility();
 
-            if (enteredPlayState) {
+            if (enteredPlayState && !wasPauseState) {
                 // 游玩态优先保障实时指标/进度线：选区退出并恢复整图分析。
                 laneAccEnteredPlay = true;
+            }
+            if (enteredPlayState) {
                 clearSection("play", { recompute: true });
             }
 
-            if (leftPlayState && !nextIsResultScreen) {
-                // 中途退出到选歌：只冻结到当前时钟，不能把整张谱的剩余 note
-                // 当作已到期并全部记 Miss（ScoreV1 Acc 会瞬间掉到很低）。
+            if (leftPlayState && !nextIsResultScreen && !nextIsPauseState) {
+                // 只有真正退出到选歌才冻结；暂停必须保留本局累加器，恢复后继续。
                 laneAccView.finishSession(false);
             }
 
@@ -256,6 +268,7 @@ export function applySignalState(data) {
         }
         if (modData.hasModPayload) {
             state.modCodes = modData.modCodes || [];
+            state.randomSeed = modData.randomSeed ?? null;
             state.classicMod = Boolean(modData.classic);
         }
 
@@ -264,9 +277,7 @@ export function applySignalState(data) {
             laneAccView.startSession();
             sendLaneAccSync();
         }
-        if (laneAccEnteredResult) {
-            laneAccView.finishSession();
-        }
+        // 结算终态已在结果边沿、clearSection 之前冻结。
 
         updateSongTimeState(data);
 
@@ -453,7 +464,11 @@ export function applyBeatmapState(data) {
             // ⚠️ 这里的 DOM 复位绝不能反过来中断身份写入与重算调度：一旦
             // reset 抛错（曾因 popover 丢失抛 null.hidden），socket 回调的
             // try/catch 会吞掉后半段，表现为「切图永远只显示第一张图」。
-            if (nextBeatmapIdentity) {
+            // 刚打完进入的结算屏也不清：结算重算会带一张相同谱面的新对象，清掉会让
+            // 用户刚看到的转换成绩消失。真正换图会先离开 resultScreen，届时再 reset。
+            const keepLaneAccResult = state.clientStateName === "resultscreen"
+                && (state.resultsFromPlay || (typeof laneAccView.isSessionActive === "function" && laneAccView.isSessionActive()));
+            if (nextBeatmapIdentity && !keepLaneAccResult) {
                 try {
                     laneAccView.reset();
                 } catch (error) {

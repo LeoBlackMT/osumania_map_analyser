@@ -79,12 +79,14 @@ export function createPopoverController({ getDom, getSnapshot, getActiveChart })
         }
         const labels = ["MAX", "300", "200", "100", "50", "Miss"];
         const values = kind === "sv1"
-            ? snapshot.sv1Counts
+            ? [...snapshot.sv1Counts]
             : [...hand.counts].reverse();
         const combo = kind === "sv1" ? snapshot.maxCombo : hand.maxCombo;
         const title = document.createElement("div");
         title.className = "laneacc-popover-title";
-        title.textContent = kind === "sv1" ? "ScoreV1" : kind === "left" ? "Left Hand" : "Right Hand";
+        title.textContent = kind === "sv1"
+            ? (snapshot.sv1Label || "ScoreV1")
+            : kind === "left" ? "Left Hand" : "Right Hand";
         const grid = document.createElement("div");
         grid.className = "laneacc-popover-grid";
         for (let index = 0; index < labels.length; index += 1) {

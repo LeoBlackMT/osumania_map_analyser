@@ -19,6 +19,11 @@ export function isResultScreenStateName(normalizedStateName) {
     return normalizedStateName === "resultscreen";
 }
 
+/** 暂停态不是“退出游玩”；LaneAcc 必须保留本局累加器，恢复后继续。 */
+export function isPauseStateName(normalizedStateName) {
+    return String(normalizedStateName || "").includes("pause");
+}
+
 export function resolveAutoDisplayProfile(modeTag) {
     if (modeTag === "RC") {
         return {
