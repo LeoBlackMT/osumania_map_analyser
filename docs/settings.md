@@ -153,7 +153,7 @@
         - [Daniel](https://thebagelofman.github.io/Daniel/): 使用Daniel算法进行估计，适配4K Reform Alpha及以上段位难度。
         - [Companella](https://github.com/Leinadix/companella): 使用Companella算法进行估计，适用于4K Reform Delta+及以下段位难度。
         - [XDC1](https://github.com/TheBagelOfMan/xdc1): 使用XDC1算法进行估计，支持4K RC/LN，范围为Alpha至Theta；非4K谱面自动回退Sunny。
-        - [Proj7k](https://github.com/ka1z07/proj7k): 独立的7K物理模型。按手指建模每个音符对手的负荷，求出能把失误控制在容忍范围内的玩家水平，再按锦锦7K Regular段位给出标签。仅适用于7K；其他键数自动回退Sunny。
+        - [Proj7k](https://github.com/ka1z07/proj7k): 独立的7K物理模型。按手指建模每个音符对手的负荷，求出能把失误控制在容忍范围内的玩家水平，再按 JinJin Dan 给出标签。仅适用于7K；其他键数自动回退Sunny。
     - **Global Etterna Version**: 选择用于MSD以及相关计算的Etterna MinaCalc版本。
         - 不同版本的Etterna会有不同的MSD计算结果，可以选择个人喜好的版本。
         - 个人推荐使用默认值0.72.3。
@@ -343,7 +343,7 @@
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
         - [XDC1](https://github.com/TheBagelOfMan/xdc1): Uses the XDC1 algorithm for estimation, supporting 4K RC/LN from Alpha to Theta; non-4K beatmaps automatically fall back to Sunny.
-        - [Proj7k](https://github.com/ka1z07/proj7k): An independent 7K physical model. It models each note's load on the fingers and hands, solves for the player level at which misses stay within a tolerance, and labels the result on the Jinjin 7K Regular dan ladder. 7K only; other key counts fall back to Sunny.
+        - [Proj7k](https://github.com/ka1z07/proj7k): An independent 7K physical model. It models each note's load on the fingers and hands, solves for the player level at which misses stay within a tolerance, and labels the result on the JinJin Dan ladder. 7K only; other key counts fall back to Sunny.
     - **Global Etterna Version**: Select the Etterna MinaCalc version used for MSD and related calculations.
         - Different versions of Etterna may yield different MSD results; you can choose your preferred version.
         - The default value 0.72.3 is personally recommended.
