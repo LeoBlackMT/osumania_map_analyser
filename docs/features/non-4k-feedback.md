@@ -8,9 +8,9 @@
 |---|---|---|---|
 | 4K | Azusa / Roxy / Sunny / Daniel / Companella / XDC1 / Mixed | RC-only，`lnRatio <= 0.15`，单标签 | **完全不变** |
 | 6K | Sunny | RC / LN / Mix / HB / SV，单/双标签 | 不适用 |
-| 7K | Polaris（Sunny 基线） | RC / LN / Mix / HB / SV，单/双标签 | 不适用 |
+| 7K | Polaris（Sunny 基线）/ Proj7k | RC / LN / Mix / HB / SV，单/双标签（Proj7k 恒为单标签，target side 为 RC） | 不适用 |
 
-非 4K 的反馈目标使用 `actualEstimatorAlgorithm`：6K 为 Sunny，7K 为 Polaris；若用户选择其他算法并回退 Sunny，以实际值为准。
+非 4K 的反馈目标使用 `actualEstimatorAlgorithm`：6K 为 Sunny，7K 为 Polaris（选 Proj7k 时为 Proj7k，评的是 proj7k 星数换算出的标签）；若用户选择其他算法并回退 Sunny，以实际值为准。
 
 ## 2. 页面侧
 
@@ -45,7 +45,8 @@ mma.feedback.v1.<bid>.<rate>.<target_side>
 
 - `target_side = "RC" | "LN"`。
 - `displayed_val` 是**被选侧**的 numeric：
-  - 先用 `rcLabelToNumeric(selectedLabel)` 从标签换算；
+  - RC 侧且实际算法为 Polaris / Proj7k（`NATIVE_NUMERIC_6K7K_ALGORITHMS`）时，直接用 `context.numericDifficulty`：它就是 7K 段位刻度的连续值（Gamma 11 … Stellium 14）。标签反解用的是 4K Reform 表，会把 7K 的 Gamma 读成 13、Stellium 读成 10；
+  - 其他情况先用 `rcLabelToNumeric(selectedLabel)` 从标签换算；
   - RC 侧边界标签（`< ...` / `> ...`）可回退到 `context.numericDifficulty`；
   - LN 侧无法换算时直接不提问（`no_numeric`），不制造数值。
 

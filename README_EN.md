@@ -98,6 +98,7 @@ Desktop shell guide: [docs/shell-guide.md](docs/shell-guide.md).
 - [Daniel](https://thebagelofman.github.io/Daniel/): An improved version of SunnyRework. Supports 4K RC only.
 - [Companella](https://github.com/Leinadix/companella): A 4K Dan ONNX estimation model based on Etterna MinaCalc.
 - [XDC1](https://github.com/TheBagelOfMan/xdc1): A from-scratch 4K one-hand model that blends finger, wrist, and jitter techniques with hold costs and stamina drain; supports 4K RC/LN (Alpha to Theta).
+- [Proj7k](https://github.com/ka1z07/proj7k): A port of the proj7k 7K difficulty engine. It models load per finger, solves a threshold for the chart's difficulty, and labels it on the JinJin Dan ladder; 7K only, other key counts fall back to Sunny.
 
 ## Privacy
 - Anonymous usage statistics are enabled by default to track active users, online distribution, and usage patterns. Telemetry contains no usernames, player IDs, scores, beatmap identities (titles/MD5), or IP addresses; data is strictly used for aggregated statistics. To opt out, disable "Anonymous Usage Statistics" under Settings → Network.

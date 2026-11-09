@@ -96,6 +96,7 @@
 - [Daniel](https://thebagelofman.github.io/Daniel/): SunnyRework 的改进版本。仅支持 4K RC。
 - [Companella](https://github.com/Leinadix/companella): 基于 Etterna MinaCalc 的 4K 段位 onnx 估算模型。
 - [XDC1](https://github.com/TheBagelOfMan/xdc1): 构建 4K 单手模型，综合手指、手腕与抖动三种维度并计入LN代价与体力消耗估计难度。支持 4K RC/LN（Alpha 至 Theta）。
+- [Proj7k](https://github.com/ka1z07/proj7k): proj7k 7K 难度引擎的移植。按手指建模负荷，用阈值求解得到整首难度，再按 JinJin Dan 给出标签；仅支持 7K，其他键数回退 Sunny。
 
 ## 隐私
 - 本插件默认开启匿名使用统计，用于统计活跃用户数、在线分布与使用行为。上报内容不含用户名、玩家 id、分数、谱面标识（标题/md5）、IP 地址等任何个人信息，数据仅用于生成聚合统计。如不希望上报，可在设置 → Network 分组中关闭 "Anonymous Usage Statistics"。

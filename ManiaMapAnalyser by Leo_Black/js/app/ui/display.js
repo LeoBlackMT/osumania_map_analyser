@@ -679,13 +679,13 @@ function showRightCapsuleCategoryValue(categoryText) {
     reworkRightCapsuleEl.style.textShadow = "none";
 }
 
-export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryText, etternaOverallValue, interludeStarValue) {
+export function renderRightCapsule(diffMode, reworkStarValue, patternCategoryText, etternaOverallValue, interludeStarValue, starUnitText = "") {
     if (!reworkRightCapsuleEl) {
         return;
     }
 
     if (diffMode === "ReworkSR") {
-        showRightCapsuleNumericValue(reworkStarValue, reworkStarValue);
+        showRightCapsuleNumericValue(reworkStarValue, reworkStarValue, starUnitText);
         return;
     }
 
