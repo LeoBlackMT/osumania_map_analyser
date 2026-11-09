@@ -25,6 +25,9 @@ import {
     splitDifficultyLabels,
 } from "./feedbackMath.js";
 
+// 6K/7K 下 numericDifficulty 本身就是该键数段位刻度连续值的估算器（与 Polaris 同一套编号）。
+const NATIVE_NUMERIC_6K7K_ALGORITHMS = Object.freeze(["Polaris", "Proj7k"]);
+
 function normalizedStateName(state) {
     return String(state?.clientStateName || "").toLowerCase();
 }
@@ -143,10 +146,18 @@ export function evaluateFeedbackCandidate({ state, data, now, shellClickThrough,
             return { show: false, reason: "bad_side" };
         }
         const selectedLabel = targetSide === "LN" ? labels[labels.length - 1] : labels[0];
-        displayedVal = labelToNumeric(selectedLabel);
-        // 边界标签（`< ...` / `> ...`）没有 numeric；RC 侧可退回 context 的 numeric。
-        if (!Number.isFinite(displayedVal) && targetSide === "RC") {
-            displayedVal = Number(context.numericDifficulty);
+        // RC 侧优先用估算器给出的原生连续值：Polaris / Proj7k 的 numericDifficulty 就是 7K 段位刻度
+        // （Gamma 11 … Stellium 14）。labelToNumeric 用的是 4K Reform 表，会把 7K 的 Gamma 读成 13、
+        // Stellium 读成 10，所以只在原生值缺失时（如边界标签 `< ...` / `> ...`）才退回标签反解。
+        const nativeNumeric = NATIVE_NUMERIC_6K7K_ALGORITHMS.includes(String(context.actualAlgorithm || ""));
+        if (targetSide === "RC" && nativeNumeric && Number.isFinite(numeric)) {
+            displayedVal = numeric;
+        } else {
+            displayedVal = labelToNumeric(selectedLabel);
+            // 边界标签（`< ...` / `> ...`）没有 numeric；RC 侧可退回 context 的 numeric。
+            if (!Number.isFinite(displayedVal) && targetSide === "RC") {
+                displayedVal = Number(context.numericDifficulty);
+            }
         }
         if (!Number.isFinite(displayedVal)) return { show: false, reason: "no_numeric" };
     }

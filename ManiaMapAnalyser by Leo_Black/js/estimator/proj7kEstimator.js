@@ -13,7 +13,7 @@
 //   - estDiff：单一 Regular 标签。引擎只有一条段位刻度（LN 技法池与 RC 共用同一阶梯），
 //     因此不另给 LN 半标签。
 //   - numericDifficulty：连续 level（表范围 [−0.5, 14.5] 外为 null，标签用 `<` / `>` 边界语义）。
-// 上游：https://github.com/ka1z07/proj7k，算法文档见 docs/proj7k_algorithm.md。
+// 上游：https://github.com/ka1z07/proj7k。
 
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { OsuFileParser } from "../parser/osuFileParser.js";

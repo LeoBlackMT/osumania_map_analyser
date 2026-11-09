@@ -1502,6 +1502,8 @@ export async function fetchBeatmapFile(reason) {
         }
 
         let leftCapsuleUnit = "";
+        // Proj7k 的星数是它自己的口径（PSR = Proj7k Star Rating），角标与 Sunny 的 SR 区分开。
+        const starUnit = state.actualEstimatorAlgorithm === "Proj7k" ? "PSR" : "SR";
 
         // PP capsule fixed width: tabular-nums + measured width kills horizontal flicker.
         // Toggling the class off (SR/MSD) restores auto width.
@@ -1522,7 +1524,7 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "ISR";
             } else if (rework) {
                 showNumericStarValue(rework.star);
-                leftCapsuleUnit = "SR";
+                leftCapsuleUnit = starUnit;
             }
         } else if (state.srText === "MSD") {
             // junk file 时 MSD 不可用：不显示 0.00，回退到星数胶囊（与"无 Ett 结果"一致），
@@ -1533,7 +1535,7 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "MSD";
             } else if (rework) {
                 showNumericStarValue(rework.star);
-                leftCapsuleUnit = "SR";
+                leftCapsuleUnit = starUnit;
             }
         } else if (state.srText === "ReworkPP") {
             let ppVal = getLatestPpValue();   // from livePp.js (max PP when idle, live PP in play)
@@ -1556,7 +1558,7 @@ export async function fetchBeatmapFile(reason) {
                 leftCapsuleUnit = "PP";
             } else if (rework) {
                 showNumericStarValue(rework.star);   // ppMetrics 缺失 fallback
-                leftCapsuleUnit = "SR";
+                leftCapsuleUnit = starUnit;
             }
         } else if (rework) {
             // 纯 SR 档位已在首次写 star 区块时滚过一次，这里不再重放动画。
@@ -1564,7 +1566,7 @@ export async function fetchBeatmapFile(reason) {
                 showNumericStarValue(rework.star);
             }
             if (state.srText === "ReworkSR") {
-                leftCapsuleUnit = "SR";
+                leftCapsuleUnit = starUnit;
             }
         }
 
@@ -1579,6 +1581,7 @@ export async function fetchBeatmapFile(reason) {
             patternReport?.Category || "-",
             ettOverallValue,
             Number(interludeStar),
+            starUnit === "PSR" ? starUnit : "",
         );
 
         renderCombinedModeSeparators(ettOverallValue);

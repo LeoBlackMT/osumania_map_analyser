@@ -45,7 +45,8 @@ mma.feedback.v1.<bid>.<rate>.<target_side>
 
 - `target_side = "RC" | "LN"`。
 - `displayed_val` 是**被选侧**的 numeric：
-  - 先用 `rcLabelToNumeric(selectedLabel)` 从标签换算；
+  - RC 侧且实际算法为 Polaris / Proj7k（`NATIVE_NUMERIC_6K7K_ALGORITHMS`）时，直接用 `context.numericDifficulty`：它就是 7K 段位刻度的连续值（Gamma 11 … Stellium 14）。标签反解用的是 4K Reform 表，会把 7K 的 Gamma 读成 13、Stellium 读成 10；
+  - 其他情况先用 `rcLabelToNumeric(selectedLabel)` 从标签换算；
   - RC 侧边界标签（`< ...` / `> ...`）可回退到 `context.numericDifficulty`；
   - LN 侧无法换算时直接不提问（`no_numeric`），不制造数值。
 
