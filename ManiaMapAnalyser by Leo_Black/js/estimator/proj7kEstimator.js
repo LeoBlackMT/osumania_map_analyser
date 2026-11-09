@@ -10,8 +10,8 @@
 // 作用域：**7K 专用**。其他键数与 cvt（IN/HO）改图旗标回退 Sunny（actualEstimatorAlgorithm = "Sunny"）。
 //   - star：proj7k 引擎自己的星数（与 Daniel 一样不进归一化，星数胶囊显示本算法口径）；Sunny 原始 sr 保留在 sunnyStar，
 //     供 ppMetrics（ReworkPP）等以 Sunny 为口径的消费方使用。
-//   - estDiff：单一 Regular 标签。引擎只有一条段位刻度（LN 技法池与 RC 共用同一阶梯，且设计上有意把
-//     LN 读得比 RC 低），因此不另给 LN 半标签。
+//   - estDiff：单一 Regular 标签。引擎只有一条段位刻度（LN 技法池与 RC 共用同一阶梯），
+//     因此不另给 LN 半标签。
 //   - numericDifficulty：连续 level（表范围 [−0.5, 14.5] 外为 null，标签用 `<` / `>` 边界语义）。
 // 上游：https://github.com/ka1z07/proj7k，算法文档见 docs/proj7k_algorithm.md。
 
