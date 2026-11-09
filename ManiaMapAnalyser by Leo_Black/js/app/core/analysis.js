@@ -980,7 +980,9 @@ export async function fetchBeatmapFile(reason) {
                 typePercentageData = sunnyWindowRework.typePercentageData;
                 // XDC1 的 LN 显示沿用旧口径：lnRatio < 0.15 且未开启
                 // Always Show LN Difficulty 时不追加；unsupported 结果也不追加。
+                // Proj7k 只有一条段位刻度、不另给 LN 半标签，SunnyWindow 的 LN 段也不追加。
                 const allowSunnyWindowLn = rework?.unsupported !== true
+                    && state.actualEstimatorAlgorithm !== "Proj7k"
                     && (state.actualEstimatorAlgorithm !== "XDC1"
                         || Number(rework?.lnRatio) >= 0.15
                         || state.enableAlwaysShowLNDifficulty === true);
