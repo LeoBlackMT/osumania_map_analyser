@@ -186,6 +186,102 @@ pub fn validate_stable_schema(table: &StableTable) -> Result<(), ValidationError
         return Err(ValidationError::HopDepthExceeded(topo.hits_slot_mapping.len()));
     }
 
+    if let Some(replay) = &topo.replay {
+        check_long_string_safety("topology.replay.witness", &replay.witness)?;
+        let fields = [
+            ("score_frames", replay.score_frames),
+            ("list_items", replay.list_items),
+            ("list_size", replay.list_size),
+            ("array_data", replay.array_data),
+            ("frame_time", replay.frame_time),
+            ("frame_keys", replay.frame_keys),
+            ("frame_y", replay.frame_y),
+            ("frame_buttons", replay.frame_buttons),
+        ];
+        for (name, val) in fields {
+            if val > 1_048_576 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("topology.replay.{name}"),
+                    val as i64,
+                ));
+            }
+            if val % 4 != 0 {
+                return Err(ValidationError::InvalidAlignment(
+                    format!("topology.replay.{name}"),
+                    val as i64,
+                ));
+            }
+        }
+        if let Some(version) = replay.list_version {
+            if version > 1_048_576 || version % 4 != 0 {
+                return Err(ValidationError::InvalidAlignment(
+                    "topology.replay.list_version".to_string(),
+                    version as i64,
+                ));
+            }
+        }
+        if replay.array_data < 4 {
+            return Err(ValidationError::InvalidAlignment(
+                "topology.replay.array_data".to_string(),
+                replay.array_data as i64,
+            ));
+        }
+        if replay.frame_keys == replay.frame_y {
+            return Err(ValidationError::InvalidAlignment(
+                "topology.replay.frame_keys/frame_y".to_string(),
+                replay.frame_keys as i64,
+            ));
+        }
+    }
+
+    if let Some(notes) = &topo.notes {
+        check_long_string_safety("topology.notes.witness", &notes.witness)?;
+        let fields = [
+            ("note_list_from_gameplay", notes.note_list_from_gameplay),
+            ("list_items", notes.list_items),
+            ("list_size", notes.list_size),
+            ("array_data", notes.array_data),
+            ("note_time", notes.note_time),
+            ("note_end", notes.note_end),
+            ("note_judgement", notes.note_judgement),
+        ];
+        for (name, val) in fields {
+            if val > 1_048_576 {
+                return Err(ValidationError::DisplacementOutOfRange(
+                    format!("topology.notes.{name}"),
+                    val as i64,
+                ));
+            }
+            if val % 4 != 0 {
+                return Err(ValidationError::InvalidAlignment(
+                    format!("topology.notes.{name}"),
+                    val as i64,
+                ));
+            }
+        }
+        for (name, value) in [
+            ("note_press", notes.note_press),
+            ("note_release", notes.note_release),
+            ("note_is_hold", notes.note_is_hold),
+            ("note_column", notes.note_column),
+        ] {
+            if let Some(offset) = value {
+                if offset > 1_048_576 || offset % 4 != 0 {
+                    return Err(ValidationError::InvalidAlignment(
+                        format!("topology.notes.{name}"),
+                        offset as i64,
+                    ));
+                }
+            }
+        }
+        if notes.array_data < 4 {
+            return Err(ValidationError::InvalidAlignment(
+                "topology.notes.array_data".to_string(),
+                notes.array_data as i64,
+            ));
+        }
+    }
+
     for (idx_str, name) in &table.mappings.states {
         check_string_safety("mappings.states.key", idx_str)?;
         check_string_safety("mappings.states.val", name)?;

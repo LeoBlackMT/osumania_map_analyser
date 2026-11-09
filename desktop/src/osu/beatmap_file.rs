@@ -88,10 +88,14 @@ pub struct TimingPoint {
 }
 
 /// 头字段（与内存值交叉校验用；空串 = 文件里没有该键）。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Header {
     pub title: String,
     pub artist: String,
+    /// `[General] Mode`（0=std / 1=taiko / 2=ctb / 3=mania；缺省 0）。
+    pub mode: i32,
+    /// `[Difficulty] OverallDifficulty`（缺省 8.0；V2 LN 头档窗口用）。
+    pub overall_difficulty: f64,
     pub creator: String,
     pub version: String,
     /// `[Editor] BeatmapID`。旧图可能整段缺失 ⇒ `None`。
@@ -145,6 +149,11 @@ pub struct BeatmapFile {
 }
 
 impl BeatmapFile {
+    /// 是否为 mania 原生谱（`[General] Mode: 3`）。
+    pub fn is_mania(&self) -> bool {
+        self.header.mode == 3
+    }
+
     pub fn first_object(&self) -> i32 {
         self.first_last.first_object
     }
@@ -254,6 +263,8 @@ pub fn parse(text: &str) -> BeatmapFile {
         slider_multiplier: DEFAULT_SLIDER_MULTIPLIER,
         ..Default::default()
     };
+    // osu! 的默认 OD 是 8.0（`Header` 的 derive(Default) 是 0，不能直接当缺省）。
+    out.header.overall_difficulty = 8.0;
     let mut section = String::new();
     let mut raw_objects: Vec<RawObject> = Vec::new();
     let mut slider_multiplier_seen: Option<f64> = None;
@@ -283,7 +294,23 @@ pub fn parse(text: &str) -> BeatmapFile {
                         "AudioFilename" if !value.is_empty() => {
                             out.audio = Some(value.to_string());
                         }
+                        "Mode" => {
+                            if let Ok(parsed) = value.parse::<i32>() {
+                                out.header.mode = parsed;
+                            }
+                        }
                         _ => {}
+                    }
+                }
+            }
+            "[Difficulty]" => {
+                if let Some((key, value)) = key_value(line) {
+                    if key == "OverallDifficulty" {
+                        if let Ok(parsed) = value.parse::<f64>() {
+                            if parsed.is_finite() {
+                                out.header.overall_difficulty = parsed;
+                            }
+                        }
                     }
                 }
             }

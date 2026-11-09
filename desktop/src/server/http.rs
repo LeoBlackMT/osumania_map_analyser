@@ -490,7 +490,6 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     // GET /offsets/status：当前内存偏移表状态与生成器就绪态（P2 Topic 9 / 10 / 12）
     if path == "/offsets/status" {
         let stable_table = crate::osu::offsets::find_stable_table(None);
-        let ppysb_table = crate::osu::offsets::find_stable_table_variant(None, "ppysb");
         let lazer_default = crate::osu::offsets::default_lazer_table();
         let gen_ready = find_gen_executable(&shared).is_some();
         let body = serde_json::json!({
@@ -501,14 +500,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
                 "arch": "x86",
                 "anchors_count": stable_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
-                "loaded": stable_table.is_ok()
-            },
-            "ppysb": {
-                "client": "ppysb",
-                "version": ppysb_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
-                "arch": "x86",
-                "anchors_count": ppysb_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
-                "loaded": ppysb_table.is_ok()
+                "loaded": stable_table.is_ok(),
+                "replay_frames_ready": stable_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
+                "notes_ready": stable_table.as_ref().map(|t| t.topology.notes.is_some()).unwrap_or(false)
             },
             "lazer": {
                 "client": "lazer",
@@ -731,7 +725,6 @@ fn local_table_version(client: &str, filename: &str) -> Option<String> {
     let embedded = match client {
         "lazer" => Some(crate::osu::offsets::default_lazer_table().lazer_version),
         "stable" => Some(crate::osu::offsets::default_stable_table().version),
-        "ppysb" => Some(crate::osu::offsets::default_ppysb_table().version),
         _ => None,
     };
     let installed = fs::read(crate::osu::offsets::remote_table_path(client, filename))
@@ -740,7 +733,7 @@ fn local_table_version(client: &str, filename: &str) -> Option<String> {
             "lazer" => crate::osu::offsets::OffsetTable::load(&bytes)
                 .ok()
                 .map(|table| table.lazer_version),
-            "stable" | "ppysb" => crate::osu::offsets::StableTable::load(&bytes)
+            "stable" => crate::osu::offsets::StableTable::load(&bytes)
                 .ok()
                 .map(|table| table.version),
             _ => None,

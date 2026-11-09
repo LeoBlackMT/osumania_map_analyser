@@ -30,10 +30,6 @@ mod tests {
         let stable = default_stable_table();
         assert!(validate_stable_schema(&stable).is_ok());
 
-        let ppysb = default_ppysb_table();
-        assert_eq!(ppysb.client, "ppysb");
-        assert_eq!(ppysb.arch, "x86");
-        assert!(validate_stable_schema(&ppysb).is_ok());
 
         let lazer = default_lazer_table();
         assert!(validate_lazer_schema(&lazer).is_ok());
@@ -168,10 +164,6 @@ mod tests {
         assert_eq!(table.client, "stable");
         assert!(validate_stable_schema(&table).is_ok());
 
-        let ppysb = find_stable_table_variant(None, "ppysb").expect("must find ppysb table");
-        assert_eq!(ppysb.client, "ppysb");
-        assert_eq!(ppysb.arch, "x86");
-        assert!(validate_stable_schema(&ppysb).is_ok());
     }
 
     #[test]

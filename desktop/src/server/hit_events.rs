@@ -43,6 +43,7 @@ pub fn snapshot_messages(shared: &Shared) -> Vec<String> {
                         "col": event.col,
                         "result": event.result,
                         "offset": event.offset,
+                        "note": event.note,
                     })
                 })
                 .collect();
@@ -69,21 +70,33 @@ pub fn spawn_sender(shared: Arc<Shared>) {
         if !batch.reset && batch.events.is_empty() {
             continue;
         }
-        let events: Vec<serde_json::Value> = batch
-            .events
-            .iter()
-            .map(|event| {
-                json!({
-                    "col": event.col,
-                    "result": event.result,
-                    "offset": event.offset,
+        if batch.events.is_empty() {
+            super::broadcast(
+                &shared,
+                "mania_hit_events",
+                Some(json!({ "reset": true, "events": [] })),
+            );
+            continue;
+        }
+        // 与 laneacc_sync 相同的分块上限，避免 Stable 首次全量 per-note 判定
+        // 在单帧里超过 5MB。
+        for (index, chunk) in batch.events.chunks(SNAPSHOT_CHUNK).enumerate() {
+            let events: Vec<serde_json::Value> = chunk
+                .iter()
+                .map(|event| {
+                    json!({
+                        "col": event.col,
+                        "result": event.result,
+                        "offset": event.offset,
+                        "note": event.note,
+                    })
                 })
-            })
-            .collect();
-        super::broadcast(
-            &shared,
-            "mania_hit_events",
-            Some(json!({ "reset": batch.reset, "events": events })),
-        );
+                .collect();
+            super::broadcast(
+                &shared,
+                "mania_hit_events",
+                Some(json!({ "reset": batch.reset && index == 0, "events": events })),
+            );
+        }
     });
 }

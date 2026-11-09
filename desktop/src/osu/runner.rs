@@ -14,33 +14,6 @@ use crate::osu::invariants::{FrameAction, Gate};
 use crate::osu::model::{Client, Reason, Snapshot};
 use super::*;
 
-#[cfg(windows)]
-pub fn detect_stable_variant(target: &win::Target) -> &'static str {
-    if let Ok(var) = std::env::var("MMA_STABLE_VARIANT") {
-        if var.eq_ignore_ascii_case("ppysb") {
-            return "ppysb";
-        }
-        if var.eq_ignore_ascii_case("stable") {
-            return "stable";
-        }
-    }
-    // 检测是否加载了 SBInjector / PpySBPatcher 拓展模块
-    if let Ok(modules) = win::module_list(target.pid) {
-        for (_, mod_name) in modules {
-            let lower = mod_name.to_ascii_lowercase();
-            if lower.contains("sb_pp_ffi") || lower.contains("ppysb") || lower.contains("sbpatcher") {
-                return "ppysb";
-            }
-        }
-    }
-    "stable"
-}
-
-#[cfg(not(windows))]
-pub fn detect_stable_variant(_target: &win::Target) -> &'static str {
-    "stable"
-}
-
 /// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
 #[cfg(windows)]
 pub fn run(
@@ -55,6 +28,17 @@ pub fn run(
     let mut hit_player: Option<u64> = None;
     let mut hit_state = lazer::score::PollState::default();
     let mut replay_state = lazer::score::ReplayPollState::default();
+    #[allow(unused_assignments)]
+    #[allow(unused_assignments)]
+    let mut stable_gameplay: Option<u32> = None;
+    #[allow(unused_assignments)]
+    let mut stable_score: Option<u32> = None;
+    #[allow(unused_assignments)]
+    let mut stable_od: f64 = 8.0;
+    #[allow(unused_assignments)]
+    let mut stable_mods: u32 = 0;
+    let mut stable_note_state = stable::NoteJudgementPollState::default();
+    let mut stable_replay_state = stable::StableReplayPollState::default();
     let mut regions: scan::RegionCache = scan::RegionCache::new();
     let mut anchor_cache: anchor_cache::AnchorCache = anchor_cache::AnchorCache::new();
     let mut last_scan_fail: Option<std::time::Instant> = None;
@@ -270,13 +254,8 @@ pub fn run(
                 }
                 if client == Client::Stable && stable_table.is_none() {
                     let exe_dir = target.image_path.parent();
-                    let variant = detect_stable_variant(target);
-                    let loaded = offsets::find_stable_table_variant(exe_dir, variant)
-                        .unwrap_or_else(|_| if variant == "ppysb" {
-                            offsets::default_ppysb_table()
-                        } else {
-                            offsets::default_stable_table()
-                        });
+                    let loaded = offsets::find_stable_table(exe_dir)
+                        .unwrap_or_else(|_| offsets::default_stable_table());
                     eprintln!(
                         "[osu] stable table loaded: client={} ver={} verified_build={}",
                         loaded.client, loaded.version, loaded.verified_build
@@ -301,26 +280,6 @@ pub fn run(
                     let mut on_progress =
                         |progress: ScanProgress| publish_scan_progress(&reader, progress);
                     let scan_res = resolve_anchors(target, &mut regions, stable_table.as_ref(), &mut on_progress);
-                    let scan_res = match scan_res {
-                        Err(Reason::SignatureMiss("statusPtr"))
-                            if client == Client::Stable
-                                && stable_table.as_ref().map(|t| t.client.as_str()) != Some("ppysb") =>
-                        {
-                            eprintln!("[osu] statusPtr missing with default table, attempting ppysb fallback...");
-                            let exe_dir = target.image_path.parent();
-                            let ppysb_table = offsets::find_stable_table_variant(exe_dir, "ppysb")
-                                .unwrap_or_else(|_| offsets::default_ppysb_table());
-                            match resolve_anchors(target, &mut regions, Some(&ppysb_table), &mut on_progress) {
-                                Ok(res) => {
-                                    eprintln!("[osu] successfully resolved anchors via ppysb table!");
-                                    stable_table = Some(ppysb_table);
-                                    Ok(res)
-                                }
-                                Err(_) => scan_res,
-                            }
-                        }
-                        other => other,
-                    };
                     match scan_res {
                         Ok((table, elapsed_ms)) => {
                             eprintln!(
@@ -447,6 +406,81 @@ pub fn run(
                 Ok(mut frame) => {
                     attach_beatmap_file(&mut frame.snapshot, &mut osu_cache);
                     apply_hits_with_topo(&mut frame.snapshot, stable_table.as_ref().map(|t| &t.topology));
+                    // Stable per-note 判定：只在 mania 的 play/resultScreen 读；表缺 notes 段则保持 None。
+                    let stable_playable = client == Client::Stable
+                        && matches!(
+                            frame.snapshot.state_name.as_deref(),
+                            Some("play") | Some("resultScreen")
+                        )
+                        && frame
+                            .snapshot
+                            .beatmap_file
+                            .as_ref()
+                            .map(|file| file.is_mania())
+                            .unwrap_or(false);
+                    stable_gameplay = if stable_playable {
+                        frame.snapshot.gameplay_base
+                    } else {
+                        None
+                    };
+                    let previous_stable_score = stable_score;
+                    stable_score = if stable_playable {
+                        frame.snapshot.score_base
+                    } else {
+                        None
+                    };
+                    stable_od = frame
+                        .snapshot
+                        .beatmap_file
+                        .as_ref()
+                        .map(|file| file.header.overall_difficulty)
+                        .unwrap_or(8.0);
+                    stable_mods = frame.snapshot.play_mods_mask.unwrap_or(0);
+                    // 结算屏补一次最终全表扫描：最后一条 LN 尾常在 resultScreen 后一拍才落盘，
+                    // 不补会稳定少 1 条（4K SV2 三次实测均少 1）。
+                    if client == Client::Stable
+                        && frame.snapshot.state_name.as_deref() == Some("resultScreen")
+                        && frame
+                            .snapshot
+                            .beatmap_file
+                            .as_ref()
+                            .map(|file| file.is_mania())
+                            .unwrap_or(false)
+                    {
+                        if let (Some(gameplay), Some(table)) =
+                            (frame.snapshot.gameplay_base, stable_table.as_ref())
+                        {
+                            if table.topology.notes.is_some() {
+                                let _ = stable::poll_note_judgements(
+                                    target,
+                                    Some(&table.topology),
+                                    gameplay,
+                                    stable_od,
+                                    stable_mods,
+                                    &hit_log,
+                                    &mut stable_note_state,
+                                );
+                            }
+                        }
+                    }
+                    // 新一局/重试：Score 对象变化 ⇒ 清空两条 Stable 日志，重新发全量。
+                    if stable_score.is_some() && stable_score != previous_stable_score {
+                        stable_note_state = stable::NoteJudgementPollState::default();
+                        stable_replay_state = stable::StableReplayPollState::default();
+                        hit_log.clear();
+                        replay_log.clear();
+                    }
+                    // 回放 seek/倒带：时钟回退 ⇒ 同样重发全量。
+                    let rewound = matches!(
+                        (previous_live, frame.snapshot.play_time),
+                        (Some(previous), Some(current)) if current + 1 < previous
+                    );
+                    if rewound {
+                        stable_note_state = stable::NoteJudgementPollState::default();
+                        stable_replay_state = stable::StableReplayPollState::default();
+                        hit_log.clear();
+                        replay_log.clear();
+                    }
                     previous_live = frame.snapshot.play_time;
                     let outcome = gate.on_frame(&frame.snapshot, now_ms);
                     log_transition(&outcome);
@@ -512,6 +546,12 @@ pub fn run(
                     hit_player = None;
                     hit_state = lazer::score::PollState::default();
                     replay_state = lazer::score::ReplayPollState::default();
+                    stable_gameplay = None;
+                    stable_score = None;
+                    stable_od = 8.0;
+                    stable_mods = 0;
+                    stable_note_state = stable::NoteJudgementPollState::default();
+                    stable_replay_state = stable::StableReplayPollState::default();
                     hit_log.clear();
                     replay_log.clear();
                     publish_phase(&reader, Phase::Attaching, None, &format!("reason={detail}"));
@@ -536,6 +576,38 @@ pub fn run(
                         {
                             if reason != "replay-size-unreadable" {
                                 eprintln!("[osu] replay poll skipped: {reason}");
+                            }
+                        }
+                    }
+                }
+                if let (Some(gameplay), Some(table)) = (stable_gameplay, stable_table.as_ref()) {
+                    if table.topology.notes.is_some() {
+                        if let Err(reason) = stable::poll_note_judgements(
+                            target,
+                            Some(&table.topology),
+                            gameplay,
+                            stable_od,
+                            stable_mods,
+                            &hit_log,
+                            &mut stable_note_state,
+                        ) {
+                            if reason != "note-size-unreadable" {
+                                eprintln!("[osu] stable note poll skipped: {reason}");
+                            }
+                        }
+                    }
+                }
+                if let (Some(score), Some(table)) = (stable_score, stable_table.as_ref()) {
+                    if table.topology.replay.is_some() {
+                        if let Err(reason) = stable::poll_replay_frames(
+                            target,
+                            Some(&table.topology),
+                            score,
+                            &replay_log,
+                            &mut stable_replay_state,
+                        ) {
+                            if reason != "replay-size-unreadable" {
+                                eprintln!("[osu] stable replay poll skipped: {reason}");
                             }
                         }
                     }
