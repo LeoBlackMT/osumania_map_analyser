@@ -8,7 +8,8 @@
 //   再按 Polaris 同一套 tier 偏移（low −0.4 … high +0.4）取子档标签。
 //
 // 作用域：**7K 专用**。其他键数与 cvt（IN/HO）改图旗标回退 Sunny（actualEstimatorAlgorithm = "Sunny"）。
-//   - star：保留 Sunny 原始 sr（星数胶囊口径不变，同 Polaris）；proj7k 自己的星数在 debug.proj7kStars。
+//   - star：proj7k 引擎自己的星数（与 Daniel 一样不进归一化，星数胶囊显示本算法口径）；Sunny 原始 sr 保留在 sunnyStar，
+//     供 ppMetrics（ReworkPP）等以 Sunny 为口径的消费方使用。
 //   - estDiff：单一 Regular 标签。引擎只有一条段位刻度（LN 技法池与 RC 共用同一阶梯，且设计上有意把
 //     LN 读得比 RC 低），因此不另给 LN 半标签。
 //   - numericDifficulty：连续 level（表范围 [−0.5, 14.5] 外为 null，标签用 `<` / `>` 边界语义）。
@@ -90,7 +91,7 @@ const round = (x, digits) => (Number.isFinite(x) ? Number(x.toFixed(digits)) : n
  * @param {string} osuText  .osu 文本
  * @param {object} options  与其他估算器同构（speedRate/odFlag/cvtFlag/withGraph/…），可选 precomputedSunnyResult
  * @param {object|null} parsed  可选的已 process() OsuFileParser 实例
- * @returns {object} Sunny 结果 + proj7k 的 estDiff / numericDifficulty；
+ * @returns {object} Sunny 结果 + proj7k 的 star / estDiff / numericDifficulty（Sunny sr 在 sunnyStar）；
  *   `actualEstimatorAlgorithm` 为 "Proj7k"（7K 生效）或 "Sunny"（回退）
  */
 export function runProj7kEstimatorFromText(osuText, options = {}, parsed = null) {
@@ -127,6 +128,8 @@ export function runProj7kEstimatorFromText(osuText, options = {}, parsed = null)
 
     return {
         ...sunny,
+        star: profile.totalStars,
+        sunnyStar: sunny.star,
         estDiff: proj7kLevelToLabel(level),
         numericDifficulty: inRange ? round(level, 2) : null,
         numericDifficultyHint: null,

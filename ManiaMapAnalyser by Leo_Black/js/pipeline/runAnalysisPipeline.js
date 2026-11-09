@@ -219,8 +219,8 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
         selectedRework = runXdc1EstimatorFromText(rawText, options, parser);
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || "XDC1";
     } else if (estimatorAlgorithm === "Proj7k") {
-        // Proj7k（proj7k 7K 物理引擎）：star 恒为 Sunny 原始 sr（与 Polaris 同，不进 NORMALIZATION_ALGORITHMS），
-        // 标签与 numeric 来自引擎自己的星数；非 7K 与 cvt 旗标由估算器内部回退 Sunny。
+        // Proj7k（proj7k 7K 物理引擎）：star / 标签 / numeric 都来自引擎自己的星数（与 Daniel 同，不进
+        // NORMALIZATION_ALGORITHMS）；Sunny sr 在 sunnyStar。非 7K 与 cvt 旗标由估算器内部回退 Sunny。
         selectedRework = runProj7kEstimatorFromText(rawText, options, parser);
         actualEstimatorAlgorithm = selectedRework?.actualEstimatorAlgorithm || actualEstimatorAlgorithm;
         if (!isValidResult(selectedRework)) {
@@ -280,6 +280,7 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     //    （Sunny 原始 sr，与星数胶囊口径一致）。来源按算法：
     //    - Azusa/Roxy/Mixed：归一化 sunnyResult（sharedSunnyResult 或上方独立计算）
     //    - Daniel：withPpMetrics 时在 pipeline 内跑专用 Sunny pass（同 options + withPpMetrics:true）
+    //    - Proj7k（未回退）：结果以同 options 的 Sunny 结果为底，ppMetrics 即其字段，star 取 sunnyStar
     //    - Sunny/Companella / Azusa/Roxy 回退后的 Sunny：selectedRework 即 Sunny 结果
     //    失败/无 ppMetrics → null（软失败，不进 errors[]）；关闭时零额外计算、零输出字段。
     let ppMetrics = null;
@@ -290,6 +291,8 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
                 sunnySrc = normalizationSunnyResult;
             } else if (estimatorAlgorithm === "Daniel") {
                 sunnySrc = runSunnyEstimatorFromText(rawText, { ...options, withPpMetrics: true }, parser);
+            } else if (actualEstimatorAlgorithm === "Proj7k") {
+                sunnySrc = { ...selectedRework, star: selectedRework.sunnyStar };
             } else {
                 sunnySrc = selectedRework;
             }
