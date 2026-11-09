@@ -57,6 +57,13 @@ pub fn lazer_mods_from_mods_json(text: &str) -> Option<Vec<LazerMod>> {
                 .and_then(|value| value.as_f64())
                 .filter(|value| value.is_finite())
         };
+        let integer = |key: &str| {
+            settings
+                .and_then(|settings| settings.get(key))
+                .and_then(|value| value.as_i64())
+                .filter(|value| *value >= i32::MIN as i64 && *value <= i32::MAX as i64)
+                .map(|value| value as i32)
+        };
         let boolean = |key: &str| settings.and_then(|settings| settings.get(key)).and_then(|value| value.as_bool());
         mods.push(LazerMod {
             acronym: acronym.to_uppercase(),
@@ -66,6 +73,7 @@ pub fn lazer_mods_from_mods_json(text: &str) -> Option<Vec<LazerMod>> {
             drain_rate: number("drain_rate"),
             // OD 0 合法。
             overall_difficulty: number("overall_difficulty"),
+            seed: integer("seed"),
             extended_limits: boolean("extended_limits"),
         });
     }
@@ -130,10 +138,52 @@ pub fn probe_once(
 
 struct ProbeRead {
     summary: String,
+    mods: Vec<LazerMod>,
+}
+
+static LAST_MODS_JSON: Mutex<Option<(u64, Vec<LazerMod>)>> = Mutex::new(None);
+
+/// 正式读取当前 Player 的 `ScoreInfo.ModsJson`（含 RD seed）。同一屏幕缓存一次。
+pub fn read_play_mods(
+    source: &dyn Source,
+    table: &OffsetTable,
+    screen_top: u64,
+    layout: Option<StringLayout>,
+    modules: &[(u64, String)],
+) -> Option<Vec<LazerMod>> {
+    if let Ok(cache) = LAST_MODS_JSON.lock() {
+        if let Some((cached_screen, mods)) = cache.as_ref() {
+            if *cached_screen == screen_top {
+                return Some(mods.clone());
+            }
+        }
+    }
+    let read = read_play_mods_json(source, table, screen_top, layout, modules)?;
+    if let Ok(mut cache) = LAST_MODS_JSON.lock() {
+        *cache = Some((screen_top, read.mods.clone()));
+    }
+    Some(read.mods)
+}
+
+/// 结算屏直接从 `ResultsScreen.Score` 的 `ScoreInfo.ModsJson` 读 mods。
+///
+/// 回放播放时 `read_play_mods`（`Player.Score`）可能因分数对象是
+/// `LegacyDatabasedScore` 子类而扫不到；结算屏的 `results.score_offset` 是已验证的
+/// `ScoreInfo` 位移，可作为兜底。
+pub fn read_results_mods(
+    source: &dyn Source,
+    table: &OffsetTable,
+    screen_top: u64,
+    layout: Option<StringLayout>,
+) -> Option<Vec<LazerMod>> {
+    let section = table.results()?;
+    let layout = layout?;
+    let score_info = read_ptr_field(source, screen_top, section.score_offset)?;
+    let json = find_mods_json(source, layout, score_info, SCOREINFO_SCAN_END)?;
+    lazer_mods_from_mods_json(&json)
 }
 
 static PROBED_MODS: Mutex<Option<HashSet<u64>>> = Mutex::new(None);
-
 pub fn probe_enabled() -> bool {
     std::env::var_os("MMA_LAZER_MODS_PROBE").is_some()
 }
@@ -228,7 +278,7 @@ fn read_play_mods_json(
         summarize(&mods),
         truncate(&json, 600)
     );
-    Some(ProbeRead { summary })
+    Some(ProbeRead { summary, mods })
 }
 
 fn find_object_of_type(
@@ -247,7 +297,15 @@ fn find_object_of_type(
         let Ok(info) = read_eetype(source, table, candidate, modules) else {
             continue;
         };
-        if info.type_name.as_deref() == Some(wanted) {
+        let type_name = info.type_name.as_deref();
+        let matched = match wanted {
+            // `Player.Score` 在回放里是 `LegacyDatabasedScore` 这类子类，不能只认基类名。
+            "osu.Game.Scoring.Score" => type_name.is_some_and(|name| {
+                name == wanted || (name.starts_with("osu.Game.Scoring.") && name.ends_with("Score"))
+            }),
+            _ => type_name == Some(wanted),
+        };
+        if matched {
             return Some((offset, candidate));
         }
     }

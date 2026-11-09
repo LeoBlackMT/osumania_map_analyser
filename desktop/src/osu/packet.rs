@@ -471,6 +471,9 @@ pub fn lazer_mods_value(mods: &[LazerMod]) -> Value {
                     );
                 }
             }
+            if let Some(seed) = mod_.seed {
+                settings.insert("seed".to_string(), json!(seed));
+            }
             if let Some(extended_limits) = mod_.extended_limits {
                 settings.insert("extended_limits".to_string(), json!(extended_limits));
             }

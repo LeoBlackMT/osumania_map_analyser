@@ -143,6 +143,8 @@ pub struct LazerMod {
     pub drain_rate: Option<f64>,
     /// `settings.overall_difficulty`（DA 的 OD 值）。
     pub overall_difficulty: Option<f64>,
+    /// `settings.seed`（RD 的随机列种子；`None` = 没有该设置或默认 null）。
+    pub seed: Option<i32>,
     /// `settings.extended_limits`（DA 的扩展上限开关）。
     pub extended_limits: Option<bool>,
 }

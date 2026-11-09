@@ -657,6 +657,7 @@ mod tests {
                 adjust_pitch: None,
                 drain_rate: None,
                 overall_difficulty: None,
+                seed: None,
                 extended_limits: None,
             },
             crate::osu::model::LazerMod {
@@ -665,6 +666,7 @@ mod tests {
                 adjust_pitch: None,
                 drain_rate: None,
                 overall_difficulty: None,
+                seed: None,
                 extended_limits: None,
             },
         ]);
@@ -686,6 +688,7 @@ mod tests {
             adjust_pitch: None,
             drain_rate: None,
             overall_difficulty: None,
+            seed: None,
             extended_limits: None,
         }]);
         assert_eq!(
@@ -700,6 +703,7 @@ mod tests {
             adjust_pitch: None,
             drain_rate: None,
             overall_difficulty: None,
+            seed: None,
             extended_limits: None,
         }]);
         assert_eq!(
