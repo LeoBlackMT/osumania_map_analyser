@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-插件提供 **8 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Polaris、Daniel、Companella、XDC1），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
+插件提供 **9 种难度估计算法**（Mixed、Azusa、Roxy、Sunny、Polaris、Daniel、Companella、XDC1、Proj7k），适配 4/6/7K 的 RC 与 LN 谱面（核心算法键数无关：5K/8K/10K 等无区间表键数仍可计算星数与难度图，段位标签回退 "Unknown difficulty"）。所有估算器均以 `.osu` 谱面文本为输入（入口函数名统一为 `runXxxEstimatorFromText`，唯一例外是 Companella 的 `classifyCompanellaDifficulty`，见 [注意事项](#9-注意事项)）。
 
 估算器内部依赖以下共享模块（这些模块同时被 Node benchmark runner 使用，不含任何浏览器 API）：
 
@@ -25,6 +25,7 @@
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，**7K 专用**：RC + LN 两半都校准（7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`；4K 曲线集已随实机否决删除）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
+| **Proj7k** | worker | `proj7kEstimator.js runProj7kEstimatorFromText` | 独立的 7K 物理模型（proj7k 引擎移植，`proj7k/engine.js`）：手指耦合 + 手部负荷 + 阈值求解，星数按锦锦 7K Regular 段位星数（`PROJ7K_DAN_STARS`）在 ln(star) 上插值成 level 与单一 Regular 标签（无 LN 半标签：引擎只有一条段位刻度，且设计上有意把 LN 读低） | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；star 恒为 Sunny sr（不入 §4.5 归一化集合，引擎星数在 `debug.proj7kStars`）；算法文档见 [../proj7k_algorithm.md](../proj7k_algorithm.md) |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **XDC1** | worker | `xdc1Estimator.js runXdc1EstimatorFromText` | 4K RC + LN（第三方，TheBagelOfMan）：手指/手腕/抖动混合的双手 strain + 长条代价 + 体力，按 98% 期望准确率聚合 | 仅 4K；不支持（非 4K、解析失败、音符不足、低于 Alpha Low）时返回 `Unsupported: ...`，不切换到 Sunny；固定 OD9 判定窗；复用 pipeline 的 parsed（IN/HO 在 clone 上转换，speedRate 生效）；star 由 pipeline 归一化为 Sunny sr；RC 半段用自身 rating→dan 标定，LN 半段始终拼接 Sunny 的 LN 区间表结果；graph 走 Sunny/Daniel 同套 800ms 平滑 |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
@@ -178,6 +179,7 @@ export const DAN_INDEX = {
 - **Roxy** → [docs/roxy_algorithm.md](../roxy_algorithm.md)（英文）
 - **Polaris** → [docs/polaris_algorithm.md](../polaris_algorithm.md)（英文，表修正估算器：**7K 专用** RC+LN）
 - **XDC1** → [README.md 参考内容区](../../README.md#参考内容)（第三方 4K 单手模型：RC+LN，固定 OD9）
+- **Proj7k** → [docs/proj7k_algorithm.md](../proj7k_algorithm.md)（英文，第三方 proj7k 7K 物理引擎移植：**7K 专用**）
 - **Sunny / Etterna / Daniel / Companella / Interlude** → [README.md 参考内容区](../../README.md#参考内容)（原文链接：Sunny Rework、Etterna、Daniel、Companella、Interlude 仓库）
 
 ## 9. 注意事项

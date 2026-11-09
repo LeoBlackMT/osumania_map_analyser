@@ -202,7 +202,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 | --- | --- |
 | 1 解析一次 | `OsuFileParser` `process()` → 估算器/归一化/SunnyWindow/Interlude 共享同一实例（任务 9/10 已验证 parsed 路径逐位一致），输出 `parsedSummary {metadata, lnRatio, columnCount}` |
 | 1b 马拉松前置 Ett（按需） | `durationS > 300`（noteStarts 首尾差，未缩放）且 4K 且算法 ∈ {Azusa, Roxy, Mixed} 时，先算一次 Ett：注入 `options.marathonCorrection = {durationS, ettValues}` 供估算器内嵌修正，并复用于段 9/10（零重复 WASM）；其他情况零开销 |
-| 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Polaris/XDC1/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`；XDC1 不支持时返回 `Unsupported: ...`（不回退） |
+| 2 估算分派 | Sunny/Daniel/Azusa/Roxy/Polaris/XDC1/Proj7k/Mixed/Companella 全带 parsed；Azusa/Roxy 无效结果回退 Sunny 并置 `actualEstimatorAlgorithm="Sunny"`；XDC1 不支持时返回 `Unsupported: ...`（不回退） |
 | 3 vibro 输入 | 取**归一化前** star（与旧 `selectedRework?.star` 顺序一致），输出 `vibro {star, eligible: star>5.0}` |
 | 4 归一化 | `actualEstimatorAlgorithm ∈ {Azusa,Roxy,Mixed,XDC1}` 未回退时 `rework.star` 覆盖为 Sunny 原始 sr（复用决策见下文）；XDC1 另取该 Sunny `estDiff` 的 LN 半段拼到自身 RC 标签后（仅在 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时） |
 | 5 SunnyWindow | `forceSunnyWindow` 时 `runSunnyWindowEstimatorFromText(rawText, {...options, enableAnalyzeLN}, parser)`（calculateSunny + calculateLN 均带 parsed），输出 `sunnyWindow` |
