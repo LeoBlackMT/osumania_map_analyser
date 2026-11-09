@@ -159,6 +159,19 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
   `HitEventLog`，由 `server/hit_events.rs` 合并后广播 `mania_hit_events`。
 - 表 `score` 段：`player_score_processor` / `hit_events` / `hit_object` / `time_offset` / `result` /
   `column` / `stride`。缺失或坏值 ⇒ 不发帧（整段降级）。
+- **Stable 生产者**（2026-11-06 起）：
+  - `Score+0x34` 的 `List<ReplayFrame>` → `mania_replay_frames`：顶部 Stable V1 重判，以及
+    Stable **V2** 的分轨/左右手（页面 `stable-sim` 从原始帧 + 谱面自己算每 note 头/尾）；
+  - `gameplay+0xDC` 的 `List<Note>`（note `+0x10` time / `+0x14` end / `+0xA0` hold /
+    `+0xA4` press / `+0xA8` release / `+0x9C` column / `+0x5C` judgement）→ 同一
+    `mania_hit_events`，承载**游戏自己的 per-note 判定**；页面 `scoreMode:"stable-native"`
+    直接计数，Stable **V1** 分轨/左右手精确。V2 局不使用 note-list 的 `+0x5C`/`+0xA8`；
+    AlterLuna 4K SV2（5,110 判定）由原始帧路径逐档 + per-hand 全等。7K SV2 暂无实机样本。
+  - 顶部方向：正常 Stable 顶部 `ScoreV2`（V1 native → 305 权重），分轨 V1；开 SV2 顶部
+    `ScoreV1`（原始帧 V1），分轨 V2；`SCOREV2_BIT` 只从 mod 容器 XOR 取，不能按
+    `[score+0x54]` 非零补位（V1 局它也非零）。
+  - 表可选段：`topology.replay`（原始帧）与 `topology.notes`（per-note）；旧表缺段 ⇒
+    顶部占位 / 分轨提示更新偏移表。`stable__x86.json` 两段都有；
 - 页面刷新/重连发 `laneacc_sync`，壳只向当前连接回放全量（≤2048 条/帧，首帧 reset）。
 - 详细公式与 UI 见 [lane-acc.md](lane-acc.md)。
 

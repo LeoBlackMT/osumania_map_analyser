@@ -54,8 +54,8 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 设置 JSON（在线 = tosu 设置文件内容，离线 = 本地 `mma-settings.json`；壳在来源切换/文件变化/离线 POST 后主动推，设置页离线时另做 pull-on-notify，见 §3c） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
-| mania_hit_events | 壳→页 | `{reset, events:[{col,result,offset}]}`（v9；LaneAcc 逐判定，≤2048 条/帧分块） |
-| mania_replay_frames | 壳→页 | `{reset, frames:[{time,keys}]}`（v10；LaneAcc 原始按键帧，≤4096 帧/分块） |
+| mania_hit_events | 壳→页 | `{reset, events:[{col,result,offset}]}`（v9；LaneAcc 逐判定，≤2048 条/帧分块；Lazer `hitEvents` / **Stable per-note judgement**） |
+| mania_replay_frames | 壳→页 | `{reset, frames:[{time,keys}]}`（v10；LaneAcc 原始按键帧，≤4096 帧/分块；Lazer `Player.Score.Replay.Frames` / **Stable `Score+0x34`**） |
 | laneacc_sync | 页→壳 | `{}`（v9；页面刷新/重连取本局全量，只回当前连接） |
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
@@ -107,6 +107,12 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 ## 3e. LaneAcc 判定事件与原始帧（契约 v10）
 
 - 下行 `mania_hit_events`：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用。
+  - Lazer：`ScoreProcessor.hitEvents`；Stable **V1**：`gameplay+0xDC` 的 `List<Note>`（`+0x9C` 列、
+    `+0x5C` judgement、`+0xA4/+0xA8` press/release、`+0xA0` hold，`offset=0`），
+    **分轨/左右手用游戏自己的判定**。Stable **V2** 不用 note-list 的 `+0x5C`/`+0xA8`；
+    页面从原始帧自己算每 note 头/尾。
+- 下行 `mania_replay_frames`：Lazer `Player.Score.Replay.Frames` / Stable `Score+0x34`；
+  顶部 ScoreV1 转换 + Stable V2 分轨/左右手用。
 - 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（≤2048 条/帧分块，首帧 reset）。
 - 壳读取 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；表 `score` 段缺失时
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
