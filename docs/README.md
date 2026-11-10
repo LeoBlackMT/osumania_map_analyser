@@ -38,16 +38,16 @@
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、严格门控） |
-| [features/pause-detection.md](features/pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
+| [features/pause-detection.md](features/pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示、回放/历史结算的静态暂停与 `Pause Data Unavailable`，契约 v11） |
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
 | [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | 非 4K 难度反馈功能文档（6K/7K 的反馈范围与侧选择、双标签拆分、去重键、门控条件） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界；§7 为独立的难度反馈数据类别：4K RC + 6K/7K） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v10**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v11**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
 | [features/content-bar-tabs.md](features/content-bar-tabs.md) | AI | 卡片 Tab 胶囊栏与组合模式（壳专属单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 配置/排序、`/shell-config` 传输、复位与已知限制） |
-| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v10 端点下发与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v11 端点下发（含 `replayHash`）与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
 | [features/malody-od.md](features/malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD，**覆盖两个客户端**：Malody 4.3.7 的 PC 表（20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 局限）**与 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、Holds/Taps 转换与复算工装） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
@@ -81,6 +81,7 @@
 | [breakings/2026-10-17-rc-difficulty-feedback.md](breakings/2026-10-17-rc-difficulty-feedback.md) | 人类/AI | RC 难度反馈破坏性说明（默认开启、仅壳、仅 RC；页面五档条 + 壳 native 重算与 Ed25519 签名 + 独立 `feedback.db` 严格入库 + osu! API 校验/限流 + 聚合/admin/CSV + OBS 成对备份；mod 码表扩到完整 mania 表且缓存键不变；插件版本保持 2.1.0） |
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | 人类/AI | 卡片 Tab 胶囊栏与组合模式破坏性说明（`contentBar` 删除 `Full`、旧值降级 Auto；壳专属 Tab 单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 至少一个模块并按 CSS order 排列；契约/版本不变） |
 | [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | 人类/AI | LaneAcc 分轨准确度与 ScoreV1 实时转换破坏性说明（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、契约 v7→v10） |
+| [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | 人类/AI | 回放暂停破坏性说明（契约 v10→v11、`.osr` 尾部只读解析、`replay_pauses`/`replay_pauses_sync`、24062 `replayHash`、偏移表新增三个哈希字段、2026.921 已知限制） |
 
 # English
 
@@ -119,16 +120,16 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict gating) |
-| [features/pause-detection.md](features/pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
+| [features/pause-detection.md](features/pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph, static replay/historical-result pauses with `Pause Data Unavailable`, contract v11) |
 | [features/mode-tagging.md](features/mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [features/rework-pp.md](features/rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [features/marathon-correction.md](features/marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |
 | [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | Non-4K difficulty feedback document (6K/7K feedback scope and side selection, dual-label split, dedup keys, gate conditions) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries; §7 covers the separate RC difficulty feedback category) |
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; a transport-layer section: native osu source + tosu fallback + the browser-only invariant) |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v10, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v11, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
 | [features/content-bar-tabs.md](features/content-bar-tabs.md) | AI | Card tab capsule bar and Combined mode (shell-only single-section inspection, hidden when `contentBar=None`, active-tab forced recompute, `combinedMode` config/ordering, `/shell-config` transport, resets and known limits) |
-| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! native source document (in-shell read-only memory layer: stable signature scan vs the lazer offset table, the 24062 tosu-compatible subset origin, contract v10 endpoint delivery and the page's socket-layer switch, capability boundaries, the `reason` closed set with freeze/hold semantics, the L0–L3 health machine, two manuals (locating an anchor failure / regenerating the lazer offset table) and the self-check list) |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! native source document (in-shell read-only memory layer: stable signature scan vs the lazer offset table, the 24062 tosu-compatible subset origin, contract v11 endpoint delivery (including `replayHash`) and the page's socket-layer switch, capability boundaries, the `reason` closed set with freeze/hold semantics, the L0–L3 health machine, two manuals (locating an anchor failure / regenerating the lazer offset table) and the self-check list) |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
 | [features/malody-od.md](features/malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, Holds/Taps conversion, recompute tool) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |
@@ -162,3 +163,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-10-17-rc-difficulty-feedback.md](breakings/2026-10-17-rc-difficulty-feedback.md) | Human/AI | RC difficulty feedback breaking note (on by default, shell only, RC only; page strip + shell-side native rebuild and Ed25519 signing + a separate strict `feedback.db` + osu! API validation/limits + aggregation/admin/CSV + paired OBS backups; the mod table now covers the full mania set with unchanged cache keys; plugin version stays 2.1.0) |
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | Human/AI | Card tab capsule bar and Combined mode breaking note (`contentBar` drops `Full`, legacy value becomes Auto; shell-only tab single-section inspection, hidden when `contentBar=None`, active-tab forced recompute, `combinedMode` with at least one module ordered by CSS `order`; contract/version unchanged) |
 | [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | Human/AI | LaneAcc per-lane accuracy and live ScoreV1 conversion breaking note (Lazer raw replay frames and hit events, dual metrics, score offset section, shell-only space setting, contract v7→v10) |
+| [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | Human/AI | Replay-pauses breaking note (contract v10→v11, read-only `.osr` tail parsing, `replay_pauses` / `replay_pauses_sync`, 24062 `replayHash`, three new hash offsets, 2026.921 known limitation) |

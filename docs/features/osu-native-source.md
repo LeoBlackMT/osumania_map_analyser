@@ -114,7 +114,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **WS 的 Origin 校验**：loopback Origin 或**无 Origin**放行，其它 **403**（`osu_compat.rs:464-486`，与 24061 的 `ws.rs` 同一份判定；非 loopback Origin 实测 403）。
 - **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:80-82`，`replay_enabled()`）；**缺省是实时载荷**。
 - **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:672-692`，`spawn_osu_compat` 的绑定失败分支）。
-- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。v9/v10 另供 `mania_hit_events`（局内逐判定）与 `mania_replay_frames`（原始按键帧）供 LaneAcc；这是壳页面通道的帧，不走 24062 tosu 兼容子集。
+- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。v9/v10 另供 `mania_hit_events`（局内逐判定）与 `mania_replay_frames`（原始按键帧）供 LaneAcc；v11 供根字段 `replayHash`（回放文件哈希，页面用它校验 24061 的 `replay_pauses` 帧）。这些是壳页面通道的帧，不走 24062 tosu 兼容子集。
 
 ## 5. 契约 v6/v7/v10：端点下发、页面切流与判定数据
 
@@ -179,14 +179,14 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 6.1 stable（32 位）
 
-已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13；页面侧会等时钟真正前进并持续 500ms 再确认，避免 Stable 开局加载误判）。
+已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `replay`（回放播放时发 `true`）/ `replayHash`（v11，64-hex 回放文件哈希，回放暂停数据面用）/ `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13；页面侧会等时钟真正前进并持续 500ms 再确认，避免 Stable 开局加载误判）。
 
 - **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（本机证据集（不入库）/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
 - **`firstObject`/`lastObject` 由我们解析 `.osu`**，口径见 DEC-22：首个对象的 `startTime` / **文件顺序最后一个对象的 `endTime`**（不是 `max(endTime)`），都不做 rate 缩放；回退与不变量在 `osu/beatmap_file.rs` + `osu/invariants.rs`。
 
 ### 6.2 lazer（64 位）
 
-今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，按表里的 `mods` 段读自定义 `speed_change` / DA 的 `overall_difficulty`、`drain_rate`、`extended_limits`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）；**并逐条上报缺来源的字段**（见 §6.3）。
+今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，按表里的 `mods` 段读自定义 `speed_change` / DA 的 `overall_difficulty`、`drain_rate`、`extended_limits`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）+ `replayHash`（v11，**仅当表里有 `score.score_hash` / `results.score_hash`**）；**并逐条上报缺来源的字段**（见 §6.3）。
 
 - 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。逐项核对（本地记录不入库）：contract-v6/D-notes.md` §17–§19。
 - **状态映射只对已对拍的态负责**：`selectPlay`（活机对拍）与 `menu`（dump 结构见证）已证；`edit` / `selectEdit` / `play` / `resultScreen` 的类型名在表里、映射规则已写，但**未与 tosu 活机对拍**（D-notes §19.5 末段）。

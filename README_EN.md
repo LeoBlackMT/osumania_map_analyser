@@ -24,6 +24,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 - **Multi-mod Support**: Compatible with multiple mods in the above games, supporting custom speed rates and judgment/OD adjustments.
 - **Section Analysis**: Double-click the difficulty distribution graph and drag to select a time slice to calculate data specifically for that section.
 - **Lane Accuracy**: Calculates independent accuracy for each lane during gameplay and converts in real time to true ScoreV1/V2.
+- **Replay pauses**: while watching a replay or a historical score, shows how many times the play was paused and where (desktop shell + osu!lazer).
 - **ReworkPP**: Computes Sunny Rework PP in real time during gameplay and displays its internal parameters.
 - **Preset System**: Provides system and custom presets to apply or save the full configuration in one click, supporting automatic following of manual changes.
 - **Highly Customizable**: Offers rich customization options to meet different player preferences.
