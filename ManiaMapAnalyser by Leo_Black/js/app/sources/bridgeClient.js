@@ -8,7 +8,7 @@ import { state } from "../core/appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 10;
+const CONTRACT_VERSION = 11;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *
@@ -19,8 +19,9 @@ const CONTRACT_VERSION = 10;
  * 随帧下发、`winScale` 可为 `null`（未知）；**v6** 新增 `sources.osu.osuTransport`
  * （原生传输的端点下发，缺省 ⇒ 页面继续用 `wsEndpoint`）；**v7** 增加桥通道
  * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）；**v9** 新增 `mania_hit_events` 下行与
- * `laneacc_sync` 上行（LaneAcc / ScoreV1）。页面按字段**逐个存在性**降级，
- * 不按版本号分支。只有越界（< 3 或 > 8）才算不匹配。
+ * `laneacc_sync` 上行（LaneAcc / ScoreV1）；**v11** 新增 `replay_pauses` 下行与
+ * `replay_pauses_sync` 上行（回放暂停）。页面按字段**逐个存在性**降级，
+ * 不按版本号分支。只有越界（< 3 或 > 11）才算不匹配。
  *
  * ⚠️ 这个常量必须与壳侧 `desktop/src/frames.rs::CONTRACT_VERSION` 同步：壳升而页面不升，
  * `hello` 会被判为越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 不只数据帧不通，
@@ -109,6 +110,20 @@ export function sendLaneAccSync() {
     }
     seq += 1;
     const frame = JSON.stringify({ v: CONTRACT_VERSION, type: "laneacc_sync", seq });
+    try {
+        socket.send(frame);
+    } catch {
+        // 静默失败
+    }
+}
+
+/** 页面刷新/重连时主动要当前回放的暂停数据（契约 v11 replay_pauses_sync）。 */
+export function sendReplayPausesSync() {
+    if (!bridgeOnline()) {
+        return;
+    }
+    seq += 1;
+    const frame = JSON.stringify({ v: CONTRACT_VERSION, type: "replay_pauses_sync", seq });
     try {
         socket.send(frame);
     } catch {
@@ -214,6 +229,11 @@ function handleFrame(frame, handlers) {
         case "mania_replay_frames":
             if (handlers.onManiaReplayFrames) {
                 handlers.onManiaReplayFrames(payload);
+            }
+            break;
+        case "replay_pauses":
+            if (handlers.onReplayPauses) {
+                handlers.onReplayPauses(payload);
             }
             break;
         case "settings":

@@ -267,9 +267,24 @@ export function updatePauseCountVisibility() {
         return;
     }
 
+    if (state.pauseDataStatus === "unavailable") {
+        pauseCountEl.textContent = "Pause Data Unavailable";
+        pauseCountEl.classList.add("idle");
+        pauseCountEl.hidden = false;
+        return;
+    }
+
     if (state.pauseCount > 0) {
         pauseCountEl.textContent = `Pause Count: ${state.pauseCount}`;
         pauseCountEl.classList.add("active");
+        pauseCountEl.hidden = false;
+        return;
+    }
+
+    // `available` 且 0 次：明确显示 0，而不是"检测已启用"。
+    if (state.pauseDataStatus === "available") {
+        pauseCountEl.textContent = "Pause Count: 0";
+        pauseCountEl.classList.add("idle");
         pauseCountEl.hidden = false;
         return;
     }
