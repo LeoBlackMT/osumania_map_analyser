@@ -29,6 +29,7 @@ const ERROR_TEXT = {
     notes: "Stable per-note data unavailable; update the offset table.",
     chart: "Chart text unavailable; switch maps to reload.",
     random: "LaneAcc is unavailable while Random (RD) is active.",
+    ppysb: "LaneAcc is not supported for ppy.sb injection.",
 };
 
 function dom() {
@@ -443,6 +444,10 @@ export const laneAccView = (() => {
     }
 
     function render() {
+        if (state.laneAccReady?.ppysbActive === true) {
+            showError("ppysb");
+            return;
+        }
         const nodes = dom();
         if (nodes && randomModBlocked()) {
             showError("random");
@@ -632,6 +637,9 @@ export const laneAccView = (() => {
             return "contract";
         }
         const client = String(state.client || "").toLowerCase();
+        if (state.laneAccReady?.ppysbActive === true || client.includes("ppysb")) {
+            return "ppysb";
+        }
         if (client.includes("lazer")) {
             if (state.laneAccReady?.lazer === false) {
                 return "offsets";

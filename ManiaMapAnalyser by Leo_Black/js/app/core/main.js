@@ -61,13 +61,18 @@ export async function initialize() {
                     lazer: body?.lazer?.score_ready === true,
                     stable: body?.stable?.replay_frames_ready === true,
                     stableNotes: body?.stable?.notes_ready === true,
+                    ppysbActive: body?.ppysb_active === true,
                 };
                 state.laneAccScoreReady = state.laneAccReady.lazer;
-                const ready = String(state.client || "").toLowerCase().includes("stable")
+                const clientName = String(state.client || "").toLowerCase();
+                const stableClient = clientName.includes("stable");
+                const ppysbClient = clientName.includes("ppysb") || state.laneAccReady.ppysbActive === true;
+                const ready = (stableClient || ppysbClient)
                     ? state.laneAccReady.stableNotes
                     : state.laneAccReady.lazer;
-                if (ready === false) {
-                    const stableClient = String(state.client || "").toLowerCase().includes("stable");
+                if (ppysbClient) {
+                    laneAccView.setUnavailable("ppysb");
+                } else if (ready === false) {
                     laneAccView.setUnavailable(stableClient ? "notes" : "offsets");
                 }
             })

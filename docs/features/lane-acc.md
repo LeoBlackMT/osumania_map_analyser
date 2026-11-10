@@ -2,6 +2,7 @@
 
 > 目标：AI / 维护者。适用桌面壳 + osu!lazer / osu!stable+ 原生 mania 4K–18K。
 > **Stable 分轨/左右手使用游戏自己的 per-note 判定（精确）；顶部 ScoreV1 转换 Acc 用原始帧按 Stable V1 重判（允许几个 note / ≤0.1 pp 误差）。**
+> **ppy.sb 注入版：内存读取和其它功能仍可用；LaneAcc 不支持，会显示占位提示。**
 
 ## 1. 功能
 

@@ -14,6 +14,8 @@ offsets/
 └── lazer/              # osu!lazer 各版本适配文件
 ```
 
+> stable/ppysb__x86.json 用于 ppy.sb 注入版的基础内存读取；LaneAcc 不支持 ppy.sb，会显示占位提示。
+
 > 维护者：stable 表新增两个**可选**段——`topology.replay`（`Score+0x34` 原始按键帧）与
 > `topology.notes`（HOM per-note 判定，列/档位）。`tools/stable-offsets-gen` 重新生成时会
 > 保留这两段；换 `osu!.exe` 构建后必须 live 自证再更新，缺段时 Stable 分轨显示占位。
