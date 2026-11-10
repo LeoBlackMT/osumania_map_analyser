@@ -24,7 +24,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 - **Multi-mod Support**: Compatible with multiple mods in the above games, supporting custom speed rates and judgment/OD adjustments.
 - **Section Analysis**: Double-click the difficulty distribution graph and drag to select a time slice to calculate data specifically for that section.
 - **Lane Accuracy**: Calculates independent accuracy for each lane during gameplay and converts in real time to true ScoreV1/V2.
-- **Replay pauses**: while watching a replay or a historical score, shows how many times the play was paused and where (desktop shell + osu!lazer).
+- **Pause Count**: Counts pauses during live play and Lazer replays and shows them on the difficulty graph.
 - **ReworkPP**: Computes Sunny Rework PP in real time during gameplay and displays its internal parameters.
 - **Preset System**: Provides system and custom presets to apply or save the full configuration in one click, supporting automatic following of manual changes.
 - **Highly Customizable**: Offers rich customization options to meet different player preferences.
@@ -66,11 +66,12 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 ## Notes
 1. This plugin relies on the correct parsing of beatmap data. Certain special or non-standard beatmaps may cause inaccurate analysis results.
 2. This program is primarily designed to run as a standalone application with osu!. Without an osu! source or the desktop shell, some features may be unavailable or degraded.
-3. Beatmaps converted from Etterna use OD 9 by default; the conversion OD for Malody 4.3.7 and Malody V is determined by the in-game judge level (A–E or Pro) and the chart rate (mods or Turbo Mode). See [docs/features/malody-od.md](docs/features/malody-od.md).
+3. Beatmaps converted from Etterna use OD 9 by default; the conversion OD for Malody 4.3.7 and Malody V is determined by the in-game judge level (A–E or Pro) and the chart rate (mods or Turbo Mode). See [here](docs/features/malody-od.md).
 4. When osu!(lazer) updates and memory reading fails before a new shell or offset table is released, click Memory Offsets Management -> Live Generator in settings to quickly generate an offset table from the running lazer process. Lazer must remain running during generation. You can also run `offsets/gen.exe` directly.
-5. If the desktop shell cannot start and the log says the port is occupied, use `Get-NetTCPConnection -LocalPort 24061` (or `netstat -ano | findstr :24061`) to find the PID, then close that program in Task Manager. All port assignments are: 24061 (shell page), 24062 (osu! native-read compatibility endpoint), and 17653 (Malody V selection bridge); tosu uses 24050. If 24061 is occupied, the shell cannot start. If 24062/17653 is occupied, the corresponding native transport/bridge degrades. If you change tosu's port, set the same host:port in the plugin's `wsEndpoint` setting.
-6. If you cannot open the settings page with `Ctrl + Shift + S`, check if another program is using that shortcut, or manually edit the `mma-shell-config.json` file to change the `settings` key in `hotkeys` to a different combination (e.g. `"settings": "Ctrl+Alt+S"`).
-7. Feel free to submit an issue if you encounter problems. We also welcome pull requests that follow [CONTRIBUTING.md](CONTRIBUTING.md)!
+5. Reading the pause count and positions from a replay is only available for native Lazer scores from version 2025.816.0 onwards.
+6. If the desktop shell cannot start and the log says the port is occupied, use `Get-NetTCPConnection -LocalPort 24061` (or `netstat -ano | findstr :24061`) to find the PID, then close that program in Task Manager. All port assignments are: 24061 (shell page), 24062 (osu! native-read compatibility endpoint), and 17653 (Malody V selection bridge); tosu uses 24050. If 24061 is occupied, the shell cannot start. If 24062/17653 is occupied, the corresponding native transport/bridge degrades. If you change tosu's port, set the same host:port in the plugin's `wsEndpoint` setting.
+7. If you cannot open the settings page with `Ctrl + Shift + S`, check if another program is using that shortcut, or manually edit the `mma-shell-config.json` file to change the `settings` key in `hotkeys` to a different combination (e.g. `"settings": "Ctrl+Alt+S"`).
+8. Feel free to submit an issue if you encounter problems. We also welcome pull requests that follow [CONTRIBUTING.md](CONTRIBUTING.md)!
 
 ## Settings Guide
 Note: It is recommended to start with default settings or select a suitable preset, then fine-tune according to personal preference.  

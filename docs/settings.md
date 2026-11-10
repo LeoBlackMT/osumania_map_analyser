@@ -117,7 +117,7 @@
 - **功能性设置**：
     - **Pause Detection**: 是否启用暂停检测功能。
         - 推荐启用：启用后将在难度图表上显示暂停位置，并在卡片右下角显示暂停次数。
-        - 观看回放或查看历史成绩时（桌面壳 + osu!lazer），同样显示该局的历史暂停位置；数据不可用时显示 `Pause Data Unavailable`（2025.816.0 之前的 lazer 成绩没有暂停时间戳）。
+        - 观看Lazer历史成绩时，同样显示该局的历史暂停位置；数据不可用时显示 `Pause Data Unavailable`（仅限 2025.816.0 版本之后的原生 Lazer 成绩）。
     - **Enable Update Check**: 是否启用版本更新检查。
         - 启用后默认每天最多检查一次 GitHub latest release。
         - 当从“关闭”切换到“开启”时，会立即额外触发一次检查。
@@ -308,7 +308,7 @@
 - **Functional Settings**:
     - **Pause Detection**: Whether to enable pause detection.
         - Recommended: When enabled, pause positions will be displayed on the difficulty graph, and the pause count will be shown in the bottom-right corner of the card.
-        - While watching a replay or viewing a historical score (desktop shell + osu!lazer), the same historical pause markers are shown; when the data is unavailable the card shows `Pause Data Unavailable` (lazer scores before 2025.816.0 have no pause timestamps).
+        - While viewing Lazer historical scores, the historical pause positions for that play are shown as well; when the data is unavailable it shows `Pause Data Unavailable` (only native Lazer scores from version 2025.816.0 onwards).
     - **Enable Update Check**: Whether to enable version update checking.
         - When enabled, it checks the GitHub latest release at most once per day by default.
         - When switching from disabled to enabled, it immediately triggers one extra check.
