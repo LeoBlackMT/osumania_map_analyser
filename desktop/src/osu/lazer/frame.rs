@@ -374,9 +374,12 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     if snapshot.state_name.as_deref() == Some("resultScreen") {
         if let Some(screen_top) = chain.screen_top {
             if let Some(mods) = super::mods::read_results_mods(source, table, screen_top, layout) {
+                // 只有**非空**的 ScoreInfo.ModsJson 才视为"该成绩自己的 mods"。
+                // 刚打完的活成绩在入库前可能是 `[]`（默认值），此时仍需沿用 play 帧，
+                // 否则会把 DT 签成 NM；历史成绩的 NM 记录则由“离开 play 即清缓存”兜底。
+                mods_from_score = !mods.is_empty();
                 snapshot.lazer_mods = Some(mods);
                 snapshot.lazer_mods_complete = true;
-                mods_from_score = true;
             }
         }
     }
