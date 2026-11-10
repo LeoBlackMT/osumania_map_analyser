@@ -86,7 +86,33 @@
       [3, "geki"],
       [4, "katu"],
       [5, "miss"]
-    ]
+    ],
+    "replay": {
+      "score_frames": 52,
+      "list_items": 4,
+      "list_size": 12,
+      "list_version": 16,
+      "array_data": 8,
+      "frame_time": 16,
+      "frame_keys": 4,
+      "frame_y": 8,
+      "frame_buttons": 20,
+      "witness": "2026-11-06 live ppy.sb: Score+0x34 list size 93,245; version=size+1; frame +0x10 time monotonic, +0x04 float mask 0..15, +0x08 column width, +0x14 buttons=0; target HT-6293 confirmed by result screen [6293,6967,1334,207,99,227]"
+    },
+    "notes": {
+      "note_list_from_gameplay": 220,
+      "list_items": 4,
+      "list_size": 12,
+      "array_data": 8,
+      "note_time": 16,
+      "note_end": 20,
+      "note_press": 164,
+      "note_release": 168,
+      "note_is_hold": 160,
+      "note_column": 156,
+      "note_judgement": 92,
+      "witness": "2026-11-06 live ppy.sb PID 7752 (-devserver ppy.sb): gameplay+0xDC List<Note>; +0x9C column / +0x5C judgement / +0xA4 press / +0xA8 release / +0xA0 hold; live buckets [MAX 159,300 27,200 5] vs note list 159/26/5 at 190 judged"
+    }
   },
   "mappings": {
     "states": {

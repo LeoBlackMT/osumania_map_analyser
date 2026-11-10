@@ -23,6 +23,9 @@ const IGNORE_HIT = 14;
 const COMBO_BREAK = 15;
 const FORCE_DROP = 50;
 const LAZER_WEIGHTS = [0, 50, 100, 200, 300, 305];
+// gameCounts / lane.counts 是 miss..MAX（result 1..6）顺序。
+const SV1_GAME_WEIGHTS = [0, 50, 100, 200, 300, 300];
+// sv1Counts 是 MAX..miss（judgement 1..6）顺序。
 const SV1_WEIGHTS = [300, 300, 200, 100, 50, 0];
 
 export function normalizeSpaceMode(value) {
@@ -208,6 +211,10 @@ export function createAccumulator(chart, options = {}) {
     if (!chart || chart.error) {
         throw new Error("laneacc: chart is not ready");
     }
+    // "lazer" | "stable-native" | "stable-v1" | "stable-v2"
+    const scoreMode = String(options.scoreMode || "lazer");
+    const laneWeights = options.laneWeights === 300 ? SV1_GAME_WEIGHTS : LAZER_WEIGHTS;
+    const laneWeightMax = options.laneWeights === 300 ? 300 : 305;
     const columnCount = chart.columnCount;
     const noteCount = chart.noteCount;
     const gameCounts = new Int32Array(columnCount * 6);
@@ -422,6 +429,14 @@ export function createAccumulator(chart, options = {}) {
             return;
         }
         if (result >= 1 && result <= 6) {
+            // stable-native：壳直接发游戏自己的 per-note 判定（列+档位），
+            // 不再用 V1 公式重判；分轨/左右手天然精确。
+            if (scoreMode === "stable-native") {
+                gameCounts[col * 6 + result - 1] += 1;
+                gameTotal += 1;
+                registerJudgement(col, result !== MISS);
+                return;
+            }
             // 同一列出现新的音符头时，先把上一条只差 13/14 的 LN 结算掉。
             if (pending[col] >= 0) {
                 const index = cursor[col];
@@ -583,14 +598,14 @@ export function createAccumulator(chart, options = {}) {
     function laneSnapshot(col) {
         const counts = Array.from(gameCounts.slice(col * 6, col * 6 + 6));
         const judged = counts.reduce((sum, value) => sum + value, 0);
-        const points = sumPoints(counts, LAZER_WEIGHTS);
+        const points = sumPoints(counts, laneWeights);
         return {
             col,
             counts,
             judged,
             miss: counts[0],
             points,
-            acc: accuracy(points, judged, 305),
+            acc: accuracy(points, judged, laneWeightMax),
             maxCombo: laneMaxCombo[col],
         };
     }
@@ -614,7 +629,7 @@ export function createAccumulator(chart, options = {}) {
             judged,
             points,
             miss,
-            acc: accuracy(points, judged, 305),
+            acc: accuracy(points, judged, laneWeightMax),
             counts,
             maxCombo: handIndex >= 0 ? handMaxCombo[handIndex] : 0,
         };
@@ -653,6 +668,7 @@ export function createAccumulator(chart, options = {}) {
             gameMiss: lanes.reduce((sum, lane) => sum + lane.miss, 0),
             counts: totalCounts,
             maxCombo: sv1MaxCombo,
+            gameMaxCombo: maxCombo,
             sv1Total,
             sv1Points,
             sv1Acc: accuracy(sv1Points, sv1Total, 300) ?? 100,

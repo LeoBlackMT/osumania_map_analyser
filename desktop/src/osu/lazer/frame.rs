@@ -310,9 +310,12 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
 
     // ⑥c 预研探针：`MMA_LAZER_MODS_PROBE=1` 时从 Player 扫 `Score.ScoreInfo.ModsJson`。
     //     只写壳日志，不参与载荷；读取链路固化前不动现有 `SelectedMods` 读取。
+    let mut mods_json_mods = None;
     if snapshot.state_name.as_deref() == Some("play") {
         if let Some(screen_top) = chain.screen_top {
             super::mods::probe_once(source, table, screen_top, layout, modules);
+            // ModsJson 是 RD seed / 自定义设置最稳的来源；读不到时回退 SelectedMods。
+            mods_json_mods = super::mods::read_play_mods(source, table, screen_top, layout, modules);
         }
     }
 
@@ -348,6 +351,20 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
             gaps.push(offsets_gap("play.mods", &error));
             gaps.push(offsets_gap("menu.mods", &error));
             gaps.push(offsets_gap("resultsScreen.mods", &error));
+        }
+    }
+    if let Some(mods) = mods_json_mods {
+        snapshot.lazer_mods = Some(mods);
+        snapshot.lazer_mods_complete = true;
+    }
+    // 结算屏再从 ResultsScreen.Score -> ScoreInfo.ModsJson 读一次：回放播放的
+    // `Player.Score` 是 `LegacyDatabasedScore` 子类，play 路径可能扫不到。
+    if snapshot.state_name.as_deref() == Some("resultScreen") {
+        if let Some(screen_top) = chain.screen_top {
+            if let Some(mods) = super::mods::read_results_mods(source, table, screen_top, layout) {
+                snapshot.lazer_mods = Some(mods);
+                snapshot.lazer_mods_complete = true;
+            }
         }
     }
 
@@ -991,6 +1008,7 @@ pub fn read_lazer_mods(
                 adjust_pitch,
                 drain_rate,
                 overall_difficulty,
+                seed: None,
                 extended_limits,
             });
         } else {
@@ -1108,6 +1126,7 @@ mod tests {
             adjust_pitch: Some(false),
             drain_rate: None,
             overall_difficulty: None,
+            seed: None,
             extended_limits: None,
         };
         let mut last = None;
@@ -1312,4 +1331,3 @@ mod tests {
         assert_eq!(read.overall_difficulty, None);
     }
 }
-

@@ -14,7 +14,8 @@
    - **`24062`**——**tosu 兼容子集 origin**（osu 原生传输的数据面：WS `/websocket/v2`、WS `/websocket/commands` 黑洞、`GET /files/beatmap/{file,background}`，全部带 `Access-Control-Allow-Origin: *`，Host 门禁只放行本机 24062），见 §3d。
 3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 4. **Malody 4.3.7 只读观察器**：200ms 一拍——从进程外读锚点身份键（`ReadProcessMemory`）、tail 游戏日志取场景、轮询 `config.json` 取变速位与判定档，广播 `malody4_selection` / song / state 帧。**不向游戏目录写入任何文件**、不注入、不 hook（详见 [multi-source.md](multi-source.md) 与 [malody4-source.md](malody4-source.md)）。
-5. **osu 原生读取器**（只读内存，250 ms 一拍）：`desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
+5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
+`desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
 模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `malody4/{mod,anchor,library,gamelog,selection,config,model}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**）；契约 `desktop/docs/CONTRACT.md`（**v10**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
@@ -54,8 +55,8 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 设置 JSON（在线 = tosu 设置文件内容，离线 = 本地 `mma-settings.json`；壳在来源切换/文件变化/离线 POST 后主动推，设置页离线时另做 pull-on-notify，见 §3c） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
-| mania_hit_events | 壳→页 | `{reset, events:[{col,result,offset}]}`（v9；LaneAcc 逐判定，≤2048 条/帧分块） |
-| mania_replay_frames | 壳→页 | `{reset, frames:[{time,keys}]}`（v10；LaneAcc 原始按键帧，≤4096 帧/分块） |
+| mania_hit_events | 壳→页 | `{reset, events:[{col,result,offset}]}`（v9；LaneAcc 逐判定，≤2048 条/帧分块；Lazer `hitEvents` / **Stable per-note judgement**） |
+| mania_replay_frames | 壳→页 | `{reset, frames:[{time,keys}]}`（v10；LaneAcc 原始按键帧，≤4096 帧/分块；Lazer `Player.Score.Replay.Frames` / **Stable `Score+0x34`**） |
 | laneacc_sync | 页→壳 | `{}`（v9；页面刷新/重连取本局全量，只回当前连接） |
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
@@ -107,6 +108,12 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 ## 3e. LaneAcc 判定事件与原始帧（契约 v10）
 
 - 下行 `mania_hit_events`：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用。
+  - Lazer：`ScoreProcessor.hitEvents`；Stable **V1**：`gameplay+0xDC` 的 `List<Note>`（`+0x9C` 列、
+    `+0x5C` judgement、`+0xA4/+0xA8` press/release、`+0xA0` hold，`offset=0`），
+    **分轨/左右手用游戏自己的判定**。Stable **V2** 不用 note-list 的 `+0x5C`/`+0xA8`；
+    页面从原始帧自己算每 note 头/尾。
+- 下行 `mania_replay_frames`：Lazer `Player.Score.Replay.Frames` / Stable `Score+0x34`；
+  顶部 ScoreV1 转换 + Stable V2 分轨/左右手用。
 - 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（≤2048 条/帧分块，首帧 reset）。
 - 壳读取 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；表 `score` 段缺失时
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。

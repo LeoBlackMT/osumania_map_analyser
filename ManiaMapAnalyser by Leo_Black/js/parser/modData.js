@@ -157,6 +157,7 @@ export function getModData(data, {
     let cvtFlag = null;
     let daOverallDifficulty = null;
     let lazerSpeedChange = null;
+    let lazerRandomSeed = null;
 
     if (client === "lazer") {
         for (const arrayMods of modArrays) {
@@ -185,6 +186,13 @@ export function getModData(data, {
                     );
                     if (Number.isFinite(overallDifficulty)) {
                         daOverallDifficulty = overallDifficulty;
+                    }
+                }
+
+                if (acronym === "RD") {
+                    const seed = Number(modItem?.settings?.seed ?? modItem?.seed);
+                    if (Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647) {
+                        lazerRandomSeed = seed;
                     }
                 }
             }
@@ -236,6 +244,7 @@ export function getModData(data, {
         odFlag == null ? "none" : String(odFlag),
         cvtFlag == null ? "none" : String(cvtFlag),
         classic ? "1" : "0",
+        lazerRandomSeed == null ? "none" : String(lazerRandomSeed),
     ].join("|");
 
     return {
@@ -246,6 +255,7 @@ export function getModData(data, {
         modSignature,
         classic,
         modCodes: [...modCodes].sort(),
+        randomSeed: lazerRandomSeed,
         hasModPayload,
         hasModInfo: hasRelevantModInfo,
         hasExplicitNoMod: hasExplicitNoModSignal,

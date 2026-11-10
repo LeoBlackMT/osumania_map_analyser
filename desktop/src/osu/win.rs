@@ -910,6 +910,27 @@ mod win32 {
     ///
     /// 「绝不从一次抖动的扫描升级」与「权威枚举里的两个真实例必须升级」都写在那边的判据表里；
     /// 这里只做三件事：组装输入、把决策翻译成 reason（沿用既有闭集）、开句柄。
+    #[allow(unused_doc_comments)]
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetForegroundWindow() -> Handle;
+        fn GetWindowThreadProcessId(hwnd: Handle, pid: *mut u32) -> u32;
+    }
+
+    fn foreground_process_id() -> Option<u32> {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd == 0 {
+                return None;
+            }
+            let mut pid = 0u32;
+            if GetWindowThreadProcessId(hwnd, &mut pid) == 0 || pid == 0 {
+                None
+            } else {
+                Some(pid)
+            }
+        }
+    }
     fn finish_selection(candidates: Candidates) -> Result<Target, Reason> {
         let view = discovery::Discovery {
             stable: rows_to_candidates(&candidates.stable),
@@ -922,7 +943,27 @@ mod win32 {
         // 兜底扫描的长间隔（否则游戏没开时每 2 s 就全量重扫 65k 个 PID）。
         let retry_soon = matches!(decision, discovery::Decision::Retry) && !view.all_pids().is_empty();
         RETRY_SOON.with(|slot| slot.set(retry_soon));
-        let discovery::Decision::Attach { pid, client } = decision else {
+
+        let mut attach = match decision {
+            discovery::Decision::Attach { pid, client } => Some((pid, client)),
+            _ => None,
+        };
+        // 前台窗口优先：Lazer 与 Stable/ppy.sb 同时运行时，当前正在看的那个才是目标。
+        if let Some(fg_pid) = foreground_process_id() {
+            let fg_client = if view.stable.iter().any(|candidate| candidate.pid == fg_pid) {
+                Some(crate::osu::model::Client::Stable)
+            } else if view.lazer.iter().any(|candidate| candidate.pid == fg_pid) {
+                Some(crate::osu::model::Client::Lazer)
+            } else {
+                None
+            };
+            if let Some(client) = fg_client {
+                eprintln!("[osu] discovery: foreground pid={fg_pid} overrides selection");
+                attach = Some((fg_pid, client));
+            }
+        }
+
+        let Some((pid, client)) = attach else {
             eprintln!(
                 "[osu] discovery: decision={decision:?} reason={:?} source={:?} stable={:?} lazer={:?} repeats={} retry_soon={retry_soon}",
                 reason.as_ref().map(Reason::as_str),
@@ -932,8 +973,7 @@ mod win32 {
                 STABILITY.with(|slot| slot.borrow().repeats())
             );
             return Err(reason.unwrap_or(Reason::ProcessNotFound));
-        };
-        // 决策只在"它所在的候选桶"里找路径；找不到说明决策与候选集不同源（调用方 bug）。
+        };        // 决策只在"它所在的候选桶"里找路径；找不到说明决策与候选集不同源（调用方 bug）。
         let rows = match client {
             crate::osu::model::Client::Stable => &candidates.stable,
             crate::osu::model::Client::Lazer => &candidates.lazer,

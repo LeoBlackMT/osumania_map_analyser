@@ -1,6 +1,8 @@
 # LaneAcc（分轨准确度）与 ScoreV1 实时转换
 
-> 目标：AI / 维护者。适用桌面壳 + osu!lazer + 原生 mania 4K–18K；**不计划支持 stable**。
+> 目标：AI / 维护者。适用桌面壳 + osu!lazer / osu!stable+ 原生 mania 4K–18K。
+> **Stable 分轨/左右手使用游戏自己的 per-note 判定（精确）；顶部 ScoreV1 转换 Acc 用原始帧按 Stable V1 重判（允许几个 note / ≤0.1 pp 误差）。**
+> **ppy.sb 注入版：内存读取和其它功能仍可用；LaneAcc 不支持，会显示占位提示。**
 
 ## 1. 功能
 
@@ -144,6 +146,9 @@ LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js`
 - 游玩/回放过程中判定数和 ScoreV1 逐步增加；
 - 回放不再开局冻结为最终值，seek 回跳时重建并重放到新位置；
 - 真正进入结算屏才调用 `finishSession(true)` 强制应用全量并冻结；中途退回选歌/选曲界面调用 `finishSession(false)`，只按当前 `songTimeMs` 冻结，未到达的 note 不会补成 Miss。
+- 结算边沿即使丢失 play 前态，只要 LaneAcc 会话仍存活（`sessionActive` / 已冻结终态），也按“刚打完”冻结并保留；
+  会话/终态期间收到壳 detach 的空 `mania_replay_frames` / `mania_hit_events` reset 一律忽略，等下一局
+  `startSession` 再清，避免进入结算时把卡片清空。
 - 全量快照按 2048 条分块到达；谱面模型尚未准备好时先排队，`prepareChart` 建好累加器后再按 reset/events 顺序回放，不能只保留最后一块。
 - 切图/换难度时按 `chart.identity + columnCount + noteCount + OD + 首尾时间` 检测谱面变化，清空 hitEvents/replayFrames 并重建累加器；旧谱面的事件不会按新 note 索引落成 Miss，卡片从 100.00% 重新开始。
 
@@ -192,3 +197,50 @@ head/tail/14/15/13 事件，再交给同一套 `accumulator.js` SV1 状态机；
 并对 `raw=200 / hit=100` 的边界 note 取 100。6K 结果与目标只差一个 50：目标
 `[1647,921,99,7,16,17]` 合计 2707，而地图 2708 个物件；这个多出的 50 就是目标里漏掉的物件，
 其余五档与 MaxCombo 全部一致。10K/9K/4K 不触发这条重建，保持原始帧逐档结果。
+
+## 8. Stable 数据面（2026-11-06）
+
+Stable 不是“内存里没有逐 note 信息”，而是需要读 `Score` 与 HOM 两条链：
+
+- **顶部 ScoreV1 转换 Acc**：`Score+0x34` 的 `List<ReplayFrame>`，按 Stable V1 窗口重判。
+  允许几个 note / **≤0.1 pp** 的误差（回放帧是 1ms 量化；live play 更好）。
+- **分轨 / 左右手**：`gameplay+0xDC` 的 `List<Note>`，每个 note：
+  - `+0x10` time / `+0x14` end / `+0x9C` column（0..17）
+  - `+0x5C` judgement（`268435456`=MAX、`134217728`=300、`67108864`=200、
+    `33554432`=100、`16777216`=50、`-65536`=miss、`0`=未判）
+  壳把这些**游戏自己的判定**按列聚合后通过 `mania_hit_events` 发给页面；页面
+  `accumulator` 的 `scoreMode: "stable-native"` 只计数、不重判，因此分轨/左右手**精确**。
+- 偏移表：`stable__x86.json` 包含 `topology.replay` 与
+  `topology.notes` 于 2026-11-06 live 4K 验证。旧表缺段 ⇒ 顶部占位 /
+  分轨提示更新偏移表，绝不回退到近似的 V1 公式。
+- **SV2 局**：页面 `stable-sim` 从 `Score+0x34` 的原始帧 + 谱面
+  自己算每 note 的头/尾：头档用按下沿对 V2 窗口（先跳过早于头窗的残段，避免上一条 LN 的
+  断手段被当成本 note 的按下）；尾档用 `|释放沿 − note.end| / 1.5` 对 V2 窗口，同一 LN 内
+  `note.end` 前的 regrab/断手段归本条——首释放早于 tail−50 窗才封顶 50，否则按首释放正常判尾；
+  按住过尾时限（>50 窗）按 held 记 MAX，头 miss 时尾同样 miss；每颗 LN 发 head+tail 两个事件，
+  再交给 native 计数。
+  壳的 native 事件带 `note` 下标时，页面取每 note 的第一个事件作为**游戏头判**：头 miss 的 note
+  不再用帧按下沿补成命中（V2 预选会把该按下路由给前一条 LN 的尾窗），尾档按帧算完后封顶 50。
+  SnowMix 4K SV2（3,967 判定）用此覆盖后与结算逐档全等：`[1,1,0,8,448,3509]`（miss→MAX）。
+  AlterLuna 4K SV2 两局（14,943 / 14,654 帧）逐档全等：`[2,1,2,15,793,4297]`、`[2,0,0,2,534,4572]`。
+  Seagull 4K SV2 两局均逐档全等：14,883 帧 / `[6,2,1,17,682,2763]`，14,766 帧 /
+  `[2,2,2,6,574,2885]`；AlterLuna 4K SV2（5,110 判定）此前逐档与 per-hand 全等；note-list `+0x5C`/`+0xA8`
+  **不作为 V2 分轨来源**。7K SV2 暂无实机样本。
+- **顶部方向**：正常 Stable（无 SV2）顶部显示 `ScoreV2`，用原始帧按 V2 规则重判
+  （0 LN 时 tap 判定与 V1 相同，直接按 V1 native 计数乘 305 权重折算，避免帧流尾段缺失误判 miss）。
+  V2 重判的**段归属按 Lazer 口径**：同列头取头窗内最早的可判按下沿，且严格早于下一条 note；
+  LN 尾沿本条 LN 自己的段向后扫描，断手只封顶 50，不吸收下一条 note 的头段；
+  头 miss 后可由后续 regrab 段补尾（封顶 50）。分轨仍用 V1。
+  开 SV2 时顶部显示 `ScoreV1`（原始帧按 V1 重判），分轨用 V2（与 Lazer 同向）。
+  实时分轨只判已到窗口的 note；未来 note 不预判 miss，LN 尾窗未到先只发头。
+  Nibelungen 4K（2,634 note / 2,015 LN / 4,649 判定）与该回放的 Lazer 判定逐 note 全等：
+  `[23,18,21,170,1466,2951]`（miss→MAX）。
+- **MR**：原始帧的 keys 位掩码和游戏 per-note 事件的列都按 MR 镜像回谱面原始列后再计算。
+- **RD**：Stable 没有可读种子，整模块禁用；Lazer 从 `ScoreInfo.ModsJson.settings.seed` 读实际种子，
+  用 `ManiaModRandom` 的 .NET seeded `System.Random` 列置换还原任意键数（4K–18K）。
+  回放播放时 `Player.Score` 是 `LegacyDatabasedScore` 子类，壳按 `osu.Game.Scoring.*Score`
+  匹配并在结算屏从 `ResultsScreen.Score` 的 `ScoreInfo.ModsJson` 再读一次，避免回放局丢 mods/seed。
+  实测 4K `Dan ~ REFORM ~ JackMap Pack [Break ~ Gamma ~ (Marathon)]` RD（seed 1226698903）：
+  native 六档 `[37,1,27,41,346,1551]` 与结算全等、Acc 96.2171%；顶部 SV1 折算 96.5535%，
+  页面实机回放终局 ScoreV1 96.45%、四轨 95.72/96.95/96.07/96.12（与 native 分轨全等）。
+  实测 7K MR+RD 本地原生回放（Marigold，seed 1954242174）：10,613 帧；顶部 SV1 95.46%（RD 重排 + MR 帧镜像），native 分轨 94.82% vs 结算 94.79%，仅 1 个 OK/GOOD 边界事件差。

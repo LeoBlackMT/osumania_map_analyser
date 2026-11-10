@@ -496,19 +496,24 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         let body = serde_json::json!({
             "status": "ok",
             "generator_ready": gen_ready,
+            "ppysb_active": crate::osu::runner::ACTIVE_STABLE_VARIANT.load(std::sync::atomic::Ordering::Relaxed) == 1,
             "stable": {
-                "client": "stable",
+                "client": stable_table.as_ref().map(|t| t.client.clone()).unwrap_or_else(|_| "stable".to_string()),
                 "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
                 "arch": "x86",
                 "anchors_count": stable_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
-                "loaded": stable_table.is_ok()
+                "loaded": stable_table.is_ok(),
+                "replay_frames_ready": stable_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
+                "notes_ready": stable_table.as_ref().map(|t| t.topology.notes.is_some()).unwrap_or(false)
             },
             "ppysb": {
                 "client": "ppysb",
                 "version": ppysb_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
                 "arch": "x86",
                 "anchors_count": ppysb_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
-                "loaded": ppysb_table.is_ok()
+                "loaded": ppysb_table.is_ok(),
+                "replay_frames_ready": ppysb_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
+                "notes_ready": ppysb_table.as_ref().map(|t| t.topology.notes.is_some()).unwrap_or(false)
             },
             "lazer": {
                 "client": "lazer",

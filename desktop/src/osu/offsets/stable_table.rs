@@ -18,6 +18,65 @@ pub struct StableAnchorDef {
     pub evidence: String,
 }
 
+/// `Score + 0x34` 的 `List<ReplayFrame>` 段（可选；缺段 = Stable LaneAcc 占位）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableReplaySection {
+    /// `Score + score_frames` → `List<ReplayFrame>`。
+    pub score_frames: u32,
+    /// `List._items`。
+    pub list_items: u32,
+    /// `List._size`。
+    pub list_size: u32,
+    /// `List._version`（可选；用于检测 clear + refill）。
+    #[serde(default)]
+    pub list_version: Option<u32>,
+    /// 数组对象内 element[0] 的偏移。
+    pub array_data: u32,
+    /// `ReplayFrame.time`（int32）。
+    pub frame_time: u32,
+    /// `ReplayFrame.x`（float，mania 列位掩码）。
+    pub frame_keys: u32,
+    /// `ReplayFrame.y`（float，mania 列宽常量）。
+    pub frame_y: u32,
+    /// `ReplayFrame.pButtonState`（int32）。
+    pub frame_buttons: u32,
+    #[serde(default)]
+    pub witness: String,
+}
+
+/// `gameplay + note_list_from_gameplay` 的 `List<Note>` 段（可选；per-note 判定直读）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct StableNotesSection {
+    /// `gameplay + note_list_from_gameplay` → `List<Note>`。
+    pub note_list_from_gameplay: u32,
+    /// `List._items`。
+    pub list_items: u32,
+    /// `List._size`。
+    pub list_size: u32,
+    /// 数组对象内 element[0] 的偏移。
+    pub array_data: u32,
+    /// `Note.time`（int32，谱面时间）。
+    pub note_time: u32,
+    /// `Note.end`（int32；tap 与 time 相同）。
+    pub note_end: u32,
+    /// `Note.press_time`（int32；实际按下时刻，V2 LN 头档用）。
+    #[serde(default)]
+    pub note_press: Option<u32>,
+    /// `Note.release_time`（int32；实际释放时刻，tap=0）。
+    #[serde(default)]
+    pub note_release: Option<u32>,
+    /// `Note.is_hold`（int32；1=LN，0=tap）。
+    #[serde(default)]
+    pub note_is_hold: Option<u32>,
+    /// `Note.column`（int32，0..=17）。
+    #[serde(default)]
+    pub note_column: Option<u32>,
+    /// `Note.judgement`（int32；stable 判定枚举）。
+    pub note_judgement: u32,
+    #[serde(default)]
+    pub witness: String,
+}
+
 /// stable 多跳链路与偏移拓扑
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct StableTopology {
@@ -67,6 +126,12 @@ pub struct StableTopology {
     pub hits_candidate_offsets: Vec<u32>,
     #[serde(default = "default_hits_slot_mapping")]
     pub hits_slot_mapping: Vec<(usize, String)>,
+    /// `Score+0x34` 原始 ReplayFrame 段；旧表缺段 = 占位。
+    #[serde(default)]
+    pub replay: Option<StableReplaySection>,
+    /// per-note judgement 直读段；旧表缺段 = 回退 V1 状态机/占位。
+    #[serde(default)]
+    pub notes: Option<StableNotesSection>,
     #[serde(default = "default_beatmap_md5")]
     pub beatmap_md5: u32,
     #[serde(default = "default_beatmap_filename")]
@@ -157,6 +222,8 @@ impl Default for StableTopology {
             mp3_length_field: default_mp3_length_field(),
             hits_candidate_offsets: default_hits_candidate_offsets(),
             hits_slot_mapping: default_hits_slot_mapping(),
+            replay: None,
+            notes: None,
             beatmap_md5: default_beatmap_md5(),
             beatmap_filename: default_beatmap_filename(),
             beatmap_folder: default_beatmap_folder(),

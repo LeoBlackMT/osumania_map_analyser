@@ -41,6 +41,8 @@ pub struct RawHitEvent {
     pub col: i32,
     pub result: i32,
     pub offset: f64,
+    /// stable 判定来源的 note 下标（诊断/对齐用；lazer 事件为 None）。
+    pub note: Option<i32>,
 }
 
 /// 一次增量（或全量）推送。
@@ -331,7 +333,7 @@ fn read_event(
     if !offset.is_finite() || !(0..=255).contains(&result) || !(0..=17).contains(&col) {
         return None;
     }
-    Some(RawHitEvent { col, result, offset })
+    Some(RawHitEvent { col, result, offset, note: None })
 }
 
 fn fail(state: &mut PollState, log: &HitEventLog, reason: &'static str) -> Result<usize, &'static str> {
@@ -686,14 +688,14 @@ mod tests {
     #[test]
     fn hits_from_events_counts_correctly() {
         let events = vec![
-            RawHitEvent { col: 0, result: 6, offset: 0.0 },
-            RawHitEvent { col: 1, result: 6, offset: 1.0 },
-            RawHitEvent { col: 2, result: 5, offset: 2.0 },
-            RawHitEvent { col: 3, result: 4, offset: 3.0 },
-            RawHitEvent { col: 0, result: 3, offset: 4.0 },
-            RawHitEvent { col: 1, result: 2, offset: 5.0 },
-            RawHitEvent { col: 2, result: 1, offset: 6.0 },
-            RawHitEvent { col: 3, result: 99, offset: 7.0 },
+            RawHitEvent { col: 0, result: 6, offset: 0.0, note: None },
+            RawHitEvent { col: 1, result: 6, offset: 1.0, note: None },
+            RawHitEvent { col: 2, result: 5, offset: 2.0, note: None },
+            RawHitEvent { col: 3, result: 4, offset: 3.0, note: None },
+            RawHitEvent { col: 0, result: 3, offset: 4.0, note: None },
+            RawHitEvent { col: 1, result: 2, offset: 5.0, note: None },
+            RawHitEvent { col: 2, result: 1, offset: 6.0, note: None },
+            RawHitEvent { col: 3, result: 99, offset: 7.0, note: None },
         ];
         let hits = hits_from_events(&events);
         assert_eq!(hits.geki, 2);

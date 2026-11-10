@@ -44,6 +44,7 @@ export function buildChart(parsed, identity = "") {
     const sourceTypes = parsed.noteTypes;
     const columns = new Uint8Array(noteCount);
     const isHold = new Uint8Array(noteCount);
+    let holdCount = 0;
     const od = Number.isFinite(Number(parsed.od)) ? Number(parsed.od) : 8;
 
     const slotsByColumn = Array.from({ length: columnCount }, () => []);
@@ -56,6 +57,7 @@ export function buildChart(parsed, identity = "") {
         const type = Number(sourceTypes?.[note]) || 0;
         const hold = (type & 128) !== 0;
         isHold[note] = hold ? 1 : 0;
+        if (hold) holdCount += 1;
         slotsByColumn[col].push({ note, part: 0, time: starts[note] });
         if (hold) {
             slotsByColumn[col].push({ note, part: 1, time: ends[note] });
@@ -94,6 +96,7 @@ export function buildChart(parsed, identity = "") {
         columnCount,
         od,
         noteCount,
+        holdCount,
         noteStarts: starts,
         noteEnds: ends,
         columns,
@@ -106,6 +109,62 @@ export function buildChart(parsed, identity = "") {
         slotCount,
         totalSlots,
     };
+}
+
+/**
+ * 按列置换重建 chart 的 columns 与 slot 表（RD 等运行时列变换）。
+ * `mapping[oldColumn] = newColumn`。
+ */
+export function remapChartColumns(chart, mapping) {
+    if (!chart || !Array.isArray(mapping) || mapping.length < chart.columnCount) {
+        return false;
+    }
+    const columnCount = chart.columnCount;
+    const slotsByColumn = Array.from({ length: columnCount }, () => []);
+    for (let note = 0; note < chart.noteCount; note += 1) {
+        const next = Number(mapping[chart.columns[note]]);
+        if (!Number.isInteger(next) || next < 0 || next >= columnCount) {
+            return false;
+        }
+        chart.columns[note] = next;
+        slotsByColumn[next].push({ note, part: 0, time: chart.noteStarts[note] });
+        if (chart.isHold[note]) {
+            slotsByColumn[next].push({ note, part: 1, time: chart.noteEnds[note] });
+        }
+    }
+    let totalSlots = 0;
+    for (const slots of slotsByColumn) {
+        slots.sort((a, b) => a.time - b.time);
+        totalSlots += slots.length;
+    }
+    const slotCol = new Uint8Array(totalSlots);
+    const slotNote = new Int32Array(totalSlots);
+    const slotPart = new Uint8Array(totalSlots);
+    const slotTime = new Float64Array(totalSlots);
+    const slotStart = new Int32Array(columnCount + 1);
+    const slotCount = new Int32Array(columnCount);
+    let cursor = 0;
+    for (let col = 0; col < columnCount; col += 1) {
+        slotStart[col] = cursor;
+        const slots = slotsByColumn[col];
+        slotCount[col] = slots.length;
+        for (const slot of slots) {
+            slotCol[cursor] = col;
+            slotNote[cursor] = slot.note;
+            slotPart[cursor] = slot.part;
+            slotTime[cursor] = slot.time;
+            cursor += 1;
+        }
+    }
+    slotStart[columnCount] = cursor;
+    chart.slotCol = slotCol;
+    chart.slotNote = slotNote;
+    chart.slotPart = slotPart;
+    chart.slotTime = slotTime;
+    chart.slotStart = slotStart;
+    chart.slotCount = slotCount;
+    chart.totalSlots = totalSlots;
+    return true;
 }
 
 /** 4K–18K 左右手分组；奇数键的中列由 `spaceMode` 决定归属（independent 时中列不计入左右手）。 */

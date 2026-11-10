@@ -26,8 +26,8 @@
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
   | control | 页→壳 | 窗口操控（v2 新增）：`{action, value?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart` / `toggleTopmost` / `toggleClickThrough`（后两者为 v2 行内扩展——Wayland 页面内快捷键兜底，页面与壳同版本发布故不升 v3；toggle 以 `mma-shell-state.json` 为权威读-翻-写，主线程执行）；壳经主窗口句柄执行（`server/ws.rs handle_control`） |
-  | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增）：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块 |
-  | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增）：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，全量快照 ≤4096 条/帧分块 |
+  | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增）：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块。生产者：Lazer `ScoreProcessor.hitEvents` 或 **Stable V1 per-note judgement**（列+档位，`offset=0`）；Stable V2 不消费该帧 |
+  | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增）：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，以及 Stable V2 的每 note 头/尾分轨，全量快照 ≤4096 条/帧分块 |
   | laneacc_sync | 页→壳 | 页面刷新/重连取本局全量（v9 新增）：`{}`；壳把 `mania_hit_events` / `mania_replay_frames` 全量快照发给当前连接 |
 
 - diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入八型。
@@ -413,7 +413,9 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - 新增 `mania_replay_frames` 下行：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为
   `ManiaAction` 位掩码（Key1=bit0）。`reset:true` 先清空再应用；全量快照按 4096 帧分块。
 - 用途：LaneAcc 在 `mania_hit_events` 之外读取 `Player.Score.Replay.Frames`，按 Stable 的
-  原始按键帧重算 ScoreV1；`mania_hit_events` 仍负责 Lazer 305 口径。
+  原始按键帧重算 ScoreV1；`mania_hit_events` 负责 Lazer 305 口径，或在 Stable **V1** 上直接承载
+  游戏自己的 per-note 判定（`{col,result,offset:0}`，分轨/左右手精确）。Stable **V2** 的每 note
+  头/尾由页面 `stable-sim` 从原始帧 + 谱面自己算，不使用 note-list 的 `+0x5C`/`+0xA8`。
 - `laneacc_sync` 的全量快照同时包含两种事件；v9 页面忽略未知的 `mania_replay_frames` 帧，
   不影响现有 LaneAcc 显示。
 - 原始帧偏移（2026.1005.0.0 实测，18 分钟 ReplayPlayer，80777 帧）：

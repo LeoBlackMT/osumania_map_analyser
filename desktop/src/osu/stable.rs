@@ -150,13 +150,11 @@ pub const HITS_MAPPING_VERIFIED: bool = true;
 
 // ---- 纯解码（可单测：合成字节 → 掩码 / 键值）----
 
-/// mod 掩码的**纯解码**：`[container+0xC] ^ [container+0x8]`，再按 ScoreV2 处理器补位。
-pub fn mods_mask_from_raw(container_high: u32, container_low: u32, score_processor: u32) -> u32 {
-    let mut mask = container_high ^ container_low;
-    if score_processor != 0 {
-        mask |= SCOREV2_BIT;
-    }
-    mask
+/// mod 掩码的**纯解码**：`[container+0xC] ^ [container+0x8]`。
+/// `score_processor` 只作诊断：V1 局它同样非零，不能据此补 `SCOREV2_BIT`，
+/// 否则正常 Stable 会被误判成 SV2（顶部/分轨一起错）。
+pub fn mods_mask_from_raw(container_high: u32, container_low: u32, _score_processor: u32) -> u32 {
+    container_high ^ container_low
 }
 
 /// 候选槽 → 6 键（纯函数；`candidates` 短于映射所需下标时返回 `None`）。
@@ -405,6 +403,133 @@ pub struct ResultRead {
     pub probe: ChainProbe,
 }
 
+/// `Score+0x34` 原始帧的防御上限（18 分钟 4K 约 10 万帧）。
+pub const MAX_REPLAY_FRAMES: usize = 1_000_000;
+/// 每拍最多读多少帧（97k 帧分块追平，避免阻塞读取线程）。
+pub const REPLAY_FRAMES_PER_TICK: usize = 4096;
+/// 连续失败多少拍后清空日志并请求页面重置。
+pub const REPLAY_MAX_FAILURES: u32 = 50;
+
+/// `Score+0x34` 原始帧轮询游标。
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct StableReplayPollState {
+    score: u32,
+    list: u32,
+    items: u32,
+    size: usize,
+    len: usize,
+    version: i32,
+    failures: u32,
+    last_time: i32,
+}
+
+/// per-note 判定的防御上限（18K 马拉松 + LN 也远小于此）。
+pub const MAX_NOTES: usize = 200_000;
+/// 连续失败多少拍后清空日志并请求页面重置。
+pub const NOTE_MAX_FAILURES: u32 = 50;
+
+/// `emitted[i]` 记录第 i 个 note 的 head/tail 是否已发过事件（bit0=head/tap，bit1=tail）。
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct NoteJudgementPollState {
+    gameplay: u32,
+    list: u32,
+    items: u32,
+    size: usize,
+
+    emitted: Vec<u8>,
+    failures: u32,
+}
+
+/// stable 判定枚举 → 页面六桶的 `result`（1=miss … 6=MAX）。
+///
+/// 只映射**最终计分判定**；`0`（未判）、`7`（tick）、`-1048576`（LN 掉落伪判定）
+/// 一律返回 `None`（不进六桶）。
+pub fn stable_judgement_result(judgement: i32) -> Option<i32> {
+    match judgement {
+        268_435_456 => Some(6),  // 300g / MAX
+        134_217_728 => Some(5),  // 300
+        67_108_864 => Some(4),   // 200
+        33_554_432 => Some(3),   // 100
+        16_777_216 => Some(2),   // 50
+        -65_536 | -131_072 => Some(1), // miss
+        _ => None,
+    }
+}
+
+/// Stable ScoreV2 mania 的六窗（[300g,300,200,100,50,miss]，整数截断）。
+///
+/// V2 与 V1 唯一的功能差异是 300g 窗（od≤5: 22.4−0.6·od；od>5: 24.9−1.1·od）；
+/// HR ÷1.4 / EZ ×1.4 / DT ×1.5 / HT ×0.75 后 `(int)` 截断。
+pub fn v2_windows(od: f64, mods_mask: u32) -> [i32; 6] {
+    let od = od.clamp(0.0, 10.0);
+    let rate = if mods_mask & 256 != 0 {
+        0.75 // HT
+    } else if mods_mask & (64 | 512) != 0 {
+        1.5 // DT / NC
+    } else {
+        1.0
+    };
+    let difficulty = if mods_mask & 16 != 0 {
+        1.4 // HR
+    } else if mods_mask & 2 != 0 {
+        1.0 / 1.4 // EZ
+    } else {
+        1.0
+    };
+    let tm = rate / difficulty;
+    let scale = |value: f64| (value * tm) as i32;
+    let perfect = if od <= 5.0 {
+        22.4 - 0.6 * od
+    } else {
+        24.9 - 1.1 * od
+    };
+    [
+        scale(perfect),
+        scale(64.0 - 3.0 * od),
+        scale(97.0 - 3.0 * od),
+        scale(127.0 - 3.0 * od),
+        scale(151.0 - 3.0 * od),
+        scale(188.0 - 3.0 * od),
+    ]
+}
+
+/// V2 LN 头档：`|press - time|` 与六窗比较；没有按下 ⇒ miss（1）。
+pub fn v2_head_result(offset: i32, windows: &[i32; 6]) -> i32 {
+    let error = offset.unsigned_abs();
+    for (index, window) in windows.iter().enumerate() {
+        if error <= (*window).max(0) as u32 {
+            return 6 - index as i32;
+        }
+    }
+    1
+}
+
+/// V2 LN 尾档：`|release - end| / 1.5` 与六窗比较。
+///
+/// stable-re `scorev2-scoring.md` §3.2：V2 回放的 LN 尾是**重算**的（释放判定
+/// `num = |release − tail| / 1.5` 再比窗），不是 `+0x5C` 的最终档。
+/// 未释放 ⇒ 50；游戏最终 miss ⇒ miss；掉落/超时由调用方按 `judgement` 传入。
+pub fn v2_tail_result(release: i32, end: i32, judgement: i32, windows: &[i32; 6]) -> i32 {
+    if judgement == -65_536 || judgement == -131_072 || judgement == -1_048_576 {
+        return 1;
+    }
+    if judgement == 16_777_216 {
+        return 2; // 游戏最终 50：上限 50
+    }
+    if release == 0 {
+        return 2; // 未释放：上限 50
+    }
+    let error = (release - end).unsigned_abs() as f64 / 1.5;
+    for (index, window) in windows.iter().enumerate() {
+        if error <= (*window).max(0) as f64 {
+            return 6 - index as i32;
+        }
+    }
+    1
+}
+
 #[cfg(windows)]
 mod win_io {
     use super::*;
@@ -565,6 +690,315 @@ mod win_io {
         out.hits_candidates = candidates;
         out.hits_candidates_complete = complete;
         out
+    }
+
+    /// 读一拍原始 ReplayFrame（`Score + score_frames` 的 `List<ReplayFrame>`）。
+    ///
+    /// 增量按 `_size` 增长；首拍/对象变化/`_size` 回退/`_version` 非纯 append ⇒ reset + 全量。
+    /// 每拍最多 [`REPLAY_FRAMES_PER_TICK`] 帧；坏帧**不跳过**（帧流有状态，漏一帧会永久
+    /// 污染按键掩码），连续失败 [`REPLAY_MAX_FAILURES`] 拍才整段清空重读。
+    pub fn poll_replay_frames(
+        target: &win::Target,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+        score: u32,
+        log: &crate::osu::lazer::ReplayFrameLog,
+        state: &mut StableReplayPollState,
+    ) -> Result<usize, &'static str> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let Some(section) = topo.replay.as_ref() else {
+            return Ok(0);
+        };
+        if score == 0 {
+            return Ok(0);
+        }
+        let list = win::read_u32(target, score.wrapping_add(section.score_frames))
+            .map_err(|_| "replay-list-unreadable")?;
+        if list == 0 {
+            return Ok(0);
+        }
+        let items = win::read_u32(target, list.wrapping_add(section.list_items))
+            .map_err(|_| "replay-items-unreadable")?;
+        let size = win::read_i32(target, list.wrapping_add(section.list_size))
+            .map_err(|_| "replay-size-unreadable")?;
+        if size < 0 || size as usize > MAX_REPLAY_FRAMES || items == 0 {
+            return Err("replay-size-invalid");
+        }
+        let size = size as usize;
+        let version = match section.list_version {
+            Some(offset) => win::read_i32(target, list.wrapping_add(offset)).unwrap_or(0),
+            None => 0,
+        };
+        let mut reset = state.score != score
+            || state.list != list
+            || state.items != items
+            || size < state.len;
+        if !reset && state.len > 0 && section.list_version.is_some() {
+            let size_delta = size as i64 - state.size as i64;
+            let version_delta = version as i64 - state.version as i64;
+            if size_delta != version_delta {
+                reset = true;
+            }
+        }
+        if reset {
+            state.len = 0;
+            state.last_time = i32::MIN;
+        }
+        let start = state.len;
+        let end = (start + REPLAY_FRAMES_PER_TICK).min(size);
+        let mut frames = Vec::new();
+        let mut index = start;
+        let mut failed = false;
+        while index < end {
+            let frame = match win::read_u32(
+                target,
+                items
+                    .wrapping_add(section.array_data)
+                    .wrapping_add((index as u32).wrapping_mul(4)),
+            ) {
+                Ok(frame) if frame != 0 => frame,
+                _ => {
+                    failed = true;
+                    break;
+                }
+            };
+            let time = match win::read_i32(target, frame.wrapping_add(section.frame_time)) {
+                Ok(value) => value,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+            let buttons = win::read_u32(target, frame.wrapping_add(section.frame_buttons)).unwrap_or(0);
+            let y = f32::from_bits(win::read_u32(target, frame.wrapping_add(section.frame_y)).unwrap_or(0));
+            // 加载期光标帧：y=-500、x=256；mania 帧 y 为列宽常量（>0）。
+            if buttons != 0 || !(y > 0.0) {
+                index += 1;
+                continue;
+            }
+            let x = f32::from_bits(win::read_u32(target, frame.wrapping_add(section.frame_keys)).unwrap_or(0));
+            if !x.is_finite()
+                || x < 0.0
+                || x > ((1u32 << 18) - 1) as f32
+                || x != x.trunc()
+            {
+                failed = true;
+                break;
+            }
+            if time < state.last_time {
+                failed = true;
+                break;
+            }
+            frames.push(crate::osu::lazer::RawReplayFrame {
+                time: time as f64,
+                keys: x as u32,
+            });
+            state.last_time = time;
+            index += 1;
+        }
+        if reset || !frames.is_empty() {
+            log.push(reset, &frames);
+        }
+        if failed {
+            state.len = index;
+            state.failures = state.failures.saturating_add(1);
+            if state.failures >= REPLAY_MAX_FAILURES {
+                log.clear();
+                *state = StableReplayPollState::default();
+            }
+            return Err("replay-frame-invalid");
+        }
+        state.score = score;
+        state.list = list;
+        state.items = items;
+        state.size = size;
+        state.version = version;
+        state.len = index;
+        state.failures = 0;
+        Ok(frames.len())
+    }
+
+    /// 读一拍 per-note 判定（`gameplay + note_list_from_gameplay` 的 `List<Note>`）。
+    ///
+    /// 全表扫描 + `emitted` 去重：note 表 6.6k/15k 级别，单拍 ~5–15ms；不依赖判定顺序，
+    /// 能正确处理 LN 尾判晚于后续 tap 的情况。表缺 `notes` 段 ⇒ `Ok(0)`（不猜）。
+    #[allow(clippy::too_many_arguments)]
+    pub fn poll_note_judgements(
+        target: &win::Target,
+        topo: Option<&crate::osu::offsets::StableTopology>,
+        gameplay: u32,
+        od: f64,
+        mods_mask: u32,
+        log: &crate::osu::lazer::HitEventLog,
+        state: &mut NoteJudgementPollState,
+    ) -> Result<usize, &'static str> {
+        let default_topo = crate::osu::offsets::StableTopology::default();
+        let topo = topo.unwrap_or(&default_topo);
+        let Some(section) = topo.notes.as_ref() else {
+            return Ok(0);
+        };
+        let Some(column_offset) = section.note_column else {
+            return Ok(0);
+        };
+        if gameplay == 0 {
+            return Ok(0);
+        }
+        // V2 局：LN 头/尾各算一个判定；头档用 press-time 按 V2 窗口补算，尾档用 +0x5C。
+        let v2 = (mods_mask & 0x2000_0000 != 0).then(|| v2_windows(od, mods_mask));
+        let list = win::read_u32(target, gameplay.wrapping_add(section.note_list_from_gameplay))
+            .map_err(|_| "note-list-unreadable")?;
+        if list == 0 {
+            return Ok(0);
+        }
+        let items = win::read_u32(target, list.wrapping_add(section.list_items))
+            .map_err(|_| "note-items-unreadable")?;
+        let size = win::read_i32(target, list.wrapping_add(section.list_size))
+            .map_err(|_| "note-size-unreadable")?;
+        if size < 0 || size as usize > MAX_NOTES || items == 0 {
+            return Err("note-size-invalid");
+        }
+        let size = size as usize;
+        let reset = state.gameplay != gameplay
+            || state.list != list
+            || state.items != items
+            || state.size != size;
+        if reset {
+            state.emitted = vec![0u8; size];
+            if let Some(windows) = v2.as_ref() {
+                crate::server::log::log_at(
+                    "info",
+                    &format!(
+                        "[stable] v2 od={od:.3} mods={mods_mask:#010x} windows={windows:?}"
+                    ),
+                );
+            }
+        }
+        let mut events = Vec::new();
+        let mut failed = false;
+        // 全表扫描：长 LN 会把 cursor 卡住，窗口外的 note 会漏判（V2 双事件尤甚）。
+        for index in 0..size {
+            if state.emitted.get(index).copied().unwrap_or(0) != 0 {
+                continue;
+            }
+            let note = match win::read_u32(
+                target,
+                items
+                    .wrapping_add(section.array_data)
+                    .wrapping_add((index as u32).wrapping_mul(4)),
+            ) {
+                Ok(note) if note != 0 => note,
+                _ => {
+                    failed = true;
+                    break;
+                }
+            };
+            let judgement = match win::read_i32(target, note.wrapping_add(section.note_judgement)) {
+                Ok(value) => value,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+            let time = match win::read_i32(target, note.wrapping_add(section.note_time)) {
+                Ok(value) => value,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+            let is_hold = section
+                .note_is_hold
+                .map(|offset| win::read_i32(target, note.wrapping_add(offset)).unwrap_or(0) != 0)
+                .unwrap_or(false);
+            let press = section
+                .note_press
+                .map(|offset| win::read_i32(target, note.wrapping_add(offset)).unwrap_or(0))
+                .unwrap_or(0);
+            let release = section
+                .note_release
+                .map(|offset| win::read_i32(target, note.wrapping_add(offset)).unwrap_or(0))
+                .unwrap_or(0);
+            let column = match win::read_i32(target, note.wrapping_add(column_offset)) {
+                Ok(value) => value,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+            if !(0..=17).contains(&column) {
+                failed = true;
+                break;
+            }
+            let mut emitted = state.emitted.get(index).copied().unwrap_or(0);
+            if let Some(windows) = v2.as_ref() {
+                if is_hold {
+                    // V2 LN：头档 = press-time；尾档 = |release-end|/1.5（stable-re §3.2）。
+                    // `+0x5C` 只用于 tap / miss / 50 上限，不再当 LN 尾档。
+                    if (emitted & 1) == 0 {
+                        // `+0x5C` 同源头档实测更差（MAX 4580 vs 4570，300 488 vs 497）；
+                        // 头档只用 press−time 的 V2 窗口，`+0x5C` 只负责尾档。
+                        let head_result = if press != 0 {
+                            v2_head_result(press - time, windows)
+                        } else if judgement != 0 || release != 0 {
+                            1
+                        } else {
+                            continue;
+                        };
+                        events.push(crate::osu::lazer::RawHitEvent {
+                            col: column,
+                            result: head_result,
+                            offset: 0.0,
+                            note: Some(index as i32),
+                        });
+                        emitted |= 1;
+                    }
+                    if (emitted & 2) == 0 && judgement != 0 {
+                        // `release` 在回放里多数未写（0），不能用它重算 V2 尾档；
+                        // `+0x5C` 仍是当前唯一可用的最终尾档来源。
+                        if let Some(result) = stable_judgement_result(judgement) {
+                            events.push(crate::osu::lazer::RawHitEvent {
+                                col: column,
+                                result,
+                                offset: 0.0,
+                                note: Some(index as i32),
+                            });
+                            emitted |= 2;
+                        }
+                    }
+                    state.emitted[index] = emitted;
+                    continue;
+                }
+            }
+            if (emitted & 1) == 0 {
+                if let Some(result) = stable_judgement_result(judgement) {
+                    events.push(crate::osu::lazer::RawHitEvent {
+                        col: column,
+                        result,
+                        offset: 0.0,
+                        note: Some(index as i32),
+                    });
+                    emitted |= 3;
+                }
+            }
+            state.emitted[index] = emitted;
+        }
+        if failed {
+            state.failures = state.failures.saturating_add(1);
+            if state.failures >= NOTE_MAX_FAILURES {
+                log.clear();
+                *state = NoteJudgementPollState::default();
+            }
+            return Err("note-judgement-unreadable");
+        }
+        if reset || !events.is_empty() {
+            log.push(reset, &events);
+        }
+        state.gameplay = gameplay;
+        state.list = list;
+        state.items = items;
+        state.size = size;
+        state.failures = 0;
+        Ok(events.len())
     }
 
     /// 结算链：`result = [ruleset + 0x38]` → mod 掩码 + hits + 自证字段。
@@ -745,6 +1179,30 @@ pub fn read_in_game_with_topo(
     _topo: Option<&crate::osu::offsets::StableTopology>,
 ) -> InGameRead {
     InGameRead::default()
+}
+
+#[cfg(not(windows))]
+pub fn poll_replay_frames(
+    _target: &win::Target,
+    _topo: Option<&crate::osu::offsets::StableTopology>,
+    _score: u32,
+    _log: &crate::osu::lazer::ReplayFrameLog,
+    _state: &mut StableReplayPollState,
+) -> Result<usize, &'static str> {
+    Ok(0)
+}
+
+#[cfg(not(windows))]
+pub fn poll_note_judgements(
+    _target: &win::Target,
+    _topo: Option<&crate::osu::offsets::StableTopology>,
+    _gameplay: u32,
+    _od: f64,
+    _mods_mask: u32,
+    _log: &crate::osu::lazer::HitEventLog,
+    _state: &mut NoteJudgementPollState,
+) -> Result<usize, &'static str> {
+    Ok(0)
 }
 
 #[cfg(not(windows))]
