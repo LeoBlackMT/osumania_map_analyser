@@ -85,6 +85,13 @@ pub struct ResultsSection {
     /// `Dictionary` 对象里 `_entries` 字段的位移（容器内部布局；`live` 在活体上测出）。
     #[serde(default)]
     pub dict_entries_offset: Option<i64>,
+    /// `ScoreInfo` 对象上 `<Hash>`（回放文件的 64-hex store key）的位移。
+    ///
+    /// 2026.1005 实测 `+0x40`。注意：`ScoreInfo.BeatmapHash` 在本构建里也是 64-hex
+    /// （`.osu` 的 SHA-256），生成器用 store 目录里的文件头（`.osu` 文本 vs `.osr` 二进制）
+    /// 区分两者；读侧只做 64-hex 校验，不做猜测。
+    #[serde(default)]
+    pub score_hash: Option<i64>,
     /// `HitResult` 枚举序号 → 载荷键（`{"miss":1,"meh":2,"ok":3,"good":4,"great":5,"perfect":6}`）。
     ///
     /// 来自 IL 的枚举成员声明顺序（隐式值 = 声明序号）；读字典时按它把整型键换成判定。
@@ -110,6 +117,14 @@ impl ResultsSection {
             && self.statistics_offset.map_or(true, in_range)
             && self.statistics_dict_offset.map_or(true, in_range)
             && self.dict_entries_offset.map_or(true, in_range)
+    }
+
+    /// `<Hash>` 的位移：只接受域内且 8 字节对齐的值；缺省/坏值返回 `None`。
+    pub fn score_hash_offset(&self) -> Option<i64> {
+        self.score_hash.filter(|offset| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(offset)
+                && offset % 8 == 0
+        })
     }
 }
 
@@ -211,6 +226,12 @@ pub struct ScoreSection {
     /// `ScoreProcessor` 对象上 `ScoreResultCounts`（`Dictionary<HitResult, int>`）的字段位移。
     #[serde(default)]
     pub score_result_counts: Option<i64>,
+    /// `Score` 对象上 `<ScoreInfo>` 的字段位移（回放哈希链：`Score → ScoreInfo → Hash`）。
+    #[serde(default)]
+    pub score_info: Option<i64>,
+    /// `ScoreInfo` 对象上 `<Hash>` 的位移（同 `ResultsSection.score_hash`）。
+    #[serde(default)]
+    pub score_hash: Option<i64>,
     #[serde(default)]
     pub witness: String,
 }
@@ -251,6 +272,25 @@ impl ScoreSection {
             && field(self.replay_actions)
             && field(self.actions_items)
             && field(self.actions_size)
+    }
+
+    /// 回放哈希链（`Score → ScoreInfo → Hash`）是否可用（旧表没有这两项 ⇒ 没有 `replayHash`）。
+    pub fn score_hash_usable(&self) -> bool {
+        self.score_info_offset().is_some() && self.score_hash_offset().is_some()
+    }
+
+    pub fn score_info_offset(&self) -> Option<i64> {
+        self.score_info.filter(|offset| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(offset)
+                && offset % 8 == 0
+        })
+    }
+
+    pub fn score_hash_offset(&self) -> Option<i64> {
+        self.score_hash.filter(|offset| {
+            (super::lookup::MIN_FIELD_OFFSET..=super::lookup::MAX_FIELD_OFFSET).contains(offset)
+                && offset % 8 == 0
+        })
     }
 }
 

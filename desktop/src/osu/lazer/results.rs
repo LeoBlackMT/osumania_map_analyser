@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 use crate::osu::model::Hits;
 use crate::osu::offsets::{OffsetTable, ResultsSection};
 use super::screen::read_eetype;
-use super::source::{read_i32, read_ptr_field, read_string, Source, StringLayout};
+use super::source::{is_store_hash, read_i32, read_ptr_field, read_string, Source, StringLayout};
 
 /// 降级标记用的字段名（与 `TABLE_BACKED_FIELDS` 里的键一致）。
 pub const FIELD: &str = "resultsScreen.hits";
@@ -55,6 +55,8 @@ pub struct ResultsRead {
     pub hits: Option<Hits>,
     /// 结算屏上的 `<player>` 是 `ReplayPlayer` ⇒ 这一局的成绩来自回放，不是真实游玩。
     pub replay: bool,
+    /// `ScoreInfo.<Hash>`：回放文件的 64-hex store key。读不到就是 `None`（不影响 hits）。
+    pub hash: Option<String>,
     pub gaps: Vec<String>,
 }
 
@@ -111,6 +113,17 @@ pub fn read_results(
         read.gap("read-Score");
         return read;
     };
+
+    // `<Hash>`：回放文件的 64-hex store key（回放暂停数据用）。
+    // 必须在 hits 的 early-return 之前读：入库成绩走 JSON 分支会直接 `return read`。
+    if let Some(hash_offset) = results.score_hash_offset() {
+        match read_ptr_field(source, score, hash_offset)
+            .and_then(|pointer| read_string(source, pointer, layout))
+        {
+            Some(text) if is_store_hash(&text) => read.hash = Some(text.to_lowercase()),
+            _ => read.gap("read-ScoreInfo.Hash"),
+        }
+    }
 
     // ① 入库过的成绩：`<StatisticsJson>`（回放 / 历史成绩）。
     let mut json_reason = "read-StatisticsJson";
@@ -339,6 +352,7 @@ mod tests {
             player_offset: None,
             statistics_dict_offset: Some(0x80),
             dict_entries_offset: Some(0x10),
+            score_hash: None,
             hit_result_values,
             witness: "test".to_string(),
         }

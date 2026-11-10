@@ -21,8 +21,8 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::osu::model::Hits;
-use crate::osu::offsets::ScoreSection;
-use super::source::{read_f64, read_i32, read_ptr_field, Source};
+use crate::osu::offsets::{OffsetTable, ScoreSection};
+use super::source::{is_store_hash, read_f64, read_i32, read_ptr_field, read_string, Source, StringLayout};
 
 /// `List<T>` 的内部布局（.NET x64）。
 const LIST_ITEMS: i64 = 0x08;
@@ -415,6 +415,28 @@ pub fn poll(
 }
 
 
+/// 读当前成绩的回放哈希（`Player.Score → ScoreInfo.<Hash>`，64-hex store key）。
+///
+/// 旧表缺 `score_info` / `score_hash`，或该帧读不到 ⇒ `None`（调用方按"无回放暂停数据"降级）。
+pub fn read_replay_hash(
+    source: &dyn Source,
+    table: &OffsetTable,
+    player: u64,
+    layout: StringLayout,
+) -> Option<String> {
+    if player == 0 {
+        return None;
+    }
+    let section = table.score()?;
+    let score_info_offset = section.score_info_offset()?;
+    let hash_offset = section.score_hash_offset()?;
+    let score = read_ptr_field(source, player, section.player_score)?;
+    let score_info = read_ptr_field(source, score, score_info_offset)?;
+    let pointer = read_ptr_field(source, score_info, hash_offset)?;
+    let text = read_string(source, pointer, layout)?;
+    is_store_hash(&text).then(|| text.to_lowercase())
+}
+
 /// 读一拍原始 ReplayFrame（`Player.Score.Replay.Frames`）。
 /// 旧表没有 replay 段时直接返回 0；有则按 `_size` 增量读取。
 pub fn poll_replay(
@@ -550,6 +572,8 @@ mod tests {
             actions_items: 0,
             actions_size: 0,
             score_result_counts: None,
+            score_info: None,
+            score_hash: None,
             witness: String::new(),
         }
     }

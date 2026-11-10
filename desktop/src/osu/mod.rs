@@ -245,6 +245,32 @@ impl Reader {
     pub fn state(&self) -> ReaderState {
         self.latest()
     }
+
+    /// 回放暂停采集需要的轻量上下文：只取 5 个字段，不 clone 整个 `Snapshot`
+    /// （后者含 `BeatmapFile` 与文件清单，100 ms 一次的深拷贝没有必要）。
+    pub fn replay_context(&self) -> ReplayContext {
+        let state = self.inner.lock().unwrap();
+        let snapshot = state.snapshot.as_ref();
+        ReplayContext {
+            client: snapshot.and_then(|snapshot| snapshot.client),
+            state_name: snapshot
+                .and_then(|snapshot| snapshot.state_name.clone())
+                .unwrap_or_default(),
+            replay: snapshot.map(|snapshot| snapshot.replay).unwrap_or(false),
+            replay_hash: snapshot.and_then(|snapshot| snapshot.replay_hash.clone()),
+            songs_folder: snapshot.and_then(|snapshot| snapshot.songs_folder.clone()),
+        }
+    }
+}
+
+/// `Reader::replay_context()` 的返回值（见 `server/replay_pauses.rs`）。
+#[derive(Clone, Debug, Default)]
+pub struct ReplayContext {
+    pub client: Option<crate::osu::model::Client>,
+    pub state_name: String,
+    pub replay: bool,
+    pub replay_hash: Option<String>,
+    pub songs_folder: Option<String>,
 }
 
 /// 启动读取线程。

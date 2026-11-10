@@ -38,6 +38,10 @@ pub fn packet_from_snapshot(snapshot: &Snapshot) -> Value {
     if snapshot.replay {
         root.insert("replay".to_string(), json!(true));
     }
+    // 回放文件哈希：页面用它校验 `replay_pauses.hash` 是否属于当前回放。
+    if let Some(hash) = snapshot.replay_hash.as_deref().filter(|hash| !hash.is_empty()) {
+        root.insert("replayHash".to_string(), json!(hash));
+    }
 
     match (snapshot.state_number, snapshot.state_name.clone()) {
         (Some(number), Some(name)) => {
@@ -122,6 +126,16 @@ pub fn held_packet_from(held: &Value, snapshot: &Snapshot) -> Value {
         }
         None => {
             root.remove("game");
+        }
+    }
+    // 保持帧会整包沿用上一份载荷，`replayHash` 必须跟着本帧快照走，
+    // 否则换回放/离开回放后会残留上一个 hash。
+    match snapshot.replay_hash.as_deref() {
+        Some(hash) if !hash.is_empty() => {
+            root.insert("replayHash".to_string(), json!(hash));
+        }
+        _ => {
+            root.remove("replayHash");
         }
     }
     Value::Object(root)

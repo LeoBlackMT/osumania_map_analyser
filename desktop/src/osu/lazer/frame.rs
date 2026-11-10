@@ -305,7 +305,16 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         if let Some(hits) = read.hits {
             snapshot.result_hits = Some(hits);
         }
+        snapshot.replay_hash = read.hash;
         gaps.extend(read.gaps);
+    }
+
+    // ⑥b' 回放哈希（play/回放）：`Player.Score → ScoreInfo.<Hash>`。
+    //     只服务"回放暂停"数据面；读不到不降级任何其它字段。
+    if snapshot.state_name.as_deref() == Some("play") {
+        if let (Some(player), Some(layout)) = (chain.screen_top, layout) {
+            snapshot.replay_hash = super::score::read_replay_hash(source, table, player, layout);
+        }
     }
 
     // ⑥c 预研探针：`MMA_LAZER_MODS_PROBE=1` 时从 Player 扫 `Score.ScoreInfo.ModsJson`。

@@ -277,6 +277,12 @@ pub struct Snapshot {
     /// stable：结算成绩的玩家名与本机账号名（cfg 里的 `Username = …`）全部不匹配
     /// （`osu::stable::replay_from_player_name`）。
     pub replay: bool,
+    /// 当前成绩的回放文件哈希（64-hex store key，`lazer` only）。
+    ///
+    /// 来源：play 态 `Player.Score → ScoreInfo.<Hash>`；resultScreen 态
+    /// `ResultsScreen.Score → ScoreInfo.<Hash>`。读不到/表缺段 ⇒ `None`。
+    /// stable 不填（stable 的 `.osr` 恢复走 `ReplayDecoder`，不在本次范围）。
+    pub replay_hash: Option<String>,
     /// **诊断**：8 个候选 u16 槽的原始值（`+0x88/0x8A/0x8C/0x8E/0x90/0x92/0x94` + `+0x68`），
     /// 顺序与 `stable::HITS_CANDIDATE_OFFSETS` 一致。只进对拍证据，不进载荷。
     pub hits_candidates: Vec<u16>,

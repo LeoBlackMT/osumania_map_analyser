@@ -20,6 +20,7 @@ pub mod table;
 pub mod results;
 pub mod score;
 pub mod mods;
+pub mod osr;
 pub mod frame;
 
 pub use fields::*;
@@ -30,6 +31,7 @@ pub use resolve::*;
 pub use table::*;
 pub use results::*;
 pub use score::*;
+pub use osr::*;
 pub use frame::*;
 
 #[cfg(test)]
