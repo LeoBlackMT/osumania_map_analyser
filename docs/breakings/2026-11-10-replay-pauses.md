@@ -79,5 +79,17 @@ LZMA-decompresses the trailing `scoreInfo` JSON to extract `pauses` (physical ch
 The page divides by the mods speed rate, filters to the playable range and renders static
 markers for replay playback, replay results and historical results; unavailable data shows
 `Pause Data Unavailable`, an empty array shows `Pause Count: 0`. Browser mode is unchanged.
+
+The `pauses` array only exists in native lazer scores produced by builds containing
+[ppy/osu#34058](https://github.com/ppy/osu/pull/34058) (2025-07-22): the first tachyon build is
+`2025.724.1-tachyon` and the first lazer-stream build is `2025.816.0-lazer`. Older lazer scores
+only carry `pause_count` (no timestamps) and therefore also show `Pause Data Unavailable`.
+Stable scores never contain pause data.
+
+This change also fixes a pre-existing bug where a results screen reused the previous play's
+mods even for historical scores: the score's own **non-empty** `ScoreInfo.ModsJson` now wins,
+replay results never inherit the cache, and the cache is cleared as soon as the player leaves
+play/results.
+
 The 2026.921 tables are intentionally left without `score_hash` (known limitation).
 Rollback: revert both sides to v10 and restore the two 2026.1005 offset tables.
