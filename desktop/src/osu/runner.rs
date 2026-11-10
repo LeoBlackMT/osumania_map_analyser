@@ -10,12 +10,43 @@
 #[allow(unused_imports)]
 use std::sync::Arc;
 use std::thread;
+use std::sync::atomic::{AtomicU8, Ordering};
 use crate::osu::invariants::{FrameAction, Gate};
 use crate::osu::model::{Client, Reason, Snapshot};
 use super::*;
 
+#[cfg(windows)]
+pub fn detect_stable_variant(target: &win::Target) -> &'static str {
+    if let Ok(var) = std::env::var("MMA_STABLE_VARIANT") {
+        if var.eq_ignore_ascii_case("ppysb") {
+            return "ppysb";
+        }
+        if var.eq_ignore_ascii_case("stable") {
+            return "stable";
+        }
+    }
+    // 检测是否加载了 SBInjector / PpySBPatcher 拓展模块
+    if let Ok(modules) = win::module_list(target.pid) {
+        for (_, mod_name) in modules {
+            let lower = mod_name.to_ascii_lowercase();
+            if lower.contains("sb_pp_ffi") || lower.contains("ppysb") || lower.contains("sbpatcher") {
+                return "ppysb";
+            }
+        }
+    }
+    "stable"
+}
+
+#[cfg(not(windows))]
+pub fn detect_stable_variant(_target: &win::Target) -> &'static str {
+    "stable"
+}
+
 /// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
 #[cfg(windows)]
+/// 当前 32 位 stable 进程实际使用的偏移表变体：0=stable/unknown，1=ppysb。
+pub static ACTIVE_STABLE_VARIANT: AtomicU8 = AtomicU8::new(0);
+
 pub fn run(
     reader: Reader,
     hit_log: Arc<lazer::HitEventLog>,
@@ -254,13 +285,20 @@ pub fn run(
                 }
                 if client == Client::Stable && stable_table.is_none() {
                     let exe_dir = target.image_path.parent();
-                    let loaded = offsets::find_stable_table(exe_dir)
-                        .unwrap_or_else(|_| offsets::default_stable_table());
+                    let variant = detect_stable_variant(target);
+                    let loaded = offsets::find_stable_table_variant(exe_dir, variant)
+                        .unwrap_or_else(|_| if variant == "ppysb" {
+                            offsets::default_ppysb_table()
+                        } else {
+                            offsets::default_stable_table()
+                        });
                     eprintln!(
                         "[osu] stable table loaded: client={} ver={} verified_build={}",
                         loaded.client, loaded.version, loaded.verified_build
                     );
+                    let is_ppysb = loaded.client == "ppysb";
                     stable_table = Some(loaded);
+                    ACTIVE_STABLE_VARIANT.store(if is_ppysb { 1 } else { 0 }, Ordering::Relaxed);
                 }
                 if let Some((entry, validated_ms)) =
                     cached_anchors(target, &mut regions, &mut anchor_cache, stable_table.as_ref())
@@ -280,6 +318,26 @@ pub fn run(
                     let mut on_progress =
                         |progress: ScanProgress| publish_scan_progress(&reader, progress);
                     let scan_res = resolve_anchors(target, &mut regions, stable_table.as_ref(), &mut on_progress);
+                    let scan_res = match scan_res {
+                        Err(Reason::SignatureMiss("statusPtr"))
+                            if client == Client::Stable
+                                && stable_table.as_ref().map(|t| t.client.as_str()) != Some("ppysb") =>
+                        {
+                            eprintln!("[osu] statusPtr missing with default table, attempting ppysb fallback...");
+                            let exe_dir = target.image_path.parent();
+                            let ppysb_table = offsets::find_stable_table_variant(exe_dir, "ppysb")
+                                .unwrap_or_else(|_| offsets::default_ppysb_table());
+                            match resolve_anchors(target, &mut regions, Some(&ppysb_table), &mut on_progress) {
+                                Ok(res) => {
+                                    eprintln!("[osu] successfully resolved anchors via ppysb table!");
+                                    stable_table = Some(ppysb_table);
+                                    Ok(res)
+                                }
+                                Err(_) => scan_res,
+                            }
+                        }
+                        other => other,
+                    };
                     match scan_res {
                         Ok((table, elapsed_ms)) => {
                             eprintln!(
