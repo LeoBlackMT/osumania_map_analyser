@@ -14,7 +14,8 @@
    - **`24062`**——**tosu 兼容子集 origin**（osu 原生传输的数据面：WS `/websocket/v2`、WS `/websocket/commands` 黑洞、`GET /files/beatmap/{file,background}`，全部带 `Access-Control-Allow-Origin: *`，Host 门禁只放行本机 24062），见 §3d。
 3. **Etterna 数据源轮询器**：2Hz 轮询桥文件（`Save/MmaBridge.txt` / `Save/MmaGameplay.txt`），解析后广播 song/state 帧。
 4. **Malody 4.3.7 只读观察器**：200ms 一拍——从进程外读锚点身份键（`ReadProcessMemory`）、tail 游戏日志取场景、轮询 `config.json` 取变速位与判定档，广播 `malody4_selection` / song / state 帧。**不向游戏目录写入任何文件**、不注入、不 hook（详见 [multi-source.md](multi-source.md) 与 [malody4-source.md](malody4-source.md)）。
-5. **osu 原生读取器**（只读内存，250 ms 一拍）：`desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
+5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
+`desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
 模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `malody4/{mod,anchor,library,gamelog,selection,config,model}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**）；契约 `desktop/docs/CONTRACT.md`（**v10**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
