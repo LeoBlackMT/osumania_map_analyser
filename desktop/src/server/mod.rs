@@ -5,6 +5,7 @@
 pub mod bridge;
 pub mod hit_events;
 pub mod replay_frames;
+pub mod replay_pauses;
 pub mod http;
 pub mod log;
 pub mod osu_compat;
@@ -52,6 +53,8 @@ pub struct Shared {
     /// 本局逐判定事件（LaneAcc / ScoreV1）；读取线程写、WS 发送线程取。
     pub hit_events: Arc<crate::osu::lazer::HitEventLog>,
     pub replay_frames: Arc<crate::osu::lazer::ReplayFrameLog>,
+    /// 回放暂停数据面（`.osr` → `replay_pauses` 帧）。
+    pub replay_pauses: Arc<replay_pauses::ReplayPausesState>,
     /// 壳侧推送错误面（state.errors，页面 status 行展示）。
     pub shell_errors: Mutex<Vec<String>>,
     /// Etterna 桥状态（poller 更新）。
@@ -105,6 +108,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         osu_reader_liveness: Mutex::new(osu_source::ReaderLiveness::default()),
         hit_events: Arc::new(crate::osu::lazer::HitEventLog::new()),
         replay_frames: Arc::new(crate::osu::lazer::ReplayFrameLog::new()),
+        replay_pauses: Arc::new(replay_pauses::ReplayPausesState::new()),
         shell_errors: Mutex::new(Vec::new()),
         etterna: Mutex::new(crate::etterna::EtternaStatus::default()),
         malody4: Mutex::new(crate::malody4::Malody4Status::default()),
@@ -622,6 +626,7 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     let _ = crate::osu::INSTANCE.set(crate::osu::spawn_osu_reader(shared.hit_events.clone(), shared.replay_frames.clone()));
     hit_events::spawn_sender(shared.clone());
     replay_frames::spawn_sender(shared.clone());
+    replay_pauses::spawn_sender(shared.clone());
     if let Some(post_listener) = post_listener {
         post::spawn_post(shared.clone(), post_listener);
     }

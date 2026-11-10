@@ -248,7 +248,7 @@
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
 | `< 3` 或 `> 10` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 10`，区间为 `[3,10]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 11`，区间为 `[3,11]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -279,7 +279,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 10**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,10]`（§11.8）。
+> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 11**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），v11 的升级来自 `replay_pauses` / `replay_pauses_sync`（§18），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,11]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故设置页无需 CORS。**例外**：`/feedback`（跨源 POST 需预检）与 `GET /shell-config`（`24050#mma-shell` 的跨源初始读取）显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
@@ -422,3 +422,29 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   `Player.Score@+0x480`、`Score.Replay@+0x10`、`Replay.Frames@+0x08`、
   `ManiaReplayFrame.Time@+0x10`、`Actions List<ManiaAction>@+0x18`、
   `List._items@+0x08` / `_size@+0x10`。
+
+## 18. v10 → v11 差异（回放暂停）
+
+- 新增下行 `replay_pauses`（24061）：`{hash, pauses, available, speedRate}`。
+  - `hash`：64-hex 小写，`ScoreInfo.<Hash>`（回放文件的 store key）；无数据时 `""`。
+  - `pauses`：每次暂停的**开始时刻**，单位 ms，**物理谱面时间**（`.osu` 毫秒轴），顺序递增；
+    `available:false` 时为空数组；上限 4096 条。
+  - `available`：`true` = 已完整读到 `pauses` 数组（空数组合法：这局 0 次暂停）；
+    `false` = 拿不到（表缺 `score_hash` / `.osr` 不存在 / 旧版 / 解析失败）。
+  - `speedRate`：由 `.osr` 的 mods 推导的游戏倍速，`null` = 拿不到。
+- 新增上行 `replay_pauses_sync`：页面在 `hello` 之后、刷新/重连时发送；
+  壳只向发起连接回一条当前快照，无状态时回空帧 `{hash:"",pauses:[],available:false,speedRate:null}`。
+- 数据来源：壳用偏移表读 `ScoreInfo.<Hash>`
+  - play / 回放：`Player.Score@+0x480 → Score.ScoreInfo@+0x08 → ScoreInfo.Hash@+0x40`（2026.1005 实测）；
+  - 结算屏：`ResultsScreen.Score@+0x3A0 → ScoreInfo.Hash@+0x40`（2026.1005 实测）。
+  然后读 `<storage>/files/<h>/<hh>/<hash>`，跳过错过的 `replayData`，用 `lzma-rs` 解压尾部的
+  `scoreInfo` JSON，取 `pauses`。
+- 24062 兼容子集新增根字段 `replayHash`（64-hex，可缺省）：页面用它校验
+  `replay_pauses.hash` 属于当前回放，避免旧帧套到新回放。**不单独升版本**。
+- 页面行为：回放播放 / 回放结算 / 历史结算显示**全景静态**标记与 `Pause Count: N`；
+  数据不可用显示 `Pause Data Unavailable`；`available:true` 且 0 次显示 `Pause Count: 0`；
+  回放中整体跳过 `game.paused` 实时检测（不产生假标记）。
+- 兼容矩阵：v11 壳 + v10 页 ⇒ 页面判为契约越界并进入终态（**必须同包更新**）；
+  v10 壳 + v11 页 ⇒ 页面接受，回放暂停显示 `Pause Data Unavailable`，其余功能正常。
+- 2026.921 的两份表**不更新** `score_hash`：该版本的回放/历史结算固定显示
+  `Pause Data Unavailable`（已知限制，见 `tools/lazer-offsets-gen/README.md`）。

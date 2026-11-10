@@ -197,6 +197,22 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                         continue;
                     }
                 }
+                // replay_pauses_sync：页面刷新/重连主动要当前回放的暂停数据（只发给这个连接）。
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if value.get("type").and_then(|v| v.as_str()) == Some("replay_pauses_sync") {
+                        for text in crate::server::replay_pauses::snapshot_messages(&shared) {
+                            if ws.send(tungstenite::Message::Text(text)).is_err() {
+                                shared
+                                    .sinks
+                                    .lock()
+                                    .unwrap()
+                                    .retain(|(id, _s)| *id != conn_id);
+                                return;
+                            }
+                        }
+                        continue;
+                    }
+                }
                 // control 帧（契约 v2）：页面 → 壳窗口控制。
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     if value.get("type").and_then(|v| v.as_str()) == Some("control") {
