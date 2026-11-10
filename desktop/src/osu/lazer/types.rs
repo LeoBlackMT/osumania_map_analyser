@@ -243,6 +243,9 @@ pub struct LazerFrame {
     pub chain: ChainAddrs,
     pub gaps: Vec<String>,
     pub reidentified: Option<VtableChange>,
+    /// 结算屏的 mods 是否来自该成绩自己的 `ScoreInfo.ModsJson`（含空数组）。
+    /// `true` ⇒ 不得用上一局 play 帧的 mods 覆盖（历史成绩可能属于别的 mod）。
+    pub mods_from_score: bool,
 }
 
 pub struct FrameInput<'a> {
