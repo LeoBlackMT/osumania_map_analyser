@@ -16,7 +16,7 @@
 | [pattern-analysis.md](pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [graph-visualization.md](graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [graph-section-analysis.md](graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、缓存/遥测/反馈严格门控） |
-| [pause-detection.md](pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示） |
+| [pause-detection.md](pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示、回放/历史结算的静态暂停与 `Pause Data Unavailable`；契约 v11） |
 | [mode-tagging.md](mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
 | [marathon-correction.md](marathon-correction.md) | AI | 马拉松时长修正功能文档（Roxy/Azusa numeric 只降不升修正、均衡条件、taper、缓存/设置链路） |
@@ -25,7 +25,7 @@
 | [multi-source.md](multi-source.md) | AI | 多数据源功能文档（Etterna、Malody V、Malody 4 接入、转换器、路由决策表、败方门控、能力边界；含 osu 传输层：原生源 + tosu 兜底 + 浏览器模式不变式） |
 | [desktop-shell.md](desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v11**、24062 osu 兼容端点与端点下发、Malody V 选曲桥端点 17653、窗口操控、构建发布；人类教程见 docs/shell-guide.md） |
 | [content-bar-tabs.md](content-bar-tabs.md) | AI | 卡片 Tab 胶囊栏与组合模式（壳专属单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 配置/排序、`/shell-config` 传输、复位与已知限制） |
-| [osu-native-source.md](osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin 与回放开关、契约 v6/v7/v9 `sources.osu` 端点下发与页面 socket 切流、能力边界、reason 闭集 + `degradedFields` + 冻结/保持/停帧语义、L0–L3 健康机与门常数、**锚点失效定位**与**lazer 偏移表重建**两手册、自检清单） |
+| [osu-native-source.md](osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin 与回放开关、契约 v6/v7/v9/v11 `sources.osu` 端点下发与页面 socket 切流、能力边界、reason 闭集 + `degradedFields` + 冻结/保持/停帧语义、L0–L3 健康机与门常数、**锚点失效定位**与**lazer 偏移表重建**两手册、自检清单） |
 | [malody4-source.md](malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
 | [malody-od.md](malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD：Malody 4.3.7 的 PC 表 20 格与逐格 σ\*（96% 等精度方法学、窗口值来源、上界 21.3、FAIR 局限）**以及 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、Holds/Taps 转换、复算工装） |
 | [presets.md](presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
@@ -51,7 +51,7 @@
 | [pattern-analysis.md](pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [graph-visualization.md](graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [graph-section-analysis.md](graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict cache/telemetry/feedback gating) |
-| [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph) |
+| [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph, static replay/historical-result pauses with `Pause Data Unavailable`; contract v11) |
 | [mode-tagging.md](mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |
 | [marathon-correction.md](marathon-correction.md) | AI | Marathon duration correction document (Roxy/Azusa numeric lower-only correction, balance gate, taper, cache/settings wiring) |

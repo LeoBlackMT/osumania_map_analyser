@@ -168,6 +168,10 @@ temp/lazer-offsets-gen.exe live --json
 
 `2026.921` 的两份表**不更新**这三个键：该版本的回放/历史结算会固定显示
 `Pause Data Unavailable`（已知限制；不阻塞其他功能）。
+
+**版本门槛**：`pauses` 数组是 lazer PR #34058（commit `d8900def`，2025-07-22）引入的，
+首个 tachyon 构建 `2025.724.1-tachyon`、首个 lazer 稳定流构建 `2025.816.0-lazer`；
+更早的成绩只有 `pause_count`，没有时间戳。
 ### 新版本或首次生成的完整流程
 
 lazer 更新后，旧表的所有位移（包括 `results`/`score` 段）都不能当作新版本的依据；生成器只做**同版本补段**。要得到完整表，请按界面状态分两次生成：

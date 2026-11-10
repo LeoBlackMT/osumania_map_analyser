@@ -136,6 +136,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - 24062 兼容子集根字段 `replayHash`（v11 起）：页面用它校验帧属于当前回放。
 - 采集线程 100 ms 轮询，同 hash 只解析一次；文件缺失/解析失败按 hash 退避 2 s 重试；离开回放约 1 s 后清空。
 - 表缺 `score_hash`（如 2026.921）时该版本固定显示 `Pause Data Unavailable`。
+- **版本门槛**：`pauses` 数组自 lazer `2025.724.1-tachyon` / `2025.816.0-lazer` 起才有；更早的成绩只有 `pause_count`，显示 `Pause Data Unavailable`（见 [pause-detection.md](pause-detection.md) §7.1.1）。
 - 功能与页面行为见 [pause-detection.md](pause-detection.md) §7；协议细节见 `desktop/docs/CONTRACT.md` §18。
 
 ## 4. 窗口操控（v2 起）

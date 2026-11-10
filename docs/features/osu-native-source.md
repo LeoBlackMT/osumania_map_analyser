@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v10）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v11）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -57,6 +57,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
 - **结算判定数（`resultsScreen.hits`）走表的 `results` 段**（`desktop/src/osu/lazer/results.rs`）：`ScreenStack` 栈顶（`ResultsScreen`）`+score_offset` → `ScoreInfo`。判定数有两个来源、读侧都支持：① `+statistics_offset` → `System.String <StatisticsJson>`（**入库过的成绩**，如回放/历史成绩）；② `+statistics_dict_offset` → `ScoreInfo.statistics`（`Dictionary<HitResult,int>`，**刚打完还没入库的活成绩**只有它有值——此时 JSON 是空串），按 `+dict_entries_offset` 枚举 entry、用 `hit_result_values`（`HitResult` 枚举序号→判定名）映射成载荷六键（`geki/300/katu/100/50/0`，与页面 `livePpCounts.extractCounts` 同口径）。同一段里 `+player_offset` 读 `ResultsScreen.<player>` 的运行时类型（`ReplayPlayer` ⇒ `replay:true`，覆盖"从回放进入结算屏"这一态）；类型读不到时 fail-closed，本帧不发布 hits。所有位移由 `live` 在**结算屏上**按"IL 字段相邻关系 + 运行时类型名"实测出来（不是常量）；表里没有可用的 hits 来源就整段降级，绝不 0 占位。
 - **mods 的来源是 `SelectedMods` 链**（`selected_mods → Bindable<...>.value`）：`read_lazer_mods` 逐元素解析运行时类型名得到 acronym；自定义设置按偏移表的 `mods` 段读（DT/HT/NC/DC 的 `SpeedChange` 是 `BindableDouble`，`f64@+0x40`；DA 的 `DrainRate`/`OverallDifficulty` 是 `DifficultyBindable`，其内部 `BindableFloat CurrentNumber@+0x60` 的 `f32@+0x40` 才是值；`ExtendedLimits` 是 `BindableBool`）。活体验证（2026-10-20，Lazer 2026.1005）DT 1.2x + DA OD 15/HP 5.5 均逐值读出；表无 `mods` 段时只保留旧倍速启发式、**不猜 DA 的 OD**。详见 [desktop/docs/lazer-mod-settings.md](../../desktop/docs/lazer-mod-settings.md)。
+- **结算屏 mods 的优先级**：`ScoreInfo.ModsJson`（该成绩自己的）优先；只有刚打完、尚未入库导致 ModsJson 不可用时，才沿用本局 play 帧的 `SelectedMods`。历史成绩/回放**绝不**复用上一局的 mods；离开 play/result 后缓存立即失效。这修复了“打完 1.3x 后清空模组，打开任意历史成绩仍显示 1.3x”的残留问题（2026-11-10）。
 - **`Bindable<T>.value` 的偏移依赖 `T`**：查表键必须包含实例化实参，多个实例化命中 ⇒ 拒读并降级（OPEN-03 的修正：`NonNullableBindable<WorkingBeatmap>` 上是 `+0x20`，`+0x40` 是 `<Description>`）。
 - **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`desktop/src/osu/lazer/fields.rs:138-139` 的 `F_STRING_LENGTH` / `F_STRING_CHARS`）。
 

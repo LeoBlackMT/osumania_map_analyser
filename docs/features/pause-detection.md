@@ -142,6 +142,23 @@ ReplayPlayer / ResultsScreen
 - 页面侧实现：`js/app/net/replayPauses.js`（纯函数）、`js/app/net/socketHandlers.js`（`applyReplayPauses` / `applyReplayPausesToMarkers`）。
 - 刷新/重连：页面在 `hello` 后发 `replay_pauses_sync`，壳回当前快照（无状态回空帧）。
 
+### 7.1.1 适用版本（重要）
+
+`pauses` 数组由 lazer PR #34058（commit `d8900def`，2025-07-22，"Store pause timestamps (rounded to ms) instead of general count"）引入：它把原来的 `pause_count`（整数）换成 `pauses`（`int[]`，每项是暂停开始时的物理谱面毫秒），Realm schema 同步升到 51。
+
+- 首个包含该提交的 **tachyon** 构建：`2025.724.1-tachyon`（2025-07-24）；
+- 首个包含该提交的 **lazer 稳定流**构建：`2025.816.0-lazer`（2025-08-16）。
+
+因此本功能只对**以下成绩**可用：
+
+| 成绩来源 | 是否带 `pauses` |
+| --- | --- |
+| lazer 稳定流 ≥ `2025.816.0` 的原生成绩 | 是 |
+| lazer tachyon ≥ `2025.724.1` 的原生成绩 | 是 |
+| 更早的 lazer 成绩（含 2022.1227 起带 `pause_count` 的 `.osr`） | 否（只有次数，没有时间戳） |
+| osu!stable 成绩 / 从 stable 导入的成绩 | 否（stable 不记录暂停） |
+
+早期成绩在页面上显示 `Pause Data Unavailable`，这不是读取失败，而是该成绩本身没有时间戳。
 ### 7.2 `.osr` 尾部格式（只读 `pauses`）
 
 ```text

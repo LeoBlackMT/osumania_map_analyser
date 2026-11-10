@@ -4,7 +4,7 @@
 
 > **提示**：发行包已内置适配主流版本的配置文件。启动 `mma-shell.exe` 后会自动识别并匹配游戏版本，**日常游玩通常不需要进行任何手动配置**。
 
-> **回放暂停**：看回放时如果右下角显示 `Pause Data Unavailable`，说明当前 lazer 版本的偏移表缺少回放哈希字段（`score_hash`）或该成绩没有回放文件。2026.921 版本的表**不含**该字段，属已知限制；2026.1005 已包含。需要该功能时，可在游玩/回放中与结算屏各运行一次 `gen.exe` 重新生成表（见下文「方式三」）。
+> **回放暂停**：看回放时如果右下角显示 `Pause Data Unavailable`，说明当前 lazer 版本的偏移表缺少回放哈希字段（`score_hash`）、该成绩没有回放文件，或成绩来自 **2025.816.0 之前**的 lazer（那时只记录暂停次数、不记录时间点）。2026.921 版本的表**不含**该字段，属已知限制；2026.1005 已包含。需要该功能时，可在游玩/回放中与结算屏各运行一次 `gen.exe` 重新生成表（见下文「方式三」）。
 
 ## 目录结构
 
@@ -50,7 +50,7 @@ This directory contains configuration files and helper tools used by the desktop
 
 > **Note**: Bundled offset tables already support common versions of osu!stable and osu!lazer. When `mma-shell.exe` starts, it automatically matches the game client. **No manual configuration is required under normal use.**
 
-> **Replay pauses**: if the overlay shows `Pause Data Unavailable` while watching a replay, the offset table for this lazer build lacks the replay hash fields (`score_hash`), or the score has no replay file. The 2026.921 tables intentionally do **not** include these fields (known limitation); 2026.1005 does. To enable the feature, run `gen.exe` once during play/replay and once at the results screen (see "Method 3" below).
+> **Replay pauses**: if the overlay shows `Pause Data Unavailable` while watching a replay, the offset table for this lazer build lacks the replay hash fields (`score_hash`), the score has no replay file, or the score was produced by a lazer build **older than 2025.816.0** (those only stored a pause count, not timestamps). The 2026.921 tables intentionally do **not** include these fields (known limitation); 2026.1005 does. To enable the feature, run `gen.exe` once during play/replay and once at the results screen (see "Method 3" below).
 
 ## Directory Layout
 
