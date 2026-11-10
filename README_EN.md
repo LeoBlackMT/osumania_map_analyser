@@ -23,7 +23,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 - **Multi-game Support**: Supports osu!stable / lazer, Etterna, Malody V and its editor, and Malody 4.3.7 simultaneously.
 - **Multi-mod Support**: Compatible with multiple mods in the above games, supporting custom speed rates and judgment/OD adjustments.
 - **Section Analysis**: Double-click the difficulty distribution graph and drag to select a time slice to calculate data specifically for that section.
-- **Lane Accuracy**: Calculates independent accuracy for each lane during gameplay and converts in real time to true ScoreV1 (Lazer / Stable; Stable lanes use the game's per-note judgments).
+- **Lane Accuracy**: Calculates independent accuracy for each lane during gameplay and converts in real time to true ScoreV1/V2.
 - **ReworkPP**: Computes Sunny Rework PP in real time during gameplay and displays its internal parameters.
 - **Preset System**: Provides system and custom presets to apply or save the full configuration in one click, supporting automatic following of manual changes.
 - **Highly Customizable**: Offers rich customization options to meet different player preferences.
