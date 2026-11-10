@@ -933,6 +933,27 @@ fn il_results_field_order(inventory: &IlInventory) -> Result<(), String> {
         ));
     }
     let score_info = "osu.Game.Scoring.ScoreInfo";
+    let field = |type_name: &str, name: &str| -> Option<(usize, &str)> {
+        inventory
+            .fields
+            .iter()
+            .find(|row| row.type_name == type_name && row.field == name && row.kind == "instance")
+            .map(|row| (row.order, row.type_kind.as_str()))
+    };
+    let (beatmap_hash, beatmap_hash_type) = field(score_info, "<BeatmapHash>k__BackingField")
+        .ok_or("IL-missing:ScoreInfo.BeatmapHash")?;
+    let (replay_hash, replay_hash_type) =
+        field(score_info, "<Hash>k__BackingField").ok_or("IL-missing:ScoreInfo.Hash")?;
+    if beatmap_hash_type != "string" || replay_hash_type != "string" {
+        return Err(format!(
+            "IL-type:ScoreInfo.BeatmapHash({beatmap_hash_type})/Hash({replay_hash_type})"
+        ));
+    }
+    if beatmap_hash >= replay_hash {
+        return Err(format!(
+            "IL-order:ScoreInfo.BeatmapHash({beatmap_hash})->Hash({replay_hash})"
+        ));
+    }
     let statistics = order(score_info, "<StatisticsJson>k__BackingField")
         .ok_or("IL-missing:ScoreInfo.StatisticsJson")?;
     let maximum = order(score_info, "<MaximumStatisticsJson>k__BackingField")
@@ -960,6 +981,8 @@ struct ResultsOffsets {
     /// `HitResult` 枚举序号 → 载荷键（IL 的枚举声明顺序）。
     hit_result_values: BTreeMap<String, u32>,
     statistics_summary: String,
+    /// `ScoreInfo.<Hash>`（回放文件 SHA-256，64-hex）。可缺省：老成绩没有回放时为空。
+    score_hash: Option<u64>,
 }
 
 #[cfg(windows)]
@@ -967,7 +990,7 @@ impl ResultsOffsets {
     fn witness(&self) -> String {
         format!(
             "live result screen: {} (player={}): ResultsScreen.Score -> ScoreInfo at score_offset; \
-             hits from {}{} ({})",
+             hits from {}{}{} ({})",
             self.screen_type,
             self.player_type,
             if self.statistics_dict_offset.is_some() {
@@ -979,6 +1002,10 @@ impl ResultsOffsets {
                 "; StatisticsJson located for realm-loaded scores"
             } else {
                 ""
+            },
+            match self.score_hash {
+                Some(offset) => format!("; ScoreInfo.Hash@+0x{offset:X}"),
+                None => String::new(),
             },
             self.statistics_summary
         )
@@ -998,6 +1025,9 @@ impl ResultsOffsets {
         }
         if let Some(value) = self.dict_entries_offset {
             out.push_str(&format!(r#","dict_entries_offset":{value}"#));
+        }
+        if let Some(value) = self.score_hash {
+            out.push_str(&format!(r#","score_hash":{value}"#));
         }
         out.push('}');
         out
@@ -1089,6 +1119,9 @@ struct ScoreOffsets {
     sample_count: usize,
     chain_matches: usize,
     replay_sample_count: usize,
+    /// `Score -> ScoreInfo` 与 `ScoreInfo.<Hash>`（回放文件哈希；可缺省）。
+    score_info: Option<u64>,
+    score_hash: Option<u64>,
 }
 
 #[cfg(windows)]
@@ -1123,6 +1156,11 @@ impl ScoreOffsets {
                 self.replay_sample_count
             ));
         }
+        if let (Some(info), Some(hash)) = (self.score_info, self.score_hash) {
+            text.push_str(&format!(
+                "; Score.ScoreInfo@+0x{info:X}, ScoreInfo.Hash@+0x{hash:X}"
+            ));
+        }
         text
     }
 
@@ -1131,8 +1169,12 @@ impl ScoreOffsets {
             Some(off) => format!(r#","score_result_counts":{off}"#),
             None => String::new(),
         };
+        let hash_json = match (self.score_info, self.score_hash) {
+            (Some(info), Some(hash)) => format!(r#","score_info":{info},"score_hash":{hash}"#),
+            _ => String::new(),
+        };
         format!(
-            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"player_score":{},"score_replay":{},"replay_frames":{},"replay_time":{},"replay_actions":{},"actions_items":{},"actions_size":{}{counts_json},"witness":"{}"}}"#,
+            r#"{{"player_score_processor":{},"hit_events":{},"hit_object":{},"time_offset":{},"result":{},"column":{},"stride":{},"player_score":{},"score_replay":{},"replay_frames":{},"replay_time":{},"replay_actions":{},"actions_items":{},"actions_size":{}{counts_json}{hash_json},"witness":"{}"}}"#,
             self.player_score_processor,
             self.hit_events,
             self.hit_object,
@@ -1222,10 +1264,12 @@ fn discover_score(
     handle: Handle,
     resolver: &EetypeResolver<'_>,
     player: u64,
+    files_root: Option<&Path>,
 ) -> Result<ScoreOffsets, String> {
     // 1. 探测 Player.Score（用于 ReplayFrame 读取）
     let mut discovered_player_score = 0x480u64; // 已验证的标准基准
     let mut replay_sample_count = 0usize;
+    let mut score_object: Option<u64> = None;
     for score_cand in (0x8..=0x1000).step_by(8) {
         let Some(score_obj) = read_ptr(handle, player + score_cand) else { continue };
         let Some(name) = resolver.name(score_obj) else { continue };
@@ -1235,6 +1279,7 @@ fn discover_score(
                 let is_replay = resolver.name(replay).map_or(false, |rn| rn.contains("Replay"));
                 if is_replay {
                     discovered_player_score = score_cand;
+                    score_object = Some(score_obj);
                     // 尝试看 Frames (+0x08)
                     if let Some(frames_list) = read_ptr(handle, replay + 0x08) {
                         if let Some((_, size)) = list_items_and_size(handle, frames_list) {
@@ -1242,6 +1287,46 @@ fn discover_score(
                         }
                     }
                     break;
+                }
+            }
+        }
+    }
+
+    // 2. `Score -> ScoreInfo -> Hash`：回放文件的 64-hex store key。
+    //    与 results 段同一套判据（`.osu` 文本 vs `.osr` 二进制），见 `pick_replay_hash_offset`。
+    let mut score_info_offset = None;
+    let mut score_hash_offset = None;
+    if let Some(score_obj) = score_object {
+        for offset in (0x8..=0x800).step_by(8) {
+            let Some(pointer) = read_ptr(handle, score_obj + offset) else {
+                continue;
+            };
+            let Some(name) = resolver.name(pointer) else {
+                continue;
+            };
+            if name.contains("ScoreInfo") {
+                score_info_offset = Some(offset);
+                break;
+            }
+        }
+        if let Some(info_offset) = score_info_offset {
+            if let Some(info) = read_ptr(handle, score_obj + info_offset) {
+                let mut candidates = Vec::new();
+                for offset in (0x8..SCORE_INFO_SCAN_LIMIT).step_by(8) {
+                    let Some(text) = read_ptr(handle, info + offset)
+                        .and_then(|pointer| read_clr_string(handle, pointer))
+                    else {
+                        continue;
+                    };
+                    if text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                        candidates.push(offset);
+                    }
+                }
+                score_hash_offset = pick_replay_hash_offset(handle, info, &candidates, files_root);
+                if score_hash_offset.is_none() && !candidates.is_empty() {
+                    eprintln!(
+                        "[live] ScoreInfo.Hash unresolved at play: {candidates:X?} (score_hash omitted)"
+                    );
                 }
             }
         }
@@ -1299,6 +1384,8 @@ fn discover_score(
                     sample_count: valid,
                     chain_matches: chain,
                     replay_sample_count,
+                    score_info: score_info_offset,
+                    score_hash: score_hash_offset,
                 };
                 if best.as_ref().map_or(true, |(_, best_rank)| rank > *best_rank) {
                     best = Some((found, rank));
@@ -1558,6 +1645,64 @@ fn single_offset(values: &[u64], what: &str) -> Result<u64, String> {
     }
 }
 
+/// 64-hex store key → `<lazer>/files/<h>/<hh>/<hash>`。`.osu` 是文本（首行 `osu file format`），
+/// `.osr` 是二进制：用首 16 字节区分两者。
+///
+/// 为什么需要：2026.1005 的 `ScoreInfo.BeatmapHash` 也是 64-hex（`.osu` 的 SHA-256），
+/// 与 `ScoreInfo.Hash`（`.osr` 的 SHA-256）光靠"长度 + hex"分不开。
+#[cfg(windows)]
+fn store_entry_is_replay(files_root: Option<&Path>, hash: &str) -> Option<bool> {
+    let root = files_root?;
+    if hash.len() != 64 {
+        return None;
+    }
+    let path = root
+        .join("files")
+        .join(&hash[0..1])
+        .join(&hash[0..2])
+        .join(hash);
+    let mut file = fs::File::open(path).ok()?;
+    let mut head = [0u8; 16];
+    use std::io::Read;
+    let read = file.read(&mut head).ok()?;
+    if read == 0 {
+        return None;
+    }
+    Some(!head[..read].starts_with(b"osu file format"))
+}
+
+/// 在 `ScoreInfo` 的 64-hex 候选里挑出**回放文件**那一个（排除 `BeatmapHash`）。
+///
+/// 首选磁盘证据（`.osr` 二进制 vs `.osu` 文本）；磁盘不可用时唯一候选直接采用；
+/// 多候选且无磁盘证据 ⇒ `None`（fail closed，不猜）。
+#[cfg(windows)]
+fn pick_replay_hash_offset(
+    handle: Handle,
+    score_info: u64,
+    candidates: &[u64],
+    files_root: Option<&Path>,
+) -> Option<u64> {
+    let mut picked = None;
+    for &offset in candidates {
+        let Some(text) = read_ptr(handle, score_info + offset)
+            .and_then(|pointer| read_clr_string(handle, pointer))
+        else {
+            continue;
+        };
+        if store_entry_is_replay(files_root, &text) == Some(true) {
+            if picked.is_some() {
+                return None;
+            }
+            picked = Some(offset);
+        }
+    }
+    match picked {
+        Some(offset) => Some(offset),
+        None if candidates.len() == 1 => Some(candidates[0]),
+        None => None,
+    }
+}
+
 /// 在结算屏上测 `results` 段的三个偏移。
 ///
 /// 判据全部是"结构"（类型名来自 IL 的 RID→名、相邻关系来自 IL 的字段顺序），
@@ -1569,6 +1714,7 @@ fn discover_results(
     screen: u64,
     hit_result_values: &BTreeMap<String, u32>,
     enum_size: u32,
+    files_root: Option<&Path>,
 ) -> Result<ResultsOffsets, String> {
     let screen_type = resolver
         .name(screen)
@@ -1607,6 +1753,27 @@ fn discover_results(
     let score_offset = single_offset(&score_offsets, "Score")?;
     let score = read_ptr(handle, screen + score_offset)
         .ok_or_else(|| "score-pointer-unreadable".to_string())?;
+
+    // `<Hash>`：回放文件的 SHA-256 store key（64-hex）。`ScoreInfo.BeatmapHash` 是 32-hex 的
+    // `.osu` MD5，长度过滤天然排除；出现多个 64-hex 候选时 fail closed（不猜）。
+    let mut hash_offsets = Vec::new();
+    for offset in (8..SCORE_INFO_SCAN_LIMIT).step_by(8) {
+        let Some(text) = read_ptr(handle, score + offset)
+            .and_then(|pointer| read_clr_string(handle, pointer))
+        else {
+            continue;
+        };
+        if text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            if std::env::var("MMA_LAZER_RESULTS_DEBUG").is_ok() {
+                eprintln!("[dbg] ScoreInfo 64-hex @+0x{offset:X} = {text}");
+            }
+            hash_offsets.push(offset);
+        }
+    }
+    let score_hash = pick_replay_hash_offset(handle, score, &hash_offsets, files_root);
+    if score_hash.is_none() && !hash_offsets.is_empty() {
+        eprintln!("[live] ScoreInfo.Hash unresolved: {hash_offsets:X?} (score_hash omitted)");
+    }
 
     // ① `<StatisticsJson>`：**只有入库过的成绩**有内容（活成绩是空串）。定位判据同前：
     //    `<StatisticsJson>` 后面紧跟 `<MaximumStatisticsJson>`（两段 JSON 形状相同）。
@@ -1663,6 +1830,7 @@ fn discover_results(
     // `<player>`：`<VerticalScrollContent>` 后面紧跟 `<player>`（IL 顺序）；它的运行时类型是
     // `SoloPlayer`（正常游玩）或 `ReplayPlayer`（回放）⇒ 回放判定在结算屏上也成立。
     let mut player_offsets = Vec::new();
+    let mut scroll_offsets = Vec::new();
     for offset in (8..RESULTS_SCREEN_SCAN_LIMIT).step_by(8) {
         let Some(value) = read_ptr(handle, screen + offset) else {
             continue;
@@ -1673,6 +1841,9 @@ fn discover_results(
         let Some(type_name) = resolver.name(value) else {
             continue;
         };
+        if type_name.contains("VerticalScroll") {
+            scroll_offsets.push(offset);
+        }
         if !type_name.contains("Player") {
             continue;
         }
@@ -1680,7 +1851,14 @@ fn discover_results(
             player_offsets.push(offset);
         }
     }
-    let player_offset = single_offset(&player_offsets, "player")?;
+    // `<player>` 可能为 null（成绩没有回放、或结算屏还没建 player）：此时类型名判据失效，
+    // 退回 IL 见证过的相邻关系 `<VerticalScrollContent>` 后一个 8 字节槽。
+    // IL witness（`il_results_field_order`）已断言两者相邻，这里不是猜。
+    let player_offset = match single_offset(&player_offsets, "player") {
+        Ok(offset) => offset,
+        Err(_) if scroll_offsets.len() == 1 => scroll_offsets[0] + 8,
+        Err(error) => return Err(error),
+    };
     let player_type = resolver
         .name(read_ptr(handle, screen + player_offset).unwrap_or(0))
         .unwrap_or_default();
@@ -1694,6 +1872,7 @@ fn discover_results(
         statistics_dict_offset: dict.as_ref().map(|(offset, _, _)| *offset),
         dict_entries_offset: dict.as_ref().map(|(_, offset, _)| *offset),
         hit_result_values: hit_result_values.clone(),
+        score_hash,
         statistics_summary: match &dict {
             Some((_, _, mapped)) => summary_from_counts(mapped),
             None => json_counts
@@ -1797,9 +1976,27 @@ fn extract_lazer_version(inventory: &IlInventory, _lazer_dir: &Path) -> String {
     "2026.1005.0.0".to_string()
 }
 
+/// lazer 的存储根目录（`storage.ini` 的 `FullPath`）。内存读不到 BasePath 时用它兜底。
 #[cfg(windows)]
-fn read_difficulty_current(handle: Handle, bindable: u64) -> Option<f32> {
-    let bindable = read_ptr(handle, bindable).filter(|ptr| is_valid_ptr(*ptr))?;
+fn lazer_storage_root() -> Option<PathBuf> {
+    let appdata = std::env::var("APPDATA").ok()?;
+    let text = fs::read_to_string(Path::new(&appdata).join("osu").join("storage.ini")).ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("FullPath") {
+            if let Some((_, value)) = rest.split_once('=') {
+                let value = value.trim();
+                if !value.is_empty() {
+                    return Some(PathBuf::from(value));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn read_difficulty_current(handle: Handle, bindable: u64) -> Option<f32> {    let bindable = read_ptr(handle, bindable).filter(|ptr| is_valid_ptr(*ptr))?;
     let current = read_ptr(handle, bindable + 0x60).filter(|ptr| is_valid_ptr(*ptr))?;
     read_f32(handle, current + 0x40)
 }
@@ -1937,6 +2134,16 @@ fn validate_and_emit(
     let storage = read_ptr(handle, game_base + 1088);
     let base_path = storage.and_then(|s| read_ptr(handle, s + 8));
     let base_path_str = base_path.and_then(|bp| read_clr_string(handle, bp));
+    // `<lazer 根>/files` 是 store 目录：`.osu` 与 `.osr` 都按内容哈希落在这里，
+    // 用来区分 `ScoreInfo.BeatmapHash` 与 `ScoreInfo.Hash`（两者都是 64-hex）。
+    // 内存里的 Storage.BasePath 在结算屏偶尔读不到，退回 `%APPDATA%\osu\storage.ini`。
+    let files_root_owned = base_path_str
+        .clone()
+        .or_else(|| lazer_storage_root().map(|path| path.to_string_lossy().to_string()));
+    let files_root = files_root_owned.as_deref().map(Path::new);
+    if std::env::var("MMA_LAZER_RESULTS_DEBUG").is_ok() {
+        eprintln!("[dbg] files_root = {:?}", files_root);
+    }
 
     // 活体验证 2: BeatmapInfo
     let beatmap_bindable = read_ptr(handle, game_base + 1104);
@@ -2018,7 +2225,7 @@ fn validate_and_emit(
         Some(screen) => match il_results_field_order(inventory) {
             Ok(()) => match il_hit_result_table(inventory) {
                 Some((values, enum_size)) => {
-                    match discover_results(handle, resolver, screen, &values, enum_size) {
+                    match discover_results(handle, resolver, screen, &values, enum_size, files_root) {
                         Ok(found) => Some(found),
                         Err(reason) => {
                             eprintln!("[live] results section not captured: {reason}");
@@ -2060,7 +2267,7 @@ fn validate_and_emit(
     // 活体验证 6（游玩/回放）：测 `score` 段（Player → ScoreProcessor.hitEvents）。
     // 只在 play 态有意义；非 play 时 `top_screen` 不是 Player，发现会失败并跳过。
     let score = match top_screen {
-        Some(player) => match discover_score(handle, resolver, player) {
+        Some(player) => match discover_score(handle, resolver, player, files_root) {
             Ok(found) => {
                 eprintln!("[live] score section captured: {}", found.witness());
                 Some(found)
@@ -2230,6 +2437,9 @@ fn serde_json_table(
         }
         if let Some(offset) = found.dict_entries_offset {
             out.push_str(&format!("    \"dict_entries_offset\": {offset},\n"));
+        }
+        if let Some(offset) = found.score_hash {
+            out.push_str(&format!("    \"score_hash\": {offset},\n"));
         }
         if !found.hit_result_values.is_empty() {
             out.push_str("    \"hit_result_values\": {\n");

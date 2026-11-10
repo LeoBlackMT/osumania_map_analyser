@@ -149,6 +149,25 @@ temp/lazer-offsets-gen.exe live --json
 > 此时用 `MMA_LAZER_MODS_PROBE=1` 的壳日志重新核对，见
 > `desktop/docs/lazer-mod-settings.md`。完整 dump 链路（`extract → emit`）不产出它。
 
+### `live` 的哈希字段（回放暂停）
+
+`live` 在**游玩/回放中**额外测 `Player.Score → Score.ScoreInfo → ScoreInfo.<Hash>`，写入
+`score.score_info` / `score.score_hash`；在**结算屏**测 `ResultsScreen.Score → ScoreInfo.<Hash>`，
+写入 `results.score_hash`。三个键都是可选的，读侧缺任一项只会让「回放暂停」显示
+`Pause Data Unavailable`，不影响 LaneAcc / 判定数。
+
+**为什么要专门判别**：2026.1005 起 `ScoreInfo.BeatmapHash` 也是 64-hex（`.osu` 文件的 SHA-256），
+与 `ScoreInfo.Hash`（`.osr` 的 SHA-256）只靠长度分不开。生成器用 store 目录里的文件头判定：
+`.osu` 是文本（首行 `osu file format`），`.osr` 是二进制。IL 见证额外断言
+`ScoreInfo.BeatmapHash < ScoreInfo.Hash` 且两者都是 `System.String`。
+
+**两段式**（与 `results` / `score` 同一次窗口即可）：
+
+1. 打开一个有暂停的回放，停在 ReplayPlayer **播放中**，运行 `live` → `score.score_info` / `score.score_hash`；
+2. 回放结束停在结算屏（不要退回选歌），再运行一次 `live` → `results.score_hash`。
+
+`2026.921` 的两份表**不更新**这三个键：该版本的回放/历史结算会固定显示
+`Pause Data Unavailable`（已知限制；不阻塞其他功能）。
 ### 新版本或首次生成的完整流程
 
 lazer 更新后，旧表的所有位移（包括 `results`/`score` 段）都不能当作新版本的依据；生成器只做**同版本补段**。要得到完整表，请按界面状态分两次生成：
