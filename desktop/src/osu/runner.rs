@@ -42,11 +42,10 @@ pub fn detect_stable_variant(_target: &win::Target) -> &'static str {
     "stable"
 }
 
-/// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
-#[cfg(windows)]
 /// 当前 32 位 stable 进程实际使用的偏移表变体：0=stable/unknown，1=ppysb。
 pub static ACTIVE_STABLE_VARIANT: AtomicU8 = AtomicU8::new(0);
-
+/// 主循环：发现 → 附着 → 定址 → 每 tick 读 + 过门 + 发布。
+#[cfg(windows)]
 pub fn run(
     reader: Reader,
     hit_log: Arc<lazer::HitEventLog>,
