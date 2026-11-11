@@ -138,8 +138,9 @@ LN 合并（stable mania V1）：
 ## 5b. 实时判定与回放进度
 
 LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js` 每 200ms 读取
-`state.songTimeMs`（tosu/native 的 `beatmap.time.live`，已按 speedRate 归一为谱面时间），
-只把 `noteStart/End + offset` 不晚于当前播放位置的事件喂给 accumulator；原始帧也只取
+`state.songTimeMs`（**显示轴** = `beatmap.time.live / speedRate`），用 `js/laneAcc/timeAxis.js`
+的 `toChartTime()` 乘回 `speedRate` 得到**物理谱面时间**（HitEvent 的 `offset`、ReplayFrame 的
+`time` 与谱面 note 时间都是物理轴），只把 `noteStart/End + offset` 不晚于当前播放位置的事件喂给 accumulator；原始帧也只取
 `time <= 当前播放位置` 的子集。效果：
 
 - 开局 0 个判定 → 显示 100.00%；
@@ -151,6 +152,7 @@ LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js`
   `startSession` 再清，避免进入结算时把卡片清空。
 - 全量快照按 2048 条分块到达；谱面模型尚未准备好时先排队，`prepareChart` 建好累加器后再按 reset/events 顺序回放，不能只保留最后一块。
 - 切图/换难度时按 `chart.identity + columnCount + noteCount + OD + 首尾时间` 检测谱面变化，清空 hitEvents/replayFrames 并重建累加器；旧谱面的事件不会按新 note 索引落成 Miss，卡片从 100.00% 重新开始。
+- **2026-11-11 修复**：此前直接把 `songTimeMs`（显示轴）与物理轴事件/帧比较，DT/NC/自定义 >1x 时判定整体滞后 `rate` 倍（回放中最明显），HT/DC <1x 时 Stable V2 会把未来音符提前判 Miss。现在 `pump`、`framesToStableV2Events`、`framesToSv1Events`、`rebuildRawAccumulator` 共用换算后的物理时间。
 
 ## 6. 测试
 
