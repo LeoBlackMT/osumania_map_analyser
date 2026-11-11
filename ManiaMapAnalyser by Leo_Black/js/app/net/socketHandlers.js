@@ -22,10 +22,12 @@ import {
 } from "../core/modeLogic.js";
 import {
     addPauseMarker,
+    redrawPauseMarkers,
     refreshGraphTimeline,
     resetPauseRuntime,
 } from "../graph/index.js";
-import { updateCardPlayVisibility } from "../ui/hud.js";
+import { updateCardPlayVisibility, updatePauseCountVisibility } from "../ui/hud.js";
+import { filterReplayPauseTimes, normalizeReplayPauses } from "./replayPauses.js";
 import { scheduleRecompute } from "../core/scheduler.js";
 import { getCounterPathForCommand, resetContentBarTabOverride } from "../core/settings.js";
 import { applyCoverThemeForBeatmap } from "../ui/coverTheme.js";
@@ -79,13 +81,19 @@ function updateSongTimeState(data) {
         refreshGraphTimeline();
     }
 
+    // 回放暂停的重试点：必须放在 live 时钟的 early-return 之前——结算屏可能没有
+    // `beatmap.time.live`，放在后面会让"时间线/倍速就绪后重算"永远不执行。
+    if (state.replayPausesLoaded) {
+        applyReplayPausesToMarkers();
+    }
+
     if (!Number.isFinite(liveTimeMs)) {
         return;
     }
 
     const scaledLiveTimeMs = liveTimeMs / speedRate;
 
-    if (state.pauseDetectionEnabled && state.isInPlayState && state.pauseMarkerTimes.length > 0) {
+    if (state.pauseDetectionEnabled && state.isInPlayState && !state.isReplay && state.pauseMarkerTimes.length > 0) {
         let earliestPauseTimeMs = Number.POSITIVE_INFINITY;
         for (const markerTime of state.pauseMarkerTimes) {
             if (Number.isFinite(markerTime) && markerTime < earliestPauseTimeMs) {
@@ -115,7 +123,7 @@ function updateSongTimeState(data) {
         state.playbackAdvanced = true;
     }
 
-    if (state.pauseDetectionEnabled && state.isInPlayState) {
+    if (state.pauseDetectionEnabled && state.isInPlayState && !state.isReplay) {
         // 初始值必须继承当前暂停态：原生 paused 的防抖等待期间不能把已有暂停解除。
         let gamePaused = state.isPaused;
 
@@ -201,10 +209,82 @@ function updateSongTimeState(data) {
     }
 }
 
+/**
+ * 应用 24061 `replay_pauses` 帧（回放暂停）。
+ *
+ * 身份校验：`nativeReplayHash`（24062）未知时**先接受**——24061 常先于 24062 到达；
+ * 已知且不等时丢弃这一帧（避免旧回放套到新回放）。
+ */
+export function applyReplayPauses(payload) {
+    const next = normalizeReplayPauses(payload);
+    if (next.hash && state.nativeReplayHash && next.hash !== state.nativeReplayHash) {
+        return;
+    }
+    state.replayHash = next.hash;
+    state.replayPausesRaw = next.pauses;
+    state.replayPausesAvailable = next.available;
+    state.replayPausesSpeedRate = next.speedRate;
+    state.replayPausesLoaded = true;
+    state.replayPausesAppliedKey = "";
+    applyReplayPausesToMarkers();
+}
+
+/**
+ * 把已缓存的回放暂停换算到显示轴并画标记。
+ *
+ * 幂等：`replayPausesAppliedKey` 变了才重画（每帧会被 `updateSongTimeState` 重试调用）。
+ */
+function applyReplayPausesToMarkers() {
+    if (!state.pauseDetectionEnabled) {
+        return;
+    }
+    const active = state.isReplay
+        || (state.clientStateName === "resultscreen" && state.resultsFromPlay === false);
+    if (!active || !state.replayPausesLoaded) {
+        return;
+    }
+
+    const rate = Number.isFinite(state.replayPausesSpeedRate)
+        ? state.replayPausesSpeedRate
+        : state.speedRate;
+    const key = state.replayPausesAvailable
+        ? `a|${rate}|${state.songStartMs}|${state.songEndMs}|${state.replayPausesRaw.length}`
+        : `u|${state.replayHash}`;
+    if (key === state.replayPausesAppliedKey) {
+        return;
+    }
+    state.replayPausesAppliedKey = key;
+
+    if (!state.replayPausesAvailable) {
+        state.pauseDataStatus = "unavailable";
+        state.pauseMarkerTimes = [];
+        state.pauseCount = 0;
+        redrawPauseMarkers();
+        updatePauseCountVisibility();
+        return;
+    }
+
+    const times = filterReplayPauseTimes(
+        state.replayPausesRaw,
+        rate,
+        state.songStartMs,
+        state.songEndMs,
+        NOTE_END_MARGIN_MS,
+    );
+    state.pauseDataStatus = "available";
+    state.pauseMarkerTimes = times;
+    state.pauseCount = times.length;
+    redrawPauseMarkers();
+    updatePauseCountVisibility();
+}
+
 /** 信号段：游玩态/songTime/livePP（败方门控豁免照读，供 Auto 路由回 osu）。 */
 export function applySignalState(data) {
     noteTelemetryActivity();
     let laneAccEnteredPlay = false;
+        // 回放身份位：后面的状态边沿与 updateSongTimeState 都要读它，必须先写。
+        state.isReplay = data?.replay === true;
+        state.nativeReplayHash = typeof data?.replayHash === "string" ? data.replayHash : "";
         const normalizedClientStateName = normalizeClientStateName(data?.state?.name);
         if (normalizedClientStateName) {
             const wasInPlayState = state.isInPlayState;
@@ -259,6 +339,47 @@ export function applySignalState(data) {
                 resetPauseRuntime(true);
             } else if (leftPlayState) {
                 resetPauseRuntime(false);
+            }
+
+            // 回放暂停：③ 进入回放 → 恢复缓存重新画；④ 历史结算 → 清旧标记；
+            //          ⑤ 离开回放/结算 → 清缓存；⑥ 其余 → 回到 live 语义。
+            if (enteredPlayState && state.isReplay) {
+                // native hash 为空 = 24062 还没到 ⇒ 先信已到的帧（到达后自然会由
+                // `applyReplayPauses` 的同值校验/新帧覆盖自愈）。
+                const mismatch = Boolean(state.nativeReplayHash)
+                    && Boolean(state.replayHash)
+                    && state.nativeReplayHash !== state.replayHash;
+                if (mismatch) {
+                    state.replayPausesLoaded = false;
+                    state.replayPausesRaw = [];
+                    state.replayHash = "";
+                }
+                state.pauseDataStatus = state.replayPausesLoaded ? "available" : "unavailable";
+                state.replayPausesAppliedKey = "";
+                applyReplayPausesToMarkers();
+            }
+
+            if (nextIsResultScreen && !wasResultScreen && !state.resultsFromPlay) {
+                state.pauseDataStatus = "unavailable";
+                state.pauseMarkerTimes = [];
+                state.pauseCount = 0;
+                redrawPauseMarkers();
+                updatePauseCountVisibility();
+            }
+
+            if ((leftPlayState && !nextIsResultScreen && !nextIsPauseState)
+                || (wasResultScreen && !nextIsResultScreen)) {
+                state.replayHash = "";
+                state.nativeReplayHash = "";
+                state.replayPausesRaw = [];
+                state.replayPausesLoaded = false;
+                state.replayPausesAppliedKey = "";
+            }
+
+            const inHistoricalResult = state.clientStateName === "resultscreen"
+                && !state.resultsFromPlay;
+            if (!state.isReplay && !inHistoricalResult) {
+                state.pauseDataStatus = "live";
             }
         }
 

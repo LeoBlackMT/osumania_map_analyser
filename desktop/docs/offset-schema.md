@@ -74,7 +74,9 @@ lazer 更新后如果字段顺序发生变化，探针校验失败将不会写�
   "time_offset": 16,
   "result": 24,
   "column": 72,
-  "stride": 64
+  "stride": 64,
+  "score_info": 8,
+  "score_hash": 64
 }
 ```
 
@@ -83,7 +85,22 @@ lazer 更新后如果字段顺序发生变化，探针校验失败将不会写�
 - `hit_events`：`ScoreProcessor` 上 `hitEvents`（`List<HitEvent>`）引用的字段位移；
 - `hit_object` / `time_offset` / `result`：`HitEvent` 内部字段位移（**managed** 内存布局：实测 `HitObject@0x00`、`LastHitObject@0x08`、`TimeOffset@0x10`、`Result@0x18`；注意 `Marshal.OffsetOf` 给的是 unmanaged 互操作布局，不能作为托管堆内的字段偏移）；
 - `column`：`ManiaHitObject.Column` 在 HitObject 实例内的位移（通常为 `0x48` = 72）；
-- `stride`：`HitEvent` 结构体在托管数组中的步长（通常为 `0x40` = 64）。
+- `stride`：`HitEvent` 结构体在托管数组中的步长（通常为 `0x40` = 64）；
+- `player_score`：`Player` 上 `Score` 字段的位移（`LegacyDatabasedScore`，实测 `0x480`）；
+- `score_info` / `score_hash`：`Score.ScoreInfo` 与 `ScoreInfo.<Hash>` 的位移（实测 `0x08` / `0x40`），
+  供回放暂停读取回放文件的 64-hex store key。
+
+### 回放哈希字段（`results.score_hash` / `score.score_info` / `score.score_hash`）
+
+这三个键只服务「回放暂停」数据面，**全部可选**：缺任何一个，读侧返回 `None`，页面显示
+`Pause Data Unavailable`，不影响判定数、LaneAcc 等既有字段。
+
+- `results.score_hash`：`ResultsScreen.Score → ScoreInfo.<Hash>`（2026.1005 实测 `0x40`）；
+- `score.score_info` / `score.score_hash`：`Player.Score → Score.ScoreInfo → ScoreInfo.<Hash>`（实测 `0x08` / `0x40`）。
+
+**注意**：2026.1005 起 `ScoreInfo.BeatmapHash` 也是 64-hex（`.osu` 文件的 SHA-256），与
+`ScoreInfo.Hash`（`.osr` 的 SHA-256）**无法只靠长度区分**。生成器在测量时用 store 目录里的
+文件头判定（`.osu` 是文本 `osu file format`，`.osr` 是二进制），读侧只做 64-hex 校验，不猜。
 
 ### 探针机制与约束
 这一段同样是**活体探针段**：`gen.exe` / Live Generator 在玩家游玩或观看回放时扫描 `ScoreProcessor` 字段，并通过“`LastHitObject == 上一事件 HitObject` 引用链 + 轨道列号有效范围”自证后生成；离线静态提取链路不产出此段。

@@ -751,6 +751,8 @@ export function applyPauseDetectionSetting(value) {
         state.frozenInterpMs = state.songTimeMs;
     }
 
+    // 关→开时，回放缓存还在：让下一帧 `updateSongTimeState` 重新应用（去重键失效）。
+    state.replayPausesAppliedKey = "";
     updatePauseCountVisibility();
     redrawPauseMarkers();
     return changed;

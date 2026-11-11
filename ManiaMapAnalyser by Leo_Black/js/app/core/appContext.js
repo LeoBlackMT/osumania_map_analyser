@@ -263,6 +263,16 @@ export const state = {
     isPaused: false,
     pauseTimeMs: 0,
     pauseFreezeStartRealMs: 0,
+    // 回放暂停数据面（仅 lazer 壳；浏览器模式恒为 "live"）。
+    isReplay: false,
+    replayHash: "",
+    nativeReplayHash: "",
+    replayPausesRaw: [],
+    replayPausesLoaded: false,
+    replayPausesAvailable: false,
+    replayPausesSpeedRate: null,
+    pauseDataStatus: "live",
+    replayPausesAppliedKey: "",
     frozenInterpMs: 0,
     hasSongTimeSample: false,
     // 本局谱面时钟是否已真正前进过；用于过滤开局加载阶段的“时间不变”伪暂停。

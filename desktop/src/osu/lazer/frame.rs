@@ -305,12 +305,24 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         if let Some(hits) = read.hits {
             snapshot.result_hits = Some(hits);
         }
+        snapshot.replay_hash = read.hash;
         gaps.extend(read.gaps);
+    }
+
+    // ⑥b' 回放哈希（play/回放）：`Player.Score → ScoreInfo.<Hash>`。
+    //     只服务"回放暂停"数据面；读不到不降级任何其它字段。
+    if snapshot.state_name.as_deref() == Some("play") {
+        if let (Some(player), Some(layout)) = (chain.screen_top, layout) {
+            snapshot.replay_hash = super::score::read_replay_hash(source, table, player, layout);
+        }
     }
 
     // ⑥c 预研探针：`MMA_LAZER_MODS_PROBE=1` 时从 Player 扫 `Score.ScoreInfo.ModsJson`。
     //     只写壳日志，不参与载荷；读取链路固化前不动现有 `SelectedMods` 读取。
     let mut mods_json_mods = None;
+    // 结算屏的 mods 是否来自该成绩自己的 `ScoreInfo.ModsJson`（含空数组）：
+    // 是 ⇒ `read_tick` 不允许再用上一局 play 帧的 mods 覆盖（历史成绩可能属于别的 mod）。
+    let mut mods_from_score = false;
     if snapshot.state_name.as_deref() == Some("play") {
         if let Some(screen_top) = chain.screen_top {
             super::mods::probe_once(source, table, screen_top, layout, modules);
@@ -362,6 +374,10 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     if snapshot.state_name.as_deref() == Some("resultScreen") {
         if let Some(screen_top) = chain.screen_top {
             if let Some(mods) = super::mods::read_results_mods(source, table, screen_top, layout) {
+                // 只有**非空**的 ScoreInfo.ModsJson 才视为"该成绩自己的 mods"。
+                // 刚打完的活成绩在入库前可能是 `[]`（默认值），此时仍需沿用 play 帧，
+                // 否则会把 DT 签成 NM；历史成绩的 NM 记录则由“离开 play 即清缓存”兜底。
+                mods_from_score = !mods.is_empty();
                 snapshot.lazer_mods = Some(mods);
                 snapshot.lazer_mods_complete = true;
             }
@@ -421,6 +437,7 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         chain,
         gaps,
         reidentified,
+        mods_from_score,
     })
 }
 
@@ -760,11 +777,15 @@ pub fn read_tick(
     }
     // lazer 在结算屏会清空 `SelectedMods`；反馈签名沿用这局 play 帧读到的 mods，
     // 避免把 DT 签成 NM。没有 play 帧（例如壳启动时已在结算屏）就 fail-closed。
+    let mods_from_score = frame.mods_from_score;
+    let replay_result = frame.snapshot.replay;
     if carry_lazer_mods(
         frame.snapshot.state_name.as_deref(),
         &mut frame.snapshot.lazer_mods,
         &mut frame.snapshot.lazer_mods_complete,
         &mut attach.last_lazer_mods,
+        mods_from_score,
+        replay_result,
     ) {
         frame
             .gaps
@@ -783,6 +804,8 @@ fn carry_lazer_mods(
     mods: &mut Option<Vec<LazerMod>>,
     complete: &mut bool,
     last: &mut Option<(Vec<LazerMod>, bool)>,
+    mods_from_score: bool,
+    replay: bool,
 ) -> bool {
     match state {
         Some("play") => {
@@ -791,25 +814,37 @@ fn carry_lazer_mods(
             }
             false
         }
-        Some("resultScreen") => match last.as_ref() {
-            Some((cached, cached_complete)) => {
-                *mods = Some(cached.clone());
-                *complete = *cached_complete;
-                false
+        Some("resultScreen") => {
+            // 结算屏自己带了该成绩的 `ScoreInfo.ModsJson`（历史成绩 / 回放）⇒ 以它为准。
+            // 绝不能把上一局 play 的 mods 套到别的成绩上（1.3x 残留 bug）。
+            if mods_from_score || replay {
+                *last = None;
+                return false;
             }
-            None => {
-                // 没有 play 帧就无法证明这局用了什么 mod；宁可让 /feedback 拒绝，
-                // 也不把结算屏残留/下一局预选的 SelectedMods 当成这局成绩。
-                if mods.as_ref().map_or(true, |mods| mods.is_empty()) {
-                    *mods = None;
-                    *complete = false;
-                    true
-                } else {
+            match last.as_ref() {
+                Some((cached, cached_complete)) => {
+                    *mods = Some(cached.clone());
+                    *complete = *cached_complete;
                     false
                 }
+                None => {
+                    // 没有 play 帧就无法证明这局用了什么 mod；宁可让 /feedback 拒绝，
+                    // 也不把结算屏残留/下一局预选的 SelectedMods 当成这局成绩。
+                    if mods.as_ref().map_or(true, |mods| mods.is_empty()) {
+                        *mods = None;
+                        *complete = false;
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
-        },
-        _ => false,
+        }
+        // 离开 play/result（选歌、菜单、编辑器…）⇒ 上一局的 mods 立即失效。
+        _ => {
+            *last = None;
+            false
+        }
     }
 }
 
@@ -1137,6 +1172,8 @@ mod tests {
             &mut play_mods,
             &mut play_complete,
             &mut last,
+            false,
+            false,
         ));
 
         // 结算屏上 SelectedMods 为空 → 用 play 帧的 DT（不能变成 NM）。
@@ -1147,9 +1184,52 @@ mod tests {
             &mut result_mods,
             &mut result_complete,
             &mut last,
+            false,
+            false,
         ));
         assert_eq!(result_mods, Some(vec![dt.clone()]));
         assert!(result_complete);
+
+        // 历史成绩自带 ModsJson（哪怕是空数组）⇒ 保持自己的 NM，绝不套上一局的 DT。
+        let mut own_mods = Some(Vec::new());
+        let mut own_complete = true;
+        assert!(!carry_lazer_mods(
+            Some("resultScreen"),
+            &mut own_mods,
+            &mut own_complete,
+            &mut last,
+            true,
+            false,
+        ));
+        assert_eq!(own_mods, Some(Vec::new()));
+        assert!(last.is_none());
+
+        // 回放结算同理：回放的 mods 以 ScoreInfo 为准。
+        last = Some((vec![dt.clone()], true));
+        let mut replay_mods = Some(Vec::new());
+        let mut replay_complete = true;
+        assert!(!carry_lazer_mods(
+            Some("resultScreen"),
+            &mut replay_mods,
+            &mut replay_complete,
+            &mut last,
+            false,
+            true,
+        ));
+        assert_eq!(replay_mods, Some(Vec::new()));
+        assert!(last.is_none());
+
+        // 离开 play/result（选歌等）⇒ 上一局 mods 立即失效。
+        last = Some((vec![dt.clone()], true));
+        assert!(!carry_lazer_mods(
+            Some("selectPlay"),
+            &mut replay_mods,
+            &mut replay_complete,
+            &mut last,
+            false,
+            false,
+        ));
+        assert!(last.is_none());
 
         // 没有 play 帧 → fail-closed（None + complete=false）。
         let mut no_last = None;
@@ -1160,6 +1240,8 @@ mod tests {
             &mut empty,
             &mut empty_complete,
             &mut no_last,
+            false,
+            false,
         ));
         assert!(empty.is_none());
         assert!(!empty_complete);

@@ -387,6 +387,9 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
         if let Some(offset) = results.dict_entries_offset {
             check_results_offset("results.dict_entries_offset", offset)?;
         }
+        if let Some(offset) = results.score_hash {
+            check_results_offset("results.score_hash", offset)?;
+        }
         for (key, value) in &results.hit_result_values {
             check_string_safety("results.hit_result_values.key", key)?;
             if *value > 64 {
@@ -483,6 +486,12 @@ pub fn validate_lazer_schema(table: &OffsetTable) -> Result<(), ValidationError>
         check_results_offset("score.player_score_processor", score.player_score_processor)?;
         check_results_offset("score.hit_events", score.hit_events)?;
         check_results_offset("score.column", score.column)?;
+        if let Some(offset) = score.score_info {
+            check_results_offset("score.score_info", offset)?;
+        }
+        if let Some(offset) = score.score_hash {
+            check_results_offset("score.score_hash", offset)?;
+        }
         if !(0x20..=0x200).contains(&score.stride) || score.stride % 8 != 0 {
             return Err(ValidationError::DisplacementOutOfRange(
                 "score.stride".to_string(),

@@ -136,8 +136,12 @@ pub fn is_md5_hex(text: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-pub fn is_store_key(text: &str) -> bool {
-    let lower = text.to_lowercase();
+/// 裸 64-hex store key（`ScoreInfo.<Hash>` 本身，不含 `h\hh\` 路径前缀）。
+pub fn is_store_hash(text: &str) -> bool {
+    text.len() == STORE_KEY_HEX_LEN && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+pub fn is_store_key(text: &str) -> bool {    let lower = text.to_lowercase();
     let mut parts = lower.split('\\');
     match (parts.next(), parts.next(), parts.next(), parts.next()) {
         (Some(head), Some(prefix), Some(leaf), None) => {

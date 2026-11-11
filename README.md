@@ -22,6 +22,7 @@
 - **多mod支持**：兼容上述游戏的多个mod，支持自定义倍速与判定修改。
 - **区间分析**：双击难度分布图，拖动选中一段时间，单独计算某段的数据。
 - **分轨准确度**：游玩过程中计算每个轨道的独立准确度，并实时进行真ScoreV1/V2互转。
+- **暂停计数**：统计实时游玩中和Lazer回放中的暂停次数并显示在难度分布图上。
 - **ReworkPP**：在游玩过程中实时计算 Sunny Rework PP，并展示其内部参数。
 - **预设系统**：提供系统与自定义预设，一键应用/保存整套配置，支持自动跟随手动修改。
 - **高度自定义**：提供丰富的自定义选项，满足不同玩家的需求。
@@ -63,11 +64,12 @@
 ## 注意事项
 1. 本插件依赖于谱面数据的正确解析，某些特殊或非标准的谱面可能会导致分析结果不准确。
 2. 本程序主要设计作为独立程序在 osu 中运行。在非 osu 来源或未使用桌面壳的前提下，部分功能可能会不可用或降级。
-3. 从 Etterna 转换得到的谱面默认取 OD 9；Malody 4.3.7 与 Malody V 的转换 OD 由游戏内判定档（A~E或Pro）与谱面倍速（模组或Turbo Mode）共同决定。详见[docs/features/malody-od.md](docs/features/malody-od.md)。
+3. 从 Etterna 转换得到的谱面默认取 OD 9；Malody 4.3.7 与 Malody V 的转换 OD 由游戏内判定档（A~E或Pro）与谱面倍速（模组或Turbo Mode）共同决定。详见[此处](docs/features/malody-od.md)。
 4. 当Lazer更新，内存无法正常读取时，请尝试在设置中点击`壳设置 -> 内存偏移表管理 -> 偏移表操作 -> 检查 GitHub 远程更新`。若开发者尚未发布shell/偏移表更新时，点击旁边的`实时生成`可快速根据当前运行的Lazer进程尝试生成偏移表。使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
-5. 当无法启动桌面壳，日志中提示端口被占用时，请先用 `Get-NetTCPConnection -LocalPort 24061`（或 `netstat -ano | findstr :24061`）查占用进程 PID ，随后在任务管理器中关闭占用程序。所有的端口占用情况为：24061（壳页面）、24062（osu! 原生读取兼容端点）、17653（Malody V 选曲桥）；tosu 使用 24050。若 24061 被占用，壳无法启动。24062/17653 被占用时对应原生传输/桥功能会被降级。若修改了 tosu 端口，请在插件设置 `wsEndpoint` 中填写相同的 host:port。
-6. 如果你无法使用 `Ctrl + Shift + S` 打开设置页，请检查是否有其他程序占用了该快捷键，或尝试打开 `mma-shell-config.json` 文件，手动修改 `hotkeys` 中的 `settings` 键值为其他组合键（如 `"settings": "Ctrl+Alt+S"`）。
-7. 如果存在问题欢迎提交issue。我们也欢迎任何人在遵守[CONTRIBUTING.md](CONTRIBUTING.md)的前提下提交PR！
+5. 读取回放中的暂停次数和位置功能，仅限 2025.816.0 版本之后的原生 Lazer 成绩。
+6. 当无法启动桌面壳，日志中提示端口被占用时，请先用 `Get-NetTCPConnection -LocalPort 24061`（或 `netstat -ano | findstr :24061`）查占用进程 PID ，随后在任务管理器中关闭占用程序。所有的端口占用情况为：24061（壳页面）、24062（osu! 原生读取兼容端点）、17653（Malody V 选曲桥）；tosu 使用 24050。若 24061 被占用，壳无法启动。24062/17653 被占用时对应原生传输/桥功能会被降级。若修改了 tosu 端口，请在插件设置 `wsEndpoint` 中填写相同的 host:port。
+7. 如果你无法使用 `Ctrl + Shift + S` 打开设置页，请检查是否有其他程序占用了该快捷键，或尝试打开 `mma-shell-config.json` 文件，手动修改 `hotkeys` 中的 `settings` 键值为其他组合键（如 `"settings": "Ctrl+Alt+S"`）。
+8. 如果存在问题欢迎提交issue。我们也欢迎任何人在遵守[CONTRIBUTING.md](CONTRIBUTING.md)的前提下提交PR！
 
 ## 设置说明
 注意：推荐直接使用默认设置开始体验，或选择一个合适的预设，之后再根据个人喜好进行调整。  

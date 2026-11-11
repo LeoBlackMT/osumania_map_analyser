@@ -382,6 +382,8 @@ export function redrawPauseMarkers() {
 export function clearAllPauseMarkers() {
     state.pauseMarkerTimes = [];
     state.pauseCount = 0;
+    // 回放缓存可能没变（换图/分析失败只清标记），清掉去重键让下一帧重新画。
+    state.replayPausesAppliedKey = "";
     clearPauseMarkersDom();
     updatePauseCountVisibility();
 }

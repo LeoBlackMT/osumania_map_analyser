@@ -24,11 +24,11 @@ import { initWindowAffordances } from "../ui/windowAffordances.js";
 // settings-stream listener) on load; it must be loaded exactly once.
 import "../presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "../net/telemetry.js";
-import { initBridgeClient, sendLaneAccSync } from "../sources/bridgeClient.js";
+import { initBridgeClient, sendLaneAccSync, sendReplayPausesSync } from "../sources/bridgeClient.js";
 import { handleSongFrame } from "../sources/externalSource.js";
 import { applyShellState, applyMalody4Selection } from "../sources/shellState.js";
 import { initSourceManager } from "../sources/sourceManager.js";
-import { setupSocketListener, resumeBufferedOsuState } from "../net/socketHandlers.js";
+import { setupSocketListener, resumeBufferedOsuState, applyReplayPauses } from "../net/socketHandlers.js";
 import { initFeedback } from "../feedback/feedbackStrip.js";
 import { initGraphSection } from "../graph/section.js";
 import { laneAccView } from "../ui/laneAcc/view.js";
@@ -144,12 +144,14 @@ export async function initialize() {
         onManiaReplayFrames: (payload) => {
             laneAccView.applyReplayFrames(payload);
         },
+        onReplayPauses: applyReplayPauses,
         onHello: (payload) => {
             state.shellContractVersion = Number(payload?.contract) || 0;
             if (state.shellContractVersion < 10) {
                 laneAccView.setUnavailable("contract");
             }
             sendLaneAccSync();
+            sendReplayPausesSync();
             // 离线配置拉取：壳按优先级链（tosu 设置文件 > mma-settings.json > 默认）
             // 返回 /settings；无 tosu 用户可直接编辑 mma-settings.json 后重启。
             fetch("http://127.0.0.1:24061/settings")

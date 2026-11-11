@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v10）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v11）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -57,6 +57,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
 - **结算判定数（`resultsScreen.hits`）走表的 `results` 段**（`desktop/src/osu/lazer/results.rs`）：`ScreenStack` 栈顶（`ResultsScreen`）`+score_offset` → `ScoreInfo`。判定数有两个来源、读侧都支持：① `+statistics_offset` → `System.String <StatisticsJson>`（**入库过的成绩**，如回放/历史成绩）；② `+statistics_dict_offset` → `ScoreInfo.statistics`（`Dictionary<HitResult,int>`，**刚打完还没入库的活成绩**只有它有值——此时 JSON 是空串），按 `+dict_entries_offset` 枚举 entry、用 `hit_result_values`（`HitResult` 枚举序号→判定名）映射成载荷六键（`geki/300/katu/100/50/0`，与页面 `livePpCounts.extractCounts` 同口径）。同一段里 `+player_offset` 读 `ResultsScreen.<player>` 的运行时类型（`ReplayPlayer` ⇒ `replay:true`，覆盖"从回放进入结算屏"这一态）；类型读不到时 fail-closed，本帧不发布 hits。所有位移由 `live` 在**结算屏上**按"IL 字段相邻关系 + 运行时类型名"实测出来（不是常量）；表里没有可用的 hits 来源就整段降级，绝不 0 占位。
 - **mods 的来源是 `SelectedMods` 链**（`selected_mods → Bindable<...>.value`）：`read_lazer_mods` 逐元素解析运行时类型名得到 acronym；自定义设置按偏移表的 `mods` 段读（DT/HT/NC/DC 的 `SpeedChange` 是 `BindableDouble`，`f64@+0x40`；DA 的 `DrainRate`/`OverallDifficulty` 是 `DifficultyBindable`，其内部 `BindableFloat CurrentNumber@+0x60` 的 `f32@+0x40` 才是值；`ExtendedLimits` 是 `BindableBool`）。活体验证（2026-10-20，Lazer 2026.1005）DT 1.2x + DA OD 15/HP 5.5 均逐值读出；表无 `mods` 段时只保留旧倍速启发式、**不猜 DA 的 OD**。详见 [desktop/docs/lazer-mod-settings.md](../../desktop/docs/lazer-mod-settings.md)。
+- **结算屏 mods 的优先级**：`ScoreInfo.ModsJson`（该成绩自己的）优先；只有刚打完、尚未入库导致 ModsJson 不可用时，才沿用本局 play 帧的 `SelectedMods`。历史成绩/回放**绝不**复用上一局的 mods；离开 play/result 后缓存立即失效。这修复了“打完 1.3x 后清空模组，打开任意历史成绩仍显示 1.3x”的残留问题（2026-11-10）。
 - **`Bindable<T>.value` 的偏移依赖 `T`**：查表键必须包含实例化实参，多个实例化命中 ⇒ 拒读并降级（OPEN-03 的修正：`NonNullableBindable<WorkingBeatmap>` 上是 `+0x20`，`+0x40` 是 `<Description>`）。
 - **字符串字段也由表驱动**：`System.String._stringLength@+0x08` / `_firstChar@+0x0C` 缺任一 ⇒ 所有字符串类字段降级，绝不退回写死的 `0x08/0x0C`（`desktop/src/osu/lazer/fields.rs:138-139` 的 `F_STRING_LENGTH` / `F_STRING_CHARS`）。
 
@@ -114,7 +115,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 - **WS 的 Origin 校验**：loopback Origin 或**无 Origin**放行，其它 **403**（`osu_compat.rs:464-486`，与 24061 的 `ws.rs` 同一份判定；非 loopback Origin 实测 403）。
 - **回放开关（测试用）**：`MMA_OSU_COMPAT_REPLAY=1` 回到 B1 的固定一张真实 `.osu` + 手写 tosu-v2 包（`osu_compat.rs:80-82`，`replay_enabled()`）；**缺省是实时载荷**。
 - **绑定失败不 panic、不 exit**：记 error 日志 + 把「osu! 兼容端点端口 24062 被占用，原生传输不可用」推入 `state.errors`，且**不下发** native 端点（`osu_compat.rs:672-692`，`spawn_osu_compat` 的绑定失败分支）。
-- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。v9/v10 另供 `mania_hit_events`（局内逐判定）与 `mania_replay_frames`（原始按键帧）供 LaneAcc；这是壳页面通道的帧，不走 24062 tosu 兼容子集。
+- 与 tosu 的有意差异（记录在案）：`play.hits`/`resultsScreen.hits` 只供字段表要求的 6 键（真实 tosu 供 10/9 键，多出的页面不消费）；`resultsScreen` 只给 `{hits,mods}`。v9/v10 另供 `mania_hit_events`（局内逐判定）与 `mania_replay_frames`（原始按键帧）供 LaneAcc；v11 供根字段 `replayHash`（回放文件哈希，页面用它校验 24061 的 `replay_pauses` 帧）。这些是壳页面通道的帧，不走 24062 tosu 兼容子集。
 
 ## 5. 契约 v6/v7/v10：端点下发、页面切流与判定数据
 
@@ -179,14 +180,14 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 6.1 stable（32 位）
 
-已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13；页面侧会等时钟真正前进并持续 500ms 再确认，避免 Stable 开局加载误判）。
+已发布字段 = 计划 §3.3 的完整字段表（本步的字段实现在 `desktop/src/osu/packet.rs`）：`client` / `replay`（回放播放时发 `true`）/ `replayHash`（v11，64-hex 回放文件哈希，回放暂停数据面用）/ `state.name`（观测集内 6 个状态，见下）/ `beatmap.{id,set,md5,checksum 兼容键,artist,title,version,mapper}` / `files.{beatmap,background,audio}` / `folders.{songs,beatmap,game}` / `directPath.*` / `beatmap.time.{live,firstObject,lastObject,mp3Length}` / `menu.mods` / `play.mods` / `resultsScreen.mods` / `play.hits` / `resultsScreen.hits` / `game.paused`（停滞推导，镜像 tosu，DEC-13；页面侧会等时钟真正前进并持续 500ms 再确认，避免 Stable 开局加载误判）。
 
 - **`state.name` 的名字表只能来自实测观测集**（硬约束：不得从 tosu 源码抄写）：`OBSERVED_STATE_NAMES`（`osu/model.rs:154-161`）登记 `0/menu`、`1/edit`、`2/play`、`4/selectEdit`、`5/selectPlay`、`7/resultScreen` 六个，来源 = P8 扫掠台账（本机证据集（不入库）/P8/sweep-20260928b/observations.jsonl`）。观测集外索引 ⇒ 发 `""` + 降级（**不判 unhealthy**，否则会在选歌等日常态冻结）。
 - **`firstObject`/`lastObject` 由我们解析 `.osu`**，口径见 DEC-22：首个对象的 `startTime` / **文件顺序最后一个对象的 `endTime`**（不是 `max(endTime)`），都不做 rate 缩放；回退与不变量在 `osu/beatmap_file.rs` + `osu/invariants.rs`。
 
 ### 6.2 lazer（64 位）
 
-今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，按表里的 `mods` 段读自定义 `speed_change` / DA 的 `overall_difficulty`、`drain_rate`、`extended_limits`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）；**并逐条上报缺来源的字段**（见 §6.3）。
+今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，按表里的 `mods` 段读自定义 `speed_change` / DA 的 `overall_difficulty`、`drain_rate`、`extended_limits`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）+ `replayHash`（v11，**仅当表里有 `score.score_hash` / `results.score_hash`**）；**并逐条上报缺来源的字段**（见 §6.3）。
 
 - 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。逐项核对（本地记录不入库）：contract-v6/D-notes.md` §17–§19。
 - **状态映射只对已对拍的态负责**：`selectPlay`（活机对拍）与 `menu`（dump 结构见证）已证；`edit` / `selectEdit` / `play` / `resultScreen` 的类型名在表里、映射规则已写，但**未与 tosu 活机对拍**（D-notes §19.5 末段）。
