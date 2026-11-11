@@ -446,5 +446,5 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   回放中整体跳过 `game.paused` 实时检测（不产生假标记）。
 - 兼容矩阵：v11 壳 + v10 页 ⇒ 页面判为契约越界并进入终态（**必须同包更新**）；
   v10 壳 + v11 页 ⇒ 页面接受，回放暂停显示 `Pause Data Unavailable`，其余功能正常。
-- 2026.921 的两份表**不更新** `score_hash`：该版本的回放/历史结算固定显示
-  `Pause Data Unavailable`（已知限制，见 `tools/lazer-offsets-gen/README.md`）。
+- 2026.921 的偏移表已从仓库移除（2026-11-11 cleanup）：该构建不再有精确表，原生读取不可用
+  （回落 tosu）；回放/历史结算固定显示 `Pause Data Unavailable`。

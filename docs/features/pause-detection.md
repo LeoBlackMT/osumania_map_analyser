@@ -220,7 +220,7 @@ rate = replayPausesSpeedRate ?? state.speedRate ?? 1
 | 表无 `score_hash` / `score_info` | `false` | `Pause Data Unavailable` |
 | `.osr` 不存在 / 旧版 / 损坏 / 无 `pauses` | `false` | 同上 |
 | `pauses: []` | `true` | `Pause Count: 0` |
-| 2026.921（表未更新） | `false` | 同上（已知限制） |
+| 2026.921（表已移除） | `false` | 同上；该构建原生读取不可用（回落 tosu） |
 
 ### 7.6 设置与生命周期
 

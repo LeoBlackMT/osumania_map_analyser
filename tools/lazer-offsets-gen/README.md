@@ -166,8 +166,8 @@ temp/lazer-offsets-gen.exe live --json
 1. 打开一个有暂停的回放，停在 ReplayPlayer **播放中**，运行 `live` → `score.score_info` / `score.score_hash`；
 2. 回放结束停在结算屏（不要退回选歌），再运行一次 `live` → `results.score_hash`。
 
-`2026.921` 的两份表**不更新**这三个键：该版本的回放/历史结算会固定显示
-`Pause Data Unavailable`（已知限制；不阻塞其他功能）。
+`2026.921` 的两份表已从仓库移除（2026-11-11）：该构建不再有精确表，原生读取不可用（回落 tosu）；
+回放/历史结算固定显示 `Pause Data Unavailable`。
 
 **版本门槛**：`pauses` 数组是 lazer PR #34058（commit `d8900def`，2025-07-22）引入的，
 首个 tachyon 构建 `2025.724.1-tachyon`、首个 lazer 稳定流构建 `2025.816.0-lazer`；

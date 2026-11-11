@@ -17,17 +17,8 @@
       "game_version": "2026.1005.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
-      "sha256": "05add2f4d2b4247a1a690f546e7c0cd1374ce18f08c769867a213bbc09f49570",
-      "signature": "58cba52e34d60fef6c6b734a0cfbd8396f59e32310b3799bf5281a7a1ec737c21f9361ea93645fc2cea244b50b7fcde3352b230ddfa1750ae5bf55d45d03000f"
-    },
-    {
-      "filename": "2026.921.0.0__10.0.12__x64.json",
-      "client": "lazer",
-      "game_version": "2026.921.0.0",
-      "runtime_version": "10.0.12",
-      "arch": "x64",
-      "sha256": "f5b6110fd41b76025a8fcb3e2afc869cc2c73cf7258b78486bac233e2ca0afee",
-      "signature": "d9cefba061427ed9d577aff7f837d7c5504c4025f6c561c1e703abff1ddbeef74b8343935789a0c2134f51dee127b40a6d1dcd5817bd2f173c78e3402def1d0c"
+      "sha256": "5a1ae84225484e0d965adb5e6aa0c29ec665dc0bf02048c22c48e0a9a270defd",
+      "signature": "6e25d6502cdd31193d4aa042d0f73633668fdf2a7e35ee84a9f93159a06f92f04da1e1cd993b60a4d173983ed52f0ba75f95e11da8143af4e809f3f67b6c9f07"
     }
   ]
 }
