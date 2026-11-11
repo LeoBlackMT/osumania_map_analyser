@@ -6,6 +6,7 @@
 import { laneAccWrapEl, state } from "../../core/appContext.js";
 import { isShellRuntime } from "../../feedback/feedbackSpec.js";
 import { createAccumulator } from "../../../laneAcc/accumulator.js";
+import { toChartTime } from "../../../laneAcc/timeAxis.js";
 import { framesToSv1Events } from "../../../laneAcc/rawFrames.js";
 import { framesToStableV2Events } from "../../../laneAcc/stableV2.js";
 import { maniaRandomColumnMap } from "../../../laneAcc/random.js";
@@ -838,7 +839,10 @@ export const laneAccView = (() => {
         if (allEvents || hasResult) {
             return Infinity;
         }
-        const live = Number(state.songTimeMs);
+        // state.songTimeMs 是显示轴（物理 / speedRate），而 LaneAcc 的事件、
+        // ReplayFrame 与谱面时间都是物理轴；必须换算后再比较，否则 DT/自定义 >1x
+        // 会把判定整体推迟 rate 倍（HT <1x 则会让 stable V2 提前判 Miss）。
+        const live = toChartTime(state.songTimeMs, state.speedRate);
         return Number.isFinite(live) ? live : -Infinity;
     }
 
