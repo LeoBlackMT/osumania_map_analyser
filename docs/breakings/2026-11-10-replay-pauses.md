@@ -34,8 +34,8 @@
 生成器在测量时用 store 目录的文件头判定（`.osu` 是文本 `osu file format`，`.osr` 是二进制）。
 
 **影响面**：缺字段的旧表照常加载，读侧返回 `None` ⇒ `Pause Data Unavailable`；判定数、
-LaneAcc 等既有字段不受影响。**2026.921 的两份表刻意不更新**：该版本的回放/历史结算固定显示
-`Pause Data Unavailable`（已知限制）。
+LaneAcc 等既有字段不受影响。**2026.921 的偏移表已移除**（2026-11-11 cleanup）：该构建原生读取
+不可用（回落 tosu），回放/历史结算固定显示 `Pause Data Unavailable`。
 
 **回滚**：恢复 `desktop/offsets/lazer/2026.1005.*.json`；读侧代码可留（字段缺省即降级）。
 
@@ -64,7 +64,7 @@ LaneAcc 等既有字段不受影响。**2026.921 的两份表刻意不更新**�
 
 ## ④ 已知限制
 
-- 2026.921 的两份表没有 `score_hash`：该版本回放/历史结算固定 `Pause Data Unavailable`。
+- 2026.921 的偏移表已移除；该构建回放/历史结算固定 `Pause Data Unavailable`（原生读取回落 tosu）。
 - **版本门槛**：`pauses` 数组自 lazer `2025.724.1-tachyon` / `2025.816.0-lazer` 起才有；更早的 lazer 成绩只有 `pause_count`（无时间戳），同样显示 `Pause Data Unavailable`。
 - `.osr` 只解析 `pauses` 与 mods 倍速；按键帧按长度跳过。
 - 刚打完、尚未落盘的回放（无 `.osr`）在结算屏也显示 `Unavailable`，落盘后重进即可。
@@ -91,5 +91,5 @@ mods even for historical scores: the score's own **non-empty** `ScoreInfo.ModsJs
 replay results never inherit the cache, and the cache is cleared as soon as the player leaves
 play/results.
 
-The 2026.921 tables are intentionally left without `score_hash` (known limitation).
-Rollback: revert both sides to v10 and restore the two 2026.1005 offset tables.
+The 2026.921 offset tables were removed (2026-11-11 cleanup); that build falls back to tosu and
+shows `Pause Data Unavailable`. Rollback: revert both sides to v10 and restore the two 2026.1005 offset tables.

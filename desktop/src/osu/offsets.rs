@@ -264,7 +264,6 @@ mod tests {
         let table_files = [
             ("stable", "stable__x86.json", "stable", "x86", "2026-latest", "CLRv4"),
             ("lazer", "2026.1005.0.0__10.0.12__x64.json", "lazer", "x64", "2026.1005.0.0", "10.0.12"),
-            ("lazer", "2026.921.0.0__10.0.12__x64.json", "lazer", "x64", "2026.921.0.0", "10.0.12"),
         ];
 
         let mut manifest_tables = Vec::new();
