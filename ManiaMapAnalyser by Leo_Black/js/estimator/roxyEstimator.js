@@ -146,6 +146,7 @@ function buildScopeResult(label, code, structuralNumeric, rawNumeric, extras) {
             structuralNumeric: fmt4(structuralNumeric),
             notes: extras.notes ?? null,
             rows: extras.rows ?? null,
+            ...(extras.referenceDanielResult ? { referenceDanielResult: extras.referenceDanielResult } : {}),
         },
     };
 }
@@ -1101,6 +1102,26 @@ function resultNumeric(result) {
     return rcLabelToNumeric(result?.estDiff);
 }
 
+// Compact Daniel result for reuse by Mixed's subsequent Azusa pass. Roxy
+// always computes Daniel for its meta (pred_Daniel + internal Azusa blend);
+// exposing the compact result lets Mixed avoid recomputing the same Daniel
+// when Roxy scopes out into the Azusa branch. Keep only the fields Azusa's
+// estimateDanielNumeric/hasDanielNativeNumeric read.
+function compactDanielResult(result) {
+    if (!result) return null;
+    const numeric = result.numericDifficulty;
+    const star = Number(result.star);
+    if (!Number.isFinite(Number(numeric)) && !Number.isFinite(star)) return null;
+    return {
+        star: Number.isFinite(star) ? star : Number.NaN,
+        lnRatio: Number(result.lnRatio),
+        columnCount: Number(result.columnCount),
+        estDiff: result.estDiff,
+        numericDifficulty: numeric,
+        numericDifficultyHint: result.numericDifficultyHint ?? null,
+    };
+}
+
 function safeReference(run) {
     try {
         const result = run();
@@ -1188,6 +1209,9 @@ function buildReferencePredictions(osuText, options, structuralNumeric) {
     return {
         predictions,
         graph: wantsGraph ? (azusaResult?.graph || null) : null,
+        danielResult: options?.includeReferenceResults === true
+            ? compactDanielResult(danielResult)
+            : undefined,
     };
 }
 
@@ -1333,6 +1357,7 @@ function computeRoxyMetaNumeric(osuText, options, numericDetails, curve, structu
         metaNumeric,
         referencePredictions,
         graph: referenceDetails.graph,
+        referenceDanielResult: referenceDetails.danielResult,
     };
 }
 
@@ -1508,9 +1533,22 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
         const metaOptions = {
             ...effectiveOptions,
             odFlag: ROXY_OD_NEUTRAL,
-            precomputedSunnyResult: null,
+            // Perf: when the caller's Sunny is already at the neutral OD and no
+            // graph is needed, it is the same numeric input Roxy would compute
+            // internally (canonical timing shift is the only difference). Reuse
+            // it and let the internal Azusa blend consume it. withGraph=true is
+            // excluded because the graph timeline is canonicalized inside Roxy.
+            precomputedSunnyResult: (options?.precomputedSunnyResult
+                && options.withGraph !== true
+                && options.classicMod !== true
+                && speedRate === 1
+                && !/IN|HO/i.test(String(options.cvtFlag ?? ""))
+                && odDetails.effective === ROXY_OD_NEUTRAL)
+                ? options.precomputedSunnyResult
+                : null,
         };
         const metaDetails = computeRoxyMetaNumeric(analysisText, metaOptions, numericDetails, curve, structuralNumeric);
+        const referenceDanielResult = metaDetails.referenceDanielResult ?? null;
         const metaNumeric = Number(metaDetails.metaNumeric);
         let baseUnguardedNumeric = Number.isFinite(metaNumeric) ? metaNumeric : structuralNumeric;
         const structuralBackstopStrength = Number.isFinite(structuralNumeric)
@@ -1581,6 +1619,7 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
                 columnCount,
                 notes: taps.length,
                 rows: rows.length,
+                referenceDanielResult,
             });
         }
         if (finalNumeric >= ROXY_SCOPE_MAX) {
@@ -1589,6 +1628,7 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
                 columnCount,
                 notes: taps.length,
                 rows: rows.length,
+                referenceDanielResult,
             });
         }
 
@@ -1648,6 +1688,7 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
                 meta: {
                     featureCount: ROXY_META_FEATURE_NAMES.length,
                     references: Object.fromEntries(Object.entries(metaDetails.referencePredictions).map(([key, value]) => [key, fmt4(value)])),
+                    ...(referenceDanielResult ? { referenceDanielResult } : {}),
                 },
                 stats: Object.fromEntries(Object.entries(curve.stats).map(([key, value]) => (
                     [key, Array.isArray(value) ? value : fmt4(value)]

@@ -315,13 +315,27 @@ export async function runAnalysisPipeline({ rawText, estimatorAlgorithm, options
     // 5. SunnyWindow（forceSunnyWindow）：calculateSunny + calculateLN（带 parsed + enableAnalyzeLN）。
     //    try/catch 软失败（与其他附属段一致）：对个别谱面（如转换文本边界）抛错时
     //    不应拖垮整个 pipeline——否则卡片偶发 No data（用户：切走再切回才恢复）。
+    //    Perf: SunnyWindow 只需要 Sunny 的 star/lnRatio/columnCount/graph；pipeline 已在
+    //    归一化/估算阶段算过同文本同 options 的 Sunny 时直接复用，跳过重复的 calculateSunny。
+    //    classicMod=true 时不能复用：runSunnyEstimatorFromText 会把 classicMod 传给
+    //    calculateSunny，而 SunnyWindow 内部不传，两者不是同一结果，退回原路径。
+    const sunnyForWindow = options.classicMod === true
+        ? null
+        : (normalizationSunnyResult
+            || (actualEstimatorAlgorithm === "Sunny" || estimatorAlgorithm === "Companella"
+                ? selectedRework
+                : null));
     let sunnyWindow = null;
     let sunnyWindowError = null;
     if (options.forceSunnyWindow) {
         try {
             sunnyWindow = runSunnyWindowEstimatorFromText(
                 rawText,
-                { ...options, enableAnalyzeLN: options.enableAnalyzeLN === true },
+                {
+                    ...options,
+                    enableAnalyzeLN: options.enableAnalyzeLN === true,
+                    ...(sunnyForWindow ? { precomputedSunnyResult: sunnyForWindow } : {}),
+                },
                 parser,
             );
         } catch (err) {

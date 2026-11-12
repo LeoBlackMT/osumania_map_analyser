@@ -16,8 +16,27 @@ export function runSunnyWindowEstimatorFromText(osuText, options = {}, parsed = 
     const cvtFlag = options.cvtFlag ?? null;
     const withGraph = options.withGraph === true;
 
-    const rawResult = calculateSunny(osuText, speedRate, odFlag, cvtFlag, { withGraph }, parsed);
-    const parsedResult = normalizeReworkResult(rawResult);
+    // Perf: the pipeline may already have a Sunny result for the same
+    // text/options/parser (normalization / Mixed baseline). Reuse it and only
+    // run calculateLN here. Callers must not pass a classicMod=true result:
+    // calculateSunny below does not receive classicMod, so that path is not
+    // equivalent and must fall back to a fresh calculateSunny.
+    const precomputedSunnyResult = options.classicMod === true
+        ? null
+        : (options.precomputedSunnyResult
+            && typeof options.precomputedSunnyResult === "object"
+            ? options.precomputedSunnyResult
+            : null);
+    const canReuseSunny = precomputedSunnyResult != null
+        && (!withGraph || precomputedSunnyResult.graph != null);
+    const parsedResult = canReuseSunny
+        ? normalizeReworkResult({
+            star: precomputedSunnyResult.star,
+            lnRatio: precomputedSunnyResult.lnRatio,
+            columnCount: precomputedSunnyResult.columnCount,
+            graph: withGraph ? precomputedSunnyResult.graph : null,
+        })
+        : normalizeReworkResult(calculateSunny(osuText, speedRate, odFlag, cvtFlag, { withGraph }, parsed));
 
     const rawResultLN = calculateLN(osuText, speedRate, odFlag, cvtFlag, { withGraph, enableAnalyzeLN: options.enableAnalyzeLN === true }, parsed);
     const parsedLN = normalizeSunnyWindowResult(rawResultLN);

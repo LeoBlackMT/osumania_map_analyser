@@ -39,11 +39,11 @@ Read .osu text
 
 The reference order is deliberately fixed on the canonicalized, OD-neutral analysis text:
 
-1. Compute Sunny once for Azusa reuse and optional graph support.
+1. Compute or reuse the caller-provided Sunny once for Azusa reuse and optional graph support (reuse only when the effective OD is 9, `withGraph=false`, `speedRate=1`, no IN/HO, and `classicMod=false`).
 2. Reuse `precomputedDanielResult` when it is valid for the same analysis path; otherwise compute Daniel once.
 3. Call Azusa with both precomputed results.
 
-This keeps Roxy, Azusa, Daniel, and Sunny aligned without recomputing Daniel or Sunny inside Azusa. Mixed may still pass its Sunny baseline into Roxy, but the current public Roxy path clears that external Sunny before the meta reference call so the reference layer remains OD-neutral and canonicalized. Sunny is not treated as a separate voting signal in the meta head.
+This keeps Roxy, Azusa, Daniel, and Sunny aligned without recomputing Daniel or Sunny inside Azusa. Mixed may pass its Sunny baseline into Roxy; since 2026-11-12 the public Roxy path reuses it for the meta reference call only when `effective OD = 9`, `withGraph = false`, `speedRate = 1`, no IN/HO conversion, and `classicMod = false` (otherwise it is cleared), so the reference layer remains OD-neutral and canonicalized. Mixed also receives a compact Daniel result (`debug.meta.referenceDanielResult`) for its subsequent Azusa pass. Sunny is not treated as a separate voting signal in the meta head.
 
 ## 3. Basic Functions
 

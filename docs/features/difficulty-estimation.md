@@ -22,14 +22,14 @@
 | --- | --- | --- | --- | --- |
 | **Mixed** | worker (pipeline) / main (Companella) | `mixedEstimator.js runMixedEstimatorFromText` | 通用自动选择：4K RC 谱面在 Roxy⊕XDC1 对称融合（双向 `\|X−R\| ≥ 0.50` 切 XDC1）/ Azusa（R2 压高估保护 + 低难 Azusa⊕Companella + `C8'` XDC1 `≥0.50` 兜底）/ 高段 XDC1⊕Azusa / Daniel 间路由（保留 IN/显式OD/马拉松保护）；LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用）。4K 无任何表校准/偏移（曾有 LN 半校准，实机复测后回退；见 §3.7/§3.8） |
 | **Azusa** | worker | `azusaEstimator.js:832 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
-| **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
+| **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny。Mixed 调用时：effective OD=9、`withGraph=false`、`speedRate=1`、无 IN/HO、非 classic 条件下复用 caller Sunny 作为内部 Azusa 输入；`debug.meta.referenceDanielResult` 供后续 Azusa/Daniel fallback 复用（perf，2026-11-12） |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
 | **Polaris** | worker | `polarisEstimator.js runPolarisEstimatorFromText` | 表修正，**7K 专用**：RC + LN 两半都校准（7K 的 Mixed 恒为 Sunny 基线，两边都是表映射产物）。修正模型为 B(level)+R(level)·f(rate)+H(lnRatio)，附单调性不变量守护 | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`；4K 曲线集已随实机否决删除）；star 恒为 Sunny sr（不入 §4.5 归一化集合）；算法文档见 [../polaris_algorithm.md](../polaris_algorithm.md) |
 | **Proj7k** | worker | `proj7kEstimator.js runProj7kEstimatorFromText` | 独立的 7K 物理模型（proj7k 引擎移植，`proj7k/engine.js`）：手指耦合 + 手部负荷 + 阈值求解，星数按 JinJin Dan 段位星数（`PROJ7K_DAN_STARS`）在 ln(star) 上插值成 level 与单一 Regular 标签（无 LN 半标签：引擎只有一条段位刻度；`forceSunnyWindow` 的 LN 段也不追加，见 `analysis.js` 的 `allowSunnyWindowLn`） | 仅 7K（其他键数与 IN/HO 转换图回退 Sunny，`actualEstimatorAlgorithm = "Sunny"`）；star 为引擎自有星数（同 Daniel，不入 §4.5 归一化集合，星数胶囊显示该口径，角标 PSR；Sunny sr 在 `sunnyStar`，ppMetrics 取它） |
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **XDC1** | worker | `xdc1Estimator.js runXdc1EstimatorFromText` | 4K RC + LN（第三方，TheBagelOfMan）：手指/手腕/抖动混合的双手 strain + 长条代价 + 体力，按 98% 期望准确率聚合 | 仅 4K；不支持（非 4K、解析失败、音符不足、低于 Alpha Low）时返回 `Unsupported: ...`，不切换到 Sunny；固定 OD9 判定窗；复用 pipeline 的 parsed（IN/HO 在 clone 上转换，speedRate 生效）；star 由 pipeline 归一化为 Sunny sr；RC 半段用自身 rating→dan 标定，LN 半段始终拼接 Sunny 的 LN 区间表结果；graph 走 Sunny/Daniel 同套 800ms 平滑 |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
-| **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`） |
+| **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`）。pipeline 已在归一化/估算阶段算过同文本同 options 的 Sunny 且 `classicMod !== true` 时，复用该 Sunny、仅执行 `calculateLN`（perf，2026-11-12；见 worker.md §4.5） |
 
 ## 3. 估算器分派机制
 
@@ -186,7 +186,7 @@ export const DAN_INDEX = {
 ## 9. 注意事项
 
 1. **Companella 命名与异步性**：入口为 `companellaEstimator.js:181 classifyCompanellaDifficulty`（async），不是 `runXxxEstimatorFromText` 命名规范；通过 `dynamic import()` 加载 ONNX Runtime（项目内唯一的动态导入），模型会话按需懒加载并缓存。
-2. **SunnyWindow 不可选**：它不是独立算法，仅当 `forceSunnyWindow` 开启时由 `analysis.js:764-776` 调用，用其 LN 部分（`estDiff` 的 `||` 第二段）覆盖主估算器的 LN 标签，并附带 `typePercentageData` / `lnStar` 数据（`sunnyWindowEstimator.js:33-34`）。
+2. **SunnyWindow 不可选**：它不是独立算法，仅当 `forceSunnyWindow` 开启时由 `runAnalysisPipeline` 第 5 段调用（`analysis.js:764-776` 消费），用其 LN 部分（`estDiff` 的 `||` 第二段）覆盖主估算器的 LN 标签，并附带 `typePercentageData` / `lnStar` 数据（`sunnyWindowEstimator.js:33-34`）。
 3. **LN 阈值**：`estDiff` 中 LN 标签仅在 `lnRatio >= 0.15` 或 `enableAlwaysShowLNDifficulty` 时展示，否则只返回 RC 标签（`reworkEstimatorUtils.js:104`）；SunnyWindow 用 `estDiff2` 以 LN 星数为准（`reworkEstimatorUtils.js:113` 的 `estDiff2`）。
 4. **标签结构**：RC/LN 复合标签以 `"RC || LN"` 形式返回（`reworkEstimatorUtils.js:110`），解析时按 `||` 分割。
 5. **缓存键**：`extendedEstimationRange`、`forceSunnyWindow` 等计算相关设置不在缓存键中，依赖设置变更时清缓存（见设置/缓存文档），新增此类设置必须同步加入失效列表。
