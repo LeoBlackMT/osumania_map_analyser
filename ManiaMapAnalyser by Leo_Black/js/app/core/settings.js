@@ -93,6 +93,7 @@ import { clearFullChartTexts, clearSectionIfGraphHidden } from "../graph/section
 import { isShellRuntime } from "../feedback/feedbackSpec.js";
 import { normalizeSpaceMode } from "../../laneAcc/accumulator.js";
 import { laneAccView } from "../ui/laneAcc/view.js";
+import { fitDifficultySubtitle } from "../ui/display.js";
 
 function isAutoDisplayEnabled() {
     return state.userSrText === "Auto" || state.userContentBar === "Auto";
@@ -186,6 +187,7 @@ function updateContentBarVisibility() {
     clearSectionIfGraphHidden("content bar visibility");
     applyCombinedModeOrder();
     syncContentBarTabs();
+    fitDifficultySubtitle();
 }
 
 let cardHeightTransitionTimerId = 0;
@@ -281,6 +283,7 @@ function applyVisualStyleSettings() {
         mainCardEl.style.setProperty("--card-extend-origin", state.reverseCardExtendDirection ? "bottom" : "top");
         mainCardEl.classList.toggle("hide-title-icon", !shouldShowUpdateIcon);
         mainCardEl.classList.toggle("use-osu-font", state.useOsuFont);
+        fitDifficultySubtitle();
     }
 
     if (dashboardEl) {

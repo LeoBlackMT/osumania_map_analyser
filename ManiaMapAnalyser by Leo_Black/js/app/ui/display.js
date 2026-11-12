@@ -436,6 +436,97 @@ export function renderContentSkeleton() {
     renderReworkPpSkeleton();
 }
 
+const DIFF_SUBTITLE_MIN_FONT_PX = 18;
+let lastDiffSubtitleFitKey = "";
+
+/**
+ * Fit the whole difficulty subtitle to the available width.
+ *
+ * The subtitle is one element, so both `||` halves always keep the same
+ * font-size.  Measure the widest line on an offscreen `white-space: pre`
+ * probe instead of the live element: the live subtitle is a
+ * `justify-items: end` grid item, so temporarily setting `nowrap` on it
+ * widens its grid track and makes `scrollWidth > clientWidth` useless.
+ */
+export function fitDifficultySubtitle() {
+    if (!reworkDiffEl || reworkDiffEl.hidden) {
+        return;
+    }
+
+    const container = reworkDiffEl.parentElement;
+    if (!container) {
+        return;
+    }
+
+    const available = container.clientWidth;
+    if (!(available > 0)) {
+        return;
+    }
+
+    // The star capsule can animate its width for ~400 ms; quantizing the
+    // available width keeps the observer from re-measuring every frame for
+    // sub-pixel changes.  The class name covers card-mode/font switches.
+    const fitKey = [
+        mainCardEl?.className || "",
+        reworkDiffEl.textContent || "",
+        Math.round(available / 2) * 2,
+    ].join("|");
+    if (fitKey === lastDiffSubtitleFitKey) {
+        return;
+    }
+
+    // Read the mode-specific base size first, then measure at that size.
+    reworkDiffEl.style.fontSize = "";
+    const style = getComputedStyle(reworkDiffEl);
+    const base = Number.parseFloat(style.fontSize);
+    if (!Number.isFinite(base) || base <= 0) {
+        return;
+    }
+
+    const probe = document.createElement("span");
+    probe.style.cssText = [
+        "position:absolute",
+        "left:-99999px",
+        "top:0",
+        "visibility:hidden",
+        "white-space:pre",
+        `font-family:${style.fontFamily}`,
+        `font-size:${base}px`,
+        `font-weight:${style.fontWeight}`,
+        `font-style:${style.fontStyle}`,
+        `line-height:${style.lineHeight}`,
+        `letter-spacing:${style.letterSpacing}`,
+    ].join(";");
+    probe.textContent = reworkDiffEl.textContent || "";
+    document.body.appendChild(probe);
+    const naturalWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+
+    if (!(naturalWidth > 0)) {
+        return;
+    }
+
+    const scale = Math.min(1, Math.max(0, (available - 1) / naturalWidth));
+    const fitted = Math.max(DIFF_SUBTITLE_MIN_FONT_PX, base * scale);
+    lastDiffSubtitleFitKey = fitKey;
+    if (fitted < base - 0.05) {
+        reworkDiffEl.style.fontSize = `${fitted.toFixed(2)}px`;
+    }
+}
+
+if (typeof ResizeObserver === "function" && reworkDiffEl?.parentElement) {
+    const diffSubtitleObserver = new ResizeObserver(() => {
+        fitDifficultySubtitle();
+    });
+    diffSubtitleObserver.observe(reworkDiffEl.parentElement);
+}
+
+if (document.fonts?.ready) {
+    document.fonts.ready.then(() => {
+        fitDifficultySubtitle();
+    });
+}
+
 export function setEstimateDifficultyText(value) {
     if (!reworkDiffEl) {
         return;
@@ -454,6 +545,7 @@ export function setEstimateDifficultyText(value) {
     reworkDiffEl.classList.add(swapClass);
 
     updateStarTipDots(nextText);
+    fitDifficultySubtitle();
 }
 
 // 换歌时让整个 star 区块做一次明显的入场（淡入 + 上移 + 轻微放大），

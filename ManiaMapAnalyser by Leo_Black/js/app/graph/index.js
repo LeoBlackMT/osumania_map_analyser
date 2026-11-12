@@ -23,7 +23,7 @@ import {
     normalizeGraphSeries,
 } from "./math.js";
 import { updatePauseCountVisibility } from "../ui/hud.js";
-import { updateStarTipDots } from "../ui/display.js";
+import { fitDifficultySubtitle, updateStarTipDots } from "../ui/display.js";
 import { normalizeCardOwnerSource } from "../sources/sourceActivity.js";
 
 const GRAPH_SCAN_ENTER_DURATION_MS = 400;
@@ -274,7 +274,7 @@ function formatEstimateDifficultyCaption() {
         ? `[${actualAlgorithm}] `
         : "";
 
-    const base = `${prefix}Estimate Difficulty`;
+    const base = `${prefix}Est. Diff`;
     if ((!state.enableNumericDifficulty || state.forceHideNumericDifficulty) && !state.enableLNDifficulty) {
         return base;
     }
@@ -979,6 +979,7 @@ export function updateDiffTextVisibility() {
         reworkRightCapsuleEl.style.color = "#f6fbff";
         reworkRightCapsuleEl.style.textShadow = "none";
     }
+    fitDifficultySubtitle();
 }
 
 export function setNumericDifficultyValue(value, hint = null) {
