@@ -83,6 +83,8 @@
 
 **验证方式（Verification）**：设置矩阵回归验证通过（enableAnalyzeLN-on combo 有真实 typePercentageData 指纹，60 文件全量比对）；全量 748 样本回归验证通过。
 
+**2026-11-12 追加（perf-only，非破坏性）**：新增可选 `options.precomputedSunnyResult`（与 Azusa/Roxy/Mixed 同构）。pipeline 在 `normalizationSunnyResult` / `sharedSunnyResult` 可用且 `classicMod !== true` 时传入；`runSunnyWindowEstimatorFromText` 跳过内部 `calculateSunny`，只执行 `calculateLN`。原因是 SunnyWindow 只需要 Sunny 的 `star/lnRatio/columnCount/graph`，而默认 `forceSunnyWindow=true` 时 pipeline 已算过同文本同 options 的 Sunny，原实现把整遍 Sunny 又跑了一次。`classicMod=true` 时不能复用：`runSunnyEstimatorFromText` 会把 `classicMod` 传给 `calculateSunny`，而 SunnyWindow 内部不传，二者不是同一结果，退回原路径。实测：24 张真实样本 0 diff（SunnyWindow 平均省约 77–81ms / 中位约 49–54ms）；4 张真实图 + 2 张合成图的 Mixed 管线交错测量约 -15%（两次抽样 -14.3%~-15.7%）；含 Pattern/Ett/Interlude 的全管线 2 图交错测量约 -10%（两次抽样 -9.9%~-11.2%）；9 条算法路径 × 4 张图 × graph 开/关共 72 组 pipeline 输出 0 diff。
+
 ---
 
 ## ⑤ reworkEstimatorUtils estDiff 第 5 参
@@ -294,6 +296,8 @@ No state exists inside the worker (shared-module purity, see ⑥); explicit inje
 Defaults (false) match config.js `defaults.enableAlwaysShowLNDifficulty`/`enableAnalyzeLN`; omitted options behave like the old state defaults.
 
 Signature unchanged (only the read source changed from state to options); direct callers relying on the old state value must pass it explicitly.
+
+**2026-11-12 addendum (perf-only, non-breaking)**: new optional `options.precomputedSunnyResult` (same convention as Azusa/Roxy/Mixed). The pipeline passes it when `normalizationSunnyResult` / `sharedSunnyResult` exists and `classicMod !== true`; `runSunnyWindowEstimatorFromText` then skips its internal `calculateSunny` and only runs `calculateLN`. SunnyWindow only needs Sunny's `star/lnRatio/columnCount/graph`, and with the default `forceSunnyWindow=true` the pipeline has already computed that exact Sunny for the same text/options. With `classicMod=true` reuse is forbidden: `runSunnyEstimatorFromText` forwards `classicMod` to `calculateSunny`, while SunnyWindow does not, so the two results are not equivalent. Measured: 24 real samples, 0 diff (SunnyWindow saves about 77–81 ms mean / 49–54 ms median); interleaved Mixed-pipeline comparison on 4 real + 2 synthetic charts is about -15% (two runs: -14.3% to -15.7%); full pipeline with Pattern/Ett/Interlude on 2 charts is about -10% (two runs: -9.9% to -11.2%); 72 pipeline-output comparisons across 9 algorithm paths × 4 charts × graph on/off, 0 diff.
 
 ---
 

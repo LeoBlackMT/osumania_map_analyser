@@ -122,7 +122,7 @@ worker 端处理（compute.worker.js:21-37）：
 | `rework` | object | 估算结果（star/estDiff/numericDifficulty/graph/lnRatio/columnCount/...），star 已归一化（§4.5） |
 | `actualEstimatorAlgorithm` | string | 实际执行算法（Azusa/Roxy 无效回退 Sunny 时改写） |
 | `sunnyStar` | number \| null | 归一化用的 Sunny 原始 sr（非归一化算法为 null） |
-| `sunnyWindow` | object \| null | `forceSunnyWindow` 时 calculateSunny + calculateLN 结果 |
+| `sunnyWindow` | object \| null | `forceSunnyWindow` 时 calculateSunny + calculateLN 结果；若 pipeline 已有同文本同 options 的 Sunny（`normalizationSunnyResult` / `sharedSunnyResult`）且 `classicMod !== true`，复用该 Sunny，仅执行 calculateLN（§4.5） |
 | `sixKConst` | number \| null | `display6kLevel && columnCount===6` 时 `star*200/81+7/6` 2dp |
 | `vibro` | `{ star: number, eligible: boolean }` | 归一化前 star 与 `> 5.0` 判定（§4.5） |
 | `parsedSummary` | `{ metadata, lnRatio, columnCount }` | 解析摘要（主线程不再二次解析） |
@@ -167,6 +167,8 @@ worker 端处理（compute.worker.js:21-37）：
 | Sunny/Daniel/Companella | 无归一化 | 不适用 | 无 |
 
 决策表证据：task-11 实测记录 §2。
+
+**SunnyWindow 复用（2026-11-12 perf）**：`runSunnyWindowEstimatorFromText` 新增可选 `options.precomputedSunnyResult`（与 Azusa/Roxy/Mixed 同构）。pipeline 在 `normalizationSunnyResult` / `sharedSunnyResult` 可用、且 `classicMod !== true` 时传入；`Sunny/Companella` 路径直接复用 `selectedRework`（其本身就是 Sunny 结果）。SunnyWindow 只读取 `star/lnRatio/columnCount/graph`，因此跳过内部 `calculateSunny`、仅跑 `calculateLN` 是逐位等价的；`classicMod=true` 时 `runSunnyEstimatorFromText` 会传 `classicMod` 而 SunnyWindow 不传，必须退回原路径。`withGraph=true` 时要求复用的 Sunny 带 `graph`，否则退回内部计算。
 
 **Polaris（表修正：7K 的 RC+LN；4K/6K 回退 Sunny）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 

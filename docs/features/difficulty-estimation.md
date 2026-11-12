@@ -29,7 +29,7 @@
 | **Daniel** | worker | `danielEstimator.js:9 runDanielEstimatorFromText` | 4K（Reform 系列） | 仅支持 4K：`calculateDaniel` 返回 `-3` 时回退 Sunny（`danielEstimator.js:18`）；4K 下用自己的 `estimateDanielDan` 标签，非 4K 才走 `estDiff` 区间表（`danielEstimator.js:30-38`） |
 | **XDC1** | worker | `xdc1Estimator.js runXdc1EstimatorFromText` | 4K RC + LN（第三方，TheBagelOfMan）：手指/手腕/抖动混合的双手 strain + 长条代价 + 体力，按 98% 期望准确率聚合 | 仅 4K；不支持（非 4K、解析失败、音符不足、低于 Alpha Low）时返回 `Unsupported: ...`，不切换到 Sunny；固定 OD9 判定窗；复用 pipeline 的 parsed（IN/HO 在 clone 上转换，speedRate 生效）；star 由 pipeline 归一化为 Sunny sr；RC 半段用自身 rating→dan 标定，LN 半段始终拼接 Sunny 的 LN 区间表结果；graph 走 Sunny/Daniel 同套 800ms 平滑 |
 | **Companella** | main | `companellaEstimator.js:181 classifyCompanellaDifficulty`（async） | 4K 低中难区间（Mixed 低难 RC 融合与 LN/Mix 分支中 `star < 9` 时启用，`mixedEstimator.js` LOW_BAND_COMPANELLA_STAR_MAX） | 异步 ONNX 推理，非 `runXxx` 命名；输入为 MSD + Interlude SR + Sunny SR 特征向量（`companellaEstimator.js:190-201`）；仅 4K（`analysis.js:758` 置 `pendingCompanellaEstimate`、`:1004` 的 `shouldRunCompanella` 门以 `columnCount === 4` 决定是否触发） |
-| **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`） |
+| **SunnyWindow** | main | `sunnyWindowEstimator.js:13 runSunnyWindowEstimatorFromText` | forceSunnyWindow 开启时的 LN 部分覆盖辅助器 | 不可作为独立算法选择；只替换最终标签的 LN 段（`analysis.js:764-776`）。pipeline 已在归一化/估算阶段算过同文本同 options 的 Sunny 且 `classicMod !== true` 时，复用该 Sunny、仅执行 `calculateLN`（perf，2026-11-12；见 worker.md §4.5） |
 
 ## 3. 估算器分派机制
 
