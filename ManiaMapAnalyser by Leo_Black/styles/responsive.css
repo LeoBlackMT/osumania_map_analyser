@@ -74,9 +74,9 @@
 
     .star-right-group {
         min-width: 0;
-        max-width: 56%;
-        width: 56%;
-        flex: 0 0 56%;
+        flex: 1 1 0;
+        width: auto;
+        max-width: none;
     }
 
     .star-subtitle {

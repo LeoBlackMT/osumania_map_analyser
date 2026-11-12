@@ -98,9 +98,9 @@
     align-items: flex-end;
     gap: 5px;
     min-width: 0;
-    max-width: 56%;
-    width: 56%;
-    flex: 0 0 56%;
+    flex: 1 1 0;
+    width: auto;
+    max-width: none;
 }
 
 .star-right {
@@ -121,6 +121,9 @@
     white-space: pre-line;
     word-break: break-word;
     overflow-wrap: anywhere;
+    /* Grid item: never let a temporarily-too-wide string widen the track. */
+    min-width: 0;
+    max-width: 100%;
 }
 
 .star-subtitle.diff-swap {
@@ -132,8 +135,8 @@
 }
 
 .star-caption {
-    font-size: 12px;
-    letter-spacing: 0.08em;
+    font-size: 11px;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
     color: #bfc8e7;
     opacity: 0.9;

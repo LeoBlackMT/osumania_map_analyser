@@ -40,7 +40,7 @@ export default {
     "settings.enableStatusMarquee.title": "元数据滚动",
     "settings.enableStatusMarquee.description": "元数据文字过长时横向滚动显示。",
     "settings.enableNumericDifficulty.title": "数值化难度",
-    "settings.enableNumericDifficulty.description": "在 RC 算法下于 Estimate Difficulty 字样后显示数值化难度。",
+    "settings.enableNumericDifficulty.description": "在 RC 算法下于 Est. Diff 字样后显示数值化难度。",
     "settings.enableLNDifficulty.title": "LN 星数",
     "settings.enableLNDifficulty.description": "【需要「改进 Sunny LN 估计」】在 LN 算法下显示 Rework 星数。",
     "settings.reverseCardExtendDirection.title": "反向卡片伸缩",

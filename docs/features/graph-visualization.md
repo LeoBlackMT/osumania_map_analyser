@@ -174,7 +174,8 @@ x 轴窗口在渲染时刻由 `state.songStartMs`（tosu `beatmap.time.firstObje
 ## 8. 其他入口与注意事项
 
 - **显示切换**：`graph.js:751 updateDiffTextVisibility()` 统一按 `state.diffText` 切换右上区域（Difficulty 文本 / header 图 / MSD 等右胶囊）的可见性：`Graph` 显示 header 图（`graph.js:763`），`Difficulty` 显示估计难度（`graph.js:760`），`MSD/Pattern/ReworkSR/InterludeSR` 显示右胶囊（`graph.js:766-767`）；`None` 时隐藏 caption（`graph.js:776`）。无任何图表模式启用时调用 `clearDiffGraph()`（`graph.js:800-801`）。
-- **数值难度**：`graph.js:818 setNumericDifficultyValue(value, hint)` 写入 `state.numericDifficulty` / `numericDifficultyHint`；`graph.js:835 setForceHideNumericDifficulty(value)` 强制隐藏。两者仅在 `diffText === "Difficulty"` 时触发 caption 重渲染（`graph.js:831`、`graph.js:843`）。caption 文本由 `graph.js:219 formatEstimateDifficultyCaption()` 生成（含 `[实际算法]` 前缀、`RCxx|LNxx*` 双值格式）。
+- **数值难度**：`graph.js:818 setNumericDifficultyValue(value, hint)` 写入 `state.numericDifficulty` / `numericDifficultyHint`；`graph.js:835 setForceHideNumericDifficulty(value)` 强制隐藏。两者仅在 `diffText === "Difficulty"` 时触发 caption 重渲染（`graph.js:831`、`graph.js:843`）。caption 文本由 `graph.js:219 formatEstimateDifficultyCaption()` 生成（固定使用 `Est. Diff` 缩写，含 `[实际算法]` 前缀与 `RCxx|LNxx*` 双值格式）。
+- **右上角排版**：`.star-right-group` 不再锁 56%，而是 `flex: 1 1 0` 占满左栏剩余宽度（`star.css` 与 `responsive.css` 两处同步）；`.star-subtitle` 按最宽半段统一缩放整块字号（`display.js fitDifficultySubtitle()`，下限 18px），RC/LN 两行始终同字号，不使用逐行独立缩放。
 - **游标可见性**：`graph.js:407 setGraphCursorVisible(visible)`——隐藏时对启用视图强制隐藏游标与游标点（`graph.js:408-413`），防止禁用视图残留游标。
 - **图表是否启用**：由 `state.diffText` 与 `contentBar` 共同判定（`hasAnyGraphModeEnabled`，见 §2.2），与缓存快照的 coverage 检查相关（详见 [result-cache.md](../pipeline/result-cache.md)）。
 - **样式**：`star-graph-fill.graph-unplayed`（暗底）与 `star-graph-fill-play`（亮层）、`star-graph-pause-marker`、`loading` 波浪动画、`scan-enter` 扫描动画等类名在 `styles/graph.css` 与 `styles/theme.css`（osu 主题变体 `html.ma-theme-osu` 使用 `--ma-accent`）中定义；本文档不展开 CSS 细节。
