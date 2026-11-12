@@ -162,13 +162,15 @@ worker 端处理（compute.worker.js:21-37）：
 | Mixed | `sunnyBaseline = options.precomputedSunnyResult || runSunnyEstimatorFromText(osuText, options, parsed)`（mixedEstimator.js:181） | 是（同 options 同文本） | 预计算一份 Sunny 经 `precomputedSunnyResult` 喂入并复用其 star |
 | Azusa, `forceSunnyReferenceHo=false` | `sunnyOptions = options` | 是 | 同上 |
 | Azusa, `forceSunnyReferenceHo=true` | `sunnyOptions = {...options, cvtFlag:"HO"}` | **否**（cvtFlag 不一致） | 独立计算；**不可**传 `precomputedSunnyResult`（会改变数值语义） |
-| Roxy | canonicalizeOsuTiming 改写文本 + `precomputedSunnyResult: null` 硬编码 | **否**（文本被改写） | 独立计算 |
+| Roxy | canonicalizeOsuTiming 改写文本；仅当 effective OD=9、`withGraph=false`、`speedRate=1`、无 IN/HO、`classicMod=false` 且 caller 提供 `precomputedSunnyResult` 时复用它作为内部 Azusa 的 Sunny 输入；否则 `precomputedSunnyResult:null` | **条件复用** | 复用条件不满足时独立计算（canonicalized 文本 / OD9 / graph 语义不变） |
 | XDC1 | 估算器内部不调用 Sunny；归一化 pass 独立运行 | 否（无内部 Sunny 结果） | 独立计算 Sunny sr 用于星数胶囊 |
 | Sunny/Daniel/Companella | 无归一化 | 不适用 | 无 |
 
 决策表证据：task-11 实测记录 §2。
 
 **SunnyWindow 复用（2026-11-12 perf）**：`runSunnyWindowEstimatorFromText` 新增可选 `options.precomputedSunnyResult`（与 Azusa/Roxy/Mixed 同构）。pipeline 在 `normalizationSunnyResult` / `sharedSunnyResult` 可用、且 `classicMod !== true` 时传入；`Sunny/Companella` 路径直接复用 `selectedRework`（其本身就是 Sunny 结果）。SunnyWindow 只读取 `star/lnRatio/columnCount/graph`，因此跳过内部 `calculateSunny`、仅跑 `calculateLN` 是逐位等价的；`classicMod=true` 时 `runSunnyEstimatorFromText` 会传 `classicMod` 而 SunnyWindow 不传，必须退回原路径。`withGraph=true` 时要求复用的 Sunny 带 `graph`，否则退回内部计算。
+
+**Mixed→Roxy 的 reference Daniel 复用（2026-11-12 perf）**：Mixed 调用 Roxy 时传 `includeReferenceResults: true`，Roxy 在 `debug.meta.referenceDanielResult` 暴露一个 compact Daniel（star/lnRatio/columnCount/estDiff/numeric/hint）。R2 routing Azusa、R4 BelowScope Azusa 与 Daniel fallback 直接复用它，避免重复 Daniel；Roxy 默认调用（未传 `includeReferenceResults`）输出与 debug 完全不变。OD9 且非 graph/非 cvt/非 classic/rate=1 时，Roxy 还会复用 caller 的 `precomputedSunnyResult` 作为内部 Azusa 的 Sunny 输入（`metaOptions` 条件化），其余情况保持 `null`。
 
 **Polaris（表修正：7K 的 RC+LN；4K/6K 回退 Sunny）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 

@@ -401,6 +401,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
         const roxyResult = tryRunRoxyFallback(osuText, {
             ...options,
             precomputedSunnyResult: sunnyBaseline,
+            includeReferenceResults: true,
         }, parsed);
         if (canUseRcResult(roxyResult)) {
             selectedRework = roxyResult;
@@ -413,6 +414,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     ...options,
                     forceSunnyReferenceHo: false,
                     precomputedSunnyResult: sunnyBaseline,
+                    precomputedDanielResult: roxyResult?.debug?.meta?.referenceDanielResult || null,
                 }, parsed);
                 if (shouldPreferAzusaRcResult(roxyResult, azusaResult)) {
                     selectedRework = azusaResult;
@@ -439,6 +441,7 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                 ...options,
                 forceSunnyReferenceHo: false,
                 precomputedSunnyResult: sunnyBaseline,
+                precomputedDanielResult: roxyResult?.debug?.meta?.referenceDanielResult || null,
             }, parsed);
             if (canUseRcResult(azusaResult)) {
                 selectedRework = azusaResult;
@@ -483,7 +486,8 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     }
                 }
             } else {
-                const danielResult = tryRunDanielFallback(osuText, options, parsed);
+                const danielResult = roxyResult?.debug?.meta?.referenceDanielResult
+                    || tryRunDanielFallback(osuText, options, parsed);
                 const canUseDaniel = danielResult
                     && Number(danielResult.columnCount) === 4
                     && !isDanielTooLowDifficulty(danielResult.estDiff);
