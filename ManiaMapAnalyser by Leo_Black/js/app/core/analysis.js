@@ -618,7 +618,10 @@ export async function fetchBeatmapFile(reason) {
     // star-v14：缓存键从可变 identity 改为请求作用域的 contentKey（hash > 目录限定 path > id > meta），
     //   快照新增 contentKey/metaKey 并在命中时校验。旧键会把“请求期间切图”抓到的另一张图
     //   整份快照写到当前图上，必须全部失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v14";
+    // star-v15：Mixed 4K RC 树接入 Roxy⊕XDC1 对称融合与双向 ≥0.50 切向 XDC1、
+    //   低难融合 C8'（≥0.50 切向 XDC1）及高段 Roxy 越界 Azusa⊕XDC1 融合。Mixed 在
+    //   4K RC 谱面上的 estDiff / numeric / actualEstimatorAlgorithm 语义变化 → 旧快照必须失效。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v15";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
     const isMetaDegraded = requestContentKey.startsWith("meta:");
     let cached = null;
@@ -1675,7 +1678,9 @@ export async function fetchBeatmapFile(reason) {
                 || state.actualEstimatorAlgorithm === "Roxy"
                 || state.actualEstimatorAlgorithm === "Polaris"
                 || state.actualEstimatorAlgorithm === "XDC1"
-                || state.actualEstimatorAlgorithm === "Proj7k";
+                || state.actualEstimatorAlgorithm === "Proj7k"
+                || state.actualEstimatorAlgorithm === "Roxy+XDC1"
+                || state.actualEstimatorAlgorithm === "XDC1+Azusa";
             const numericDifficulty = rcNative
                 && typeof resolvedNumericDifficulty === "number"
                 && Number.isFinite(resolvedNumericDifficulty)

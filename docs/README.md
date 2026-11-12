@@ -34,7 +34,7 @@
 | [polaris_algorithm.md](polaris_algorithm.md) | 人类/AI | Polaris算法说明文档(英文，表修正估算器：7K 的 RC+LN；4K/6K 回退 Sunny) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（8 种估计算法、4/6/7K、LN/RC 段位） |
-| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、回退链、标签与胶囊取值、Companella 融合三路） |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、R3' `Roxy+XDC1` 对称融合与双向 `≥0.50` 切 XDC1、R4-Hi `XDC1+Azusa` 融合、C8' 兜底与胶囊取值） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、严格门控） |
@@ -82,6 +82,7 @@
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | 人类/AI | 卡片 Tab 胶囊栏与组合模式破坏性说明（`contentBar` 删除 `Full`、旧值降级 Auto；壳专属 Tab 单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 至少一个模块并按 CSS order 排列；契约/版本不变） |
 | [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | 人类/AI | LaneAcc 分轨准确度与 ScoreV1 实时转换破坏性说明（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、契约 v7→v10） |
 | [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | 人类/AI | 回放暂停破坏性说明（契约 v10→v11、`.osr` 尾部只读解析、`replay_pauses`/`replay_pauses_sync`、24062 `replayHash`、偏移表新增三个哈希字段、2026.921 表已移除） |
+| [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | 人类/AI | Mixed 4K RC 路由对称融合与 XDC1 兜底破坏性说明（R3' `Roxy+XDC1` / 双向 `≥0.50` 切 XDC1、低难 C8'、高段 `XDC1+Azusa`、遥测/反馈别名及缓存 `star-v15`） |
 
 # English
 
@@ -116,7 +117,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [polaris_algorithm.md](polaris_algorithm.md) | Human/AI | Polaris algorithm document (English; table-calibration estimator: 7K RC + LN; 4K/6K fall back to Sunny) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
 | [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (8 algorithms, 4/6/7K, LN/RC dan tiers) |
-| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: which algorithm wins when, exact thresholds, fallback chains, label and capsule values, Companella fusion routes) |
+| [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: R3' `Roxy+XDC1` symmetric fusion & bidirectional `>=0.50` XDC1 switch, R4-Hi `XDC1+Azusa` fusion, C8' fallback, exact thresholds, and capsule values) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [features/graph-section-analysis.md](features/graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict gating) |
@@ -164,3 +165,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-10-25-contentbar-tabs-and-combined-mode.md](breakings/2026-10-25-contentbar-tabs-and-combined-mode.md) | Human/AI | Card tab capsule bar and Combined mode breaking note (`contentBar` drops `Full`, legacy value becomes Auto; shell-only tab single-section inspection, hidden when `contentBar=None`, active-tab forced recompute, `combinedMode` with at least one module ordered by CSS `order`; contract/version unchanged) |
 | [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | Human/AI | LaneAcc per-lane accuracy and live ScoreV1 conversion breaking note (Lazer raw replay frames and hit events, dual metrics, score offset section, shell-only space setting, contract v7→v10) |
 | [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | Human/AI | Replay-pauses breaking note (contract v10→v11, read-only `.osr` tail parsing, `replay_pauses` / `replay_pauses_sync`, 24062 `replayHash`, three new hash offsets, 2026.921 tables removed) |
+| [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | Human/AI | Mixed 4K RC symmetric fusion & XDC1 routing breaking note (`Roxy+XDC1` / bidirectional `≥0.50` XDC1 switch on R3', C8' low-band XDC1 rescue, `XDC1+Azusa` on R4-Hi, telemetry/feedback capsule aliases, and cache `star-v15`) |

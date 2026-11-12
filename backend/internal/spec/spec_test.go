@@ -37,9 +37,16 @@ func TestAlgorithms(t *testing.T) {
 }
 
 func TestNormalizeActualAlgorithm(t *testing.T) {
-	norm, ok := NormalizeActualAlgorithm("Azusa+Companella")
-	if !ok || norm != "Azusa" {
-		t.Errorf("expected Azusa+Companella to map to Azusa, got %q, %v", norm, ok)
+	aliasExpectations := map[string]string{
+		"Azusa+Companella": "Azusa",
+		"Roxy+XDC1":        "Roxy",
+		"XDC1+Azusa":       "Azusa",
+	}
+	for alias, want := range aliasExpectations {
+		norm, ok := NormalizeActualAlgorithm(alias)
+		if !ok || norm != want {
+			t.Errorf("expected %s to map to %s, got %q, %v", alias, want, norm, ok)
+		}
 	}
 
 	for alg := range AllowedActualAlgorithms {

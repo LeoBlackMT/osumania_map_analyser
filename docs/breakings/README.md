@@ -30,6 +30,7 @@
 | [2026-10-25-contentbar-tabs-and-combined-mode.md](2026-10-25-contentbar-tabs-and-combined-mode.md) | 2026-10-25 | feat/contentbar-tabs-combined（版本保持 2.1.0） | 卡片 Tab 胶囊栏与组合模式：`contentBar` 删除 `Full`（旧值→Auto）、壳专属 Tab（None 隐藏、只算一个模块、点击已激活 Tab 强制重算、切歌/IN·HO 复位）、`combinedMode` 至少一个模块并按 CSS order 排列（原 Full 更名 Combined）；契约/版本不变 |
 | [2026-10-25-mania-lane-acc.md](2026-10-25-mania-lane-acc.md) | 2026-10-25 | feat/mania-lane-acc | LaneAcc 分轨准确度与 ScoreV1 实时转换：契约升至 v10（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、失败局分母） |
 | [2026-11-10-replay-pauses.md](2026-11-10-replay-pauses.md) | 2026-11-10 | feat/replay-pauses（版本保持 3.0.0） | 回放暂停读取：契约 v10→v11（`replay_pauses` / `replay_pauses_sync`、24062 `replayHash`）、`.osr` 尾部只读解析、偏移表新增 `results.score_hash` / `score.score_info` / `score.score_hash`、历史成绩 mods 残留修复、2026.921 表已移除与 2025.816.0 之前的成绩显示 `Pause Data Unavailable` |
+| [2026-11-11-mixed-rc-fusion-routing.md](2026-11-11-mixed-rc-fusion-routing.md) | 2026-11-11 | feat/mixed-rc-fusion-routing | Mixed 4K RC 路由对称融合与 XDC1 分歧兜底：R3' 接入 `Roxy+XDC1` 对称融合与双向 `\|XDC1 − Roxy\| ≥ 0.50` 切 XDC1、低难 C8' `≥ 0.50` 切 XDC1、高段 `Roxy` 越界接入 `XDC1+Azusa` 融合、遥测/反馈胶囊别名对齐及缓存版本 `star-v14→star-v15`（RC MAE `0.2383→0.2075`，LN 零改动） |
 
 [返回 docs 索引](../README.md)
 
@@ -68,5 +69,6 @@
 | [2026-10-25-contentbar-tabs-and-combined-mode.md](2026-10-25-contentbar-tabs-and-combined-mode.md) | 2026-10-25 | feat/contentbar-tabs-combined (version stays 2.1.0) | Card tab capsule bar and Combined mode: `contentBar` drops `Full` (legacy → Auto), shell-only tabs (hidden at None, one display section per click, active-tab forced recompute, reset on song/IN·HO), `combinedMode` with at least one module ordered by CSS `order` (Full renamed Combined); contract and version unchanged |
 
 | [2026-10-25-mania-lane-acc.md](2026-10-25-mania-lane-acc.md) | 2026-10-25 | feat/mania-lane-acc (version stays 2.1.0) | LaneAcc per-lane accuracy and live ScoreV1 conversion: contract v7→v8 (`mania_hit_events` downlink + `laneacc_sync` uplink), Lazer `HitEvent` reader (stride 0x40; TimeOffset/Result/HitObject at 0x00/0x18/0x20), `score` offset section produced by the shared `live` path of `lazer-offsets-gen` and `gen.exe` (extract/emit does not), `contentBar=LaneAcc` + Tab + optional Combined module, shell-only `laneAccSpaceMode` with presets, and failed-play denominator = judged notes |
+| [2026-11-11-mixed-rc-fusion-routing.md](2026-11-11-mixed-rc-fusion-routing.md) | 2026-11-11 | feat/mixed-rc-fusion-routing | Mixed 4K RC symmetric fusion & XDC1 routing: `Roxy+XDC1` symmetric fusion and bidirectional `\|XDC1 − Roxy\| ≥ 0.50` XDC1 switch on R3', C8' low-band `≥ 0.50` XDC1 rescue, `XDC1+Azusa` fusion on R4-Hi, telemetry/feedback capsule aliases, and cache version `star-v14→star-v15` (RC MAE `0.2383→0.2075`, 0 LN changes) |
 
 [Back to docs index](../README.md)

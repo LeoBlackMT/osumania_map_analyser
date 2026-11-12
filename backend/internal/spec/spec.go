@@ -33,9 +33,11 @@ var AllowedActualAlgorithms = map[string]bool{
 	"Companella": true,
 }
 
-// CapsuleAliases maps historical display capsule text to canonical actual algorithm names.
+// CapsuleAliases maps composite display capsule text to canonical actual algorithm names.
 var CapsuleAliases = map[string]string{
 	"Azusa+Companella": "Azusa",
+	"Roxy+XDC1":        "Roxy",
+	"XDC1+Azusa":       "Azusa",
 }
 
 // MaxComputeDurationMs is the upper bound for valid map analysis duration (30 seconds).

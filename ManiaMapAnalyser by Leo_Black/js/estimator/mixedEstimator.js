@@ -2,11 +2,19 @@ import { runDanielEstimatorFromText } from "./danielEstimator.js";
 import { runSunnyEstimatorFromText } from "./sunnyEstimator.js";
 import { runAzusaEstimatorFromText } from "./azusaEstimator.js";
 import { runRoxyEstimatorFromText } from "./roxyEstimator.js";
+import { runXdc1EstimatorFromText } from "./xdc1Estimator.js";
+import { computeMarathonCorrection } from "./marathonCorrection.js";
 import { modeTagFromLnRatio } from "../patterns/config.js";
 import { numericToRcLabel } from "./rcDifficultyFormat.js";
 import { calibrateTableHalves } from "./polarisEstimator.js";
 
 const MIXED_SUPPORTED_KEYS = new Set([4, 6, 7]);
+// 4K RC 树 Roxy 与 XDC1 的双向分歧阈值：|XDC1 − Roxy| ≥ 0.50 时切向 XDC1，
+// 否则取对称 0.5/0.5 融合（降低单模型误差方差）；高段 Roxy 越界后 Azusa⊕XDC1 亦用同一 0.5 权重，
+// 低难 C8' 融合仍用 0.50 阈值在明显低估时切向 XDC1，全部取自然对称参数避免拟合基准。
+const XDC1_RC_DISCREPANCY_MIN_DELTA = 0.5;
+const XDC1_RC_OVERRIDE_MIN_DELTA = 0.5;
+const XDC1_RC_FUSION_WEIGHT = 0.5;
 // 低难段（Roxy scope-out 或 Sunny star < 9）RC 部分的 Azusa⊕Companella 融合权重。
 // 两个近似独立的低难估计器取平均以降低方差（与 Roxy 内部 Azusa 融合同一机制族）；
 // 离线探针显示 w∈[0.4,0.7] 结果平坦，取对称 0.5，避免拟合基准分布。
@@ -108,6 +116,14 @@ function tryRunRoxyFallback(osuText, options, parsed) {
     }
 }
 
+function tryRunXdc1Fallback(osuText, options, parsed) {
+    try {
+        return runXdc1EstimatorFromText(osuText, options, parsed);
+    } catch {
+        return null;
+    }
+}
+
 function canUseRcResult(result) {
     if (!result || Number(result.columnCount) !== 4) {
         return false;
@@ -128,6 +144,19 @@ function canUseRcResult(result) {
     return true;
 }
 
+function canUseXdc1RcResult(result) {
+    if (!result || result.unsupported === true || Number(result.columnCount) !== 4) {
+        return false;
+    }
+
+    const estDiff = String(result.estDiff ?? "").trim();
+    if (!estDiff || /^(Invalid|Unsupported)\b/i.test(estDiff)) {
+        return false;
+    }
+
+    return resultNumericValue(result) !== null;
+}
+
 function resultNumericValue(result) {
     const raw = result?.numericDifficulty;
     if (raw === null || raw === undefined) return null;
@@ -135,11 +164,86 @@ function resultNumericValue(result) {
     return Number.isFinite(value) ? value : null;
 }
 
+function hasActiveMarathonCorrection(options, baseNumeric) {
+    const mc = options?.marathonCorrection;
+    if (!mc || !Number.isFinite(Number(mc.durationS))) {
+        return false;
+    }
+    return computeMarathonCorrection({
+        durationS: mc.durationS,
+        ettValues: mc.ettValues ?? null,
+        numeric: baseNumeric,
+    }) > 0;
+}
+
+function isDeltaAtLeast(delta, threshold) {
+    if (!Number.isFinite(delta) || !Number.isFinite(threshold)) {
+        return false;
+    }
+    // 量化到 1e-4 避免 IEEE-754 减法把 0.50 写成 0.4999999999999982。
+    return Math.round(delta * 1e4) >= Math.round(threshold * 1e4);
+}
+
+function fuseSymmetricRcValues(xdc1Numeric, baseNumeric) {
+    return Number((xdc1Numeric * XDC1_RC_FUSION_WEIGHT + baseNumeric * (1 - XDC1_RC_FUSION_WEIGHT)).toFixed(2));
+}
+
+function buildFusedRcOutcome(baseResult, xdc1Numeric, baseNumeric, algorithmName) {
+    const fused = fuseSymmetricRcValues(xdc1Numeric, baseNumeric);
+    return {
+        selectedRework: baseResult,
+        actualAlgorithm: algorithmName,
+        estDiff: numericToRcLabel(fused),
+        numericDifficulty: fused,
+        numericDifficultyHint: null,
+    };
+}
+
+function resolveRoxyXdc1RcOutcome(osuText, options, parsed, roxyResult) {
+    const roxyNumeric = resultNumericValue(roxyResult);
+    if (!Number.isFinite(roxyNumeric) || hasActiveMarathonCorrection(options, roxyNumeric)) {
+        return null;
+    }
+    // 先关闭图曲线试算 XDC1；仅在分歧 >= 0.50 且切向纯 XDC1 时再按需生成 XDC1 图表。
+    const preview = tryRunXdc1Fallback(osuText, { ...options, withGraph: false }, parsed);
+    if (!canUseXdc1RcResult(preview)) {
+        return null;
+    }
+    const xdc1Numeric = resultNumericValue(preview);
+    if (isDeltaAtLeast(Math.abs(xdc1Numeric - roxyNumeric), XDC1_RC_DISCREPANCY_MIN_DELTA)) {
+        const selectedXdc1 = options?.withGraph === true
+            ? (tryRunXdc1Fallback(osuText, options, parsed) || preview)
+            : preview;
+        return {
+            selectedRework: selectedXdc1,
+            actualAlgorithm: "XDC1",
+            estDiff: selectedXdc1.estDiff,
+            numericDifficulty: selectedXdc1.numericDifficulty,
+            numericDifficultyHint: selectedXdc1.numericDifficultyHint,
+        };
+    }
+    return buildFusedRcOutcome(roxyResult, xdc1Numeric, roxyNumeric, "Roxy+XDC1");
+}
+
+function resolveHighAzusaXdc1RcOutcome(osuText, options, parsed, azusaResult) {
+    const azusaNumeric = resultNumericValue(azusaResult);
+    if (!Number.isFinite(azusaNumeric)
+        || azusaNumeric < RC_FUSION_LOW_BAND_MAX
+        || hasActiveMarathonCorrection(options, azusaNumeric)) {
+        return null;
+    }
+    const preview = tryRunXdc1Fallback(osuText, { ...options, withGraph: false }, parsed);
+    if (!canUseXdc1RcResult(preview)) {
+        return null;
+    }
+    return buildFusedRcOutcome(azusaResult, resultNumericValue(preview), azusaNumeric, "XDC1+Azusa");
+}
+
 // 低难段融合计划：plan 携带 Azusa 的 RC 基准值（fuseRc），
 // applyCompanellaToMixedResult 在 Companella 结果到达后做 0.5/0.5 融合。
 // onDisagree 指定门控未通过时保留哪一侧（该分支改动前的原赢家），
 // 保证融合只在两参考一致且都主张低难时生效，其余行为与改动前一致。
-function buildLowBandCompanellaPlan(rcResult, lnRatio, lnDifficulty, onDisagree) {
+function buildLowBandCompanellaPlan(rcResult, lnRatio, lnDifficulty, onDisagree, xdc1Candidate = null) {
     return {
         lnRatio,
         lnDifficulty,
@@ -148,6 +252,7 @@ function buildLowBandCompanellaPlan(rcResult, lnRatio, lnDifficulty, onDisagree)
         rcEstDiff: rcResult.estDiff,
         rcNumeric: resultNumericValue(rcResult),
         rcNumericHint: rcResult.numericDifficultyHint ?? null,
+        ...(xdc1Candidate ? { xdc1Candidate } : {}),
     };
 }
 
@@ -317,6 +422,18 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                     numericDifficultyHint = azusaResult.numericDifficultyHint;
                 }
             }
+            // 未触发 R2 Azusa 压高估保护时，以对称 0.5*(XDC1+Roxy) 融合收敛偏差，
+            // 当双方分歧达到双向 0.50 以上时直接切向 XDC1（保留 IN/显式OD/马拉松保护）。
+            if (actualAlgorithm === "Roxy" && !inEnabled && !hasExplicitOd) {
+                const resolvedRc = resolveRoxyXdc1RcOutcome(osuText, options, parsed, roxyResult);
+                if (resolvedRc) {
+                    selectedRework = resolvedRc.selectedRework;
+                    actualAlgorithm = resolvedRc.actualAlgorithm;
+                    estDiff = resolvedRc.estDiff;
+                    numericDifficulty = resolvedRc.numericDifficulty;
+                    numericDifficultyHint = resolvedRc.numericDifficultyHint;
+                }
+            }
         } else if (!inEnabled) {
             const azusaResult = tryRunAzusaFallback(osuText, {
                 ...options,
@@ -330,10 +447,40 @@ export function runMixedEstimatorFromText(osuText, options = {}, parsed = null) 
                 numericDifficulty = azusaResult.numericDifficulty;
                 numericDifficultyHint = azusaResult.numericDifficultyHint;
                 // 低难段（Roxy scope-out 且 Sunny star < 9）：RC 数值升级为
-                // Azusa⊕Companella 融合；门控未通过或 Companella 失败时，
-                // 本结果（纯 Azusa）兜底——与改动前行为一致。
+                // Azusa⊕Companella 融合；若融合后仍显著低于 XDC1（≥0.50），由 C8' 切向 XDC1。
+                // 高段越界（star >= 9 且 Azusa >= 11）：Azusa⊕XDC1 0.5/0.5 对称融合。
                 if (Number(sunnyBaseline.star) < LOW_BAND_COMPANELLA_STAR_MAX) {
-                    companellaPlan = buildLowBandCompanellaPlan(azusaResult, lnRatio, lnDifficulty, "azusa");
+                    let xdc1Candidate = null;
+                    const azusaNumeric = resultNumericValue(azusaResult);
+                    if (!hasExplicitOd
+                        && Number.isFinite(azusaNumeric)
+                        && azusaNumeric < RC_FUSION_LOW_BAND_MAX
+                        && !hasActiveMarathonCorrection(options, azusaNumeric)) {
+                        const xdc1Preview = tryRunXdc1Fallback(osuText, { ...options, withGraph: false }, parsed);
+                        if (canUseXdc1RcResult(xdc1Preview)) {
+                            xdc1Candidate = {
+                                estDiff: xdc1Preview.estDiff,
+                                numericDifficulty: xdc1Preview.numericDifficulty,
+                                numericDifficultyHint: xdc1Preview.numericDifficultyHint,
+                            };
+                        }
+                    }
+                    companellaPlan = buildLowBandCompanellaPlan(
+                        azusaResult,
+                        lnRatio,
+                        lnDifficulty,
+                        "azusa",
+                        xdc1Candidate,
+                    );
+                } else if (!hasExplicitOd) {
+                    const highFused = resolveHighAzusaXdc1RcOutcome(osuText, options, parsed, azusaResult);
+                    if (highFused) {
+                        selectedRework = highFused.selectedRework;
+                        actualAlgorithm = highFused.actualAlgorithm;
+                        estDiff = highFused.estDiff;
+                        numericDifficulty = highFused.numericDifficulty;
+                        numericDifficultyHint = highFused.numericDifficultyHint;
+                    }
                 }
             } else {
                 const danielResult = tryRunDanielFallback(osuText, options, parsed);
@@ -457,6 +604,24 @@ export function applyCompanellaToMixedResult(mixedResult, companellaResult) {
         }
         const weight = RC_AZUSA_COMPANELLA_FUSION_WEIGHT;
         const fused = Number((rcNumeric * weight + companellaNumeric * (1 - weight)).toFixed(2));
+        const xdc1Candidate = plan.xdc1Candidate;
+        const xdc1Numeric = resultNumericValue(xdc1Candidate);
+        if (xdc1Candidate && isDeltaAtLeast(xdc1Numeric - fused, XDC1_RC_OVERRIDE_MIN_DELTA)) {
+            return {
+                ...mixedResult,
+                estDiff: composeDifficultyFromRcLn(
+                    xdc1Candidate.estDiff,
+                    plan.lnDifficulty,
+                    plan.lnRatio,
+                ),
+                numericDifficulty: xdc1Candidate.numericDifficulty,
+                numericDifficultyHint: xdc1Candidate.numericDifficultyHint,
+                mixedCompanellaPlan: null,
+                actualEstimatorAlgorithm: "XDC1",
+                // 胶囊来源：低难融合后仍显著低于 XDC1（≥0.50），兜底改用 XDC1。
+                companellaCapsule: "XDC1",
+            };
+        }
         return {
             ...mixedResult,
             estDiff: composeDifficultyFromRcLn(

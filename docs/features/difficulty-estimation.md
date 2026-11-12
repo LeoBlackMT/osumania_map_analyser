@@ -20,7 +20,7 @@
 
 | 算法 | 线程 | 入口函数 | 适用键型/场景 | 限制 |
 | --- | --- | --- | --- | --- |
-| **Mixed** | main | `mixedEstimator.js:236 runMixedEstimatorFromText` | 通用自动选择：RC 谱面在 Roxy/Azusa/Daniel 间挑选，LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用）。4K 无任何表校准/偏移（曾有 LN 半校准，实机复测后回退；见 §3.7/§3.8） |
+| **Mixed** | worker (pipeline) / main (Companella) | `mixedEstimator.js runMixedEstimatorFromText` | 通用自动选择：4K RC 谱面在 Roxy⊕XDC1 对称融合（双向 `\|X−R\| ≥ 0.50` 切 XDC1）/ Azusa（R2 压高估保护 + 低难 Azusa⊕Companella + `C8'` XDC1 `≥0.50` 兜底）/ 高段 XDC1⊕Azusa / Daniel 间路由（保留 IN/显式OD/马拉松保护）；LN 谱面以 Sunny 为基线（低难 4K 的 RC 段由 Azusa⊕Companella 融合覆盖，见 §3.6；高难用 Daniel）。**7K 的整条路线即 Polaris**（L5 与 RC 模式都改走它，`actualEstimatorAlgorithm = "Polaris"`：Mixed 的定位是自动选出最佳算法，而 7K 上 Azusa/Roxy/Daniel/Companella 全为 4K 专用）。4K 无任何表校准/偏移（曾有 LN 半校准，实机复测后回退；见 §3.7/§3.8） |
 | **Azusa** | worker | `azusaEstimator.js:832 runAzusaEstimatorFromText` | 4K RC 为主 | 仅支持 4K（非 4K 返回 `UnsupportedKeys` 错误结果）；LN ratio > 0.18 在入口返回 `UnsupportedLN`（`rcLnRatioLimit`，结果无效时由分派层回退 Sunny） |
 | **Roxy** | worker | `roxyEstimator.js:1468 runRoxyEstimatorFromText` | 4K RC（GBDT 元模型） | 仅支持 4K；LN ratio > 0.18 返回 `UnsupportedLN`（`roxyEstimator.js:1524`）；结果无效时由分派层回退 Sunny |
 | **Sunny** | worker | `sunnyEstimator.js:4 runSunnyEstimatorFromText` | 4/6/7K 的 RC + LN | 无（各键型均有区间表） |
@@ -102,7 +102,7 @@ const effectiveWeights = (options?.classicMod === true ? CArr : CArrV2).map((c, 
 - **Polaris 排除**：star 本就是 Sunny sr（4/7K 生效时与 Sunny 选择逐位一致；非 4/7K 与 cvt 回退路径同 Sunny），无需归一化覆盖（`runAnalysisPipeline.js` 分派注释）；
 - **Companella / SunnyWindow**：star 本就是 Sunny sr（Companella 直接跑 Sunny，`runAnalysisPipeline.js:204`；SunnyWindow 只替换 estDiff 的 LN 段，不碰 star），无需处理；
 - **vibro 检测**仍用算法自身 star 判定（`runAnalysisPipeline.js:213` `Number(selectedRework?.star)`），不随归一化变化，保持既有行为；
-- 缓存快照存储的就是归一化后的 `rework.star`，命中恢复一致；缓存键带 `star-v14` 版本前缀使旧快照失效（沿革见 [result-cache.md](../pipeline/result-cache.md) §5）。
+- 缓存快照存储的就是归一化后的 `rework.star`，命中恢复一致；缓存键带 `star-v15` 版本前缀使旧快照失效（沿革见 [result-cache.md](../pipeline/result-cache.md) §5）。
 
 ## 4. Worker 回退（主线程同步执行）
 

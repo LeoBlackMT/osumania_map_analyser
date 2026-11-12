@@ -8,7 +8,7 @@
 
 ## 1. 一句话结论
 
-`Mixed` 先用**模式**把谱面分成两棵树（`RC` 树 / `LN·Mix` 树），在树内按固定优先级尝试子算法（RC 树：Roxy → Azusa（偏好覆盖）→ Azusa（兜底）→ Daniel；LN·Mix 树：Azusa → Daniel），产出一个 **RC 半 + LN 半**的复合标签和一个"算法胶囊"；`Companella` 不在树内，而是由 `Mixed` 留一张**计划**，交给主线程在 Etterna MSD 就绪后异步补算并融合。
+`Mixed` 先用**模式**把谱面分成两棵树（`RC` 树 / `LN·Mix` 树），在树内按固定优先级尝试子算法（RC 树：Roxy → Azusa（偏好覆盖）→ Roxy⊕XDC1 融合/双向 `≥0.50` 切 XDC1 → Azusa（低难融合/高段与 XDC1 对称融合）→ Daniel；LN·Mix 树：Azusa → Daniel），产出一个 **RC 半 + LN 半**的复合标签和一个"算法胶囊"；`Companella` 不在树内，而是由 `Mixed` 留一张**计划**，交给主线程在 Etterna MSD 就绪后异步补算并融合。
 
 ---
 
@@ -37,10 +37,12 @@
 | 序 | 条件 | 命中算法 | 说明 |
 | --- | --- | --- | --- |
 | R1 | `canUseRcResult(roxy)` 为真 | **Roxy** | `canUseRcResult` 要求：`columnCount === 4`、`estDiff` 非空且不以 `Invalid` 开头、`numericDifficulty` 非 `null`（Roxy 的 scope 边界 `< Alpha Low` / `> Emik Zeta high` 返回 null → 视为不可用） |
-| R2 | R1 命中 **且** `!inEnabled && !hasExplicitOd && shouldEvaluateAzusaRcPreference(roxy)` 为真，**且** `shouldPreferAzusaRcResult(roxy, azusa)` 为真 | **Azusa**（覆盖 Roxy） | 先"筛选"再"确认"，两段各有独立阈值，见 3.2 |
-| R3 | R1 命中但 R2 不成立 | **Roxy**（保持） | 注意：**Roxy 胜出时不产生 Companella 计划**（RC 树的融合计划只在 R4' 产生） |
+| R2 | R1 命中 **且** `!inEnabled && !hasExplicitOd && shouldEvaluateAzusaRcPreference(roxy)` 为真，**且** `shouldPreferAzusaRcResult(roxy, azusa)` 为真 | **Azusa**（覆盖 Roxy） | 先"筛选"再"确认"，两段各有独立阈值，见 3.2；命中后受保护，不再进 R3' 融合或切 XDC1 |
+| R3 | R1 命中但 R2 不成立 | **Roxy**（基底） | 进入 R3' 门控检查；若未通过 R3' 门控（如 `IN` / 显式 OD / 马拉松修正 / `XDC1` 不可用），保持纯 `"Roxy"`，不产生 Companella 计划 |
+| R3' | R3 保留 Roxy **且** `!inEnabled && !hasExplicitOd && !hasActiveMarathonCorrection(options, roxyNumeric)` **且** `canUseXdc1RcResult(xdc1)` | **`XDC1`**（`\|XDC1 − Roxy\| ≥ 0.50`）或 **`Roxy+XDC1`**（`\|XDC1 − Roxy\| < 0.50`） | 双向分歧达到 `XDC1_RC_DISCREPANCY_MIN_DELTA (0.50)`（量化到 `1e-4`）时切换为 `XDC1`（需要图表时补算 XDC1 曲线）；否则取对称均值 `0.5 × XDC1 + 0.5 × Roxy`（2 位小数），标签由 `numericToRcLabel` 派生、保留 Roxy 曲线 |
 | R4 | R1 不成立 **且** `inEnabled === false` **且** `canUseRcResult(azusa)` 为真 | **Azusa** | Azusa 以 `forceSunnyReferenceHo:false` + `precomputedSunnyResult` 运行 |
-| R4' | R4 命中 **且** `Number(sunnyBaseline.star) < LOW_BAND_COMPANELLA_STAR_MAX (9)` | Azusa + **Companella 计划** | `buildLowBandCompanellaPlan(azusaResult, lnRatio, lnDifficulty, "azusa")`：`fuseRc = true`、`onDisagree = "azusa"`、基准 `rcNumeric` = Azusa 的数值 |
+| R4' | R4 命中 **且** `Number(sunnyBaseline.star) < LOW_BAND_COMPANELLA_STAR_MAX (9)` | Azusa + **Companella 计划**（含可选 `xdc1Candidate`） | `buildLowBandCompanellaPlan(azusaResult, lnRatio, lnDifficulty, "azusa", xdc1Candidate)`；当 `!hasExplicitOd && azusaNumeric < RC_FUSION_LOW_BAND_MAX (11) && !hasActiveMarathonCorrection` 且 XDC1 有效时附带 `xdc1Candidate`，供主线程 C8' 判定 |
+| R4-Hi | R4 命中 **且** `sunnyStar ≥ 9` **且** `azusaNumeric ≥ 11` **且** `!hasExplicitOd && !hasActiveMarathonCorrection` **且** `canUseXdc1RcResult(xdc1)` | **`XDC1+Azusa`** | 针对高段 `Eta–Theta` Roxy 越界场景，取对称均值 `0.5 × XDC1 + 0.5 × Azusa`（2 位小数），标签由 `numericToRcLabel` 派生、保留 Azusa（Sunny）曲线；失败或未过门控时回退纯 Azusa |
 | R5 | R1 不成立 **且** `inEnabled === false` **且** Azusa 不可用 **且** Daniel 可用 | **Daniel** | 可用性：`columnCount === 4 && !isDanielTooLowDifficulty(daniel.estDiff)`（`isDanielTooLowDifficulty` = `/^<\s*alpha\b/i`，即 Daniel 自称低于 Alpha 时不用） |
 | R6 | R1 不成立 **且** `inEnabled === true` | **Sunny 基线** | IN 转换下 Azusa 语义不适用，因此跳过 Azusa/Daniel 整条链 |
 | R7 | 以上都不成立 | **Sunny 基线** | 例如 Roxy 不可用 + Azusa 不可用 + Daniel 过低 |
@@ -106,9 +108,10 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | C5 | 直接选择但推理失败 | `catch` | 胶囊改回 `"Sunny"`，保留已算出的 star/estDiff（不产生 No data） |
 | C6 | 融合计划 + `plan.fuseRc` 且 `rcNumeric ≥ RC_FUSION_LOW_BAND_MAX (11)` | `onDisagree === "companella"` | 采用 Companella 的 RC 半：`estDiff = compose(companella.estDiff, plan.lnDifficulty, plan.lnRatio)`，数值随之 |
 | C7 | 同上但 `onDisagree === "azusa"` | — | **保持 Mixed 原结果不变**（Azusa 胜出；Companella 不改变结论） |
-| C8 | `plan.fuseRc` 且 `rcNumeric < 11` | — | RC 数值 = `rcNumeric × 0.5 + companellaNumeric × 0.5`（`RC_AZUSA_COMPANELLA_FUSION_WEIGHT = 0.5`），标签由 `numericToRcLabel(fused)` 重新派生，LN 半仍用 `plan.lnDifficulty` |
+| C8 | `plan.fuseRc` 且 `rcNumeric < 11` 且未触发 C8' | — | RC 数值 = `rcNumeric × 0.5 + companellaNumeric × 0.5`（`RC_AZUSA_COMPANELLA_FUSION_WEIGHT = 0.5`），标签由 `numericToRcLabel(fused)` 重新派生，LN 半仍用 `plan.lnDifficulty` |
+| C8' | C8 算出 `fused` 后 **且** 计划携带 `xdc1Candidate` **且** `xdc1Numeric − fused ≥ 0.50`（量化到 `1e-4`） | — | 改用 `xdc1Candidate` 的 RC 段与数值（LN 半仍按 `plan.lnDifficulty`/`plan.lnRatio` 合成），并置 `actualEstimatorAlgorithm = "XDC1"` 与 `companellaCapsule = "XDC1"` |
 | C9 | 计划**无** `fuseRc`（L2 路径） | — | 直接采用 Companella 的 `estDiff` / 数值，并与 `plan.lnDifficulty` 拼接 |
-| C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
+| C10 | 胶囊 | — | 融合/采用成功时**更新** `state.actualEstimatorAlgorithm`：C6/C9 → `"Companella"`，C8' → `"XDC1"`，C8 → `"Azusa+Companella"`（0.5/0.5 混合来源），C7 保持原值 |
 
 融合门控的历史：曾有一条"`|Azusa − Companella| ≤ 1.0` 一致性门"，实测会误杀大量有益融合（净收益 −4.89 → −2.87 MAE 点），已移除（见 `mixedEstimator.js` 注释）。
 
@@ -122,8 +125,11 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | --- | --- |
 | P2 键数门（非 4/6/7K） | `Sunny` |
 | RC 树早退（RC 且非 4K） | 7K ⇒ `Polaris`；其余 ⇒ `Sunny` |
-| R1/R3 Roxy 胜 | `Roxy` |
+| R1/R3 Roxy 保持（未过 R3' 门控或 XDC1 无效） | `Roxy` |
+| R3' 对称融合（`\|XDC1 − Roxy\| < 0.50`） | `Roxy+XDC1` |
+| R3' / C8' 切向 XDC1（`≥ 0.50` 分歧） | `XDC1` |
 | R2/R4/R4' Azusa 胜 | `Azusa` |
+| R4-Hi 高段对称融合 | `XDC1+Azusa` |
 | R5 Daniel 兜底 | `Daniel` |
 | R6/R7 | `Sunny` |
 | L1 Azusa 可用 | `Azusa` |
@@ -155,7 +161,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 - **SunnyWindow**（`forceSunnyWindow`）：在管道之后由 `analysis.js` 用 SunnyWindow 的 LN 段覆盖最终标签的 LN 半，并把新值写回 `pendingMixedCompanellaContext.lnDifficulty`（同时把 `lnRatio` 置 4e65 以强制显示 LN 段）→ 融合仍使用被覆盖后的 LN 半。
 - **马拉松时长修正**：pipeline 在 `durationS > 300 && 4K && 算法 ∈ {Azusa, Roxy, Mixed}` 时前置一次 Ett，并把 `marathonCorrection` 注入估算器；修正发生在 Mixed 路由**之前**，会改变 Roxy/Azusa 的数值，因此也可能改变 R1–R5 的胜负（详见 [marathon-correction.md](marathon-correction.md)）。
 - **aleju03 低段 LN 接管**（分支 `feat/aleju03-ln-estimator`）：`Sunny` 的 `estDiff` 含 LN 半且该半以 `<` 开头（表下限，如 `< LN 5 mid`）时，LN 半改用 aleju03 的判决；否则保持表值。该接管只影响 LN 半，RC 半与胶囊语义不变。另一个仅用于对比测试的临时分支则对非 RC 模式一律接管。
-- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v14|算法|requestContentKey|modSignature`，**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
+- **结果缓存**：`actualEstimatorAlgorithm`、`isVibroMap` 等随快照落盘并在命中时恢复；缓存键格式为 `star-v15|算法|requestContentKey|modSignature`，**第二段**才是用户的 `state.estimatorAlgorithm`（选 `Mixed` 就是 `Mixed`），因此**切换算法必然 miss**，但 Mixed 内部换算法不会让缓存失效——同一张图在设置不变时结果稳定。
 
 ---
 
@@ -167,7 +173,10 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | `MIXED_SUPPORTED_KEYS` | 同上 | 键数门（4/6/7） |
 | `modeTagFromLnRatio` | `js/patterns/config.js` | 模式判定（0.15 / 0.90） |
 | `composeDifficultyFromRcLn` | `mixedEstimator.js` | `RC \|\| LN` 标签合成（`lnRatio < 0.15` 只出 RC） |
-| `canUseRcResult` | 同上 | RC 结果可用性（4K + 非 Invalid + numeric 非 null） |
+| `canUseRcResult` / `canUseXdc1RcResult` | 同上 | RC 结果可用性（4K + 非 Invalid/Unsupported + numeric 有限/非 null） |
+| `resolveRoxyXdc1RcOutcome` / `resolveHighAzusaXdc1RcOutcome` | 同上 | R3'（`Roxy+XDC1` / `XDC1`）与 R4-Hi（`XDC1+Azusa`）决策函数 |
+| `hasActiveMarathonCorrection` / `isDeltaAtLeast` / `buildFusedRcOutcome` | 同上 | 马拉松修正保护、`1e-4` 浮点边界量化与 0.5/0.5 对称融合辅助 |
+| `XDC1_RC_DISCREPANCY_MIN_DELTA` (0.5) / `XDC1_RC_OVERRIDE_MIN_DELTA` (0.5) / `XDC1_RC_FUSION_WEIGHT` (0.5) | 同上 | R3'/C8'/R4-Hi XDC1 分歧阈值与融合权重 |
 | `shouldEvaluateAzusaRcPreference` / `shouldPreferAzusaRcResult` | 同上 | Roxy→Azusa 覆盖的筛选/确认双门（各三条语义） |
 | `AZUSA_RC_PREFERENCE` | 同上 | 上述两门的 8 个阈值 |
 | `isDanielTooLowDifficulty` | 同上 | Daniel 自称 `< Alpha` 时拒用 |

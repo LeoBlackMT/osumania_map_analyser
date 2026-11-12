@@ -25,6 +25,8 @@ export const ALLOWED_ACTUAL_ALGORITHMS = Object.freeze([
 
 export const CAPSULE_ALIASES = Object.freeze({
     "Azusa+Companella": "Azusa",
+    "Roxy+XDC1": "Roxy",
+    "XDC1+Azusa": "Azusa",
 });
 
 // Maximum duration for a map analysis event to be considered valid (30 seconds).
