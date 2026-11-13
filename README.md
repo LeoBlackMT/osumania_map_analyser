@@ -33,7 +33,7 @@
 ### 作为独立程序使用（推荐）
 1. 前往[Release](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest)下载带shell的最新版本。
 2. 将下载的文件解压到任意位置。
-3. 如果你需要在 Etterna 或 Malody V 中使用，请一并在 Release 中下载`bridges.zip`，并解压到与shell同目录下，注意不要嵌套文件夹，确保正确放置。打开bridges目录，运行`install-bridge-zh.bat`（中文）或`install-bridge.bat`（英文）。对于Linux用户，请参照[本文档](docs/shell-guide.md)的“安装桥”章节手动安装 Etterna 与 Malody V 的桥文件。
+3. 如果你需要在 Etterna 或 Malody V 中使用，请一并在 Release 中下载`bridges.zip`，并解压到与shell同目录下，注意不要嵌套文件夹，确保正确放置。打开bridges目录，运行`install-bridge-zh.bat`。对于Linux用户，请参照[本文档](docs/shell-guide.md)的“安装桥”章节手动安装 Etterna 与 Malody V 的桥文件。
 4. 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。
 5. 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
 6. 阅读[设置说明](docs/settings.md)、[预设系统教程](docs/presets-guide.md)和[桌面壳完整教程](docs/shell-guide.md)（含注意事项和常见问题），开始使用。

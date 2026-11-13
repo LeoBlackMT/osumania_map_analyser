@@ -35,7 +35,7 @@ This project also supports running inside [tosu](https://tosu.app) as a ppcounte
 ### As a Standalone Application (Recommended)
 1. Go to [Releases](https://github.com/LeoBlackMT/osumania_map_analyser/releases/latest) and download the latest version with the shell included.
 2. Extract the downloaded package to any folder.
-3. If you need to use it with Etterna or Malody V, also download `bridges.zip` from Releases and extract it into the same directory as the shell (ensure no nested folders). Open the `bridges` directory and run `install-bridge-zh.bat` (Chinese) or `install-bridge.bat` (English). For Linux users, refer to the "Bridges" section of [docs/shell-guide.md](docs/shell-guide.md) to install bridge files manually.
+3. If you need to use it with Etterna or Malody V, also download `bridges.zip` from Releases and extract it into the same directory as the shell (ensure no nested folders). Open the `bridges` directory and run `install-bridge.bat`. For Linux users, refer to the "Bridges" section of [docs/shell-guide.md](docs/shell-guide.md) to install bridge files manually.
 4. Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, verify that the auto-detected game paths are correct; otherwise, enter the game directories you use so beatmaps can be located for analysis.
 5. Once configured, restart the application if needed, and it will be ready to use. Note that the Malody V editor requires clicking the `MMA Analyze` button manually to analyze. Window controls are described below.
 6. Read the [Settings Guide](docs/settings.md), [Presets Guide](docs/presets-guide.md), and [Desktop Shell Guide](docs/shell-guide.md) (including notes and troubleshooting) to get started.
