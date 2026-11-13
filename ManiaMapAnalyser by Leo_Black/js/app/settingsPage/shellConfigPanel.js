@@ -57,6 +57,18 @@ const ROOT_FIELDS = [
     },
 ];
 
+/** Shell is Windows-only: show every detected/entered root with the same separator. */
+function normalizeWindowsPath(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const path = value.trim().replace(/\//g, "\\");
+    if (/^[A-Za-z]:\\$/.test(path)) {
+        return path;
+    }
+    return path.replace(/\\+$/, "");
+}
+
 const HOTKEY_FIELDS = [
     { key: "topmost", title: "Toggle topmost" },
     { key: "clickThrough", title: "Toggle click-through" },
@@ -463,9 +475,11 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const input = document.createElement("input");
         input.type = "text";
         input.dataset.shellKey = field.key;
-        input.value = typeof config[field.key] === "string" ? config[field.key] : "";
+        input.value = normalizeWindowsPath(config[field.key]);
         input.addEventListener("change", () => {
-            write({ [field.key]: input.value }, { refreshResolvedAfter: true });
+            const value = normalizeWindowsPath(input.value);
+            input.value = value;
+            write({ [field.key]: value }, { refreshResolvedAfter: true });
         });
         wrap.appendChild(input);
 
@@ -473,7 +487,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         const readout = document.createElement("span");
         readout.className = "shell-config-resolved";
         readout.dataset.resolvedKey = field.key;
-        readout.textContent = `${t("ui.shell.resolved.adopted", "adopted")}: ${adopted || t("ui.shell.resolved.notDetected", "not detected")}`;
+        readout.textContent = `${t("ui.shell.resolved.adopted", "adopted")}: ${adopted ? normalizeWindowsPath(adopted) : t("ui.shell.resolved.notDetected", "not detected")}`;
         wrap.appendChild(readout);
 
         return buildRow(
