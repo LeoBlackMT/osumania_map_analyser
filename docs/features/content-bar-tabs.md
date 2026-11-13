@@ -116,6 +116,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 - 设置页写入整对象 `{enabled, modules}`，避免 `merge_json` 递归合并残留旧数组；
 - 外部源回到主菜单（如 Malody V `other`）时保留最后渲染的 DOM 并加 stale 标记（保留内容、不压暗），不再清空模块；这样组合模式的卡片高度不会因清空而大幅伸缩，新分析开始时再移除 stale 标记；
 - 旧 `contentBar: "Full"` 只按 §1 降级为 Auto；组合模式使用独立的新键 `combinedMode`。
+- 旧版 `autoMode` 只在设置载荷**没有**显式 `contentBar`/`srText` 时做一次性迁移为 Auto；载荷带显式值时不再强制覆盖，避免用户每次选择主体内容都被下一次设置回包重置。用户在设置里改 `contentBar` 时同时清空 `tabContentBar` 与 `effectiveContentBar`，立即生效。
 
 设置页 `Shell Configuration` 中该区块位于「内存偏移表管理」之后；模块列表显示名为 键型 / Etterna技能组（Etterna Skillsets）/ 曲线 / PP。
 

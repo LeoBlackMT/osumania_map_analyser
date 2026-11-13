@@ -289,6 +289,19 @@ export function framesToStableV2Events(chart, frames, options = {}) {
         : new Set(Array.isArray(options.headMissNotes) ? options.headMissNotes : []);
     const segments = buildColumnSegments(chart, frames, mirror);
     const segCursor = new Array(chart.columnCount).fill(0);
+    // 同列下一条 note 的起点：按下沿落在它之后（甚至只提前十几毫秒）属于
+    // 下一条 note，绝不能先被当前 note 的头窗吃掉。缺了这道 guard，密集
+    // 4K/OD0 谱面会连锁错配，把大量 tap 记成 miss。
+    const nextStart = new Float64Array(chart.noteCount);
+    nextStart.fill(Infinity);
+    const lastByCol = new Int32Array(chart.columnCount).fill(-1);
+    for (let index = 0; index < chart.noteCount; index += 1) {
+        const column = chart.columns[index];
+        if (lastByCol[column] >= 0) {
+            nextStart[lastByCol[column]] = chart.noteStarts[index];
+        }
+        lastByCol[column] = index;
+    }
     const events = [];
     const push = (col, judgment, offset, part, note) => {
         if (!judgment) return;
@@ -312,7 +325,13 @@ export function framesToStableV2Events(chart, frames, options = {}) {
             segCursor[col] += 1;
         }
         const seg = list[segCursor[col]];
-        const hasHead = seg != null && seg.start >= time - windows.miss && seg.start <= time + windows.miss;
+        // 头只允许分配给本 note 的按下沿：上界是 50 窗（不是 miss 窗），
+        // 且必须早于同列下一条 note。超过 50 窗的晚按在 Stable V2 里
+        // 属于下一条 note（或独立 miss），不能被本条吞掉。
+        const hasHead = seg != null
+            && seg.start >= time - windows.miss
+            && seg.start <= time + windows.meh
+            && seg.start < nextStart[i];
         if (!hasHead) {
             // live：当前帧流可能还没覆盖到这个 note，不能补 miss；但 note 头窗已经
             // 完全过去仍无按下沿，就是确定的 miss，必须立即计入（否则 live 少 miss）。

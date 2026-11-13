@@ -597,12 +597,49 @@ export function numericAnimationValue(from, target, progress) {
     return from + (target - from) * progress;
 }
 
+let starLeftReserveTimer = 0;
+
+function releaseStarLeftReserve() {
+    clearTimeout(starLeftReserveTimer);
+    starLeftReserveTimer = 0;
+    if (!reworkStarEl || !reworkStarEl.parentElement) {
+        return;
+    }
+    reworkStarEl.parentElement.style.minWidth = "";
+    fitDifficultySubtitle();
+}
+
+/**
+ * Reserve the star column for the widest numeric capsule only when the
+ * animation crosses a character-count boundary (e.g. "9.99" → "10.00").
+ * The capsule itself keeps its natural width; only the left grid column gets
+ * a temporary min-width, so the right difficulty label does not flip between
+ * one and two lines every frame.
+ */
+function reserveStarLeftForAnimation(durationMs) {
+    if (!reworkStarEl || !reworkStarEl.parentElement) {
+        return;
+    }
+    const left = reworkStarEl.parentElement;
+    const fontSize = Number.parseFloat(getComputedStyle(reworkStarEl).fontSize);
+    if (!(fontSize > 0)) {
+        return;
+    }
+    left.style.minWidth = `${(fontSize * 3.25).toFixed(1)}px`;
+    fitDifficultySubtitle();
+    clearTimeout(starLeftReserveTimer);
+    starLeftReserveTimer = setTimeout(releaseStarLeftReserve, Math.max(0, Number(durationMs) || 0) + 80);
+}
+
 function animateNumericCapsuleValue(element, targetValue, format, fromValue, durationMs) {
     if (!element) return;
     const numericTarget = Number(targetValue);
     if (!Number.isFinite(numericTarget)) {
         numericAnimationTokens.delete(element);
         element.textContent = "-";
+        if (element === reworkStarEl) {
+            releaseStarLeftReserve();
+        }
         return;
     }
 
@@ -613,6 +650,15 @@ function animateNumericCapsuleValue(element, targetValue, format, fromValue, dur
     const from = Number.isFinite(Number(fromValue)) ? Math.max(0, Number(fromValue)) : 0;
     const token = Symbol("numeric-animation");
     numericAnimationTokens.set(element, token);
+    if (element === reworkStarEl) {
+        const fromText = String(format ? format(from) : from.toFixed(2));
+        const targetText = String(format ? format(clampedTarget) : clampedTarget.toFixed(2));
+        if (fromText.length !== targetText.length) {
+            reserveStarLeftForAnimation(duration);
+        } else {
+            releaseStarLeftReserve();
+        }
+    }
     const startTs = performance.now();
     const tick = (now) => {
         if (numericAnimationTokens.get(element) !== token) return;

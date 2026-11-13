@@ -90,6 +90,7 @@
     min-width: 0;
     flex: 0 1 auto;
     display: grid;
+    justify-items: start;
     gap: 4px;
 }
 

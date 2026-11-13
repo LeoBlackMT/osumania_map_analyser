@@ -572,9 +572,11 @@ export function applyContentBarSetting(contentBar) {
     const nextBar = contentBar || "Pattern";
     const changed = state.userContentBar !== nextBar;
     state.userContentBar = nextBar;
-    // 改全局设置优先于临时巡检：任何 contentBar 设置应用都清掉 Tab 覆盖。
+    // 改全局设置优先于临时巡检：任何 contentBar 设置应用都清掉 Tab 覆盖
+    // 与上一张图的 effectiveContentBar，否则选择会被地图级 override 压住。
     state.tabContentBar = null;
     state.tabForceRecompute = false;
+    state.effectiveContentBar = null;
 
     if (state.userContentBar === "Auto") {
         refreshAutoDisplayProfile();
@@ -1028,7 +1030,13 @@ export function applySettingsPayload(payload) {
     }
 
     const legacyAutoMode = parseAutoModeValue(payload);
-    if (legacyAutoMode && !isAutoDisplayEnabled()) {
+    // 旧版 autoMode 是“一次性迁移”开关，不是每包都执行的强制覆盖。
+    // 只有当载荷没有显式 contentBar/srText 时才允许它把两者改成 Auto；
+    // 否则用户每次选择主体内容/胶囊文字都会被下一次设置回包打回 Auto。
+    if (legacyAutoMode
+        && !hasKey("contentBar")
+        && !hasKey("srText")
+        && !isAutoDisplayEnabled()) {
         state.userSrText = "Auto";
         state.userContentBar = "Auto";
         refreshAutoDisplayProfile();
