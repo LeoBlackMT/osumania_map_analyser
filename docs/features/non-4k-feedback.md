@@ -72,6 +72,7 @@ mma.feedback.v1.<bid>.<rate>.<target_side>
 - 签名版本：
   - 4K / 旧客户端：`v1`，与既有后端逐字节兼容；
   - 6K/7K：`v2`，末尾追加 `|target_side`。
+- 算法白名单：`is_allowed_selected` / `is_allowed_actual` 必须与 `backend/internal/spec/spec.go` 的 `AllowedAlgorithms` / `AllowedActualAlgorithms` / `CapsuleAliases` 保持一致。7K 的 `Polaris`（Mixed 在 7K 的固定 actual）与 Mixed 融合别名（`Roxy+XDC1`、`XDC1+Azusa`）必须放行，否则壳会在签名前返回 422 `bad_algorithm`（issue #133）。
 - 壳仍在 native 快照上重算 `bid/checksum/rate/mods/hits/weight`；页面只报告需要校验的标签和展示值。
 
 ## 4. 后端
@@ -119,14 +120,14 @@ mma.feedback.v1.<bid>.<rate>.<target_side>
   - 6K LN 显示且 target side = LN；
   - 7K 双标签先问一侧，标记该侧后下一次问另一侧；两侧都标记后返回 `dedup`；
   - 本地去重按侧隔离，4K 旧键仍命中。
-- 壳：`build_sign_string` v1/v2 测试；v2 末尾 side；反馈 mods/rate 既有测试。
+- 壳：`build_sign_string` v1/v2 测试；v2 末尾 side；反馈 mods/rate 既有测试；算法白名单覆盖全部估算器（含 7K `Polaris` 与 Mixed 融合别名 `Roxy+XDC1` / `XDC1+Azusa`）。
 - 后端：`ValidateStatic` 覆盖 4K 旧条件、6K LN、缺 side、坏 mode、4K 错 side；v2 sign string 测试；同一安装的 RC + LN 两次提交均落库，同侧重复仍去重。
 - 目标：`cargo test --lib`、`go test -count=1 ./internal/feedback ./internal/store` 全绿；4K 载荷 byte-identical。
 
 ## 8. 维护
 
 - 新增键数支持时：同步 `SUPPORTED_FEEDBACK_KEYS`、壳/后端 key 校验、`ALLOWED_MODE_TAGS_6K7K`、`ALLOWED_TARGET_SIDES` 和本文档。
-- 新增算法时：只把它加入 `actualEstimatorAlgorithm` 白名单；不要改变 4K 的 RC gate。
+- 新增算法时：同步 `backend/internal/spec/spec.go` 的 `AllowedAlgorithms` / `AllowedActualAlgorithms` / `CapsuleAliases`、页面 `telemetrySpec.js` 与壳 `desktop/src/feedback/mod.rs` 的白名单；不要改变 4K 的 RC gate。
 - side 选择算法若改变，必须同步页面/壳/文档，并保证同一次结算稳定、两侧都能被覆盖；否则会重复提问或永远漏掉一侧。
 - 后端新增字段必须同时更新 SQLite schema、迁移、`RefreshAll` 聚合、CSV/管理页和测试。
 
