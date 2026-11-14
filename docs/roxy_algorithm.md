@@ -104,7 +104,7 @@ Notes within `2 ms` are merged into one row. Each row stores:
 - `dtSame[c]`: interval from previous note in column `c`
 - `dtHand[h]`: interval from previous active row on hand `h`
 - `handMask[h]`: active mask for each hand
-- `nps250`, `nps500`, `nps1000`, `nps4000`: rolling density windows
+- `nps1000`, `nps4000`: rolling density windows consumed by the stamina feature (the former 250/500ms windows were computed but never read and were removed)
 
 Hand split is fixed as columns `0-1` for left hand and `2-3` for right hand.
 
@@ -531,8 +531,8 @@ Since v2.0.2, Roxy applies a **marathon duration correction** inside the estimat
 
 Let `N` be the number of tap notes and `R` the number of merged rows.
 
-- parsing and row construction: `O(N)`
-- rolling NPS windows: `O(R)` with two pointers
+- parsing and row construction: `O(N)`; the Sunny/Daniel/Azusa reference chain shares one parsed instance (read-only; Sunny clones it only when IN/HO conversion is requested) instead of parsing the same canonical text three times
+- rolling NPS windows: `O(R)` with two pointers (only the consumed 1000/4000ms windows are computed)
 - entropy windows: `O(R)` with bounded mask tables
 - strain update and aggregation: `O(R)`
 - meta feature build and ridge evaluation: bounded by fixed feature count

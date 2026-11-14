@@ -55,7 +55,7 @@ function hitWindowUnit() {
 }
 
 // 分段常数 f 在 [x[i]-window, x[i]+window] 上的积分，裁剪到 x 的范围；windowSum 乘 scale。
-function windowIntegral(x, f, window) {
+function windowIntegral(x, f, window, scale = 1.0) {
     const n = x.length;
     const out = zeros(n);
     if (n < 2) return out;
@@ -70,20 +70,22 @@ function windowIntegral(x, f, window) {
         while (cb < n && x[cb] < b) cb += 1;
         const ia = ca ? ca - 1 : 0;
         const ib = cb ? cb - 1 : 0;
-        out[i] = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+        const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+        out[i] = scale * integral;
     }
     return out;
 }
 
 function windowSum(x, f, window, scale) {
-    const out = windowIntegral(x, f, window);
-    for (let i = 0; i < out.length; i += 1) out[i] *= scale;
-    return out;
+    return windowIntegral(x, f, window, scale);
 }
 
 function windowAvg(x, f, window) {
     const n = x.length;
-    const out = windowIntegral(x, f, window);
+    const out = zeros(n);
+    if (n < 2) return out;
+    const prefix = zeros(n);
+    for (let i = 1; i < n; i += 1) prefix[i] = prefix[i - 1] + f[i - 1] * (x[i] - x[i - 1]);
     let ca = 0;
     let cb = 0;
     for (let i = 0; i < n; i += 1) {
@@ -91,8 +93,11 @@ function windowAvg(x, f, window) {
         const b = clamp(x[i] + window, x[0], x[n - 1]);
         while (ca < n && x[ca] < a) ca += 1;
         while (cb < n && x[cb] < b) cb += 1;
+        const ia = ca ? ca - 1 : 0;
+        const ib = cb ? cb - 1 : 0;
+        const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
         const span = b - a;
-        out[i] = span > 0.0 ? out[i] / span : 0.0;
+        out[i] = span > 0.0 ? integral / span : 0.0;
     }
     return out;
 }
@@ -330,22 +335,19 @@ function groupStrokes(handNotes) {
     return strokes;
 }
 
-// note i 周围的重复程度：1 减去最佳 lag 的缺失比例，再减去 lag 代价。
-function noteConsistency(noteTimes, noteColumns, i) {
+// 每个 lag 的 miss 项只依赖 (q, p)：按 p 逐轮全局算一次，再让每个音符按原顺序
+// 对窗口内项求和。求和顺序与逐音符现算完全一致（位级等价），但 sqrt/smoothstep
+// 从 O(n·P·W) 次降为 O(n·P) 次；只保留一条 terms 缓冲，避免 12 份 n 长数组。
+function noteConsistencyAll(noteTimes, noteColumns) {
     const n = noteTimes.length;
-    const a = i >= MANIP_WINDOW ? i - MANIP_WINDOW : 0;
-    const b = Math.min(n, i + MANIP_WINDOW + 1);
-    let best = 0.0;
+    const out = new Float64Array(n);
+    const terms = new Float64Array(n);
     for (let p = 1; p <= MANIP_PERIOD_MAX; p += 1) {
-        if (b < a + p + 4) break;
-        let miss = 0.0;
-        let count = 0;
-        for (let q = a; q + p < b; q += 1) {
-            if (q + p + 1 >= b) break;
+        const lastTermQ = n - p - 2;
+        for (let q = 0; q <= lastTermQ; q += 1) {
             if (noteColumns[q] !== noteColumns[q + p]
                 || noteColumns[q + 1] !== noteColumns[q + p + 1]) {
-                miss += 1.0;
-                count += 1;
+                terms[q] = 1.0;
                 continue;
             }
             const g1 = noteTimes[q + 1] - noteTimes[q];
@@ -353,13 +355,24 @@ function noteConsistency(noteTimes, noteColumns, i) {
             const med = 0.5 * (g1 + g2);
             const tol = Math.sqrt(MANIP_PACE * med * MANIP_PACE * med
                 + MANIP_PACE_FLOOR_MS * MANIP_PACE_FLOOR_MS);
-            miss += smoothstep01(Math.abs(g1 - g2) / tol);
-            count += 1;
+            terms[q] = smoothstep01(Math.abs(g1 - g2) / tol);
         }
-        if (count <= 0) continue;
-        best = Math.max(best, 1.0 - miss / count - MANIP_PERIOD_COST * (p - 1));
+        const periodCost = MANIP_PERIOD_COST * (p - 1);
+        for (let i = 0; i < n; i += 1) {
+            const a = i >= MANIP_WINDOW ? i - MANIP_WINDOW : 0;
+            const b = Math.min(n, i + MANIP_WINDOW + 1);
+            if (b < a + p + 4) continue;
+            const lastQ = b - p - 2;
+            let miss = 0.0;
+            for (let q = a; q <= lastQ; q += 1) {
+                miss += terms[q];
+            }
+            const count = lastQ + 1 - a;
+            const value = 1.0 - (miss / count) - periodCost;
+            if (value > out[i]) out[i] = value;
+        }
     }
-    return best;
+    return out;
 }
 
 // 每个 stroke 的 consistency：其音符的平均值，按双手合并后的序列读取。
@@ -385,9 +398,10 @@ function strokeConsistency(handNotesByHand, strokesByHand) {
     }
     const noteTimes = all.map((event) => event.t);
     const noteColumns = all.map((event) => event.c);
+    const consistency = noteConsistencyAll(noteTimes, noteColumns);
     const per = [zeros(handNotesByHand[0].length), zeros(handNotesByHand[1].length)];
     for (let e = 0; e < all.length; e += 1) {
-        per[all[e].h][all[e].q] = noteConsistency(noteTimes, noteColumns, e);
+        per[all[e].h][all[e].q] = consistency[e];
     }
     const out = [];
     for (let h = 0; h < 2; h += 1) {
@@ -922,7 +936,7 @@ const LN_W = 3.997;
 const LN_X = 1.3275;
 
 // 音符按 (h,k) 排序、非负 ms 且已应用速率；同列 DUP_MS 内重复的音符合并到前一个。
-function analyse(notes) {
+function analyse(notes, withGraph = false) {
     const sequence = [];
     const last = [-1, -1, -1, -1];
     for (const note of notes) {
@@ -963,7 +977,8 @@ function analyse(notes) {
             if (l > 0.0) strain[h][i] += LN_W * Math.pow(l, LN_X);
         }
     }
-    const rested = strain.map((values) => values.slice());
+    // 图表曲线用的是体力前的 strain 快照；不需要图时跳过复制与整套曲线计算。
+    const rested = withGraph ? strain.map((values) => values.slice()) : null;
 
     // 体力（每只手）。
     const weights = [noteWeights(grid, byHand[0]), noteWeights(grid, byHand[1])];
@@ -973,7 +988,7 @@ function analyse(notes) {
     const rows = buildRows(sequence);
     const sync = handSync(able, rows, grid);
     const combined = combineHands(strain, sync);
-    const graph = combineHands(rested, sync).map(strainPoints);
+    const graph = withGraph ? combineHands(rested, sync).map(strainPoints) : [];
 
     const overallWeights = noteWeights(grid, sequence);
     const totalNotes = sequence.length;
@@ -1156,7 +1171,7 @@ export function runXdc1EstimatorFromText(osuText, options = {}, parsed = null) {
         return unsupportedResult(columnCount, lnRatio, "too few notes");
     }
 
-    const analysis = analyse(notes);
+    const analysis = analyse(notes, withGraph);
     const rating = Number(analysis.rating);
     if (!Number.isFinite(rating)) {
         return unsupportedResult(columnCount, lnRatio, "calculation failed");

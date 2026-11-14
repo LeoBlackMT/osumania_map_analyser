@@ -204,22 +204,20 @@ function resolveRoxyXdc1RcOutcome(osuText, options, parsed, roxyResult) {
     if (!Number.isFinite(roxyNumeric) || hasActiveMarathonCorrection(options, roxyNumeric)) {
         return null;
     }
-    // 先关闭图曲线试算 XDC1；仅在分歧 >= 0.50 且切向纯 XDC1 时再按需生成 XDC1 图表。
-    const preview = tryRunXdc1Fallback(osuText, { ...options, withGraph: false }, parsed);
+    // 预览按调用方所需图模式直接跑一次 XDC1：切向 XDC1 时可直接复用，
+    // 融合时最多多算一条（已跳过无关 graph 计算的）曲线，避免整遍重算。
+    const preview = tryRunXdc1Fallback(osuText, { ...options, withGraph: options?.withGraph === true }, parsed);
     if (!canUseXdc1RcResult(preview)) {
         return null;
     }
     const xdc1Numeric = resultNumericValue(preview);
     if (isDeltaAtLeast(Math.abs(xdc1Numeric - roxyNumeric), XDC1_RC_DISCREPANCY_MIN_DELTA)) {
-        const selectedXdc1 = options?.withGraph === true
-            ? (tryRunXdc1Fallback(osuText, options, parsed) || preview)
-            : preview;
         return {
-            selectedRework: selectedXdc1,
+            selectedRework: preview,
             actualAlgorithm: "XDC1",
-            estDiff: selectedXdc1.estDiff,
-            numericDifficulty: selectedXdc1.numericDifficulty,
-            numericDifficultyHint: selectedXdc1.numericDifficultyHint,
+            estDiff: preview.estDiff,
+            numericDifficulty: preview.numericDifficulty,
+            numericDifficultyHint: preview.numericDifficultyHint,
         };
     }
     return buildFusedRcOutcome(roxyResult, xdc1Numeric, roxyNumeric, "Roxy+XDC1");

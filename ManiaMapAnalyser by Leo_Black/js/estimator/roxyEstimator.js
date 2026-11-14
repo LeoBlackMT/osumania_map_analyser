@@ -20,7 +20,7 @@ const ROXY_CONFIG = Object.freeze({
     minNotes: 80,
     rowToleranceMs: 2,
     entropyWindowMs: 750,
-    npsWindowsMs: Object.freeze([250, 500, 1000, 4000]),
+    npsWindowsMs: Object.freeze([1000, 4000]),
     sectionMs: 400,
     sectionDecay: 0.9,
     sectionEmaAlpha: 0.15,
@@ -549,14 +549,16 @@ function computeNpsRows(rows, tapTimes) {
             end += 1;
         }
 
-        row.nps = {};
+        // 只保留下游实际消费的两个窗口（1000 / 4000ms）；避免每行分配 nps 对象。
         for (let w = 0; w < windows.length; w += 1) {
             const windowMs = windows[w];
             const minTime = row.t - windowMs;
             while (starts[w] < tapTimes.length && tapTimes[starts[w]] <= minTime) {
                 starts[w] += 1;
             }
-            row.nps[windowMs] = (end - starts[w]) / (windowMs / 1000);
+            const value = (end - starts[w]) / (windowMs / 1000);
+            if (windowMs === 1000) row.nps1000 = value;
+            else row.nps4000 = value;
         }
     }
 }
@@ -781,8 +783,8 @@ function computeRoxyCurve(rows, taps, activity) {
             + (0.24 * transitionEntropy750)
             + (0.20 * (row.mask !== prevMask ? 1 : 0));
         const maxHandStamina = Math.max(handStamina[0], handStamina[1]);
-        const staminaIn = (0.40 * Math.log1p(row.nps[1000] || 0) / Math.log(24))
-            + (0.35 * Math.log1p(row.nps[4000] || 0) / Math.log(24))
+        const staminaIn = (0.40 * Math.log1p(row.nps1000 || 0) / Math.log(24))
+            + (0.35 * Math.log1p(row.nps4000 || 0) / Math.log(24))
             + (0.25 * maxHandStamina);
         const courseIn = staminaIn
             * gate(activity.activeDurationSec, 90, 300)
@@ -814,16 +816,6 @@ function computeRoxyCurve(rows, taps, activity) {
             raw += ROXY_CONFIG.streamWeights[name] * streams[name][streams[name].length - 1];
         }
         localRaw.push(raw);
-
-        row.metrics = {
-            rowChord,
-            sameHandOverlap,
-            rotation,
-            entropy750,
-            transitionEntropy750,
-            anchorRow,
-            localRaw: raw,
-        };
 
         for (let c = 0; c < 4; c += 1) {
             if ((row.mask & (1 << c)) !== 0) {
@@ -1174,11 +1166,23 @@ function stabilizeHighReferencePredictions(predictions, structuralNumeric) {
     return stabilized;
 }
 
-function buildReferencePredictions(osuText, options, structuralNumeric) {
+function buildReferencePredictions(osuText, options, structuralNumeric, parsed = null) {
     const wantsGraph = options?.withGraph === true;
     const referenceOptions = {
         ...options,
         withGraph: false,
+    };
+
+    // 三个参照估计器共享同一份已解析谱面：Sunny/Daniel 只读，Azusa 只读；
+    // Sunny 的 IN/HO 转换在 calculateSunny 内部克隆 parser，不会污染共享实例。
+    // 只有真正需要重新解析时才构造（precomputed 结果可跳过对应解析）。
+    let referenceParser = parsed;
+    const ensureReferenceParser = () => {
+        if (referenceParser == null) {
+            referenceParser = new OsuFileParser(osuText);
+            referenceParser.process();
+        }
+        return referenceParser;
     };
 
     const precomputedSunnyResult = options?.precomputedSunnyResult || null;
@@ -1188,14 +1192,14 @@ function buildReferencePredictions(osuText, options, structuralNumeric) {
         : safeReference(() => runSunnyEstimatorFromText(osuText, {
             ...referenceOptions,
             withGraph: wantsGraph,
-        }));
-    const danielResult = precomputedDanielResult || safeReference(() => runDanielEstimatorFromText(osuText, referenceOptions));
+        }, ensureReferenceParser()));
+    const danielResult = precomputedDanielResult || safeReference(() => runDanielEstimatorFromText(osuText, referenceOptions, ensureReferenceParser()));
     const azusaResult = safeReference(() => runAzusaEstimatorFromText(osuText, {
         ...referenceOptions,
         withGraph: wantsGraph,
         precomputedSunnyResult: sunnyResult,
         precomputedDanielResult: danielResult,
-    }));
+    }, ensureReferenceParser()));
     const predictions = stabilizeHighReferencePredictions({
         Azusa: resultNumeric(azusaResult),
         Sunny: resultNumeric(sunnyResult),
@@ -1347,8 +1351,8 @@ function buildRoxyMetaFeatures(referencePredictions, numericDetails, curve, stru
     return ROXY_META_FEATURE_NAMES.map((name) => toFeatureNumber(map[name]));
 }
 
-function computeRoxyMetaNumeric(osuText, options, numericDetails, curve, structuralNumeric) {
-    const referenceDetails = buildReferencePredictions(osuText, options, structuralNumeric);
+function computeRoxyMetaNumeric(osuText, options, numericDetails, curve, structuralNumeric, parsed = null) {
+    const referenceDetails = buildReferencePredictions(osuText, options, structuralNumeric, parsed);
     const referencePredictions = referenceDetails.predictions;
     const features = buildRoxyMetaFeatures(referencePredictions, numericDetails, curve, structuralNumeric);
     const metaNumeric = evaluateRoxyMetaModel(features);
@@ -1547,7 +1551,10 @@ export function runRoxyEstimatorFromText(osuText, options = {}, parsed = null) {
                 ? options.precomputedSunnyResult
                 : null,
         };
-        const metaDetails = computeRoxyMetaNumeric(analysisText, metaOptions, numericDetails, curve, structuralNumeric);
+        // 参照链共享解析：Roxy 自己从 analysisText 新建且未做 IN/HO 转换的
+        // parser 可直接复用；否则 buildReferencePredictions 会惰性解析一次。
+        const referenceParser = (!canShareParsed && cvt == null) ? parser : null;
+        const metaDetails = computeRoxyMetaNumeric(analysisText, metaOptions, numericDetails, curve, structuralNumeric, referenceParser);
         const referenceDanielResult = metaDetails.referenceDanielResult ?? null;
         const metaNumeric = Number(metaDetails.metaNumeric);
         let baseUnguardedNumeric = Number.isFinite(metaNumeric) ? metaNumeric : structuralNumeric;
