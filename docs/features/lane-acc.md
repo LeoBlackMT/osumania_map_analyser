@@ -244,6 +244,9 @@ Stable 不是“内存里没有逐 note 信息”，而是需要读 `Score` 与 
 - **MR**：原始帧的 keys 位掩码和游戏 per-note 事件的列都按 MR 镜像回谱面原始列后再计算。
 - **RD**：Stable 没有可读种子，整模块禁用；Lazer 从 `ScoreInfo.ModsJson.settings.seed` 读实际种子，
   用 `ManiaModRandom` 的 .NET seeded `System.Random` 列置换还原任意键数（4K–18K）。
+  LaneAcc 的 chart 必须在进入 play/回放前完成 RD 重排；原始帧 keys 与游戏列一致，直接交给 SV1。
+  `startSession` 会再次确认 RD 映射，避免谱面分析早于 mods/seed 包时 chart 仍停在原始列，出现
+  “分轨正常、ScoreV1 错位”。
   回放播放时 `Player.Score` 是 `LegacyDatabasedScore` 子类，壳按 `osu.Game.Scoring.*Score`
   匹配并在结算屏从 `ResultsScreen.Score` 的 `ScoreInfo.ModsJson` 再读一次，避免回放局丢 mods/seed。
   实测 4K `Dan ~ REFORM ~ JackMap Pack [Break ~ Gamma ~ (Marathon)]` RD（seed 1226698903）：

@@ -811,6 +811,8 @@ export const laneAccView = (() => {
 
     /** 进入 play：采纳 pending 谱面并清空本局。 */
     function startSession() {
+        // 新一局的方向取当前 client；不能沿用上一局结算时的 sessionScoreMode。
+        sessionScoreMode = resolveScoreMode();
         if (randomModBlocked()) {
             showError("random");
             return false;
@@ -819,10 +821,12 @@ export const laneAccView = (() => {
         if (!chart) {
             return false;
         }
+        // 谱面分析可能早于 RD/seed 的 mods 包到达；进入 play 时再确认一次，
+        // 保证 chart 与接下来的 native 事件/原始帧使用同一套 RD 列。
+        applyRandomColumns(chart);
         pendingChart = chart;
         sessionActive = true;
         hasResult = false;
-        sessionScoreMode = resolveScoreMode();
         frozenTopSnapshot = null;
         allEvents = false;
         hitEvents = [];
