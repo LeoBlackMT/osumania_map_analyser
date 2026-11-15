@@ -170,7 +170,13 @@ worker 端处理（compute.worker.js:21-37）：
 
 **SunnyWindow 复用（2026-11-12 perf）**：`runSunnyWindowEstimatorFromText` 新增可选 `options.precomputedSunnyResult`（与 Azusa/Roxy/Mixed 同构）。pipeline 在 `normalizationSunnyResult` / `sharedSunnyResult` 可用、且 `classicMod !== true` 时传入；`Sunny/Companella` 路径直接复用 `selectedRework`（其本身就是 Sunny 结果）。SunnyWindow 只读取 `star/lnRatio/columnCount/graph`，因此跳过内部 `calculateSunny`、仅跑 `calculateLN` 是逐位等价的；`classicMod=true` 时 `runSunnyEstimatorFromText` 会传 `classicMod` 而 SunnyWindow 不传，必须退回原路径。`withGraph=true` 时要求复用的 Sunny 带 `graph`，否则退回内部计算。
 
-**Mixed→Roxy 的 reference Daniel 复用（2026-11-12 perf）**：Mixed 调用 Roxy 时传 `includeReferenceResults: true`，Roxy 在 `debug.meta.referenceDanielResult` 暴露一个 compact Daniel（star/lnRatio/columnCount/estDiff/numeric/hint）。R2 routing Azusa、R4 BelowScope Azusa 与 Daniel fallback 直接复用它，避免重复 Daniel；Roxy 默认调用（未传 `includeReferenceResults`）输出与 debug 完全不变。OD9 且非 graph/非 cvt/非 classic/rate=1 时，Roxy 还会复用 caller 的 `precomputedSunnyResult` 作为内部 Azusa 的 Sunny 输入（`metaOptions` 条件化），其余情况保持 `null`。
+**Mixed→Roxy 的 reference Daniel 复用（2026-11-12 perf）**：Mixed 调用 Roxy 时传 `includeReferenceResults: true`，Roxy 在 `debug.meta.referenceDanielResult` 暴露一个 compact Daniel（star/lnRatio/columnCount/estDiff/numeric/hint）。R2 routing Azusa 与 Daniel fallback 直接复用它；Roxy 默认调用（未传 `includeReferenceResults`）输出与 debug 完全不变。⚠️ R4 BelowScope 的 scope result 目前把 compact Daniel 放在 `debug.referenceDanielResult`（无 `debug.meta`），因此该分支仍会重算 Daniel——修 shape 前不要把它算作已复用。OD9 且非 graph/非 cvt/非 classic/rate=1 时，Roxy 还会复用 caller 的 `precomputedSunnyResult` 作为内部 Azusa 的 Sunny 输入（`metaOptions` 条件化），其余情况保持 `null`。
+
+**Roxy 参照链共享解析 + NPS/行数据清理（2026-11-14 perf）**：`buildReferencePredictions` 现在接收一个可选的已解析实例；Roxy 自己从 canonical `analysisText` 新建且未做 IN/HO 转换的 parser 会直接传给 Sunny/Daniel/Azusa（三者只读；Sunny 的 IN/HO 转换在 `calculateSunny` 内部 clone），否则惰性解析一次。此前 standalone Roxy 会为三个参照各解析一次。`computeNpsRows` 只计算实际被 stamina 特征消费的 1000/4000ms 窗口，`row.nps` 对象与从未被读取的 `row.metrics` 对象不再逐行分配。1455 张本地 benchmark 谱面 A/B：输出（含 graph 位级指纹）0 diff。
+
+**XDC1 图曲线按需计算 + consistency 项缓存（2026-11-14 perf）**：`analyse(notes, withGraph)` 只在 `withGraph=true` 时复制体力前 strain、合并双手并映射 `strainPoints`；`noteConsistency` 的每 lag miss 项按 `(q,p)` 预计算一次，窗口内仍按原 q 顺序求和（位级等价），把 `sqrt/smoothstep` 从 `O(n·P·W)` 降到 `O(n·P)`。Mixed 的 R3' 预检在调用方需要 graph 时直接生成图并复用，避免切向 XDC1 后的整遍重算。1455 张谱面 A/B（graph 开/关 1x；1.3x 无 graph）0 diff。
+
+**2026-11-15 perf follow-up**：XDC1 固定长度数值缓冲改为 `Float64Array`，多曲线窗口积分/平均共享 ca/cb 扫描，列/手归并替代 sort；Roxy 的 streams/localRaw/dt/entropy 缓冲改为按行预分配，`summarizeStream`/`quantile` 使用 typed-array 原生排序。1473 张谱面公平 A/B（XDC1/Roxy/Mixed，graph 开/关；XDC1 1.3x）0 字段 diff；300 图 pipeline smoke 0 diff。
 
 **Polaris（表修正：7K 的 RC+LN；4K/6K 回退 Sunny）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 

@@ -23,7 +23,9 @@ const LN_TAP_MS = 80.0;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 function zeros(size) {
-    return new Array(size).fill(0.0);
+    // Fixed-size numeric buffers are all consumed by index; Float64Array avoids
+    // boxing every zero and keeps the hot window/curve loops monomorphic.
+    return new Float64Array(size);
 }
 
 function lowerBound(sorted, value) {
@@ -55,7 +57,7 @@ function hitWindowUnit() {
 }
 
 // 分段常数 f 在 [x[i]-window, x[i]+window] 上的积分，裁剪到 x 的范围；windowSum 乘 scale。
-function windowIntegral(x, f, window) {
+function windowIntegral(x, f, window, scale = 1.0) {
     const n = x.length;
     const out = zeros(n);
     if (n < 2) return out;
@@ -70,20 +72,31 @@ function windowIntegral(x, f, window) {
         while (cb < n && x[cb] < b) cb += 1;
         const ia = ca ? ca - 1 : 0;
         const ib = cb ? cb - 1 : 0;
-        out[i] = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+        const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+        out[i] = scale * integral;
     }
     return out;
 }
 
 function windowSum(x, f, window, scale) {
-    const out = windowIntegral(x, f, window);
-    for (let i = 0; i < out.length; i += 1) out[i] *= scale;
-    return out;
+    return windowIntegral(x, f, window, scale);
 }
 
-function windowAvg(x, f, window) {
+// 同一 grid/window 上的一次 ca/cb 扫描服务多条曲线；每条曲线的前缀和与积分
+// 仍按原顺序独立计算，因此结果与逐条调用 windowIntegral 位级一致。
+function windowIntegrals(x, fs, window, scales) {
     const n = x.length;
-    const out = windowIntegral(x, f, window);
+    const count = fs.length;
+    const outs = new Array(count);
+    for (let j = 0; j < count; j += 1) outs[j] = zeros(n);
+    if (n < 2) return outs;
+    const prefixes = new Array(count);
+    for (let j = 0; j < count; j += 1) {
+        const prefix = zeros(n);
+        const f = fs[j];
+        for (let i = 1; i < n; i += 1) prefix[i] = prefix[i - 1] + f[i - 1] * (x[i] - x[i - 1]);
+        prefixes[j] = prefix;
+    }
     let ca = 0;
     let cb = 0;
     for (let i = 0; i < n; i += 1) {
@@ -91,8 +104,69 @@ function windowAvg(x, f, window) {
         const b = clamp(x[i] + window, x[0], x[n - 1]);
         while (ca < n && x[ca] < a) ca += 1;
         while (cb < n && x[cb] < b) cb += 1;
+        const ia = ca ? ca - 1 : 0;
+        const ib = cb ? cb - 1 : 0;
+        for (let j = 0; j < count; j += 1) {
+            const prefix = prefixes[j];
+            const f = fs[j];
+            const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+            outs[j][i] = scales[j] * integral;
+        }
+    }
+    return outs;
+}
+
+function windowAverages(x, fs, window) {
+    const n = x.length;
+    const count = fs.length;
+    const outs = new Array(count);
+    for (let j = 0; j < count; j += 1) outs[j] = zeros(n);
+    if (n < 2) return outs;
+    const prefixes = new Array(count);
+    for (let j = 0; j < count; j += 1) {
+        const prefix = zeros(n);
+        const f = fs[j];
+        for (let i = 1; i < n; i += 1) prefix[i] = prefix[i - 1] + f[i - 1] * (x[i] - x[i - 1]);
+        prefixes[j] = prefix;
+    }
+    let ca = 0;
+    let cb = 0;
+    for (let i = 0; i < n; i += 1) {
+        const a = clamp(x[i] - window, x[0], x[n - 1]);
+        const b = clamp(x[i] + window, x[0], x[n - 1]);
+        while (ca < n && x[ca] < a) ca += 1;
+        while (cb < n && x[cb] < b) cb += 1;
+        const ia = ca ? ca - 1 : 0;
+        const ib = cb ? cb - 1 : 0;
         const span = b - a;
-        out[i] = span > 0.0 ? out[i] / span : 0.0;
+        for (let j = 0; j < count; j += 1) {
+            const prefix = prefixes[j];
+            const f = fs[j];
+            const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+            outs[j][i] = span > 0.0 ? integral / span : 0.0;
+        }
+    }
+    return outs;
+}
+
+function windowAvg(x, f, window) {
+    const n = x.length;
+    const out = zeros(n);
+    if (n < 2) return out;
+    const prefix = zeros(n);
+    for (let i = 1; i < n; i += 1) prefix[i] = prefix[i - 1] + f[i - 1] * (x[i] - x[i - 1]);
+    let ca = 0;
+    let cb = 0;
+    for (let i = 0; i < n; i += 1) {
+        const a = clamp(x[i] - window, x[0], x[n - 1]);
+        const b = clamp(x[i] + window, x[0], x[n - 1]);
+        while (ca < n && x[ca] < a) ca += 1;
+        while (cb < n && x[cb] < b) cb += 1;
+        const ia = ca ? ca - 1 : 0;
+        const ib = cb ? cb - 1 : 0;
+        const integral = (prefix[ib] + f[ib] * (b - x[ib])) - (prefix[ia] + f[ia] * (a - x[ia]));
+        const span = b - a;
+        out[i] = span > 0.0 ? integral / span : 0.0;
     }
     return out;
 }
@@ -330,22 +404,19 @@ function groupStrokes(handNotes) {
     return strokes;
 }
 
-// note i 周围的重复程度：1 减去最佳 lag 的缺失比例，再减去 lag 代价。
-function noteConsistency(noteTimes, noteColumns, i) {
+// 每个 lag 的 miss 项只依赖 (q, p)：按 p 逐轮全局算一次，再让每个音符按原顺序
+// 对窗口内项求和。求和顺序与逐音符现算完全一致（位级等价），但 sqrt/smoothstep
+// 从 O(n·P·W) 次降为 O(n·P) 次；只保留一条 terms 缓冲，避免 12 份 n 长数组。
+function noteConsistencyAll(noteTimes, noteColumns) {
     const n = noteTimes.length;
-    const a = i >= MANIP_WINDOW ? i - MANIP_WINDOW : 0;
-    const b = Math.min(n, i + MANIP_WINDOW + 1);
-    let best = 0.0;
+    const out = new Float64Array(n);
+    const terms = new Float64Array(n);
     for (let p = 1; p <= MANIP_PERIOD_MAX; p += 1) {
-        if (b < a + p + 4) break;
-        let miss = 0.0;
-        let count = 0;
-        for (let q = a; q + p < b; q += 1) {
-            if (q + p + 1 >= b) break;
+        const lastTermQ = n - p - 2;
+        for (let q = 0; q <= lastTermQ; q += 1) {
             if (noteColumns[q] !== noteColumns[q + p]
                 || noteColumns[q + 1] !== noteColumns[q + p + 1]) {
-                miss += 1.0;
-                count += 1;
+                terms[q] = 1.0;
                 continue;
             }
             const g1 = noteTimes[q + 1] - noteTimes[q];
@@ -353,25 +424,52 @@ function noteConsistency(noteTimes, noteColumns, i) {
             const med = 0.5 * (g1 + g2);
             const tol = Math.sqrt(MANIP_PACE * med * MANIP_PACE * med
                 + MANIP_PACE_FLOOR_MS * MANIP_PACE_FLOOR_MS);
-            miss += smoothstep01(Math.abs(g1 - g2) / tol);
-            count += 1;
+            terms[q] = smoothstep01(Math.abs(g1 - g2) / tol);
         }
-        if (count <= 0) continue;
-        best = Math.max(best, 1.0 - miss / count - MANIP_PERIOD_COST * (p - 1));
+        const periodCost = MANIP_PERIOD_COST * (p - 1);
+        for (let i = 0; i < n; i += 1) {
+            const a = i >= MANIP_WINDOW ? i - MANIP_WINDOW : 0;
+            const b = Math.min(n, i + MANIP_WINDOW + 1);
+            if (b < a + p + 4) continue;
+            const lastQ = b - p - 2;
+            let miss = 0.0;
+            for (let q = a; q <= lastQ; q += 1) {
+                miss += terms[q];
+            }
+            const count = lastQ + 1 - a;
+            const value = 1.0 - (miss / count) - periodCost;
+            if (value > out[i]) out[i] = value;
+        }
     }
-    return best;
+    return out;
 }
 
 // 每个 stroke 的 consistency：其音符的平均值，按双手合并后的序列读取。
 function strokeConsistency(handNotesByHand, strokesByHand) {
     const all = [];
-    for (let h = 0; h < 2; h += 1) {
-        for (let q = 0; q < handNotesByHand[h].length; q += 1) {
-            const note = handNotesByHand[h][q];
-            all.push({ t: note.t, c: 2 * h + note.f, h, q });
+    const left = handNotesByHand[0];
+    const right = handNotesByHand[1];
+    let li = 0;
+    let ri = 0;
+    while (li < left.length && ri < right.length) {
+        // Each hand list is already sorted by (t, f); left-hand columns have
+        // lower c, so on equal t the left event must come first.
+        if (left[li].t <= right[ri].t) {
+            all.push({ t: left[li].t, c: left[li].f, h: 0, q: li });
+            li += 1;
+        } else {
+            all.push({ t: right[ri].t, c: 2 + right[ri].f, h: 1, q: ri });
+            ri += 1;
         }
     }
-    all.sort((a, b) => (a.t !== b.t ? a.t - b.t : a.c - b.c));
+    while (li < left.length) {
+        all.push({ t: left[li].t, c: left[li].f, h: 0, q: li });
+        li += 1;
+    }
+    while (ri < right.length) {
+        all.push({ t: right[ri].t, c: 2 + right[ri].f, h: 1, q: ri });
+        ri += 1;
+    }
     // 相距 MANIP_FLAM_MS 内的音符共享组首时间，列按顺序排列。
     for (let e = 0; e < all.length;) {
         let f = e + 1;
@@ -385,9 +483,10 @@ function strokeConsistency(handNotesByHand, strokesByHand) {
     }
     const noteTimes = all.map((event) => event.t);
     const noteColumns = all.map((event) => event.c);
+    const consistency = noteConsistencyAll(noteTimes, noteColumns);
     const per = [zeros(handNotesByHand[0].length), zeros(handNotesByHand[1].length)];
     for (let e = 0; e < all.length; e += 1) {
-        per[all[e].h][all[e].q] = noteConsistency(noteTimes, noteColumns, e);
+        per[all[e].h][all[e].q] = consistency[e];
     }
     const out = [];
     for (let h = 0; h < 2; h += 1) {
@@ -538,14 +637,25 @@ function wristCost(handNotes, strokes, consistency, otherTimes, grid) {
         addSpan(rateManip, grid, strokes.t[i], strokes.t[i + 1], c * (1.0 + Math.pow(off, MANIP_TOL_POW)));
     }
 
-    const cost = techSum(grid, rate).map((value) => value * WRIST_W);
-    const costManip = techSum(grid, rateManip).map((value) => value * WRIST_W);
+    const [rateSum, rateManipSum] = windowIntegrals(
+        grid,
+        [rate, rateManip],
+        TECH_WINDOW_MS,
+        [TECH_SCALE, TECH_SCALE],
+    );
+    const cost = rateSum.map((value) => value * WRIST_W);
+    const costManip = rateManipSum.map((value) => value * WRIST_W);
+    const [ableAvg, manipAvg, jitwAvg] = windowAverages(
+        grid,
+        [able, manipCurve, jitterWeight],
+        WRIST_BLEND_MS,
+    );
     return {
         cost,
         costManip,
-        able: windowAvg(grid, able, WRIST_BLEND_MS),
-        manip: windowAvg(grid, manipCurve, WRIST_BLEND_MS),
-        jitw: windowAvg(grid, jitterWeight, WRIST_BLEND_MS),
+        able: ableAvg,
+        manip: manipAvg,
+        jitw: jitwAvg,
     };
 }
 
@@ -564,12 +674,29 @@ function techniqueStrain(x, byColumn, grid) {
     const strokes = [null, null];
     for (let h = 0; h < 2; h += 1) {
         const list = handNotes[h];
-        for (let c = 2 * h; c < 2 * h + 2; c += 1) {
-            for (const note of byColumn[c]) {
-                list.push({ t: note.h, f: c - 2 * h, tail: note.t });
+        const left = byColumn[2 * h];
+        const right = byColumn[2 * h + 1];
+        let li = 0;
+        let ri = 0;
+        while (li < left.length && ri < right.length) {
+            // Both columns are already sorted by head time; on equal heads the
+            // lower column (f=0) comes first, matching the old (t, f) sort.
+            if (left[li].h <= right[ri].h) {
+                list.push({ t: left[li].h, f: 0, tail: left[li].t });
+                li += 1;
+            } else {
+                list.push({ t: right[ri].h, f: 1, tail: right[ri].t });
+                ri += 1;
             }
         }
-        list.sort((a, b) => (a.t !== b.t ? a.t - b.t : a.f - b.f));
+        while (li < left.length) {
+            list.push({ t: left[li].h, f: 0, tail: left[li].t });
+            li += 1;
+        }
+        while (ri < right.length) {
+            list.push({ t: right[ri].h, f: 1, tail: right[ri].t });
+            ri += 1;
+        }
         strokes[h] = groupStrokes(list);
     }
     const consistency = strokeConsistency(handNotes, strokes);
@@ -812,11 +939,13 @@ function holdCosts(x, byColumn, noteSequence, grid) {
         addSpan(crossStep, grid, t, t + 1.0, 1000.0 * LX_GAIN * accumulated);
     }
 
-    return {
-        rel: windowSum(grid, releaseStep, WINDOW_MS, 0.001),
-        weight: windowSum(grid, weightStep, WINDOW_MS, 0.001),
-        cross: windowSum(grid, crossStep, WINDOW_MS, 0.001),
-    };
+    const [rel, weight, cross] = windowIntegrals(
+        grid,
+        [releaseStep, weightStep, crossStep],
+        WINDOW_MS,
+        [0.001, 0.001, 0.001],
+    );
+    return { rel, weight, cross };
 }
 
 // ── 期望准确率聚合 ──────────────────────────────────────────────────────────
@@ -922,7 +1051,7 @@ const LN_W = 3.997;
 const LN_X = 1.3275;
 
 // 音符按 (h,k) 排序、非负 ms 且已应用速率；同列 DUP_MS 内重复的音符合并到前一个。
-function analyse(notes) {
+function analyse(notes, withGraph = false) {
     const sequence = [];
     const last = [-1, -1, -1, -1];
     for (const note of notes) {
@@ -963,7 +1092,8 @@ function analyse(notes) {
             if (l > 0.0) strain[h][i] += LN_W * Math.pow(l, LN_X);
         }
     }
-    const rested = strain.map((values) => values.slice());
+    // 图表曲线用的是体力前的 strain 快照；不需要图时跳过复制与整套曲线计算。
+    const rested = withGraph ? strain.map((values) => values.slice()) : null;
 
     // 体力（每只手）。
     const weights = [noteWeights(grid, byHand[0]), noteWeights(grid, byHand[1])];
@@ -973,7 +1103,7 @@ function analyse(notes) {
     const rows = buildRows(sequence);
     const sync = handSync(able, rows, grid);
     const combined = combineHands(strain, sync);
-    const graph = combineHands(rested, sync).map(strainPoints);
+    const graph = withGraph ? combineHands(rested, sync).map(strainPoints) : [];
 
     const overallWeights = noteWeights(grid, sequence);
     const totalNotes = sequence.length;
@@ -1156,7 +1286,7 @@ export function runXdc1EstimatorFromText(osuText, options = {}, parsed = null) {
         return unsupportedResult(columnCount, lnRatio, "too few notes");
     }
 
-    const analysis = analyse(notes);
+    const analysis = analyse(notes, withGraph);
     const rating = Number(analysis.rating);
     if (!Number.isFinite(rating)) {
         return unsupportedResult(columnCount, lnRatio, "calculation failed");
