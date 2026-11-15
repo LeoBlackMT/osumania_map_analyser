@@ -176,6 +176,8 @@ worker 端处理（compute.worker.js:21-37）：
 
 **XDC1 图曲线按需计算 + consistency 项缓存（2026-11-14 perf）**：`analyse(notes, withGraph)` 只在 `withGraph=true` 时复制体力前 strain、合并双手并映射 `strainPoints`；`noteConsistency` 的每 lag miss 项按 `(q,p)` 预计算一次，窗口内仍按原 q 顺序求和（位级等价），把 `sqrt/smoothstep` 从 `O(n·P·W)` 降到 `O(n·P)`。Mixed 的 R3' 预检在调用方需要 graph 时直接生成图并复用，避免切向 XDC1 后的整遍重算。1455 张谱面 A/B（graph 开/关 1x；1.3x 无 graph）0 diff。
 
+**2026-11-15 perf follow-up**：XDC1 固定长度数值缓冲改为 `Float64Array`，多曲线窗口积分/平均共享 ca/cb 扫描，列/手归并替代 sort；Roxy 的 streams/localRaw/dt/entropy 缓冲改为按行预分配，`summarizeStream`/`quantile` 使用 typed-array 原生排序。1473 张谱面公平 A/B（XDC1/Roxy/Mixed，graph 开/关；XDC1 1.3x）0 字段 diff；300 图 pipeline smoke 0 diff。
+
 **Polaris（表修正：7K 的 RC+LN；4K/6K 回退 Sunny）不在归一化集合**：其 star 恒为 Sunny sr（7K 生效时与 Sunny 选择同参同文本；其他键数/cvt 回退路径即 Sunny 本体），无归一化调用（分派注释见 runPipeline 分派块）。
 
 **Proj7k（proj7k 7K 物理引擎移植；非 7K 回退 Sunny）同样不在归一化集合**：结果以 Sunny 结果为底，替换 `star`（引擎自有星数，星数胶囊显示该口径，同 Daniel）、`estDiff`、`numericDifficulty` 并附 `debug`，Sunny sr 保留在 `sunnyStar`（ppMetrics 取它）；其他键数/cvt 回退路径即 Sunny 本体。
