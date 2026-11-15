@@ -1,24 +1,28 @@
-// 壳原生端点上"抓谱面文件失败"的**静默重试**策略（Step 9g）。
+// 壳原生端点上"抓谱面文件失败"的**静默重试**策略（Step 9g / issue #132）。
 //
 // 背景（用户报的那条）：游玩结束进入结算界面时，卡片会显示 `Request failed with 404`，
-// 约 2 s 后触发重算又恢复正常。404 来自壳的 24062（读线程正处于**身份保持/停帧**窗口，
+// 约 2 s 后触发重算又恢复正常。404 来自壳的 24062（读线程正处于**身份保持/停帧/重扫**窗口，
 // `/files/beatmap/file` 没有可供奉的当前谱面），而页面把状态码原样渲染上了状态行。
 //
-// 这里只做一件事：对**壳原生端点**的瞬态失败重试**一次**（约 1 s）。理由：
-// 该端点在这一刻没有数据 ≠ 这张谱面的数据不存在——读线程几十秒内就会恢复
-// （`IDENTITY_HOLD_GRACE` / `RECOVERY_CLEAN_FRAMES` 两条窗口都在秒级）。
+// 这里只做一件事：对**壳原生端点**的瞬态失败按阶梯重试（最长约 25 s）。理由：
+// 该端点在这一刻没有数据 ≠ 这张谱面的数据不存在——读取器的 L0 重扫实测 12.6–18.6 s，
+// 而壳的 `READER_GRACE_MS` 抗抖动窗口是 25 s。只重试 1 s 的话，重扫结束前就放弃了，
+// 错误弹窗会一直挂到用户切图（issue #132 的「scanning 消失还是一样」）。
+//
+// 同一张图在重扫期间失败后，`shellState` 还会在读取器相位回到 `healthy` 时补发一次
+// `scheduleRecompute("osu-reader-recovered")`；本模块只负责把请求留在原地等它恢复。
 //
 // **tosu 通道（无壳 / `mode:"tosu"`）逐字节不变**：`state.runtimeOsuHost` 未生效时
 // `shouldRetryNativeBeatmapFetch` 恒为 `false` ⇒ 不重试、错误照旧原样抛出。
 //
 // 模块是 DOM 无关的（可在 Node 里用桩测试；`osuScanHintRules.js` 的同一先例）。
 
-/** 静默重试的间隔（毫秒）。 */
-export const NATIVE_FETCH_RETRY_DELAY_MS = 1000;
+/** 静默重试的间隔阶梯（毫秒）；总等待 25 s，覆盖一次 L0 重扫与壳的抗抖动窗口。 */
+export const NATIVE_FETCH_RETRY_DELAYS_MS = Object.freeze([1000, 2000, 4000, 8000, 10000]);
 
 /**
  * 值得重试的 HTTP 状态闭集：
- * - `404`：读线程没有"当前谱面"（未附着 / 身份保持 / 停帧）——本策略要治的就是它；
+ * - `404`：读线程没有"当前谱面"（未附着 / 身份保持 / 停帧 / 重扫）——本策略要治的就是它；
  * - `5xx`：读盘/服务端瞬态（例如 `.osu` 正在被替换）。
  * 明确**不**重试：`403`（Host 门禁）、`405`（方法）——那是语义错误，重试只是白等。
  */
@@ -40,7 +44,8 @@ export function shouldRetryNativeBeatmapFetch({ native, ok, status }) {
 }
 
 /**
- * 抓一次谱面文本的 `Response`；需要时静默重试一次（间隔 [`NATIVE_FETCH_RETRY_DELAY_MS`]）。
+ * 抓一次谱面文本的 `Response`；对壳原生端点的瞬态失败按
+ * [`NATIVE_FETCH_RETRY_DELAYS_MS`] 阶梯重试。
  *
  * 只负责"拿到 Response"：`ok` 判定与错误文案仍由调用方（`analysis.js`）负责，
  * 因此重试耗尽后**错误路径与改动前逐字相同**。
@@ -56,35 +61,47 @@ export async function fetchBeatmapTextWithRetry(url, { native, isStale }, deps =
         || ((input) => fetch(input, { method: "GET", cache: "no-store" }));
     const sleep = deps.sleep
         || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+
     let response = null;
-    try {
-        response = await request(url);
-    } catch (err) {
-        if (!native) {
-            throw err;
+    let lastError = null;
+
+    const attempt = async () => {
+        try {
+            response = await request(url);
+            lastError = null;
+        } catch (error) {
+            response = null;
+            lastError = error;
         }
-        await sleep(NATIVE_FETCH_RETRY_DELAY_MS);
+    };
+
+    await attempt();
+    for (const delay of NATIVE_FETCH_RETRY_DELAYS_MS) {
         if (isStale()) {
             return null;
         }
-        response = await request(url);
+        const retryable = native && (
+            lastError !== null
+            || shouldRetryNativeBeatmapFetch({
+                native,
+                ok: Boolean(response && response.ok),
+                status: response && response.status,
+            })
+        );
+        if (!retryable) {
+            break;
+        }
+        await sleep(delay);
+        if (isStale()) {
+            return null;
+        }
+        await attempt();
     }
     if (isStale()) {
         return null;
     }
-    if (shouldRetryNativeBeatmapFetch({
-        native,
-        ok: Boolean(response && response.ok),
-        status: response && response.status,
-    })) {
-        await sleep(NATIVE_FETCH_RETRY_DELAY_MS);
-        if (isStale()) {
-            return null;
-        }
-        response = await request(url);
-        if (isStale()) {
-            return null;
-        }
+    if (lastError !== null) {
+        throw lastError;
     }
     return response;
 }

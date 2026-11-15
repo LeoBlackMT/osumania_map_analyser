@@ -12,9 +12,11 @@
 // 并在**桥事件边沿 + 卡片归属为桥**时清空卡片（规则见下方 maybeClearBridgeCard）。
 
 import { applyOsuTransport, isRuntimeOsuOverrideActive, state } from "../core/appContext.js";
+import { scheduleRecompute } from "../core/scheduler.js";
 import { setStatus, updateCardPlayVisibility } from "../ui/hud.js";
 import { invokeCardClear } from "../core/analysis.js";
 import { currentRoute, notifySourceEvent, reEvaluate } from "./sourceManager.js";
+import { shouldRecomputeAfterOsuReaderRecovery } from "./osuReaderRecovery.js";
 import { syncOsuScanHint } from "./osuScanHint.js";
 
 /** 心跳 2s + 容忍丢一拍 → 6s 未见 selection 帧即视为本源离场。 */
@@ -72,6 +74,7 @@ export function applyShellState(payload) {
     // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
     // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
     const osu = sources.osu || null;
+    const previousOsuPhase = state.shellOsuPhase;
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
     state.shellOsuProgress = osu && osu.progress ? osu.progress : null;
@@ -88,6 +91,12 @@ export function applyShellState(payload) {
     reEvaluate();
     syncOsuScanHint();
     updateCardPlayVisibility();
+    // 读取器从扫描/附着/不可用回到 healthy：重算当前谱面，清掉掉线期间 24062 的 404。
+    // 同一 identity 的后续帧不会触发重算（socketHandlers 的 `!hasStateMismatch` 早退），
+    // 所以必须在这里补一次；结果命中缓存时几乎无开销。
+    if (shouldRecomputeAfterOsuReaderRecovery(previousOsuPhase, state.shellOsuPhase, currentRoute())) {
+        scheduleRecompute("osu-reader-recovered", true);
+    }
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
     // 30s 周期帧写它会把心跳之间的在线状态冲成假离线。
     syncUnknownIdentityNotice();

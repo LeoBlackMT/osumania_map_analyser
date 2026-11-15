@@ -254,7 +254,8 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 ### 7.4 页面侧对瞬态失败的处置
 
-- **抓谱面文件失败只对壳原生端点重试一次**（约 1 s）：`js/app/sources/beatmapFetchRetry.js` 的重试状态闭集 = `{404, 500, 502, 503, 504}`；`403`（Host 门禁）/`405`（方法）不重试（语义错误，重试只是白等）；**tosu 通道（无壳 / `mode:"tosu"`）逐字节不变**（native 位未生效 ⇒ 恒不重试，错误照旧原样抛出）。重试前后各判一次 stale 守卫，被取代的请求不重试、不返回。
+- **抓谱面文件失败只对壳原生端点按阶梯重试**（1/2/4/8/10 s，总约 25 s）：`js/app/sources/beatmapFetchRetry.js` 的重试状态闭集 = `{404, 500, 502, 503, 504}`；`403`（Host 门禁）/`405`（方法）不重试（语义错误，重试只是白等）；**tosu 通道（无壳 / `mode:"tosu"`）逐字节不变**（native 位未生效 ⇒ 恒不重试，错误照旧原样抛出）。重试前后各判一次 stale 守卫，被取代的请求不重试、不返回。
+- **读取器恢复后自动补算**：`shellState.applyShellState` 观察到 `sources.osu.phase` 从 `scanning` / `attaching` / `unavailable` 回到 `healthy` 时，会触发一次 `scheduleRecompute("osu-reader-recovered")`。原因：同一 identity 的后续帧在 `socketHandlers.applyBeatmapState` 会早退，不会重跑分析；不补这一下，掉线期间失败的同一张图会一直停在 `Load failed`（issue #132）。
 - 真机结果：结算界面的 gate 行从 400 行降到 **2 次 `action=HoldLastGood`**，404 从页面消失（计划 Step 9 进度记录；复测方法见 `D-notes.md` §14.7）。
 
 ## 8. 健康状态机（L0–L3）
