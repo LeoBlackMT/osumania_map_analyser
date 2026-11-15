@@ -46,6 +46,47 @@ pub const ALLOWED_MODS: &[&str] = &[
 pub const ALLOWED_MODES_6K7K: &[&str] = &["RC", "LN", "Mix", "HB", "SV"];
 pub const ALLOWED_TARGET_SIDES: &[&str] = &["RC", "LN"];
 
+/// 反馈门禁允许的**用户可选算法**。
+///
+/// 必须与 `backend/internal/spec/spec.go` 的 `AllowedAlgorithms` 保持镜像；
+/// 7K 的 `Mixed` 实际会路由到 `Polaris`（见 `docs/features/non-4k-feedback.md`），
+/// 漏掉它会让 7K 反馈全部以 `bad_algorithm` 被拒。
+pub const ALLOWED_SELECTED_ALGORITHMS: &[&str] = &[
+    "Mixed",
+    "Sunny",
+    "Azusa",
+    "Daniel",
+    "Roxy",
+    "Polaris",
+    "XDC1",
+    "Proj7k",
+    "Companella",
+];
+
+/// 反馈门禁允许的**实际算法**（`actualEstimatorAlgorithm`）。
+///
+/// 必须与 `backend/internal/spec/spec.go` 的 `AllowedActualAlgorithms` 保持镜像。
+pub const ALLOWED_ACTUAL_ALGORITHMS: &[&str] = &[
+    "Sunny",
+    "Daniel",
+    "Azusa",
+    "Roxy",
+    "Polaris",
+    "XDC1",
+    "Proj7k",
+    "Companella",
+];
+
+/// Mixed 融合结果的显示胶囊名 → canonical actual 算法。
+///
+/// 与后端 `CapsuleAliases` 保持镜像：签名仍使用页面报告的原始字符串，
+/// 这里只决定是否放行。
+pub const CAPSULE_ALIASES: &[(&str, &str)] = &[
+    ("Azusa+Companella", "Azusa"),
+    ("Roxy+XDC1", "Roxy"),
+    ("XDC1+Azusa", "Azusa"),
+];
+
 /// 旧版独立文件（其内容已合并进 `mma-shell-state.json`，仅用于一次性迁移）。
 pub const INSTALL_ID_FILE: &str = "mma-shell-feedback.json";
 
@@ -250,18 +291,20 @@ fn sanitize_text(value: &str, max_len: usize) -> String {
         .to_string()
 }
 
+/// 把 Mixed 融合的显示胶囊名归一化为 canonical actual 算法；非别名原样返回。
+fn normalize_actual_algorithm(value: &str) -> &str {
+    CAPSULE_ALIASES
+        .iter()
+        .find_map(|(alias, canonical)| (value == *alias).then_some(*canonical))
+        .unwrap_or(value)
+}
+
 fn is_allowed_actual(value: &str) -> bool {
-    matches!(
-        value,
-        "Sunny" | "Daniel" | "Azusa" | "Roxy" | "XDC1" | "Proj7k" | "Companella" | "Azusa+Companella"
-    )
+    ALLOWED_ACTUAL_ALGORITHMS.contains(&normalize_actual_algorithm(value.trim()))
 }
 
 fn is_allowed_selected(value: &str) -> bool {
-    matches!(
-        value,
-        "Mixed" | "Sunny" | "Daniel" | "Azusa" | "Roxy" | "XDC1" | "Proj7k" | "Companella"
-    )
+    ALLOWED_SELECTED_ALGORITHMS.contains(&value.trim())
 }
 
 /// lazer 的 mods/rate：来自原生 `SelectedMods`（`lazer_mods`，`{acronym, speed_change}`）。
@@ -625,6 +668,60 @@ mod tests {
         let mut changed = payload.clone();
         changed.vote = 1.0;
         assert_ne!(build_sign_string(&changed), message);
+    }
+
+    #[test]
+    fn feedback_algorithm_whitelists_cover_every_estimator() {
+        // 镜像 backend/internal/spec/spec.go 的 AllowedAlgorithms。
+        for value in [
+            "Mixed",
+            "Sunny",
+            "Azusa",
+            "Daniel",
+            "Roxy",
+            "Polaris",
+            "XDC1",
+            "Proj7k",
+            "Companella",
+        ] {
+            assert!(
+                is_allowed_selected(value),
+                "selected algorithm {value} must be accepted"
+            );
+        }
+        assert!(!is_allowed_selected("Polaris+XDC1"));
+        assert!(!is_allowed_selected(""));
+
+        // 镜像 AllowedActualAlgorithms；Mixed 是路由元算法，绝不是 actual。
+        for value in [
+            "Sunny",
+            "Daniel",
+            "Azusa",
+            "Roxy",
+            "Polaris",
+            "XDC1",
+            "Proj7k",
+            "Companella",
+        ] {
+            assert!(
+                is_allowed_actual(value),
+                "actual algorithm {value} must be accepted"
+            );
+        }
+        assert!(!is_allowed_actual("Mixed"));
+    }
+
+    #[test]
+    fn feedback_capsule_aliases_are_accepted_and_normalized() {
+        for &(alias, canonical) in CAPSULE_ALIASES {
+            assert_eq!(normalize_actual_algorithm(alias), canonical);
+            assert!(
+                is_allowed_actual(alias),
+                "capsule alias {alias} must be accepted"
+            );
+        }
+        assert_eq!(normalize_actual_algorithm("Polaris"), "Polaris");
+        assert!(!is_allowed_actual("Roxy+XDC1+Azusa"));
     }
 
     #[test]
