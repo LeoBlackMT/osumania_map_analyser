@@ -3,6 +3,6 @@ Name: ManiaMapAnalyser
 Author: Leo_Black
 CompatibleWith: tosu
 Resolution: 520x680
-Version: 3.0.0
+Version: 3.0.1
 authorLinks: https://github.com/LeoBlackMT/osumania_map_analyser
 Notes: Real-time VSRG overlay with difficulty estimation, RC/LN pattern analysis, multi-version MSD calculation, difficulty distribution and more, for 4K, 6K and 7K maps.
