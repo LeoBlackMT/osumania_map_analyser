@@ -21,8 +21,17 @@
 
 use crate::osu::model::Reason;
 
-/// 目标进程名：stable 与 lazer 都用这个名字，靠 PE machine 分派（计划 §3.4）。
+/// 目标进程名：stable 与 lazer 的官方名都是这个名字，靠 PE machine 分派（计划 §3.4）。
 pub const OSU_EXE: &str = "osu!.exe";
+
+/// 兼容进程名：用户可能把 exe 改名/复制为 `osu.exe`（issue #131）。仍然靠位数分派，
+/// 不会因为名字不同而把 stable/lazer 混在一起。
+pub const OSU_EXE_ALT: &str = "osu.exe";
+
+/// 是否为 osu! 的进程映像名（官方名或兼容名，大小写不敏感）。
+pub fn is_osu_exe_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(OSU_EXE) || name.eq_ignore_ascii_case(OSU_EXE_ALT)
+}
 
 /// `OpenProcess` 权限：读内存 + 查询（`VirtualQueryEx` / `QueryFullProcessImageNameW`）。
 pub const DESIRED_ACCESS: u32 = 0x0010 | 0x0400; // PROCESS_VM_READ | PROCESS_QUERY_INFORMATION
@@ -276,8 +285,7 @@ mod win32 {
         pub th32ParentProcessID: u32, // @32
         pub pcPriClassBase: i32,      // @36
         pub dwFlags: u32,             // @40
-        pub _pad1: u32,               // @44
-        pub szExeFile: [u16; 260],    // @48 ⇒ 568
+        pub szExeFile: [u16; 260],    // @44 ⇒ 564；尾部 ABI 补白到 568
     }
 
     /// `MODULEENTRY32W`（x64 调用方布局，`size_of == 1080`）——字段名与
@@ -329,6 +337,8 @@ mod win32 {
         fn Process32NextW(hSnapshot: Handle, lppe: *mut ProcessEntry32W) -> i32;
         fn Module32FirstW(hSnapshot: Handle, lpme: *mut ModuleEntry32W) -> i32;
         fn Module32NextW(hSnapshot: Handle, lpme: *mut ModuleEntry32W) -> i32;
+        fn IsWow64Process(hProcess: Handle, Wow64Process: *mut i32) -> i32;
+        fn K32EnumProcesses(lpidProcess: *mut u32, cb: u32, lpcbNeeded: *mut u32) -> i32;
         fn QueryFullProcessImageNameW(
             hProcess: Handle,
             dwFlags: u32,
@@ -359,11 +369,17 @@ mod win32 {
     }
 
     /// 编译期布局断言：这些 `size_of` 就是 Win32 要求的 `dwLength` / `dwSize` 实参，
-    /// 一旦 x64 调用方布局被改坏，这里先炸。
+    /// 一旦 x64 调用方布局被改坏，这里先炸。**必须同时断言字段偏移**：错误的
+    /// `PROCESSENTRY32W` 布局（`szExeFile` @48）与正确布局（@44）的 `size_of` 都是
+    /// 568，只查 size 会静默通过，直到进程名被读成少两个字符的版本才暴露。
     const _: () = {
         assert!(std::mem::size_of::<MemoryBasicInformation>() == 48);
+        assert!(std::mem::offset_of!(MemoryBasicInformation, RegionSize) == 24);
         assert!(std::mem::size_of::<ProcessEntry32W>() == 568);
+        assert!(std::mem::offset_of!(ProcessEntry32W, szExeFile) == 44);
         assert!(std::mem::size_of::<ModuleEntry32W>() == 1080);
+        assert!(std::mem::offset_of!(ModuleEntry32W, szModule) == 48);
+        assert!(std::mem::offset_of!(ModuleEntry32W, szExePath) == 560);
     };
 
     fn wide_to_string(wide: &[u16]) -> String {
@@ -429,8 +445,9 @@ mod win32 {
         entry.dwSize = std::mem::size_of::<ProcessEntry32W>() as u32;
         let mut more = unsafe { Process32FirstW(snap.raw(), &mut entry) } != 0;
         while more {
-            if wide_to_string(&entry.szExeFile).eq_ignore_ascii_case(OSU_EXE) {
-                out.push((entry.th32ProcessID, wide_to_string(&entry.szExeFile)));
+            let name = wide_to_string(&entry.szExeFile);
+            if is_osu_exe_name(&name) {
+                out.push((entry.th32ProcessID, name));
             }
             entry.dwSize = std::mem::size_of::<ProcessEntry32W>() as u32;
             more = unsafe { Process32NextW(snap.raw(), &mut entry) } != 0;
@@ -580,7 +597,14 @@ mod win32 {
         if handle == 0 || handle == INVALID_HANDLE_VALUE {
             return Err(Reason::from_win32_error(unsafe { GetLastError() }));
         }
-        let module_base = module_base(pid, OSU_EXE).unwrap_or(0);
+        // `module_base` 必须按**实际映像名**查：兼容名 `osu.exe` 时模块名也是
+        // `osu.exe`，硬编码 `osu!.exe` 会查不到主模块（lazer 路径不依赖该值，但
+        // stable/lazer 统一走这里，不能留下 0 的隐患）。
+        let module_name = image_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(OSU_EXE);
+        let module_base = module_base(pid, module_name).unwrap_or(0);
         Ok(Target {
             handle,
             pid,
@@ -591,14 +615,15 @@ mod win32 {
     }
 
     /// 进程选择（计划 §3.4 / DEC-19 的**位数分派**）：**32 位（PE machine `0x014C`）的
-    /// `osu!.exe` 走 stable 读取路径**，**64 位（`0x8664`）走 lazer 读取路径**——两者的
-    /// 进程名逐字相同，只有位数能分。
+    /// osu! 走 stable 读取路径**，**64 位（`0x8664`）走 lazer 读取路径**——官方进程名
+    /// 都是 `osu!.exe`，兼容名 `osu.exe` 也接受，最终只有位数能分。
     ///
     /// 判据表（纯逻辑在 `osu::discovery::dispatch`，表驱动单测逐行钉住）：
     /// - 恰 1 个 32 位实例 ⇒ `Attach{ Stable }`（唯一化的 stable 优先，lazer 的存在不改变它）
     /// - 0 个 32 位实例 + 恰 1 个 64 位实例 ⇒ `Attach{ Lazer }`（**Step 10B 的修复点**：
     ///   旧规则在这里报 `client-ambiguous`，于是"只开 lazer"永远读不到）
-    /// - 0 个 `osu!.exe` ⇒ `process-not-found`（兜底扫描）/ `client-ambiguous`（权威枚举）
+    /// - 0 个 osu! 进程（`osu!.exe` / `osu.exe`）⇒ `process-not-found`（兜底扫描）/
+    ///   `client-ambiguous`（权威枚举）
     /// - 同类 ≥2 个实例 ⇒ 既有规模规则（分不出 ⇒ `multiple-instances`，绝不猜）
     ///
     /// ⚠️ 发现阶段用 Toolhelp32（快，~1ms）**并且**保留一条 PID 扫描兜底：
@@ -669,7 +694,7 @@ mod win32 {
     /// 诊断用：兜底 PID 扫描的原始结果（已按坐标去重，与 `discover_by_pid_sweep` 同一判据）。
     pub fn sweep_osu_pids() -> Vec<u32> {
         let mut found: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
-        for pid in PID_SWEEP_RANGE {
+        for pid in candidate_pids() {
             match see_pid(pid) {
                 Seen::Stable(path, private, regions) | Seen::Lazer(path, private, regions) => {
                     found.push((pid, path, private, regions));
@@ -684,7 +709,7 @@ mod win32 {
     /// 诊断用：未去重的全部候选坐标（看清"试开幻觉"的规模）。
     pub fn sweep_osu_coordinates() -> Vec<(u32, String, u64, usize)> {
         let mut out = Vec::new();
-        for pid in PID_SWEEP_RANGE {
+        for pid in candidate_pids() {
             if let Seen::Stable(path, private, regions) = see_pid(pid) {
                 out.push((pid, path.to_string_lossy().to_string(), private, regions));
             }
@@ -822,7 +847,7 @@ mod win32 {
     ///
     /// ⚠️ 该上下文里有两个真相，都必须处理（本机实测）：
     /// ① Toolhelp32 的表可能**被截断**（`mma-shell` 只看到 35 个进程，全是它自己的子进程；
-    ///    `osu!.exe` 不在其中）⇒ 不能把"表里有没有它"当判据；
+    ///    osu! 进程不在其中）⇒ 不能把"表里有没有它"当判据；
     /// ② "试开相邻 PID"会拿到**同一进程的其它坐标**——15937/15938/15939 的映像路径与内存规模
     ///    与真进程 15936 一模一样（该模式在本机是系统性的：几乎每个进程都有 n+1..n+3 三个
     ///    这样"指向同一个进程"的坐标）。
@@ -834,7 +859,7 @@ mod win32 {
         let mut found_stable: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
         let mut found_lazer: Vec<(u32, PathBuf, u64, usize)> = Vec::new();
         let mut opened = 0u32;
-        for pid in PID_SWEEP_RANGE {
+        for pid in candidate_pids() {
             match see_pid(pid) {
                 Seen::Stable(path, private, regions) => {
                     found_stable.push((pid, path, private, regions))
@@ -1031,14 +1056,32 @@ mod win32 {
 
     /// 一次打开、一次判定（句柄只在本次调用内存在，RAII 关闭）。
     enum Seen {
-        /// 32 位 `osu!.exe`：stable 候选（附规模指纹，供既有"最像游戏本体"规则用）。
+        /// 32 位 osu!（`osu!.exe` / `osu.exe`）：stable 候选（附规模指纹，供既有"最像游戏本体"规则用）。
         Stable(PathBuf, u64, usize),
-        /// 64 位 `osu!.exe`：lazer 候选（Step 10B 起同样带指纹，分派规则与 stable 对称）。
+        /// 64 位 `osu!.exe` / `osu.exe`：lazer 候选（Step 10B 起同样带指纹，分派规则与 stable 对称）。
         Lazer(PathBuf, u64, usize),
-        /// 同名但不是 `osu!.exe`、或 PE machine 认不出。
+        /// 同名但不是 osu!（官方名或兼容名）、或 PE machine 认不出。
         Other,
         /// 打不开 / 取不到映像路径（权限、退出竞争）。
         Unreadable,
+    }
+
+    /// 进程位数（`IsWow64Process`）：磁盘映像不可读（改名/删除/路径失效）时的回退。
+    ///
+    /// `PROCESSENTRY32W` 的 `toolhelp32` 名字能拿到，但 `pe_machine_from_file` 需要
+    /// 打开**磁盘文件**；进程改名后 `QueryFullProcessImageNameW` 仍返回旧路径，文件
+    /// 可能已不存在。此时仍应能靠进程句柄分派 stable/lazer。
+    fn process_bitness(handle: Handle) -> Option<u16> {
+        let mut wow64 = 0i32;
+        let ok = unsafe { IsWow64Process(handle, &mut wow64) };
+        if ok == 0 {
+            return None;
+        }
+        Some(if wow64 != 0 {
+            PE_MACHINE_I386
+        } else {
+            PE_MACHINE_AMD64
+        })
     }
 
     fn see_pid(pid: u32) -> Seen {
@@ -1054,14 +1097,21 @@ mod win32 {
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
-        if !name.eq_ignore_ascii_case(OSU_EXE) {
+        if !is_osu_exe_name(&name) {
             return Seen::Other;
         }
         let private = private_usage(h.raw()).unwrap_or(0);
         let regions = walk_regions_count(h.raw());
-        match pe_machine_from_file(&path) {
-            Ok(PE_MACHINE_I386) => Seen::Stable(path, private, regions),
-            Ok(PE_MACHINE_AMD64) => Seen::Lazer(path, private, regions),
+        let bitness = match pe_machine_from_file(&path) {
+            Ok(machine) => machine,
+            Err(_) => match process_bitness(h.raw()) {
+                Some(machine) => machine,
+                None => return Seen::Other,
+            },
+        };
+        match bitness {
+            PE_MACHINE_I386 => Seen::Stable(path, private, regions),
+            PE_MACHINE_AMD64 => Seen::Lazer(path, private, regions),
             _ => Seen::Other,
         }
     }
@@ -1100,8 +1150,49 @@ mod win32 {
         (kept, dropped)
     }
 
-    /// PID 扫描范围：Windows 的 PID 上限是 2^32/4，但实际分配几乎总在 65535 以下。
+    /// 旧兜底范围：与 `EnumProcesses` 的真实 PID 合并使用（`candidate_pids`）。
+    ///
+    /// 不能把它当唯一兜底：Windows 的 PID 会超过 65535（issue #131 实测 185396）。
     pub const PID_SWEEP_RANGE: std::ops::RangeInclusive<u32> = 4..=65_535;
+
+    /// 当前系统实际 PID 列表（`K32EnumProcesses`）。空表 = 调用失败或被截断。
+    pub(super) fn enumerate_pids() -> Vec<u32> {
+        let mut cap = 1024usize;
+        loop {
+            let mut pids = vec![0u32; cap];
+            let mut needed = 0u32;
+            let ok = unsafe {
+                K32EnumProcesses(
+                    pids.as_mut_ptr(),
+                    (cap * std::mem::size_of::<u32>()) as u32,
+                    &mut needed,
+                )
+            };
+            if ok == 0 {
+                return Vec::new();
+            }
+            let count = needed as usize / std::mem::size_of::<u32>();
+            if count < cap {
+                pids.truncate(count);
+                return pids;
+            }
+            cap = cap.saturating_mul(2);
+            if cap > 1_048_576 {
+                return Vec::new();
+            }
+        }
+    }
+
+    /// 兜底扫描的 PID 列表：真实 PID（可覆盖 >65535）与旧范围合并。旧范围保留是为了
+    /// 受限令牌/沙箱上下文里"相邻 PID 指向同一进程"的兼容路径（见 `discover_by_pid_sweep`
+    /// 的说明）；真实 PID 保证高 PID 不再被 65535 上限漏掉。
+    pub(super) fn candidate_pids() -> Vec<u32> {
+        let mut pids = enumerate_pids();
+        pids.extend(PID_SWEEP_RANGE);
+        pids.sort_unstable();
+        pids.dedup();
+        pids
+    }
 
     /// `VirtualQueryEx` walk：按 `access_mask` 过滤出可扫区域。
     ///
