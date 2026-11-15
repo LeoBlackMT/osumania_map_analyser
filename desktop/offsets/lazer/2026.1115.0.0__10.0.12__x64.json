@@ -107,6 +107,7 @@
       "stack": 800
     }
   },
+  "mods": {"bindable_value":64,"difficulty_current":96,"settings":{"DT":{"speed_change":16,"adjust_pitch":24},"NC":{"speed_change":16},"HT":{"speed_change":16,"adjust_pitch":24},"DC":{"speed_change":16},"DA":{"drain_rate":16,"extended_limits":32,"overall_difficulty":40}}},
   "results": {
     "score_offset": 928,
     "statistics_offset": 88,
@@ -2492,8 +2493,8 @@
         "C64": "osu.Game.Screens.Backgrounds.EditorBackgroundScreen+<>c"
       }
     },
-    "witness": "live validated against running osu!.exe (GameBase: vtable=0x7FFE962989E8, verified MD5=d2e9c7b870c78ae9cfb0d7f58cc81b2b, screen RID=0x4A1)"
+    "witness": "live validated against running osu!.exe (GameBase: vtable=0x7FFE962989E8, verified MD5=49f13b05adf5b2819f7c745eeeb080b7, screen RID=0x461)"
   },
   "verified_build": "osu!lazer 2026.1115.0.0 / .NET 10.0.12 / x64 / live RPM validated",
-  "evidence": "Live memory RPM validation passed 100% on active osu!.exe process. Sample MD5 verified: d2e9c7b870c78ae9cfb0d7f58cc81b2b"
+  "evidence": "Live memory RPM validation passed 100% on active osu!.exe process. Sample MD5 verified: 49f13b05adf5b2819f7c745eeeb080b7"
 }
