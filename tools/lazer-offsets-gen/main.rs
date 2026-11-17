@@ -732,7 +732,7 @@ fn runtime_log_versions(storage_root: &Path) -> Option<(String, String, PathBuf)
 }
 
 /// `osu!.runtimeconfig.json` 里的 `"version": "x.y.z"`（自包含/includedFrameworks 都是这个键）。
-fn runtimeconfig_version(exe_dir: &Path) -> Option<String> {
+pub(crate) fn runtimeconfig_version(exe_dir: &Path) -> Option<String> {
     let path = exe_dir.join("osu!.runtimeconfig.json");
     let text = fs::read_to_string(&path).ok()?;
     let at = text.find("\"version\"")?;
@@ -2796,4 +2796,32 @@ fn free_space(_dir: &Path) -> Option<u64> {
 #[cfg(not(windows))]
 fn process_image_path(_pid: u32) -> Option<PathBuf> {
     None
+}
+
+#[cfg(test)]
+mod runtimeconfig_tests {
+    use super::runtimeconfig_version;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn reads_included_frameworks_version() {
+        let dir = std::env::temp_dir().join(format!(
+            "lazer-offsets-gen-runtimeconfig-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("osu!.runtimeconfig.json"),
+            r#"{"runtimeOptions":{"includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.15"}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(runtimeconfig_version(&dir).as_deref(), Some("10.0.15"));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
