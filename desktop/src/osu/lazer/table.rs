@@ -57,10 +57,56 @@ impl TargetInfo {
         OffsetTable::target(&self.lazer_version, &self.runtime_version, &self.arch)
     }
 
+    /// `storage.ini` 明确给出的存储根（原始值，不检查目录是否存在）。
     pub fn songs_folder(&self) -> Option<String> {
         self.storage_root
             .as_deref()
             .map(|root| format!("{root}\\{}", FILES_DIR))
+    }
+
+    /// 实际用于载荷 `folders.songs` 的目录：先信 `storage.ini`，
+    /// 缺失/失效时回落到默认 Lazer 数据目录；两者都必须真实存在。
+    pub fn effective_songs_folder(&self) -> Option<String> {
+        resolve_songs_folder(self.storage_root.as_deref(), default_lazer_files_dirs())
+    }
+}
+
+/// `storage.ini` 的目录优先；它缺失或失效时再尝试默认 Lazer 数据目录。
+///
+/// 只返回实际存在的目录，避免把不存在的路径交给 24062 文件路由
+/// （那会把“没有存储根”伪装成 500 读盘失败）。
+fn resolve_songs_folder(
+    storage_root: Option<&str>,
+    default_dirs: impl IntoIterator<Item = PathBuf>,
+) -> Option<String> {
+    let configured = storage_root.map(|root| Path::new(root).join(FILES_DIR));
+    configured
+        .into_iter()
+        .chain(default_dirs)
+        .find(|dir| dir.is_dir())
+        .map(|dir| dir.to_string_lossy().into_owned())
+}
+
+/// Lazer 默认数据目录下的 `files` 目录候选。
+///
+/// 默认安装不会生成 `storage.ini`，此时必须能回落到
+/// `%APPDATA%\osu\files`；旧版/便携环境可能使用带感叹号的
+/// `%APPDATA%\osu!\files`，一并作为候选（存在性由调用方检查）。
+fn default_lazer_files_dirs() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let Some(appdata) = std::env::var_os("APPDATA") else {
+            return Vec::new();
+        };
+        let appdata = PathBuf::from(appdata);
+        vec![
+            appdata.join("osu").join(FILES_DIR),
+            appdata.join("osu!").join(FILES_DIR),
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
     }
 }
 
@@ -431,9 +477,17 @@ pub fn arch_for_bitness(pe_machine: u16) -> &'static str {
 
 #[cfg(windows)]
 pub fn storage_ini_path() -> Option<PathBuf> {
-    std::env::var("APPDATA")
-        .ok()
-        .map(|appdata| PathBuf::from(appdata).join("osu").join("storage.ini"))
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from)?;
+    let candidates = [
+        appdata.join("osu").join("storage.ini"),
+        appdata.join("osu!").join("storage.ini"),
+    ];
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Some(candidate.clone());
+        }
+    }
+    candidates.into_iter().next()
 }
 
 #[cfg(not(windows))]
@@ -461,5 +515,76 @@ mod optional_section_tests {
         partial.score = None;
         partial.mods = None;
         assert!(optional_section_score(&full) > optional_section_score(&partial));
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root(name: &str) -> PathBuf {
+        let unique = format!(
+            "mma-lazer-storage-{name}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        std::env::temp_dir().join(unique)
+    }
+
+    #[test]
+    fn missing_storage_ini_falls_back_to_default_lazer_files() {
+        let root = temp_root("fallback");
+        let default = root.join("default");
+        let files = default.join(FILES_DIR);
+        std::fs::create_dir_all(&files).unwrap();
+
+        let got = resolve_songs_folder(
+            None,
+            vec![default.join("missing").join(FILES_DIR), files.clone()],
+        );
+        assert_eq!(got, Some(files.to_string_lossy().into_owned()));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn configured_storage_root_wins_when_files_exists() {
+        let root = temp_root("configured");
+        let configured = root.join("configured");
+        let default = root.join("default");
+        std::fs::create_dir_all(configured.join(FILES_DIR)).unwrap();
+        std::fs::create_dir_all(default.join(FILES_DIR)).unwrap();
+
+        let got = resolve_songs_folder(
+            Some(configured.to_string_lossy().as_ref()),
+            vec![default.join(FILES_DIR)],
+        );
+        assert_eq!(
+            got,
+            Some(configured.join(FILES_DIR).to_string_lossy().into_owned())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn invalid_storage_ini_falls_back_to_default_lazer_files() {
+        let root = temp_root("invalid-configured");
+        let missing = root.join("missing");
+        let default = root.join("default");
+        let files = default.join(FILES_DIR);
+        std::fs::create_dir_all(&files).unwrap();
+
+        let got = resolve_songs_folder(
+            Some(missing.to_string_lossy().as_ref()),
+            vec![files.clone()],
+        );
+        assert_eq!(got, Some(files.to_string_lossy().into_owned()));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

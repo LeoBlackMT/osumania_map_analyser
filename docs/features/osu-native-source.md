@@ -189,6 +189,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 今天一个健康的 lazer 目标发布：`client:"lazer"` + `state.{name,number}` + `beatmap.{id,set,md5,兼容键,version,artist,title,mapper}` + `files.beatmap` + `folders.songs` + `directPath.beatmapFile` + `beatmap.time.{live,firstObject,lastObject}` + `menu.mods`/`play.mods`/`resultsScreen.mods`（`SelectedMods` 链，按表里的 `mods` 段读自定义 `speed_change` / DA 的 `overall_difficulty`、`drain_rate`、`extended_limits`）+ `resultsScreen.hits`（**仅当表里有 `results` 段**：结算屏 `ScoreInfo.StatisticsJson`）+ `replayHash`（v11，**仅当表里有 `score.score_hash` / `results.score_hash`**）；**并逐条上报缺来源的字段**（见 §6.3）。
 
+- **Lazer 存储根（`folders.songs`）的解析顺序**：`storage.ini` 的 `FullPath`（自定义数据目录）→ 默认 `%APPDATA%\osu\files`（兼容 `%APPDATA%\osu!\files`）。**默认 Lazer 安装不会生成 `storage.ini`**，因此不能把 `storage.ini` 当作必需文件；候选目录必须实际存在，否则不发布 `folders.songs`（24062 会按“没有当前谱面”处理，而不是把不存在的路径当成读盘失败）。
 - 真机对拍（2026-09-29/30，`lazer 2026.921.0.0 / .NET 10.0.12 / x64`）：`client` / `checksum` / `title` / `version` / `artist` / `mapper` / `id` / `set` / `files.beatmap` 与同刻 tosu **逐字节相等**；`state.name`/`state.number` 逐值相等（62 s / 400 帧 / `avg_fps 6.45` / 0 脱附）；`beatmap.time.live` 差 38 ms（独立采样相位）。逐项核对（本地记录不入库）：contract-v6/D-notes.md` §17–§19。
 - **状态映射只对已对拍的态负责**：`selectPlay`（活机对拍）与 `menu`（dump 结构见证）已证；`edit` / `selectEdit` / `play` / `resultScreen` 的类型名在表里、映射规则已写，但**未与 tosu 活机对拍**（D-notes §19.5 末段）。
 
