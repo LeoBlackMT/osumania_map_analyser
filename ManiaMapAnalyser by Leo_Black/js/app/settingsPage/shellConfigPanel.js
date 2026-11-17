@@ -41,6 +41,11 @@ const LANGUAGE_OPTIONS = [
 
 const ROOT_FIELDS = [
     {
+        key: "lazerStorageRoot",
+        title: "Lazer data folder",
+        description: "Folder containing the Lazer files directory (usually %APPDATA%\\osu; not the install folder). Empty = auto-detect. Restart the shell after changing.",
+    },
+    {
         key: "etternaRoot",
         title: "Etterna root",
         description: "Folder that holds the Etterna install. Empty = let the shell detect it.",

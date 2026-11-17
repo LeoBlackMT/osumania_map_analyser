@@ -355,6 +355,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "etternaRoot": crate::etterna::etterna_root(&shared),
                 "malodyRoot": malody_root(&shared),
                 "malody4Root": malody4_effective_root(&shared),
+                "lazerStorageRoot": lazer_storage_root(),
             },
             "window": {
                 "topmost": win.topmost,
@@ -467,6 +468,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "etternaRoot": crate::etterna::etterna_root(&shared),
                 "malodyRoot": malody_root(&shared),
                 "malody4Root": malody4_effective_root(&shared),
+                "lazerStorageRoot": lazer_storage_root(),
             },
             "window": {
                 "topmost": win.topmost,
@@ -669,6 +671,24 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
         }
         Err(_) => respond_json(&mut stream, 404, r#"{"error":"not found"}"#),
     }
+}
+
+/// `GET/POST /shell-config` 的 `resolved.lazerStorageRoot`：优先显示读取器实际
+/// 采用的存储根（`folders.songs` 的父目录），未附着时回落到配置里的显式值。
+fn lazer_storage_root() -> Option<String> {
+    if let Some(files) = crate::osu::instance()
+        .and_then(|reader| reader.snapshot())
+        .and_then(|snapshot| snapshot.songs_folder)
+    {
+        let path = std::path::Path::new(&files);
+        let root = path.parent().unwrap_or(path);
+        return Some(root.to_string_lossy().into_owned());
+    }
+    crate::config::lazer_storage_root().map(|root| {
+        crate::osu::lazer::normalize_storage_root(&root)
+            .to_string_lossy()
+            .into_owned()
+    })
 }
 
 fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {

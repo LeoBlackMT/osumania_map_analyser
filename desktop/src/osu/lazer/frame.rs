@@ -577,6 +577,7 @@ pub fn attach(
     target: &crate::osu::win::Target,
     regions: &mut crate::osu::scan::RegionCache,
     env_path: Option<PathBuf>,
+    storage_root_override: Option<PathBuf>,
 ) -> Result<Attach, Reason> {
     let env = TargetEnv {
         exe_dir: target
@@ -588,7 +589,8 @@ pub fn attach(
         arch: arch_for_bitness(target.bitness).to_string(),
     };
     let files = RealFiles;
-    let info = target_from_files(&files, &env);
+    let info = target_from_files(&files, &env)
+        .with_storage_root_override(storage_root_override.as_deref());
     let table_dir = shell_exe_dir();
     let target_line = format!(
         "[osu] lazer target: version={:?} runtime={:?} arch={} storage_root={:?} songs_folder={:?} table_dir={}",
@@ -1140,6 +1142,7 @@ pub fn attach(
     _target: &crate::osu::win::Target,
     _regions: &mut crate::osu::scan::RegionCache,
     _env_path: Option<PathBuf>,
+    _storage_root_override: Option<PathBuf>,
 ) -> Result<Attach, Reason> {
     Err(Reason::PlatformUnsupported)
 }

@@ -61,6 +61,20 @@ pub fn config_path(value: &serde_json::Value, key: &str) -> Option<PathBuf> {
     }
 }
 
+/// Lazer 数据目录的显式覆盖：环境变量优先，其次 `mma-shell-config.json` 的 `lazerStorageRoot`。
+///
+/// `lazerStorageRoot` 是**数据目录**（通常 `%APPDATA%\osu`，其下含 `files`），
+/// 不是 `osu!.exe` 的安装目录；留空时由读取器按 storage.ini / 默认目录自动探测。
+pub fn lazer_storage_root() -> Option<PathBuf> {
+    if let Ok(value) = std::env::var("MMA_LAZER_STORAGE_ROOT") {
+        let norm = normalize_path(&value);
+        if !norm.is_empty() {
+            return Some(PathBuf::from(norm));
+        }
+    }
+    config_path(&read_shell_config(), "lazerStorageRoot")
+}
+
 /// 启动时确保 mma-shell-config.json 存在（无 tosu 用户可发现并直接编辑）。
 /// 骨架含 combinedMode、hotkeys 与 logLevel（用户验收项 1：骨架必须完整可编辑）。
 pub fn ensure_shell_config() {
@@ -76,7 +90,7 @@ pub fn ensure_shell_config_in(dir: &Path) {
     if !path.exists() {
         let _ = fs::write(
             &path,
-            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"combinedMode\": {\n    \"enabled\": false,\n    \"modules\": [\"Pattern\", \"Etterna\", \"Graph\", \"ReworkPP\"]\n  },\n  \"laneAccSpaceMode\": \"independent\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
+            "{\n  \"gameClient\": \"Auto\",\n  \"osuTransport\": \"auto\",\n  \"etternaRoot\": \"\",\n  \"malodyRoot\": \"\",\n  \"malody4Root\": \"\",\n  \"lazerStorageRoot\": \"\",\n  \"combinedMode\": {\n    \"enabled\": false,\n    \"modules\": [\"Pattern\", \"Etterna\", \"Graph\", \"ReworkPP\"]\n  },\n  \"laneAccSpaceMode\": \"independent\",\n  \"hotkeys\": {\n    \"topmost\": \"Ctrl+Shift+T\",\n    \"clickThrough\": \"Ctrl+Shift+C\",\n    \"close\": \"Ctrl+Q\",\n    \"settings\": \"Ctrl+Shift+S\"\n  },\n  \"logLevel\": \"info\"\n}\n",
         );
         return;
     }

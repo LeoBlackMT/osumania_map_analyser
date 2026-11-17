@@ -42,7 +42,8 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 
 - **插件目录**：`MMA_PLUGIN_DIR` 环境变量 > exe 目录逐级上溯 0–3 层，每层拼 `ManiaMapAnalyser by Leo_Black` 并校验 `index.html` 存在；都不中则用相对路径。发布形态（exe 与插件目录同层）上溯 0 层即命中；开发形态（target/debug）上溯 2 层命中仓库根。
 - **tosu.env**：从 exe 所在目录开始向上（含当前层）最多 3 层；解析 `SERVER_PORT`（默认 24050）与 `SERVER_IP`（默认 127.0.0.1）；根目录 = tosu.env 所在目录（用于 `settings/{插件名}.json` 只读读取）。
-- **Etterna 与 Malody V 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > **壳配置 `mma-shell-config.json`**（exe 旁，`{gameClient, etternaRoot, malodyRoot, malody4Root, combinedMode, hotkeys, logLevel}`，可直接编辑，30s 周期检测变化后重载并推送 settings 帧）> tosu 在线只读。无 tosu 用户无需下载 tosu 即可配置游戏路径。启发探测（Steam 库/常见路径）带**盘符就绪预检**——不存在的盘符（用户没有 D: 盘等）快速跳过、绝不 panic/阻塞；且探测结果 30s TTL 缓存，未配置根目录时轮询器不会每个周期都打注册表与盘符。
+- **Etterna 与 Malody V 根**：`MMA_ETTERNA_ROOT` / `MMA_MALODY_ROOT` 环境变量 > **壳配置 `mma-shell-config.json`**（exe 旁，`{gameClient, etternaRoot, malodyRoot, malody4Root, lazerStorageRoot, combinedMode, hotkeys, logLevel}`，可直接编辑，30s 周期检测变化后重载并推送 settings 帧）> tosu 在线只读。无 tosu 用户无需下载 tosu 即可配置游戏路径。启发探测（Steam 库/常见路径）带**盘符就绪预检**——不存在的盘符（用户没有 D: 盘等）快速跳过、绝不 panic/阻塞；且探测结果 30s TTL 缓存，未配置根目录时轮询器不会每个周期都打注册表与盘符。
+- **Lazer 数据目录**：壳配置 `lazerStorageRoot`（或 `MMA_LAZER_STORAGE_ROOT`）显式指定**包含 `files` 目录的数据根**（通常 `%APPDATA%\osu`，不是 `osu!.exe` 的安装目录；也可直接选 `...\files`，读取器会归一到父目录）。留空时按 `storage.ini` → 默认 `%APPDATA%\osu\files` 自动探测；修改后需重启壳才重新附着读取器。默认 Lazer 安装不会生成 `storage.ini`，因此该显式选项是默认路径探测失败时的兜底。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
 ## 3. 契约 v11 帧
@@ -84,7 +85,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | --- | --- | --- |
 | `/settings` | GET | 200 + **权威链全量对象**（在线 = tosu 设置文件；离线 = `mma-settings.json`；都没有则生成默认骨架并落盘）。读取侧不设只读门控——只读体现在写侧 |
 | `/settings` | POST | 200 + **合并后的全量对象**（请求键优先的读-改-写，base 的未知键保留，绝不把文件截断成请求体）；**403 `tosu online: settings are read-only`**（在线只读；判据与 GET 第 1 级是**同一个表达式**，且 POST 内先复探 tosu 存活、跳变经 `apply_tosu_online_transition` 切源）；**400**（body 不是合法 JSON 或不是对象）；**500**（base 不可读或写盘失败）。成功 → 更新缓存 + 广播 settings 帧 |
-| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`；`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400 `shell config unreadable`**（配置不可读）。**CORS**：对 24050/24061 的 loopback Origin 与 `tauri.localhost` 返回 `Access-Control-Allow-Origin`（与 `/feedback` 同白名单，不用 `*`），供 `24050#mma-shell` 初始读取 `combinedMode` |
+| `/shell-config` | GET | 200 + `{config, resolved:{etternaRoot,malodyRoot,malody4Root,lazerStorageRoot}, window:{topmost,clickThrough}, feedback:{replay,endpoint}}`（`config` = `mma-shell-config.json` 全文；`resolved` = **实际采纳**路径，解析不到为 JSON `null`；`feedback.endpoint` 仅在壳用 `MMA_FEEDBACK_ENDPOINT` 启动时非 null，供页面本地联调）；**400 `shell config unreadable`**（配置不可读）。**CORS**：对 24050/24061 的 loopback Origin 与 `tauri.localhost` 返回 `Access-Control-Allow-Origin`（与 `/feedback` 同白名单，不用 `*`），供 `24050#mma-shell` 初始读取 `combinedMode` |
 | `/shell-config` | POST | 200 + 合并后的全量壳配置（请求键优先，未知键保留）；**400**（body 非 JSON / 非对象 / base 不可读或写盘失败——这几种情况**什么都不写**，不生成骨架）。成功 → 更新缓存 + `clear_detect_caches()`（根目录探测缓存失效）+ 广播 settings 帧 |
 | `/open-settings` | POST | 200 `{}`（**异步**发起建窗/聚焦，不等窗口真的建出来）；**503 `no app handle`**（无窗口模式：app 句柄未注入） |
 | `/feedback` | POST/OPTIONS | 200 + `{payload, auth}`：从 native 快照重算 `bid/checksum/rate/mods/hits/weight`，Ed25519 签名后交页面转发（壳不发 HTTPS）；**422** gate 失败（见 `src/feedback/mod.rs` 的原因码）；**409** 无读取器/快照；**413** body >4KB；OPTIONS 返回 204 预检头 |
@@ -164,7 +165,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ## 4b. 配置、日志与路径容错
 
-- **壳配置 `mma-shell-config.json`**（exe 旁，首启自动生成骨架）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`combinedMode`/`hotkeys`/`logLevel`；损坏或非法字段自动回落默认并警告（不崩溃）。`malody4Root` 由桥安装器的第三个游戏项（`Malody 4`）自动写入——该选项**只写这个键、不复制任何文件**，卸载只清该键。
+- **壳配置 `mma-shell-config.json`**（exe 旁，首启自动生成骨架）：`gameClient`/`etternaRoot`/`malodyRoot`/`malody4Root`/`lazerStorageRoot`/`combinedMode`/`hotkeys`/`logLevel`；损坏或非法字段自动回落默认并警告（不崩溃）。`malody4Root` 由桥安装器的第三个游戏项（`Malody 4`）自动写入——该选项**只写这个键、不复制任何文件**，卸载只清该键。
 - **全量插件设置 `mma-settings.json`**（exe 旁）：**权威链只有一个判据——tosu 是否在线**（`config::resolve_plugin_settings`）：① tosu 在线（`shared.tosu.is_some()` 且 `tosu_online`）→ tosu 设置文件权威（只读；离线**绝不**读该文件，即使它存在）；② 否则读本地 `mma-settings.json`；③ 本地也没有 → 按插件 `settings.json` 的 `value` 生成默认骨架并落盘（`ensure_plugin_settings` 只在**离线且本地无文件**时播种，不继承 tosu `values.json` 里的旧值）。`GET /settings` 按此链返回；离线 `POST /settings` 走 `merge_plugin_settings` 读-改-写（请求键优先、未知键保留）并广播全量；定时器对本地文件的检测带 `if !online` 门控（`stat → read → stat` 防读到写一半的内容），对 tosu 文件的检测带 `if online` 门控。
 - **图形化设置界面**：设置窗口（§4）运行 24061 上的 `settings.html`——在线只读（表单禁用 + `POST /settings` 403 + 预设区换成 tosu Presets 页面链接），离线可写（改一项即 POST → 落盘 + 广播 overlay；预设区为完整管理器，自定义预设写进 `mma-settings.json` 的 `presetStorage`，离线不显示 LastSavedPreset 行）。页面侧经预设 transport 注入（`setPresetTransport`，见 [presets.md](presets.md)「离线（壳）模式」）。
 - **路径容错**：根路径字段经 `normalize_path` 归一化——`\` 与 `/` 混用、尾部斜杠均处理（用户写 `D:\Games\Etterna` 或 `D:/Games/Etterna` 均可；JSON 内单反斜杠是非法转义，文档已提示用 `/` 或 `\\`）。

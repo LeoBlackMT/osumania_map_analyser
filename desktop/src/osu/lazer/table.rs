@@ -69,6 +69,33 @@ impl TargetInfo {
     pub fn effective_songs_folder(&self) -> Option<String> {
         resolve_songs_folder(self.storage_root.as_deref(), default_lazer_files_dirs())
     }
+
+    /// 覆盖 `storage.ini` 的存储根（壳设置的 `lazerStorageRoot`）。
+    /// 允许用户直接选 `...\files`，统一归一化到其父目录。
+    pub fn with_storage_root_override(mut self, root: Option<&Path>) -> Self {
+        if let Some(root) = root {
+            self.storage_root = Some(
+                normalize_storage_root(root)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        self
+    }
+}
+
+/// 把“Lazer 数据目录”或“数据目录下的 `files` 目录”统一成数据根。
+pub fn normalize_storage_root(path: &Path) -> PathBuf {
+    let is_files = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.eq_ignore_ascii_case(FILES_DIR))
+        .unwrap_or(false);
+    if is_files {
+        path.parent().unwrap_or(path).to_path_buf()
+    } else {
+        path.to_path_buf()
+    }
 }
 
 /// `storage.ini` 的目录优先；它缺失或失效时再尝试默认 Lazer 数据目录。
@@ -584,6 +611,27 @@ mod storage_tests {
             vec![files.clone()],
         );
         assert_eq!(got, Some(files.to_string_lossy().into_owned()));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn storage_root_override_accepts_the_files_directory() {
+        let root = temp_root("override-files");
+        let data = root.join("osu");
+        let files = data.join(FILES_DIR);
+        std::fs::create_dir_all(&files).unwrap();
+
+        let info = TargetInfo::default().with_storage_root_override(Some(&files));
+
+        assert_eq!(
+            info.songs_folder(),
+            Some(files.to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            info.effective_songs_folder(),
+            Some(files.to_string_lossy().into_owned())
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }
