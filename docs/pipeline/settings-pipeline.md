@@ -130,6 +130,6 @@ config.js `defaults` 与 settings.json 的 `value` 必须保持同步。历史�
 设置管线在多源场景下涉及的键（见 [../features/multi-source.md](../features/multi-source.md)）：
 
 - `gameClient`（Auto 默认；解析函数 `parseGameClientValue` 由 `settingsParser.js` 的 `createSettingsParsers` 返回对象注册，应用函数 `applyGameClientSetting`）；其变更入 `SETTING_CACHE_KEYS`（保守兜底）。
-- 游戏根目录 `etternaRoot` / `malodyRoot` / `malody4Root` **不是插件设置**：它们是壳配置 `mma-shell-config.json`（exe 旁，由桥安装器或用户手写）的键，**只由壳消费**（壳据此定位 `Save/` 桥文件、Malody V chart 目录、Malody 4.3.7 的 `beatmap/`）；**页面侧没有对应的解析函数、也不进任何缓存失效集合**（路径变化不影响分析结果，只影响壳能否找到谱面）。跨进程边界时它们随壳的 settings 帧一起到达页面，但页面不消费。
+- 游戏根目录 `etternaRoot` / `malodyRoot` / `malody4Root` / `lazerStorageRoot` **不是插件设置**：它们是壳配置 `mma-shell-config.json`（exe 旁，由桥安装器或用户手写）的键，**只由壳消费**（壳据此定位 `Save/` 桥文件、Malody V chart 目录、Malody 4.3.7 的 `beatmap/`、Lazer 的 `files/`）；**页面侧没有对应的解析函数、也不进任何缓存失效集合**（路径变化不影响分析结果，只影响壳能否找到谱面）。跨进程边界时它们随壳的 settings 帧一起到达页面，但页面不消费。
 
 离线模式（壳 24061）的页面侧设置初始拉取与变更持久化**已实现**：设置窗口 `settings.html`（`js/app/settingsPage/`）启动时 `GET /settings` 取全量并 `applySnapshot` 灌入 `state`（逐键 try/catch），变更经 transport `POST /settings` 落盘 `mma-settings.json` 并由壳广播回 overlay 与设置页（见 §5 末）；预设库同路存进本地 `presetStorage`。在线时同一端点返回 403，设置页转只读（插件设置请在 tosu 设置界面改，预设请在 tosu 的 Presets 页面管理）。壳侧端点、状态码与权威链见 [../features/desktop-shell.md](../features/desktop-shell.md) §3c/§4b。

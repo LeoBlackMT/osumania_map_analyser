@@ -18,6 +18,9 @@
   - **Game client**：选择需要使用的数据源。
     - Auto：自动选择目前活跃的来源。优先级：游玩中 > 近期活动 > osu! > Etterna > Malody 4 > Malody
     - 可锁定为某个来源（Osu! / Etterna / Malody / Malody 4）
+  - **Lazer data folder**：Lazer 的数据目录。
+    - 该目录通常与游戏安装目录不同，默认是 `%APPDATA%\osu`（其下含 `files`）。壳会优先读取 `storage.ini`，没有时自动探测默认目录。
+    - 只有移动过数据目录或自动探测失败时才需要填写；可以填数据根目录，也可以直接填 `files` 目录。修改后需重启壳。
   - **Etterna root / Malody V root / Malody 4.3.7 root**：三个游戏的运行目录。
     - 按需填写需要使用的游戏目录，用于寻找谱面进行分析。
     - 留空令程序自动探测。推荐使用`bridges/install-bridge.ps1`脚本自动写入。
@@ -209,6 +212,9 @@
   - **Game client**: Select the data source to use.
     - Auto: Automatically selects the currently active source. Priority: Playing > Recent activity > osu! > Etterna > Malody 4 > Malody.
     - Can be locked to a specific source (Osu! / Etterna / Malody / Malody 4).
+  - **Lazer data folder**: The data directory for osu!lazer.
+    - It is usually different from the game installation directory; the default is `%APPDATA%\osu` (which contains `files`). The shell reads `storage.ini` first and otherwise auto-detects the default directory.
+    - Only needed when the data directory was moved or auto-detection fails; either the data root or the `files` directory is accepted. Restart the shell after changing it.
   - **Etterna root / Malody V root / Malody 4.3.7 root**: Installation directories for the three games.
     - Fill in the game directories as needed to locate beatmaps for analysis.
     - Leave blank for automatic detection. Recommended to use the `bridges/install-bridge.ps1` script to populate automatically.

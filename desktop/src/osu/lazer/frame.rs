@@ -577,6 +577,7 @@ pub fn attach(
     target: &crate::osu::win::Target,
     regions: &mut crate::osu::scan::RegionCache,
     env_path: Option<PathBuf>,
+    storage_root_override: Option<PathBuf>,
 ) -> Result<Attach, Reason> {
     let env = TargetEnv {
         exe_dir: target
@@ -588,16 +589,20 @@ pub fn attach(
         arch: arch_for_bitness(target.bitness).to_string(),
     };
     let files = RealFiles;
-    let info = target_from_files(&files, &env);
+    let info = target_from_files(&files, &env)
+        .with_storage_root_override(storage_root_override.as_deref());
     let table_dir = shell_exe_dir();
-    eprintln!(
-        "[osu] lazer target: version={:?} runtime={:?} arch={} storage_root={:?} table_dir={}",
+    let target_line = format!(
+        "[osu] lazer target: version={:?} runtime={:?} arch={} storage_root={:?} songs_folder={:?} table_dir={}",
         info.lazer_version,
         info.runtime_version,
         info.arch,
         info.storage_root,
+        info.effective_songs_folder(),
         table_dir.display()
     );
+    eprintln!("{target_line}");
+    crate::server::log::log_at("info", &target_line);
     let source: &dyn Source = target;
     let (anchors, scan_ms) = scan_markers(target, regions, MARKER_HIT_LIMIT)?;
     let resolution = resolve_game_base(source, &anchors, SITE_DELTAS);
@@ -745,7 +750,7 @@ pub fn read_tick(
         game_base: attach.game_base,
         anchors: &attach.anchors,
         proof: &mut attach.proof,
-        songs_folder: attach.target.songs_folder(),
+        songs_folder: attach.target.effective_songs_folder(),
         game_folder: crate::osu::stable::game_folder(&target.image_path),
         modules: &attach.modules,
     })?;
@@ -769,7 +774,7 @@ pub fn read_tick(
                 game_base: attach.game_base,
                 anchors: &attach.anchors,
                 proof: &mut attach.proof,
-                songs_folder: attach.target.songs_folder(),
+                songs_folder: attach.target.effective_songs_folder(),
                 game_folder: crate::osu::stable::game_folder(&target.image_path),
                 modules: &attach.modules,
             })?;
@@ -1137,6 +1142,7 @@ pub fn attach(
     _target: &crate::osu::win::Target,
     _regions: &mut crate::osu::scan::RegionCache,
     _env_path: Option<PathBuf>,
+    _storage_root_override: Option<PathBuf>,
 ) -> Result<Attach, Reason> {
     Err(Reason::PlatformUnsupported)
 }

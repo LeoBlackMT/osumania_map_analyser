@@ -138,6 +138,8 @@ export default {
     "ui.shell.sectionSub": "调整桌面壳的设置。保存位置： mma-shell-config.json ",
     "ui.shell.field.gameClient.title": "游戏客户端",
     "ui.shell.field.gameClient.description": "自动：选择当前活跃的数据源；固定值：强制使用该源。",
+    "ui.shell.field.lazerStorageRoot.title": "Lazer 数据目录",
+    "ui.shell.field.lazerStorageRoot.description": "包含 Lazer files 的文件夹（不是安装目录）。留空自动探测；修改后需重启。",
     "ui.shell.field.lazerRoot.title": "Lazer 目录",
     "ui.shell.field.lazerRoot.description": "Lazer 安装目录。留空自动探测。",
     "ui.shell.field.etternaRoot.title": "Etterna 目录",

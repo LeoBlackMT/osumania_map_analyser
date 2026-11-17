@@ -211,7 +211,12 @@ pub fn run(
                 let target = attached.as_ref().expect("attached");
                 let client = target.client().unwrap_or(Client::Stable);
                 if client == Client::Lazer {
-                    match lazer::attach(target, &mut regions, lazer::env_table_path()) {
+                    match lazer::attach(
+                        target,
+                        &mut regions,
+                        lazer::env_table_path(),
+                        crate::config::lazer_storage_root(),
+                    ) {
                         Ok(attach) => {
                             eprintln!(
                                 "[osu] lazer L0 resolved: table={} origin={} path={} gameBase=0x{:016X} anchors={} scan_ms={}",
