@@ -210,9 +210,20 @@ pub fn execute_live(options: &Options) -> Result<GenerationOutcome, LiveError> {
         LiveError::new("il_metadata_error", format!("failed to read IL metadata: {e}"), 4)
     })?;
 
-    // 从程序集提取版本号
+    // 从程序集提取版本号；runtime 必须读安装目录的 `osu!.runtimeconfig.json`，
+    // 不能硬编码——lazer 每次更新会同步升级 .NET（如 2026.1117 → 10.0.15），
+    // 硬编码会让表键永远匹配不上壳的 TargetInfo，LaneAcc 等分段功能全部走 nearest。
     let lazer_version = extract_lazer_version(&inventory, &lazer_dir);
-    let runtime_version = "10.0.12".to_string(); // 默认运行时版本
+    let runtime_version = crate::runtimeconfig_version(&lazer_dir).ok_or_else(|| {
+        LiveError::new(
+            "runtime_version_missing",
+            format!(
+                "could not read .NET runtime version from {}",
+                lazer_dir.join("osu!.runtimeconfig.json").display()
+            ),
+            4,
+        )
+    })?;
     let arch = "x64".to_string();
 
     // 5. 内存扫描找锚点
