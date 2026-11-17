@@ -41,7 +41,7 @@ ManiaMapAnalyser 桌面壳（mma-shell）基于 Tauri v2 开发，支持 Windows
 ## 配置文件说明
 
 配置文件位于可执行文件同级目录下：
-- `mma-shell-config.json`：壳程序运行配置，包括数据源偏好、各游戏根目录、快捷键映射与日志等级。
+- `mma-shell-config.json`：壳程序运行配置，包括数据源偏好、各游戏根目录（含 `lazerStorageRoot`）、快捷键映射与日志等级。
 - `mma-settings.json`：卡片显示设置。仅在 tosu 离线时由桌面壳负责维护；tosu 在线时直接采用 tosu 的设置文件。
 - `mma-shell-state.json`：窗口运行状态（主窗口/设置窗口几何）+ 反馈用的匿名 `install_id`。旧版 `mma-shell-feedback.json` 会自动并入并删除。
 
@@ -134,7 +134,7 @@ For end-user operation guides, see [docs/shell-guide.md](../docs/shell-guide.md)
 ## Configuration Files
 
 Configuration files are located in the executable directory:
-- `mma-shell-config.json`: Shell runtime configuration including source preference, game roots, hotkey definitions, and log levels.
+- `mma-shell-config.json`: Shell runtime configuration including source preference, game roots (including `lazerStorageRoot`), hotkey definitions, and log levels.
 - `mma-settings.json`: Card display settings. Managed by the shell when tosu is offline; replaced by tosu's settings file when tosu is online.
 - `mma-shell-state.json`: Window runtime state (geometry for the main/settings windows) plus the anonymous `install_id` used by feedback. The legacy `mma-shell-feedback.json` is migrated into it and removed.
 

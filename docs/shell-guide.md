@@ -126,6 +126,7 @@ Malody V 有两个互不影响的通道，按需选择：
 - **端口 24061 被占用**：壳无法启动或日志报 `port 24061 is occupied by another process`。先关闭旧 `mma-shell`；仍被占用时用 `Get-NetTCPConnection -LocalPort 24061` 或 `netstat -ano | findstr :24061` 查被占用的进程 PID，再关闭对应程序。
 - **端口 24062 被占用**：壳日志会提示 `osu! 兼容端点端口 24062 被占用，原生传输不可用`，页面自动回退 tosu；关闭占用程序并重启壳即可恢复。
 - **tosu 端口不是 24050**：在插件设置 `wsEndpoint` 填写实际的 `host:port`；`presets.html`/`debug.html` 的固定链接可能需要手动打开。
+- **Lazer 切歌后 404 / Load failed**：确认「Lazer 数据目录」指向包含 `files` 的文件夹；默认安装通常没有 `storage.ini`，留空会自动探测 `%APPDATA%\osu\files`。移动过数据目录时手动填写，修改后重启壳。
 - **Malody V 相关问题**
   - **卡片没反应 / 一直空着**：先确认壳在运行；再打开壳日志（`logs/mma-shell-YYYYMMDD.log`）搜 `malody bridge` —— 若出现 `REJECTED … malodyRoot unavailable`，就是壳没解析到游戏目录，手动在 `mma-shell-config.json` 里填 `malodyRoot`。
   - **游戏里看不到任何变化**：看游戏目录下的 `BepInEx\\LogOutput.log` —— 应有 `Selection bridge ready` 与一行行 `Observe …`。若整个文件都不存在，说明加载器没被游戏加载（可能是杀软隔离了 `winhttp.dll`）。
@@ -260,6 +261,7 @@ Shell runtime logs are written to the `logs/` directory next to the executable: 
 - **Port 24061 in use**: The shell cannot start or logs `port 24061 is occupied by another process`. Close any old `mma-shell` first; if it is still occupied, find the PID of the occupying process with `Get-NetTCPConnection -LocalPort 24061` (or `netstat -ano | findstr :24061`) and terminate it.
 - **Port 24062 in use**: The shell logs `osu! compatibility origin port 24062 is occupied; native transport unavailable`; the page falls back to tosu. Close the occupying program and restart the shell.
 - **tosu is not on 24050**: Enter the actual `host:port` in the plugin's `wsEndpoint` setting; the fixed `presets.html`/`debug.html` links may need to be opened manually.
+- **404 / Load failed after switching Lazer beatmaps**: Make sure **Lazer data folder** points to the folder containing `files`; a default installation usually has no `storage.ini`, and leaving the field empty auto-detects `%APPDATA%\osu\files`. Set it manually if you moved the data folder, and restart the shell after changing it.
 - **Malody V Related Issues**
   - **Card does not respond / Stays empty**: Confirm the shell is running; open shell logs (`logs/mma-shell-YYYYMMDD.log`) and search for `malody bridge`. If `REJECTED … malodyRoot unavailable` appears, the shell failed to resolve the game path; fill in `malodyRoot` manually in `mma-shell-config.json`.
   - **No changes visible in-game**: Check `BepInEx\LogOutput.log` in the game directory — it should contain `Selection bridge ready` and `Observe …` lines. If the file does not exist, the loader was not loaded (possibly antivirus quarantined `winhttp.dll`).
