@@ -43,7 +43,7 @@ const ROOT_FIELDS = [
     {
         key: "lazerStorageRoot",
         title: "Lazer data folder",
-        description: "Folder containing the Lazer files directory (usually %APPDATA%\\osu; not the install folder). Empty = auto-detect. Restart the shell after changing.",
+        description: "Folder containing the Lazer files directory (not the install folder). Empty = auto-detect. Restart the shell after changing.",
     },
     {
         key: "etternaRoot",

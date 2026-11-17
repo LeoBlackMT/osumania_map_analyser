@@ -684,11 +684,13 @@ fn lazer_storage_root() -> Option<String> {
         let root = path.parent().unwrap_or(path);
         return Some(root.to_string_lossy().into_owned());
     }
-    crate::config::lazer_storage_root().map(|root| {
-        crate::osu::lazer::normalize_storage_root(&root)
-            .to_string_lossy()
-            .into_owned()
-    })
+    crate::config::lazer_storage_root()
+        .or_else(crate::osu::lazer::detected_lazer_storage_root)
+        .map(|root| {
+            crate::osu::lazer::normalize_storage_root(&root)
+                .to_string_lossy()
+                .into_owned()
+        })
 }
 
 fn find_gen_executable(shared: &Shared) -> Option<std::path::PathBuf> {

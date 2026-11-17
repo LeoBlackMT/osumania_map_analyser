@@ -137,6 +137,22 @@ fn default_lazer_files_dirs() -> Vec<PathBuf> {
     }
 }
 
+/// 不依赖读取器快照的存储根探测（设置页 `resolved` 与显式覆盖共用）：
+/// `storage.ini` 的 `FullPath` 优先，其次默认 `%APPDATA%\osu[!]\files` 的父目录。
+pub fn detected_lazer_storage_root() -> Option<PathBuf> {
+    let from_ini = storage_ini_path()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| ini_value(&text, "FullPath"))
+        .map(PathBuf::from)
+        .filter(|root| root.join(FILES_DIR).is_dir());
+    from_ini.or_else(|| {
+        default_lazer_files_dirs()
+            .into_iter()
+            .find(|files| files.is_dir())
+            .and_then(|files| files.parent().map(|root| root.to_path_buf()))
+    })
+}
+
 pub fn target_from_files(files: &dyn TableFiles, env: &TargetEnv) -> TargetInfo {
     let lazer_version = files
         .read(&env.exe_dir.join("sq.version"))
