@@ -123,6 +123,11 @@ function escapeHtml(value) {
  *   play 帧的 ScoreInfo.ModsJson（见 socketHandlers 的 modContext）。
  */
 function currentColumnTransform() {
+    // RD/MR 列变换只属于 osu!mania 源；Etterna/Malody 的谱面列语义不同，
+    // 不能因为切源时残留的 modCodes 被误变换。
+    if ((state.activeSource ?? "osu") !== "osu") {
+        return null;
+    }
     return columnTransformFromState({
         modCodes: state.modCodes,
         randomSeed: state.randomSeed,
