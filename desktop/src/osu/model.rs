@@ -271,8 +271,12 @@ pub struct Snapshot {
     pub paused: Option<bool>,
     /// 局内 hits（`score_base` 链的 u16 槽）。
     pub play_hits: Option<Hits>,
+    /// 局内 RD seed（stable/ppysb `Score.Seed`；None = 表缺段/读失败）。
+    pub play_seed: Option<i32>,
     /// 结算 hits（`result_base` 链的同形槽）。
     pub result_hits: Option<Hits>,
+    /// 结算成绩的 RD seed（stable/ppysb `Score.Seed`）。
+    pub result_seed: Option<i32>,
     /// 回放判定。lazer：结算屏 `ResultsScreen.<player>` 的运行时类型是 `ReplayPlayer`。
     /// stable：结算成绩的玩家名与本机账号名（cfg 里的 `Username = …`）全部不匹配
     /// （`osu::stable::replay_from_player_name`）。
@@ -403,7 +407,9 @@ impl Snapshot {
             "play_time": self.play_time,
             "paused": self.paused,
             "play_hits": self.play_hits.map(|h| h.canonical()),
+            "play_seed": self.play_seed,
             "result_hits": self.result_hits.map(|h| h.canonical()),
+            "result_seed": self.result_seed,
             "hits_candidates": self.hits_candidates,
             "retries": self.retries,
             "plays": self.plays,

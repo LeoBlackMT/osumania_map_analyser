@@ -248,7 +248,7 @@
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
 | `< 3` 或 `> 10` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 11`，区间为 `[3,11]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 12`，区间为 `[3,12]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -279,7 +279,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 11**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），v11 的升级来自 `replay_pauses` / `replay_pauses_sync`（§18），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,11]`（§11.8）。
+> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 12**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），v11 的升级来自 `replay_pauses` / `replay_pauses_sync`（§18），v12 的升级来自 `play.seed` / `resultsScreen.seed`（§19），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,12]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故设置页无需 CORS。**例外**：`/feedback`（跨源 POST 需预检）与 `GET /shell-config`（`24050#mma-shell` 的跨源初始读取）显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
@@ -448,3 +448,18 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   v10 壳 + v11 页 ⇒ 页面接受，回放暂停显示 `Pause Data Unavailable`，其余功能正常。
 - 2026.921 的偏移表已从仓库移除（2026-11-11 cleanup）：该构建不再有精确表，原生读取不可用
   （回落 tosu）；回放/历史结算固定显示 `Pause Data Unavailable`。
+
+## 19. v11 → v12 差异（Stable/ppysb RD seed）
+
+- 新增可选下行字段（仅 stable/ppysb 原生读取；lazer 的 seed 仍来自 `mods.array[].settings.seed`）：
+  - `play.seed`：int32，play 态 `Score.Seed`；缺表/读失败不发布。
+  - `resultsScreen.seed`：int32，结算屏 `Score.Seed`；缺表/读失败不发布。
+- 偏移表 `desktop/offsets/stable/stable__x86.json` / `ppysb__x86.json` 的 `topology.score_seed`
+  = **128 (0x80)**：`Score` 对象（`[gameplay+0x38]` / `[ruleset+0x38]`）的 `Seed` int32 字段。
+  该偏移由 ClrMD 在 ppysb 2026-09-24 构建上实测：CLR `ClrField.Offset=0x7C`，加 x86
+  对象头 4 字节得 0x80；`Score.Seed` 与 `Player.Seed` 的静态字段值一致（Auto 局均为 0）。
+- 页面 `modData.js` 只在 stable/ppysb 分支读取 `play.seed` / `resultsScreen.seed`；
+  历史结算只信该成绩自己的 `resultsScreen.seed`，不回退上一局 `play.seed`。
+- 兼容矩阵：v12 壳 + v11 页 ⇒ 旧页忽略新字段（只影响 RD 全卡重算，LaneAcc/既有功能不受影响）；
+  v11 壳 + v12 页 ⇒ 页面接受，但 stable RD 无 seed，显示原谱（不报错）。
+- `score_seed` 是**可选段**：旧表缺段 ⇒ 不发 seed；不会用 0 占位。

@@ -173,6 +173,11 @@ export const state = {
     odFlag: null,
     cvtFlag: null,
     modSignature: "",
+    // RD 实际 seed（仅 lazer/stable 的 play/result 帧有效）与当前 mod 来源：
+    // "select" | "play" | "results" | "freeze"。play→result 时冻结为 "freeze"，
+    // 不让 resultsScreen.mods 改写本局 mod / 触发重算。
+    randomSeed: null,
+    modContext: "select",
     ppMetrics: null,
     modCodes: [],
     classicMod: false,

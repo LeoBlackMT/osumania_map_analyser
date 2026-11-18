@@ -1,4 +1,4 @@
-﻿import { xToColumn } from "./noteColumn.js";
+import { xToColumn } from "./noteColumn.js";
 
 function stringToInt(value) {
     return Math.trunc(Number.parseFloat(value));
@@ -23,6 +23,7 @@ export class OsuFileParser {
     this.osuText = osuText;
     this.od = -1;
     this.columnCount = -1;
+    this.specialStyle = 0;
     this.columns = [];
     this.noteStarts = [];
     this.noteEnds = [];
@@ -41,6 +42,7 @@ export class OsuFileParser {
     getParsedData() {
     return {
             columnCount: this.columnCount,
+            specialStyle: this.specialStyle,
             columns: this.columns,
             noteStarts: this.noteStarts,
             noteEnds: this.noteEnds,
@@ -120,6 +122,16 @@ export class OsuFileParser {
         if (csPart != null) {
                     const cs = csPart.trim();
                     this.columnCount = cs === "0" ? 10 : stringToInt(cs);
+        }
+            }
+
+            if (line.includes("SpecialStyle:")) {
+        const stylePart = line.split(":")[1];
+        if (stylePart != null) {
+                    const style = Number.parseInt(stylePart.trim(), 10);
+                    if (Number.isInteger(style) && style >= 0 && style <= 2) {
+            this.specialStyle = style;
+                    }
         }
             }
 

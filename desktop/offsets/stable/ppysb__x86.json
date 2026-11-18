@@ -62,6 +62,7 @@
     "mods_xor_high": 12,
     "mods_xor_low": 8,
     "score_processor_from_score": 84,
+    "score_seed": 128,
     "scorev2_bit": 536870912,
     "result_score_offset": 120,
     "result_max_combo_offset": 104,

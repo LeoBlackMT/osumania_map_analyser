@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 11;
+pub const CONTRACT_VERSION: u32 = 12;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);

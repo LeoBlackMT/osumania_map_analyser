@@ -47,12 +47,26 @@ import {
 } from "../core/beatmapIdentity.js";
 
 
+function resolveModContext() {
+    if (state.isInPlayState) return "play";
+    if (isPauseStateName(state.clientStateName)) return "play";
+    if (state.clientStateName === "resultscreen") {
+        // play/replay → result：本局 mod 是权威，resultsScreen.mods 只用于
+        // 展示/反馈，不能改写主分析（否则会清掉 LaneAcc 终态）。
+        return state.resultsFromPlay ? "freeze" : "results";
+    }
+    return "select";
+}
+
 function getModData(data) {
+    if (state.modContext === "freeze") {
+        return null;
+    }
     return getModDataFromPayload(data, {
         sortedKnownModCodes: SORTED_KNOWN_MOD_CODES,
         modBitFlagEntries: MOD_BIT_FLAG_ENTRIES,
         fallbackClient: state.client,
-        preferPlayMods: state.isInPlayState,
+        prefer: state.modContext,
     });
 }
 
@@ -282,6 +296,7 @@ function applyReplayPausesToMarkers() {
 export function applySignalState(data) {
     noteTelemetryActivity();
     let laneAccEnteredPlay = false;
+    let enteredHistoricalResult = false;
         // 回放身份位：后面的状态边沿与 updateSongTimeState 都要读它，必须先写。
         state.isReplay = data?.replay === true;
         state.nativeReplayHash = typeof data?.replayHash === "string" ? data.replayHash : "";
@@ -290,6 +305,7 @@ export function applySignalState(data) {
             const wasInPlayState = state.isInPlayState;
             const wasPauseState = isPauseStateName(state.clientStateName);
             const wasResultScreen = state.clientStateName === "resultscreen";
+            const previousClientStateName = state.clientStateName;
             const nextInPlayState = isPlayStateName(normalizedClientStateName);
             const nextIsResultScreen = isResultScreenStateName(normalizedClientStateName);
             const nextIsPauseState = isPauseStateName(normalizedClientStateName);
@@ -309,15 +325,26 @@ export function applySignalState(data) {
                 // 否则结算重算会把刚看到的成绩清掉。
                 const hadLaneAccSession = typeof laneAccView.isSessionActive === "function"
                     && laneAccView.isSessionActive();
-                state.resultsFromPlay = leftPlayState || hadLaneAccSession;
+                // 从选歌/菜单直接打开的历史结算，即使上一局 LaneAcc 终态还在，
+                // 也不能按“刚打完”处理；否则历史结算不会按成绩自己的 mods 重算。
+                const previousWasSelectLike = /^(select|menu)/i.test(previousClientStateName);
+                state.resultsFromPlay = leftPlayState
+                    || (!previousWasSelectLike && hadLaneAccSession);
+                enteredHistoricalResult = !state.resultsFromPlay;
                 // 先冻结 LaneAcc 终态，再触发结算重算；否则重算会先把本局累加器重置。
                 if (state.resultsFromPlay) {
                     laneAccView.finishSession();
                 }
-                // 结算屏不保留选区（D2）：复位后由重算把卡片恢复成整图口径。
-                clearSection("results", { recompute: true });
+                // 结算屏不保留选区（D2）：play/replay 进入结算只复位，不派发重算；
+                // 历史成绩从选歌进入时才由 mod 差异触发整卡重算（见下方 scheduleRecompute）。
+                clearSection("results", { recompute: enteredHistoricalResult });
             } else if (!nextIsResultScreen) {
                 state.resultsFromPlay = false;
+                // 离开 play/result 回到选歌：RD seed 属于上一局，先清空；
+                // 暂停不算离开（`nextIsPauseState` 时保留本局 seed）。
+                if ((leftPlayState && !nextIsPauseState) || wasResultScreen) {
+                    state.randomSeed = null;
+                }
             }
 
             updateCardPlayVisibility();
@@ -383,14 +410,36 @@ export function applySignalState(data) {
             }
         }
 
+        state.modContext = resolveModContext();
         const modData = getModData(data);
-        if (modData.client) {
+        if (modData?.client) {
             state.client = modData.client;
         }
-        if (modData.hasModPayload) {
-            state.modCodes = modData.modCodes || [];
-            state.randomSeed = modData.randomSeed ?? null;
-            state.classicMod = Boolean(modData.classic);
+        if (modData?.hasModPayload) {
+            const canApplyModState = state.modSignature === ""
+                || modData.hasModInfo
+                || modData.hasExplicitNoMod;
+            // 部分包：保留上一帧 mod/seed，避免新 seed + 旧签名错配。
+            if (canApplyModState) {
+                state.modCodes = modData.modCodes || [];
+                state.randomSeed = modData.randomSeed ?? null;
+                state.classicMod = Boolean(modData.classic);
+
+                // 历史成绩（选歌 → resultScreen）：该成绩自己的 mods 是权威，
+                // 立即应用完整签名并在没有 beatmap 帧时也能派发整卡重算。
+                // play/replay → result 走 "freeze"，这里不会执行。
+                if (enteredHistoricalResult) {
+                    state.speedRate = modData.speedRate;
+                    state.odFlag = modData.odFlag;
+                    state.cvtFlag = modData.cvtFlag;
+                    state.modSignature = modData.modSignature;
+                    if (state.lastBeatmapIdentity) {
+                        state.lastBeatmapKey = `${state.lastBeatmapIdentity}|${modData.modSignature}`;
+                    }
+                    state.pendingChangeKind = "mod";
+                    scheduleRecompute("historical result mods", true);
+                }
+            }
         }
 
         // LaneAcc 的 play/结算边沿放在 mods 之后：窗口用本局的 speedRate/OD。
@@ -413,6 +462,9 @@ export function applyBeatmapState(data) {
         // applySignalState 段，函数作用域隔离——此处直接引用会抛
         // ReferenceError: modData is not defined，换图/换 mod 的 recompute
         // 永远执行不到（socket.js try/catch 吞掉，仅控制台 MESSAGE_ERROR）。
+        // play → result / replay → result：state.modContext === "freeze"，
+        // getModData() 返回 null，禁止 resultsScreen.mods 改写本局签名。
+        state.modContext = resolveModContext();
         const modData = getModData(data);
         const beatmap = data?.beatmap;
         if (!beatmap) return;
@@ -526,16 +578,18 @@ export function applyBeatmapState(data) {
 
         // api_v2 packets can be partial. Only apply incoming mod state when
         // mod payload is explicitly present; otherwise keep current state.
-        const shouldApplyModState = !previousModSignature
-            || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod));
+        const shouldApplyModState = Boolean(modData)
+            && (!previousModSignature
+                || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod)));
         const nextModSignature = shouldApplyModState
             ? modData.modSignature
             : previousModSignature;
 
         // 身份比较：id 相同但 hash/songMeta 冲突 ⇒ 换图（导入/替换同 id 文件）；
         // 弱帧（缺 hash/path）由 mergedFrame 补齐，不会每个包都判成换图。
-        const hasStateMismatch = identityChanged
-            || nextModSignature !== previousModSignature;
+        // play/replay → result 的 "freeze" 上下文禁止任何重算（含身份抖动）。
+        const hasStateMismatch = state.modContext !== "freeze"
+            && (identityChanged || nextModSignature !== previousModSignature);
         if (!hasStateMismatch) {
             // 身份/mod 没变：不触发重算，但把本帧新补齐的 meta/set 写回，
             // 后续内容校验可用到更完整的字段。

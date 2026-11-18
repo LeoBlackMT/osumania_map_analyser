@@ -16,12 +16,13 @@ const USAGE: &str = "\
 stable-offsets-gen - Maintainer probing tool for osu!stable 32-bit (MMA Offset v2)
 
 USAGE:
-  stable-offsets-gen [--out <file>] [--pid <n>] [--json]
+  stable-offsets-gen [--out <file>] [--pid <n>] [--client <stable|ppysb>] [--json]
   stable-offsets-gen -h | --help
 
 OPTIONS:
   --out <file>  Output json file path (default: stdout or desktop/offsets/stable/stable__x86.json)
   --pid <n>     Target specific osu!.exe process ID
+  --client <c>  Emit client field: stable (default) or ppysb
   --json        Emit compact machine-readable json
 ";
 
@@ -171,6 +172,7 @@ fn run(args: &[String]) -> i32 {
     let json_mode = args.iter().any(|a| a == "--json");
     let mut out_path: Option<PathBuf> = None;
     let mut explicit_pid: Option<u32> = None;
+    let mut client = "stable".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -181,6 +183,13 @@ fn run(args: &[String]) -> i32 {
             }
             "--pid" if i + 1 < args.len() => {
                 explicit_pid = args[i + 1].parse().ok();
+                i += 2;
+            }
+            "--client" if i + 1 < args.len() => {
+                client = match args[i + 1].as_str() {
+                    "ppysb" => "ppysb".to_string(),
+                    _ => "stable".to_string(),
+                };
                 i += 2;
             }
             _ => {
@@ -196,7 +205,7 @@ fn run(args: &[String]) -> i32 {
     }
 
     #[cfg(windows)]
-    match probe_stable(explicit_pid) {
+    match probe_stable(explicit_pid, &client) {
         Ok(table_json) => {
             if let Some(path) = out_path {
                 if let Err(e) = fs::write(&path, &table_json) {
@@ -227,7 +236,7 @@ fn run(args: &[String]) -> i32 {
 }
 
 #[cfg(windows)]
-fn probe_stable(explicit_pid: Option<u32>) -> Result<String, String> {
+fn probe_stable(explicit_pid: Option<u32>, client: &str) -> Result<String, String> {
     use win_api::*;
 
     // 1. 查找 32 位 stable 进程
@@ -267,7 +276,7 @@ fn probe_stable(explicit_pid: Option<u32>) -> Result<String, String> {
     }
 
     // 4. 组装标准 stable__x86.json 表
-    let json = format_stable_json(&probed_anchors);
+    let json = format_stable_json(&probed_anchors, client);
     Ok(json)
 }
 
@@ -423,12 +432,12 @@ fn scan_pattern(handle: win_api::Handle, pattern_str: &str) -> Vec<usize> {
     hits
 }
 
-fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>) -> String {
+fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>, client: &str) -> String {
     let mut out = String::new();
     out.push_str("{\n");
     out.push_str("  \"$schema\": \"mma-offset-v2\",\n");
-    out.push_str("  \"client\": \"stable\",\n");
-    out.push_str("  \"version\": \"probed-latest\",\n");
+    out.push_str(&format!("  \"client\": \"{client}\",\n"));
+    out.push_str(&format!("  \"version\": \"{client}-latest\",\n"));
     out.push_str("  \"arch\": \"x86\",\n");
     out.push_str("  \"anchors\": {\n");
 
@@ -458,6 +467,9 @@ fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>) -
     out.push_str("    \"mods_xor_high\": 12,\n");
     out.push_str("    \"mods_xor_low\": 8,\n");
     out.push_str("    \"score_processor_from_score\": 84,\n");
+    // Score.Seed —— ClrMD live 实测（2026-11-18 ppysb）：CLR field offset 0x7C
+    // + x86 object header 4 = 0x80；与 Player.Seed=0 / Score.Seed=0 对齐。
+    out.push_str("    \"score_seed\": 128,\n");
     out.push_str("    \"scorev2_bit\": 536870912,\n");
     out.push_str("    \"result_score_offset\": 120,\n");
     out.push_str("    \"result_max_combo_offset\": 104,\n");

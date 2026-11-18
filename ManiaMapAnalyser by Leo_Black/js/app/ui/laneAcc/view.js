@@ -9,7 +9,7 @@ import { createAccumulator } from "../../../laneAcc/accumulator.js";
 import { toChartTime } from "../../../laneAcc/timeAxis.js";
 import { framesToSv1Events } from "../../../laneAcc/rawFrames.js";
 import { framesToStableV2Events } from "../../../laneAcc/stableV2.js";
-import { maniaRandomColumnMap } from "../../../laneAcc/random.js";
+import { maniaRandomColumnMap, maniaStableRandomColumnMap } from "../../../laneAcc/random.js";
 import { remapChartColumns } from "../../../laneAcc/chart.js";
 import { formatAcc, formatMiss } from "../../../laneAcc/format.js";
 import { createPopoverController } from "./popover.js";
@@ -199,26 +199,34 @@ export const laneAccView = (() => {
         return currentMods().some((mod) => /^(RD|RANDOM)$/i.test(String(mod)));
     }
 
-    /** Lazer 有 seed 才支持 RD；Stable RD（无 seed）整模块禁用。 */
+    /** Lazer/Stable 有实际 seed 才支持 RD；stable 由壳读 Score.Seed。 */
     function randomSeed() {
+        if (state.randomSeed == null || state.randomSeed === "") {
+            return null;
+        }
         const seed = Number(state.randomSeed);
         return Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647 ? seed : null;
     }
 
     function randomModBlocked() {
-        return hasRandomMod() && !(activeScoreMode() === "lazer" && randomSeed() != null);
+        const mode = activeScoreMode();
+        const supportedMode = mode === "lazer" || mode.startsWith("stable");
+        return hasRandomMod() && !(supportedMode && randomSeed() != null);
     }
 
-    /** Lazer RD：谱面列按 ManiaModRandom 的置换变换；native 事件/帧保持游戏列。 */
+    /** Lazer/Stable RD：谱面列按实际 seed 变换；native 事件/帧保持游戏列。 */
     function applyRandomColumns(chart) {
-        if (!chart || activeScoreMode() !== "lazer" || !hasRandomMod()) {
+        const mode = activeScoreMode();
+        if (!chart || (mode !== "lazer" && !mode.startsWith("stable")) || !hasRandomMod()) {
             return;
         }
         const seed = randomSeed();
         if (seed == null || chart.__randomSeed === seed) {
             return;
         }
-        const shuffled = maniaRandomColumnMap(chart.columnCount, seed);
+        const shuffled = mode.startsWith("stable")
+            ? maniaStableRandomColumnMap(chart.columnCount, seed, chart.specialStyle || 0)
+            : maniaRandomColumnMap(chart.columnCount, seed);
         if (!shuffled) {
             return;
         }

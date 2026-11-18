@@ -865,7 +865,9 @@ pub fn frozen_copy(snapshot: &Snapshot) -> Snapshot {
     copy.result_mods_mask = None;
     copy.menu_mods_mask = None;
     copy.play_hits = None;
+    copy.play_seed = None;
     copy.result_hits = None;
+    copy.result_seed = None;
     copy.play_time = None;
     copy.paused = None;
     copy.checksum = None;
@@ -1222,6 +1224,7 @@ pub fn read_frame(
                     snapshot.gameplay_base = in_game.gameplay_base;
                     snapshot.score_base = in_game.score_base;
                     snapshot.play_mods_mask = in_game.play_mods_mask;
+                    snapshot.play_seed = in_game.seed;
                     snapshot.hits_candidates = in_game.hits_candidates.clone();
                     snapshot.hits_candidates_complete = in_game.hits_candidates_complete;
                     snapshot.retries = in_game.retries;
@@ -1233,6 +1236,7 @@ pub fn read_frame(
                 let result = stable::read_result_with_topo(target, ruleset, topo);
                 snapshot.result_base = result.result_base;
                 snapshot.result_mods_mask = result.result_mods_mask;
+                snapshot.result_seed = result.seed;
                 snapshot.result_hits_candidates = result.hits_candidates.clone();
                 snapshot.result_hits_candidates_complete = result.hits_candidates_complete;
                 if result.result_base.is_none() {

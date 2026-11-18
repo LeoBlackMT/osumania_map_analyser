@@ -94,6 +94,7 @@ export function buildChart(parsed, identity = "") {
     return {
         identity: String(identity || ""),
         columnCount,
+        specialStyle: Number(parsed?.specialStyle) || 0,
         od,
         noteCount,
         holdCount,
