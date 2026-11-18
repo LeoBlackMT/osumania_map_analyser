@@ -325,6 +325,23 @@ pub fn default_ppysb_table() -> StableTable {
         .expect("compiled-in ppysb table must be valid")
 }
 
+/// 磁盘表可能是旧版本（例如 APPDATA 里 2026-11-06 的 stable 表，尚无
+/// `score_seed`）。同一 verified_build 下，用内置表补齐新增的可选段；
+/// 不同构建绝不借用偏移。
+fn fill_embedded_optional_sections(mut table: StableTable, variant: &str) -> StableTable {
+    let embedded = if variant.eq_ignore_ascii_case("ppysb") {
+        default_ppysb_table()
+    } else {
+        default_stable_table()
+    };
+    if table.verified_build.eq_ignore_ascii_case(&embedded.verified_build) {
+        if table.topology.score_seed.is_none() {
+            table.topology.score_seed = embedded.topology.score_seed;
+        }
+    }
+    table
+}
+
 /// stable / ppysb 表发现梯子
 pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Result<StableTable, Reason> {
     let filename = if variant.eq_ignore_ascii_case("ppysb") {
@@ -344,7 +361,7 @@ pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Resu
         if p.exists() {
             if let Ok(bytes) = std::fs::read(&p) {
                 if let Ok(table) = StableTable::load(&bytes) {
-                    return Ok(table);
+                    return Ok(fill_embedded_optional_sections(table, variant));
                 }
             }
         }
@@ -357,7 +374,7 @@ pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Resu
             if p.exists() {
                 if let Ok(bytes) = std::fs::read(&p) {
                     if let Ok(table) = StableTable::load(&bytes) {
-                        return Ok(table);
+                        return Ok(fill_embedded_optional_sections(table, variant));
                     }
                 }
             }
@@ -375,7 +392,7 @@ pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Resu
             if p.exists() {
                 if let Ok(bytes) = std::fs::read(&p) {
                     if let Ok(table) = StableTable::load(&bytes) {
-                        return Ok(table);
+                        return Ok(fill_embedded_optional_sections(table, variant));
                     }
                 }
             }
@@ -394,7 +411,7 @@ pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Resu
             if p.exists() {
                 if let Ok(bytes) = std::fs::read(p) {
                     if let Ok(table) = StableTable::load(&bytes) {
-                        return Ok(table);
+                        return Ok(fill_embedded_optional_sections(table, variant));
                     }
                 }
             }
@@ -409,7 +426,7 @@ pub fn find_stable_table_variant(dir_hint: Option<&Path>, variant: &str) -> Resu
                 if p.exists() {
                     if let Ok(bytes) = std::fs::read(&p) {
                         if let Ok(table) = StableTable::load(&bytes) {
-                            return Ok(table);
+                            return Ok(fill_embedded_optional_sections(table, variant));
                         }
                     }
                 }
@@ -429,3 +446,25 @@ pub fn find_stable_table(dir_hint: Option<&Path>) -> Result<StableTable, Reason>
     find_stable_table_variant(dir_hint, "stable")
 }
 
+
+#[cfg(test)]
+mod optional_sections_tests {
+    use super::*;
+
+    #[test]
+    fn same_build_disk_table_gets_embedded_score_seed() {
+        let mut disk = default_stable_table();
+        disk.topology.score_seed = None;
+        let merged = fill_embedded_optional_sections(disk, "stable");
+        assert_eq!(merged.topology.score_seed, Some(0x80));
+    }
+
+    #[test]
+    fn different_build_disk_table_keeps_missing_score_seed() {
+        let mut disk = default_stable_table();
+        disk.topology.score_seed = None;
+        disk.verified_build = "00000000000000000000000000000000".to_string();
+        let merged = fill_embedded_optional_sections(disk, "stable");
+        assert_eq!(merged.topology.score_seed, None);
+    }
+}
