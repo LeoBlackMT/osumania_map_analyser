@@ -38,11 +38,12 @@ mod 状态随 tosu **api_v2** WebSocket 包逐帧送达，入口 `js/app/socketH
 | `DC` | Daycore | 是（速率 0.75×，仅 lazer 出现） | 与 HT 同样减速处理 |
 | `IN` | Inverse | 是（cvtFlag="IN"，仅 lazer） | LN 反转转换（modIN） |
 | `HO` | Hidden 类（lazer mania） | 是（cvtFlag="HO"，仅 lazer） | LN→RC 转换（modHO） |
-| `MR` | Mirror | 否 | 被识别但**无任何计算分支使用**，仅影响 `hasModInfo` |
+| `MR` | Mirror | 是（列镜像） | 主分析按 `K-1-column` 重写谱面列；LaneAcc 只把事件列转回原始列 |
+| `RD` | Random | 是（列置换，需 seed） | Lazer 从 `ScoreInfo.ModsJson.settings.seed`、Stable 从 `Score.Seed` 取 seed；主分析按 seed 重写谱面列 |
 | `CL` | Classic（仅 lazer） | 是（classic 判定） | 参与 §2.1 classic 判定：无 SV2 且 lazer 带 CL → classic=true |
 | `SV2` | ScoreV2（计分方式） | 是（classic 判定） | 对应 stable bitflag 536870912（1<<29）；**只要存在 SV2（无论 client）→ classic=false，优先级最高** |
 
-- `APP_CONFIG.mods.knownCodes`（config.js:126-134）共 **67** 个代码（本轮起覆盖完整 mania 码表：全部 stable bit 代码 + `nK` + lazer 专属代码）；`APP_CONFIG.mods.bitFlags`（config.js:135-166）共 **32** 项，与 osu stable 位标志一一对应（`NF:1 … MR:1073741824`）。`DA/DC/IN/HO/CL` 无 bitflag（lazer 专属代码，走字符串路径；`CL` 在字符串/acronym 路径被收集），`SV2` 在 stable 走 bitflag 路径、lazer 下也可能以 acronym 出现。扩表只扩大"可识别"范围——除 §2 表列出的计算相关代码外，其余（`NF/HD/FL/RD/CN/AT/nK` 等）仅用于识别、`hasModInfo` 与 RC 反馈 gate，不参与计算。
+- `APP_CONFIG.mods.knownCodes`（config.js:126-134）共 **67** 个代码（本轮起覆盖完整 mania 码表：全部 stable bit 代码 + `nK` + lazer 专属代码）；`APP_CONFIG.mods.bitFlags`（config.js:135-166）共 **32** 项，与 osu stable 位标志一一对应（`NF:1 … MR:1073741824`）。`DA/DC/IN/HO/CL` 无 bitflag（lazer 专属代码，走字符串路径；`CL` 在字符串/acronym 路径被收集），`SV2` 在 stable 走 bitflag 路径、lazer 下也可能以 acronym 出现。扩表只扩大"可识别"范围——除 §2 表列出的计算相关代码外，其余（`NF/HD/FL/CN/AT/nK` 等）仅用于识别、`hasModInfo` 与 RC 反馈 gate，不参与计算。
 - **派生导出**（`js/app/appContext.js:292-295`）：
   - `SORTED_KNOWN_MOD_CODES`（appContext.js:294）= knownCodes 按**代码长度降序**排序——`addCodesFromString` 用它实现**最长匹配优先**，避免 "DT" 提前截断 "DTX" 之类粘连串。`SV2` 含数字，normalization 保留数字（modData.js:28 `addCodesFromString` 注释）。
   - `MOD_BIT_FLAG_ENTRIES`（appContext.js:295）= `Object.entries(bitFlags)`，供 `addCodesFromNumber` 遍历。
@@ -68,7 +69,7 @@ const classic = !modCodes.has("SV2") && (client !== "lazer" || modCodes.has("CL"
 
 ## 3. modSignature 构成与何时应用
 
-**modSignature 格式 = `speedRate|odFlag|cvtFlag|classic`（四段）**，在 `getModData` 内构建（modData.js:234-239）：
+**modSignature 格式 = `speedRate|odFlag|cvtFlag|classic|seed|engine|mirror`（七段）**，在 `getModData` 内构建（modData.js:234-239）：
 
 ```js
 const modSignature = [
@@ -172,7 +173,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 
 ## 7. modSignature 在缓存键中的作用
 
-缓存键 = `star-v14|state.estimatorAlgorithm|requestContentKey|state.modSignature`（`star-v14` 为缓存语义版本前缀，沿革见 result-cache.md §5）：
+缓存键 = `star-v16|state.estimatorAlgorithm|requestContentKey|state.modSignature`（`star-v16` 为缓存语义版本前缀，沿革见 result-cache.md §5）：
 
 - mod 变化 → `modSignature` 变化 → 缓存键变化 → 旧快照 miss → 重新计算。同一谱面开 DT 与不开 DT 是**两个缓存条目**，互不污染。
 - 键的第三段就是 §3 的四元组签名（速率/OD/cvt/classic 任一变化即换键）。
@@ -183,7 +184,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **api_v2 部分包**：部分包不含 mod 字段。若无条件应用会造成 `state.modSignature` 被空载荷覆盖（或抖动），因此 socketHandlers.js:271-272 的注释明确"仅在 mod payload 显式存在时应用"；无载荷时保持 `previousModSignature`（socketHandlers.js:275-277）。
 - **changeKind = "mod"**：谱面身份（identity）不变而仅签名变化时，`changeKind` 置为 `"mod"`（`resolveChangeKind` 定义于 `js/app/changeKind.js`；调用点 socketHandlers.js:298-303），渲染层据此选择入场动画（换歌/换难度/仅改 mod 三态，注释见 socketHandlers.js:297）。
 - **lazer vs stable 差异**：cvtFlag 仅 lazer 有（modData.js:210-216）；lazer 有 speed_change/DA-OD 数字通道（modData.js:182-189），stable 只能走 bitflag（`addCodesFromNumber`）。混合场景（tourney/ipcClients）也会被收集（modData.js:11-26）。
-- **MR 是识别但无用的代码**：在 knownCodes 中（config.js:126）故能被提取，但全库无任何计算分支引用它，仅影响 `hasModInfo`（有 MR 时不算"无 mod"）。
+- **MR 参与主分析列镜像**：在 knownCodes 中（config.js:126）可被提取；`modSignature` 的 `mirror` 段与 `analysis.js` 的列变换会消费它。LaneAcc 仍只把事件列转回原始列。
 - **速率优先级**：lazer 自定义倍速 > NC/DT > HT/DC > 1.0（modData.js:194-200）。NC/DT 与 HT/DC 不可能同时出现，若同时命中先判加速后判减速。
 - **签名精度**：速率保留 5 位小数（modData.js:235），lazer 自定义速率如 1.05/0.9 等非整数值也能稳定区分；`1.00000|none|none|0` 为无 mod 且非 Classic 的基准签名。
 - **新增计算相关 mod 代码**：需同时加入 `knownCodes`（config.js:126）与（若需 stable bitflag）`bitFlags`（config.js:135-166）；`SORTED_KNOWN_MOD_CODES`/`MOD_BIT_FLAG_ENTRIES` 是派生导出，无需手动改。若新代码参与计算（速率/OD/cvt），必须在 `getModData` 的判定分支（modData.js:194-216）与签名构建处同步处理，否则签名不反映其影响（缓存会按旧语义命中）。
@@ -209,3 +210,26 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - ⚠️ 签名里**没有** `judge` 的实际数值之外的 OD 值，也没有 `turbo` 本身：Turbo 与 Dash 的区分由第 6 段（`winScale`）承担，Pro 的区分由第 7 段承担。
 - `state.odFlag` / `state.cvtFlag` 侧仍把 `"none"`/空归一为 `null`（估算器 `parseFloat("none")` 会得 NaN），签名文本里的 `"none"` 只用于缓存键。
 - Etterna 的 rate（如 1.5x）进入 speedRate 段并联接 `state.speedRate`（分析消耗点 analysis.js `musicRate`/estimator `speedRate`），同图不同 rate 输出值不同且缓存独立；Malody 4 的 rate 来自 `config.json` 的模组位（DASH 1.2 / RUSH 1.5 / SLOW 0.8，互斥）。
+
+## 9. 全卡 RD/MR（star-v16 / 契约 v12）
+
+主分析的列变换入口是 `js/parser/modColumnRemap.js`：`analysis.js` 在切片后生成
+`analysisText = applyColumnTransformToOsuText(rawText, transform)`，pipeline 及所有
+管线外二次计算（Pattern/Etterna/vibro/Interlude/Companella 回退）统一使用 `analysisText`；
+`rawText` 仍保留原图，供 LaneAcc、原文 LRU、identity 与结果缓存使用。
+
+- **RD seed 来源**：
+  - Lazer：`play.mods[].settings.seed` / `resultsScreen.mods[].settings.seed`
+    （`ScoreInfo.ModsJson`；默认 Seed=null 时只有进入 play 后才有实际值）。
+  - stable/ppysb：壳读 `Score.Seed`（`topology.score_seed=0x80`），发布为
+    `play.seed` / `resultsScreen.seed`。
+- **上下文**（`state.modContext`）：
+  - `select`：`menu.mods`（lazer 原生载荷 `menu.mods=null` 时回退 `play.mods`）；
+  - `play`：只信 `play.mods`；
+  - `results`：历史成绩，只信该成绩自己的 `resultsScreen.mods`；
+  - `freeze`：play/replay → 结算，保持本局 mods/seed，不重算。
+- **签名**：`speedRate|odFlag|cvtFlag|classic|seed|engine|mirror`；`engine` 区分
+  lazer/stable 的不同置换算法，`mirror` 保证 MR/NM 不串缓存。
+- **结果屏规则**：选歌 → resultScreen 用成绩自身 mods 重算；play/replay → resultScreen
+  不重算（`clearSection("results", {recompute:false})` + freeze 上下文），避免清空
+  LaneAcc 终态/暂停标记。

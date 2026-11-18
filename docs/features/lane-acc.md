@@ -242,7 +242,7 @@ Stable 不是“内存里没有逐 note 信息”，而是需要读 `Score` 与 
   Nibelungen 4K（2,634 note / 2,015 LN / 4,649 判定）与该回放的 Lazer 判定逐 note 全等：
   `[23,18,21,170,1466,2951]`（miss→MAX）。
 - **MR**：原始帧的 keys 位掩码和游戏 per-note 事件的列都按 MR 镜像回谱面原始列后再计算。
-- **RD**：Stable 没有可读种子，整模块禁用；Lazer 从 `ScoreInfo.ModsJson.settings.seed` 读实际种子，
+- **RD**：Lazer 从 `ScoreInfo.ModsJson.settings.seed` 读实际种子；stable/ppysb 由壳读 `Score.Seed`（`topology.score_seed=0x80`），LaneAcc 使用 stable 的拒绝采样置换（含 dual-stage 首列规则）。
   用 `ManiaModRandom` 的 .NET seeded `System.Random` 列置换还原任意键数（4K–18K）。
   LaneAcc 的 chart 必须在进入 play/回放前完成 RD 重排；原始帧 keys 与游戏列一致，直接交给 SV1。
   `startSession` 会再次确认 RD 映射，避免谱面分析早于 mods/seed 包时 chart 仍停在原始列，出现

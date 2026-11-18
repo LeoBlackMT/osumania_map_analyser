@@ -141,7 +141,8 @@
 | 外部源 song 帧身份变化 | `sources/externalSource.handleSongFrame` | 同上 |
 | 进入游玩 | `socketHandlers.applySignalState`（`enteredPlayState`） | `clearSection("play", { recompute: true })` |
 | Malody 桥 / Malody 4 进入游玩 | `externalSource.handleSongFrame`（`screen=playing/play`） | `clearSection("play", { recompute: false })`（该帧自带跑批） |
-| 进入结算屏 | `socketHandlers.applySignalState`（`nextIsResultScreen` 首次为真） | `clearSection("results", { recompute: true })` |
+| 进入结算屏（历史成绩，`resultsFromPlay=false`） | `socketHandlers.applySignalState`（`nextIsResultScreen` 首次为真） | `clearSection("results", { recompute: true })` |
+| 进入结算屏（play/replay 刚结束） | 同上 | `clearSection("results", { recompute: false })`：冻结本局 mod，不重算 |
 | 清卡 | `analysis.js invokeCardClear` | `clearSection("card-clear", { recompute: false })` |
 | 图表被清空 | `graph.js clearDiffGraph` / `showDiffGraphError` → `setGraphClearedHandler` | `clearSection("graph-cleared", { recompute: false })`（否则会留下「空白图 + 遮罩」的幽灵选区） |
 | 新曲线渲染且身份/时间轴变化 | `graph/index.js renderDiffGraph` → `setGraphRenderedHandler` | `clearSection("graph-axis", { recompute: false })`（换图后旧 armed 态不能带进新坐标系，否则双击会被当成「再次双击退出」） |

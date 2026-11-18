@@ -21,8 +21,12 @@ function collectPlayModsCandidates(data) {
     return candidates;
 }
 
-function collectNonPlayModsCandidates(data) {
-    return [data?.menu?.mods, data?.resultsScreen?.mods];
+function collectMenuModsCandidates(data) {
+    return [data?.menu?.mods];
+}
+
+function collectResultsModsCandidates(data) {
+    return [data?.resultsScreen?.mods];
 }
 
 function addCodesFromString(codes, value, sortedKnownModCodes) {
@@ -66,15 +70,33 @@ export function getModData(data, {
     modBitFlagEntries,
     fallbackClient,
     preferPlayMods = false,
+    prefer = null,
 }) {
     const payloadClient = String(data?.client || "").toLowerCase();
     const client = payloadClient || String(fallbackClient || "").toLowerCase();
 
     const playModsCandidates = collectPlayModsCandidates(data);
-    const nonPlayModsCandidates = collectNonPlayModsCandidates(data);
-    const selectedModsCandidates = preferPlayMods
-        ? playModsCandidates
-        : [...playModsCandidates, ...nonPlayModsCandidates];
+    const menuModsCandidates = collectMenuModsCandidates(data);
+    const resultsModsCandidates = collectResultsModsCandidates(data);
+
+    // prefer:
+    // - play：只信本局 play.mods；
+    // - results：只信该成绩自己的 resultsScreen.mods（缺载荷时按显式 NM）；
+    // - select：选歌界面菜单 mods 优先；lazer 原生载荷把当前 SelectedMods 放在
+    //   play.mods（menu.mods 恒 null），所以菜单缺载荷时回退 play.mods；
+    // - null / 其他：保持旧的并集行为（debug 面板等）。
+    let selectedModsCandidates;
+    if (prefer === "play" || preferPlayMods) {
+        selectedModsCandidates = playModsCandidates;
+    } else if (prefer === "results") {
+        const resultsMods = data?.resultsScreen?.mods;
+        selectedModsCandidates = [resultsMods === undefined || resultsMods === null ? [] : resultsMods];
+    } else if (prefer === "select") {
+        const menuMods = data?.menu?.mods;
+        selectedModsCandidates = [menuMods === undefined || menuMods === null ? data?.play?.mods : menuMods];
+    } else {
+        selectedModsCandidates = [...playModsCandidates, ...menuModsCandidates, ...resultsModsCandidates];
+    }
 
     const validMods = selectedModsCandidates.filter((mods) => mods !== undefined && mods !== null);
     const hasModPayload = validMods.length > 0;
@@ -157,7 +179,17 @@ export function getModData(data, {
     let cvtFlag = null;
     let daOverallDifficulty = null;
     let lazerSpeedChange = null;
-    let lazerRandomSeed = null;
+    let randomSeed = null;
+
+    const parseSeed = (value) => {
+        if (value === undefined || value === null || value === "") {
+            return null;
+        }
+        const seed = Number(value);
+        return Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647
+            ? seed
+            : null;
+    };
 
     if (client === "lazer") {
         for (const arrayMods of modArrays) {
@@ -190,10 +222,31 @@ export function getModData(data, {
                 }
 
                 if (acronym === "RD") {
-                    const seed = Number(modItem?.settings?.seed ?? modItem?.seed);
-                    if (Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647) {
-                        lazerRandomSeed = seed;
+                    const seed = parseSeed(modItem?.settings?.seed ?? modItem?.seed);
+                    if (seed != null) {
+                        randomSeed = seed;
                     }
+                }
+            }
+        }
+    } else if (client === "stable") {
+        // stable/ppysb 的 seed 由壳从 Score.Seed（play/results）读出，放在
+        // play.seed / resultsScreen.seed；只有 RD 真正出现时才消费，
+        // 否则 NM 局每次变化的 seed 会让 modSignature 抖动。
+        if (modCodes.has("RD")) {
+            // 历史结算只信该成绩自己的 resultsScreen.seed，绝不回退上一局 play.seed。
+            const stableSeeds = prefer === "results"
+                ? [data?.resultsScreen?.seed]
+                : (prefer === "select"
+                    ? [data?.menu?.seed, data?.play?.seed]
+                    : (prefer === "play"
+                        ? [data?.play?.seed]
+                        : [data?.play?.seed, data?.menu?.seed, data?.resultsScreen?.seed]));
+            for (const value of stableSeeds) {
+                const seed = parseSeed(value);
+                if (seed != null) {
+                    randomSeed = seed;
+                    break;
                 }
             }
         }
@@ -226,6 +279,7 @@ export function getModData(data, {
     const hasRelevantModInfo = modCodes.size > 0
         || Number.isFinite(lazerSpeedChange)
         || Number.isFinite(daOverallDifficulty)
+        || randomSeed != null
         || cvtFlag != null
         || odFlag != null
         || Math.abs(Number(speedRate) - 1.0) > 1e-6;
@@ -237,14 +291,22 @@ export function getModData(data, {
     const classic = !modCodes.has("SV2")
         && (client !== "lazer" || modCodes.has("CL"));
 
+    const mirror = modCodes.has("MR");
+    const randomEngine = randomSeed == null
+        ? "none"
+        : (client === "stable" ? "stable" : "lazer");
+
     // Only include calculation-relevant dimensions in signature.
-    // This avoids recompute thrash when unrelated lazer mod payload fields fluctuate.
+    // 第 5 段起：RD seed / RD 引擎 / MR。引擎必须进键——stable 与 Lazer
+    // 对同一 (K, seed) 的置换不同，不能互相命中缓存。
     const modSignature = [
         Number(speedRate).toFixed(5),
         odFlag == null ? "none" : String(odFlag),
         cvtFlag == null ? "none" : String(cvtFlag),
         classic ? "1" : "0",
-        lazerRandomSeed == null ? "none" : String(lazerRandomSeed),
+        randomSeed == null ? "none" : String(randomSeed),
+        randomEngine,
+        mirror ? "1" : "0",
     ].join("|");
 
     return {
@@ -255,7 +317,9 @@ export function getModData(data, {
         modSignature,
         classic,
         modCodes: [...modCodes].sort(),
-        randomSeed: lazerRandomSeed,
+        randomSeed,
+        randomEngine,
+        mirror,
         hasModPayload,
         hasModInfo: hasRelevantModInfo,
         hasExplicitNoMod: hasExplicitNoModSignal,

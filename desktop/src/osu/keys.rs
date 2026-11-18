@@ -10,7 +10,7 @@
 // - `js/app/modData.js:11-26,73-149`（两套 mods 候选集 + 状态相关的选取 + 求码）
 // - `js/app/modeLogic.js:5-16`（`normalizeClientStateName` / `isPlayStateName`）
 // - `js/app/socketHandlers.js:37-44`（`preferPlayMods: state.isInPlayState`）
-// - `js/app/modData.js:184-229`（speedRate / odFlag / cvtFlag / classic 与 4 段签名）
+// - `js/app/modData.js`（speedRate / odFlag / cvtFlag / classic / RD seed / engine / MR 的 7 段签名）
 // - `config.js:121-131`（knownCodes 12 个 + bitFlags 6 个）
 
 use crate::osu::model::{Client, DerivedKeys, Snapshot};
@@ -336,7 +336,7 @@ pub fn add_codes_from_mods_value(codes: &mut Vec<&'static str>, mods: &Value, cl
 /// 提取 mod 代码集合：`[play.mods, menu.mods, resultsScreen.mods]` 的**无条件并集**。
 ///
 /// 口径：`modData.js:73-77` 的候选并集 + `:79` 的 `null` 过滤。**这是缓存键口径**
-/// （`modData.js:224-229` 的签名由它派生，`keys::derive` 走这里）；页面真正消费的
+/// （`modData.js` 的签名由它派生，`keys::derive` 走这里）；页面真正消费的
 /// 候选集是**状态相关**的 ⇒ 对拍那一格必须用 [`page_mods`]，不能用本函数。
 pub fn mod_codes_from_payload(payload: &Value, client: Client) -> Vec<&'static str> {
     mods_from_slots(payload, client, &["play", "menu", "resultsScreen"]).codes
@@ -446,21 +446,73 @@ fn mod_dimensions(
     (speed_rate, od_flag, None)
 }
 
-/// `modData.js:224-229` 的四段签名：`"{speedRate:.5}|{odFlag|none}|{cvtFlag|none}|{classic}"`。
-///
-/// `classic = !modCodes.has("SV2") && (client !== "lazer" || modCodes.has("CL"))`
-/// （`modData.js:219-220`）——stable 无 SV2 即 `classic=true`。
+/// 页面 `modSignature`（`modData.js`）：
+/// `"{speedRate:.5}|{odFlag|none}|{cvtFlag|none}|{classic}|{seed|none}|{engine|none}|{mirror}"`。
 pub fn mod_signature_from_payload(payload: &Value, client: Client) -> String {
     let codes = mod_codes_from_payload(payload, client);
     let (speed_rate, od_flag, cvt_flag) = mod_dimensions(payload, client, &codes);
     let classic = !codes.contains(&"SV2") && (client != Client::Lazer || codes.contains(&"CL"));
+    let seed = if codes.contains(&"RD") {
+        random_seed_from_payload(payload, client)
+    } else {
+        None
+    };
+    let engine = match seed {
+        None => "none",
+        Some(_) if client == Client::Stable => "stable",
+        Some(_) => "lazer",
+    };
+    let mirror = if codes.contains(&"MR") { "1" } else { "0" };
     format!(
-        "{:.5}|{}|{}|{}",
+        "{:.5}|{}|{}|{}|{}|{}|{}",
         speed_rate,
         od_flag.as_deref().unwrap_or("none"),
         cvt_flag.unwrap_or("none"),
-        if classic { "1" } else { "0" }
+        if classic { "1" } else { "0" },
+        seed.map(|value| value.to_string()).unwrap_or_else(|| "none".to_string()),
+        engine,
+        mirror,
     )
+}
+
+/// 页面 RD seed：lazer 看 `*.mods.array[].settings.seed`；stable 看
+/// `play.seed` / `resultsScreen.seed`（壳从 `Score.Seed` 发布）。
+fn random_seed_from_payload(payload: &Value, client: Client) -> Option<i32> {
+    if client == Client::Stable {
+        for path in ["/play/seed", "/resultsScreen/seed", "/menu/seed"] {
+            if let Some(value) = payload.pointer(path).and_then(Value::as_i64) {
+                if value >= i32::MIN as i64 && value <= i32::MAX as i64 {
+                    return Some(value as i32);
+                }
+            }
+        }
+        return None;
+    }
+
+    for path in ["/play/mods/array", "/resultsScreen/mods/array", "/menu/mods/array"] {
+        let Some(items) = payload.pointer(path).and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let acronym = item
+                .get("acronym")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_ascii_uppercase();
+            if acronym != "RD" {
+                continue;
+            }
+            let seed = item
+                .pointer("/settings/seed")
+                .or_else(|| item.get("seed"))
+                .and_then(Value::as_i64);
+            if let Some(seed) = seed.filter(|value| *value >= i32::MIN as i64 && *value <= i32::MAX as i64) {
+                return Some(seed as i32);
+            }
+        }
+    }
+    None
 }
 
 /// `socketHandlers.js:251-267` 的身份字符串：

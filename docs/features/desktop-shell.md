@@ -46,11 +46,11 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 - **Lazer 数据目录**：壳配置 `lazerStorageRoot`（或 `MMA_LAZER_STORAGE_ROOT`）显式指定**包含 `files` 目录的数据根**（通常 `%APPDATA%\osu`，不是 `osu!.exe` 的安装目录；也可直接选 `...\files`，读取器会归一到父目录）。留空时按 `storage.ini` → 默认 `%APPDATA%\osu\files` 自动探测；修改后需重启壳才重新附着读取器。默认 Lazer 安装不会生成 `storage.ini`，因此该显式选项是默认路径探测失败时的兜底。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
-## 3. 契约 v11 帧
+## 3. 契约 v12 帧
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 11, tosuOnline}`；页面接受 `[3,11]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
+| hello | 壳→页 | `{contract: 12, tosuOnline}`；页面接受 `[3,12]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
 | state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?},**osu{alive,osuTransport{mode,host,port,wsPath,filesPath},gate?,client?,reason?,degradedFields?,phase?,notice?,progress?}**（v6 新增，见 §3d）} |
 | song | 壳→页 | requestId/source/identity/modData{rate,cvtFlag,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`cvtFlag`/`winScale`**（`cvtFlag`/`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0；`cvtFlag` = Malody Holds/Taps → IN/HO） |
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
@@ -64,7 +64,7 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
 
-> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 11**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），页面接受区间 `[3,11]`（CONTRACT.md §10/§11.8）。
+> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 12**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），页面接受区间 `[3,12]`（CONTRACT.md §10/§11.8）。
 
 ## 3b. Malody V 选曲桥端点（`127.0.0.1:17653`）
 
@@ -185,6 +185,6 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **壳检测不到 tosu 时页面照常分析（页面侧数据面）**：离线页（24061）的数据面门控加入两个页面侧信号——`state.tosuDataSeen`（`socketHandlers.js` 在 `applyBeatmapState` 里置位）与 `state.shellOsuNativeAlive`（契约 v6：原生端点覆盖真的生效）。页面自己的 tosu socket 收到过载荷、或壳的原生端点覆盖已激活，就放行（`analysis.js` 的两处离线门控与 `sourceManager.js:130,197`），因此"tosu 在跑、但壳没有 `tosu.env`（探测不到 `tosuOnline`）"的机器上卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；同时 1.2s 的延迟初始重算不再白等（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，tosu 载荷一到 `scheduleRecompute` 就清掉它并在 200ms 内计算）。
 
-**契约 v11 与版本号（当前状态）**：桥契约已升到 **v11**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.2`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,11]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
+**契约 v12 与版本号（当前状态）**：桥契约已升到 **v12**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`，v12 = stable/ppysb `play.seed` / `resultsScreen.seed`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.2`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,12]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
 **本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时按阶梯静默重试（最长约 25 s，覆盖一次读取器重扫）；④ lazer 目标上的字段缺口（背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-11 更新：lazer 的 mods、`resultsScreen.hits` 与 `play.hits` 均已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段，`play.hits` 走 `score.score_result_counts`；一键生成只在同版本内保留旧表的 `score`/`results` 段；lazer 更新后需在新版本游玩/回放与结算屏分别生成，跨版本旧表不参与补段；仅缺背景/音频，见 osu-native-source.md §6.3。）

@@ -134,7 +134,7 @@ state.pendingChangeKind = changeKind;   // :298
 
 - api_v2 包可能不完整（partial），因此 mod 状态**只在 mod payload 显式出现时应用**：`socketHandlers.js:273-277 shouldApplyModState = !previousModSignature || (modData.hasModPayload && (modData.hasModInfo || modData.hasExplicitNoMod))`；不满足时沿用旧 modSignature。
 - 应用侧 `socketHandlers.js:290-295`：写入 `state.speedRate / state.odFlag / state.cvtFlag / state.modSignature`（来源 `modData.js:64 getModData`，解析细节见 mod-handling.md），并同步写入 `state.modCodes = modData.modCodes || []`、`state.classicMod = Boolean(modData.classic)`（socketHandlers.js:176-177）。
-- **modSignature 不参与换歌判定**，只进缓存键：缓存键 = `star-v14|estimatorAlgorithm|requestContentKey|modSignature`（`star-v14` 是缓存语义版本前缀；构成见 modData.js，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
+- **modSignature 不参与换歌判定**，只进缓存键：缓存键 = `star-v16|estimatorAlgorithm|requestContentKey|modSignature`（`star-v16` 是缓存语义版本前缀；构成见 modData.js，`speedRate|odFlag|cvtFlag|classic` 四段，详见 result-cache.md §5 与 mod-handling.md）。
 
 ## 5. 请求调度（scheduler.js）
 
@@ -170,7 +170,7 @@ const isStaleRequest = () => requestSeq !== state.analysisRequestSeq
 ### 7.1 缓存查找与覆盖检查（简述，详见 result-cache.md §6）
 
 - `analysis.js:452-474 needComputed`：本次需要的计算产物布尔集 `{pattern, ett, graph, interlude, pp}`，由显示需求与算法需求推导（例如 `state.diffText === "Graph" || contentBarShows("Graph")` 需要 graph，:468；Companella/Mixed 需要 ett 与 interlude，:459-467；`contentBarShows("ReworkPP")` 需要 pp，:473）。
-- `analysis.js cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`（版本前缀 `star-v14` + 三段，modSignature 四段含 classic）。`requestContentKey` 是请求开始时快照的 `hash > 目录限定 path > id > meta`，不是可变的 `state.lastBeatmapIdentity`。
+- `analysis.js cacheKey`：`${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`（版本前缀 `star-v16` + 三段，modSignature 四段含 classic）。`requestContentKey` 是请求开始时快照的 `hash > 目录限定 path > id > meta`，不是可变的 `state.lastBeatmapIdentity`。
 - `analysis.js isMetaDegraded`：contentKey 以 `meta:` 开头。
 - 查缓存：`state.enableResultCache && requestContentKey` 时查 `resultCache.get(cacheKey)`，取到后先校验快照 `contentKey`/`metaKey`，再比对 `computed` 五项（graph/pattern/ett/interlude/pp）与 needComputed——全等才命中。
 

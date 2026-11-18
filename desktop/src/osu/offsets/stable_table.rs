@@ -108,6 +108,9 @@ pub struct StableTopology {
     pub mods_xor_low: u32,
     #[serde(default = "default_score_processor_from_score")]
     pub score_processor_from_score: u32,
+    /// `Score.Seed`（int32）。play/result 的 `Score` 对象上；旧表缺段 ⇒ None。
+    #[serde(default)]
+    pub score_seed: Option<u32>,
     #[serde(default = "default_scorev2_bit")]
     pub scorev2_bit: u32,
     #[serde(default = "default_result_score_offset")]
@@ -213,6 +216,7 @@ impl Default for StableTopology {
             mods_xor_high: default_mods_xor_high(),
             mods_xor_low: default_mods_xor_low(),
             score_processor_from_score: default_score_processor_from_score(),
+            score_seed: None,
             scorev2_bit: default_scorev2_bit(),
             result_score_offset: default_result_score_offset(),
             result_max_combo_offset: default_result_max_combo_offset(),

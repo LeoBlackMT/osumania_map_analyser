@@ -83,6 +83,7 @@
 | [breakings/2026-10-25-mania-lane-acc.md](breakings/2026-10-25-mania-lane-acc.md) | 人类/AI | LaneAcc 分轨准确度与 ScoreV1 实时转换破坏性说明（Lazer 原始按键帧/逐判定事件、双口径、score 偏移段、壳专属 space 设置、契约 v7→v10） |
 | [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | 人类/AI | 回放暂停破坏性说明（契约 v10→v11、`.osr` 尾部只读解析、`replay_pauses`/`replay_pauses_sync`、24062 `replayHash`、偏移表新增三个哈希字段、2026.921 表已移除） |
 | [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | 人类/AI | Mixed 4K RC 路由对称融合与 XDC1 兜底破坏性说明（R3' `Roxy+XDC1` / 双向 `≥0.50` 切 XDC1、低难 C8'、高段 `XDC1+Azusa`、遥测/反馈别名及缓存 `star-v15`） |
+| [breakings/2026-11-18-full-card-rd.md](breakings/2026-11-18-full-card-rd.md) | 人类/AI | 全卡 RD/MR 支持（主分析列变换、选歌→play/历史结算重算、play/replay→结算冻结、stable/ppysb Score.Seed 0x80、契约 v12、缓存 star-v16） |
 
 # English
 

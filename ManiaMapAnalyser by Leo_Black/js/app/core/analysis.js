@@ -105,6 +105,7 @@ import {
     parseBeatmapIdentityFrame,
 } from "./beatmapIdentity.js";
 import { sliceOsuTextByTimeRange } from "../../parser/osuTimeSlice.js";
+import { applyColumnTransformToOsuText, columnTransformFromState } from "../../parser/modColumnRemap.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -113,6 +114,20 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+/**
+ * 从当前 state 快照一次列变换。
+ * - MR 在选歌即可用；
+ * - RD 只有拿到实际 seed 才应用；自定义 seed 在选歌可用，默认 null 等
+ *   play 帧的 ScoreInfo.ModsJson（见 socketHandlers 的 modContext）。
+ */
+function currentColumnTransform() {
+    return columnTransformFromState({
+        modCodes: state.modCodes,
+        randomSeed: state.randomSeed,
+        client: state.client,
+    });
 }
 
 function buildMetaError(errors) {
@@ -359,6 +374,8 @@ function resetSourceContext() {
     state.externalSourceOsuLike = false;
     state.analysisRate = null;
     state.speedRate = 1;
+    state.randomSeed = null;
+    state.modContext = "select";
     // 清卡/换源：在途分析立即作废，原文 LRU 一并清空（不能跨结果缓存清空存活）。
     state.analysisEpoch = (state.analysisEpoch || 0) + 1;
     state.identityMismatchRetries = 0;
@@ -426,6 +443,8 @@ export async function fetchBeatmapFile(reason) {
     const requestContentKey = requestFrame.contentKey || requestIdentity;
     const requestMetaKey = requestFrame.metaKey || "";
     const requestModSignature = state.modSignature || "";
+    // 列变换也必须在请求开始时快照：fetch/worker 期间 state 可能切换。
+    const requestColumnTransform = currentColumnTransform();
     const requestBeatmapKey = state.lastBeatmapKey || "";
     // 点击已激活 Tab = 手动重算：本次跳过结果缓存一次。入口立即清零，避免
     // 早退/失败/下一次分析被这个一次性标志污染。
@@ -621,7 +640,9 @@ export async function fetchBeatmapFile(reason) {
     // star-v15：Mixed 4K RC 树接入 Roxy⊕XDC1 对称融合与双向 ≥0.50 切向 XDC1、
     //   低难融合 C8'（≥0.50 切向 XDC1）及高段 Roxy 越界 Azusa⊕XDC1 融合。Mixed 在
     //   4K RC 谱面上的 estDiff / numeric / actualEstimatorAlgorithm 语义变化 → 旧快照必须失效。
-    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v15";
+    // star-v16：主分析接入 RD/MR 列变换；旧 star-v15 快照可能是“带 RD seed 但未变换”
+    //   的缓存，必须全部失效。MR 也进入 modSignature。
+    const CACHE_KEY_STAR_UNIFIED_VERSION = "star-v16";
     const cacheKey = `${CACHE_KEY_STAR_UNIFIED_VERSION}|${state.estimatorAlgorithm}|${requestContentKey}|${requestModSignature}`;
     const isMetaDegraded = requestContentKey.startsWith("meta:");
     let cached = null;
@@ -644,6 +665,7 @@ export async function fetchBeatmapFile(reason) {
     try {
         let parsedInfo = null;
         let rawText = null;
+        let analysisText = null;
         let laneAccChart = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
         // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
@@ -768,6 +790,14 @@ export async function fetchBeatmapFile(reason) {
             rawText = sliced.text;
         }
 
+        // 主分析/所有估算器/Pattern/Ett/Interlude 使用列变换后的文本；
+        // rawText 仍保留原图，供 LaneAcc、原文 LRU、identity 与缓存使用。
+        // 这样 LaneAcc 自己的 applyRandomColumns() 不会二次置换。
+        analysisText = rawText;
+        if (rawText && requestColumnTransform) {
+            analysisText = applyColumnTransformToOsuText(rawText, requestColumnTransform);
+        }
+
         // 估算分派 + 附属段（pattern/ett/interlude/Companella 二次 Ett）收敛为一次 pipeline
         // 调用（worker 单次往返或主线程同步回退）。pipeline 内部解析一次并共享给估算器/归一化/
         // SunnyWindow/Interlude（pattern 保留独立 patternOsuParser 解析、ett 保留自身解析），
@@ -807,7 +837,7 @@ export async function fetchBeatmapFile(reason) {
                     etternaVersion: state.etternaVersion,
                     companellaEtternaVersion: state.companellaEtternaVersion,
                 };
-                const pipelineInput = { rawText, estimatorAlgorithm, options: pipelineOptions };
+                const pipelineInput = { rawText: analysisText, estimatorAlgorithm, options: pipelineOptions };
                 const wp = runInWorker(pipelineInput);
                 try {
                     pipelineResult = wp ? await wp : await runAnalysisPipeline(pipelineInput);
@@ -1100,7 +1130,7 @@ export async function fetchBeatmapFile(reason) {
             } else {
                 // 回退：pipeline 估算失败或保守开关未覆盖（override 后 need* 变真）→ 主线程直接计算（旧路径）。
                 try {
-                    interludeStar = await calculateInterludeStar(rawText, state.analysisRate ?? state.speedRate, state.cvtFlag);
+                    interludeStar = await calculateInterludeStar(analysisText || rawText, state.analysisRate ?? state.speedRate, state.cvtFlag);
                     if (isStaleRequest()) return;
                 } catch (error) {
                     errors.push(`Interlude analyze failed: ${error.message}`);
@@ -1159,7 +1189,7 @@ export async function fetchBeatmapFile(reason) {
             } else {
                 // 回退：pipeline 估算失败或保守开关未覆盖 → 主线程直接计算（旧路径）。
                 try {
-                    applyPatternData(analyzePatternFromText(rawText));
+                    applyPatternData(analyzePatternFromText(analysisText || rawText));
                 } catch (error) {
                     patternAnalysisError = error;
                     errors.push(`Pattern analyze failed: ${error.message}`);
@@ -1201,7 +1231,7 @@ export async function fetchBeatmapFile(reason) {
                     // 用算法自身 star 判定（pipeline 保留归一化前的 star），保持 vibro 检测既有行为不变。
                     // MSD 基准固定 0.72.3（VIBRO_MSD_VERSION）。
                     if (state.vibroDetection && vibroEligible) {
-                        const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
+                        const vibroValues = await resolveVibroMsdValues(analysisText || rawText, ettResult);
                         if (isStaleRequest()) return;
                         // 与元数据关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
                         isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
@@ -1211,14 +1241,14 @@ export async function fetchBeatmapFile(reason) {
                 // 回退：pipeline 估算失败或保守开关未覆盖 → 主线程直接计算（旧路径）。
                 try {
                     ettResult = await analyzeEtternaFromText(
-                        rawText,
+                        analysisText || rawText,
                         buildEtternaAnalyzeOptions(state.etternaVersion),
                     );
                     if (isStaleRequest()) return;
 
                     // MSD 基准固定 0.72.3（VIBRO_MSD_VERSION）。
                     if (state.vibroDetection && vibroEligible) {
-                        const vibroValues = await resolveVibroMsdValues(rawText, ettResult);
+                        const vibroValues = await resolveVibroMsdValues(analysisText || rawText, ettResult);
                         if (isStaleRequest()) return;
                         // 与元数据关键词结论取或：旧 JackSpeed 判据只补充信号，不覆盖。
                         isVibroMap = isVibroMap || detectVibro(vibroValues, VIBRO_JACKSPEED_RATIO_THRESHOLD);
@@ -1300,7 +1330,7 @@ export async function fetchBeatmapFile(reason) {
                         // 回退：pipeline 未计算二次 Ett（估算失败等）→ 主线程直接计算（旧路径）。
                         try {
                             const forcedCompanellaEtterna = await analyzeEtternaFromText(
-                                rawText,
+                                analysisText || rawText,
                                 buildEtternaAnalyzeOptions(companellaEtternaVersion),
                             );
                             if (isStaleRequest()) return;
@@ -1430,7 +1460,7 @@ export async function fetchBeatmapFile(reason) {
 
         const fallbackModeTag = modeTagFromLnRatio(Number(rework?.lnRatio ?? parsedInfo.lnRatio));
         // cvtFlag（Invert/Hold Off 或 Malody Holds/Taps）会转换键型（全 LN 或全 RC），
-        // rework.lnRatio 反映转换后的真实模式；而 patternResult 直接解析未转换的 rawText，
+        // rework.lnRatio 反映转换后的真实模式；patternResult 也解析 analysisText（RD/MR 已统一变换），
         // 若在此采纳 patternResult.ModeTag 会导致 Auto 档位在转换前后的模式间反复横跳震荡。
         // 因此 cvtFlag 激活时必须以转换后的 fallbackModeTag 为准。
         let resolvedModeTag = (!contentBarShows("Pattern") || Boolean(state.cvtFlag))

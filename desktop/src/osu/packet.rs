@@ -423,18 +423,23 @@ fn insert_mods(root: &mut Map<String, Value>, snapshot: &Snapshot) {
         return;
     }
     let (menu, play, result) = invariants::mask_for_state(snapshot);
-    root.insert(
-        "menu".to_string(),
-        json!({ "mods": menu.map(keys::menu_mods_value) }),
-    );
-    root.insert(
-        "play".to_string(),
-        json!({ "mods": play.map(keys::menu_mods_value) }),
-    );
-    root.insert(
-        "resultsScreen".to_string(),
-        json!({ "mods": result.map(keys::menu_mods_value) }),
-    );
+    let mut menu_obj = Map::new();
+    menu_obj.insert("mods".to_string(), menu.map(keys::menu_mods_value).unwrap_or(Value::Null));
+    root.insert("menu".to_string(), Value::Object(menu_obj));
+
+    let mut play_obj = Map::new();
+    play_obj.insert("mods".to_string(), play.map(keys::menu_mods_value).unwrap_or(Value::Null));
+    if let Some(seed) = snapshot.play_seed {
+        play_obj.insert("seed".to_string(), json!(seed));
+    }
+    root.insert("play".to_string(), Value::Object(play_obj));
+
+    let mut result_obj = Map::new();
+    result_obj.insert("mods".to_string(), result.map(keys::menu_mods_value).unwrap_or(Value::Null));
+    if let Some(seed) = snapshot.result_seed {
+        result_obj.insert("seed".to_string(), json!(seed));
+    }
+    root.insert("resultsScreen".to_string(), Value::Object(result_obj));
 }
 
 /// lazer 的 mods 对象（v2 形状）：`{number, name, array:[{acronym, settings?}], rate}`。

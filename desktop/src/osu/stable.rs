@@ -380,6 +380,8 @@ pub struct InGameRead {
     pub gameplay_base: Option<u32>,
     pub score_base: Option<u32>,
     pub play_mods_mask: Option<u32>,
+    /// `Score.Seed`（int32；stable/ppysb 的 RD 实际 seed）。
+    pub seed: Option<i32>,
     pub hits_candidates: Vec<u16>,
     /// 8 个候选槽是否**整块**读满（发布 `play.hits` 的必要条件之一）。
     pub hits_candidates_complete: bool,
@@ -393,6 +395,8 @@ pub struct InGameRead {
 pub struct ResultRead {
     pub result_base: Option<u32>,
     pub result_mods_mask: Option<u32>,
+    /// `Score.Seed`（int32；该成绩的实际 RD seed）。
+    pub seed: Option<i32>,
     pub hits_candidates: Vec<u16>,
     /// 8 个候选槽是否整块读满（发布 `resultsScreen.hits` 的必要条件之一）。
     pub hits_candidates_complete: bool,
@@ -670,6 +674,12 @@ mod win_io {
             return out;
         }
         out.score_base = Some(score);
+
+        if let Some(offset) = topo.score_seed {
+            // Score.Seed（stable/ppysb）：CLR ClrField.Offset=0x7C + x86
+            // object header 4 ⇒ 0x80；由 stable__x86/ppysb__x86 的 topology 提供。
+            out.seed = win::read_i32(target, score.wrapping_add(offset)).ok();
+        }
 
         // mod 掩码：容器 `[score+0x1C]` → XOR 两项 → ScoreV2 补位。
         if let Ok(container) = win::read_u32(target, score.wrapping_add(topo.mods_container)) {
@@ -1028,6 +1038,10 @@ mod win_io {
         }
         out.result_base = Some(result);
         out.probe.result_base = result;
+
+        if let Some(offset) = topo.score_seed {
+            out.seed = win::read_i32(target, result.wrapping_add(offset)).ok();
+        }
 
         if let Ok(container) = win::read_u32(target, result.wrapping_add(topo.mods_container)) {
             out.probe.mods_container = container;

@@ -8,7 +8,7 @@ import { state } from "../core/appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 11;
+const CONTRACT_VERSION = 12;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *

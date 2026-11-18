@@ -164,6 +164,15 @@ pub fn validate_stable_schema(table: &StableTable) -> Result<(), ValidationError
         }
     }
 
+    if let Some(offset) = topo.score_seed {
+        if offset > 1_048_576 {
+            return Err(ValidationError::DisplacementOutOfRange(
+                "score_seed".to_string(),
+                offset as i64,
+            ));
+        }
+    }
+
     if topo.hits_candidate_offsets.len() > 16 {
         return Err(ValidationError::HopDepthExceeded(topo.hits_candidate_offsets.len()));
     }
