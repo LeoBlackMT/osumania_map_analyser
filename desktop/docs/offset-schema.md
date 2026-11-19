@@ -11,6 +11,18 @@
 osu!lazer 偏移表是由 `tools/lazer-offsets-gen`（或桌面壳内置的 Live Generator）采集并生成的 JSON 数据表。
 表包含基础元数据、版本校验标识（`version`、`file_version`、`clr_version`、`vtable`）、多跳解引用链以及活体探针段（`results`、`mods`、`score`）。
 
+### 1.1 播放时钟链（`beatmap.time.live`）
+
+图表进度线与载荷里的 `beatmap.time.live` 共用同一条链：
+
+```
+OsuGameDesktop.beatmapClock
+  → FramedBeatmapClock.interpolatedTrack
+  → InterpolatingFramedClock.<CurrentTime>k__BackingField
+```
+
+读侧在加载偏移表时会现场解一次这条链做结构自证（`lazer/resolve.rs::table_probe`）：`<CurrentTime>` 必须是有限的毫秒值，且只能是 `0`（时钟未启动）或 `>= 0.5ms` 的真实读数。lazer 更新后 `OsuGameDesktop` 的字段会整体后移；如果表里的 `beatmapClock` 还是旧位移，这一跳会落到别的托管对象上，读到的 8 字节只是指针位，作为 double 是次正规小数，`round()` 后恒为 0——表现就是图表游标一直停在谱面起点。该自证会拒绝这类表，并优先选择同键候选里能解出真实时钟的那一张（例如随包修正表而不是 APPDATA 里的旧缓存）。
+
 示例骨架：
 
 ```json
@@ -115,6 +127,18 @@ This document describes the schema of the `osu!lazer` memory offset tables (JSON
 ## 1. Schema Overview
 
 The offset table contains metadata, validation signatures (`version`, `file_version`, `clr_version`, `vtable`), dereference pointer chains, and live-probed sections (`results`, `mods`, `score`).
+
+### 1.1 Playback clock chain (`beatmap.time.live`)
+
+The graph cursor and the `beatmap.time.live` payload field share one chain:
+
+```
+OsuGameDesktop.beatmapClock
+  → FramedBeatmapClock.interpolatedTrack
+  → InterpolatingFramedClock.<CurrentTime>k__BackingField
+```
+
+When loading a table the reader resolves this chain once as a structural proof (`lazer/resolve.rs::table_probe`): `<CurrentTime>` must be a finite millisecond value and either `0` (clock not started) or a real reading `>= 0.5ms`. After a lazer update the `OsuGameDesktop` fields shift; a stale `beatmapClock` offset lands on a different managed object, and its pointer bits read as a subnormal double that rounds to 0 — the graph cursor then stays pinned at the chart start. The proof rejects such tables and prefers the same-key candidate that resolves a real clock (for example the corrected bundled table over a stale APPDATA cache).
 
 ## 2. The `mods` Section
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-17T12:26:18Z",
+  "updated_at": "2026-11-19T17:10:00Z",
   "tables": [
     {
       "filename": "stable__x86.json",
@@ -35,8 +35,8 @@
       "game_version": "2026.1117.0.0",
       "runtime_version": "10.0.15",
       "arch": "x64",
-      "sha256": "7ae55ef81e0a5096c4fdaa63c9f7d7046787b52eeeddf360594eb8557a261d4a",
-      "signature": "85e4d632eea6f1d27993ea3196c023ed69db1eab8f413eccbf4ca05ab38bea50a5b88ae07ce5adb60707886be7182ccaf08e7407c8003514e6b203e1b722a10f"
+      "sha256": "a2d0a31707b8e1d227b7c5a2b275ccf459c709508104e24b9e95391e4c4f5676",
+      "signature": "0c209d00fda3c858c706df4f08de4a93c47ca1d7bd41131986d1a90791bd7d2b61e815fa47155acdd114d9a0c40f79cbd2588f53592d6042a5f23e0e2ad42804"
     }
   ]
 }
