@@ -58,7 +58,7 @@
    "<Storage>k__BackingField": 1088,
    "<VersionHash>k__BackingField": 976,
    "SelectedMods": 1120,
-   "beatmapClock": 1240
+   "beatmapClock": 1248
   },
   "osu.Framework.Bindables.Bindable`1<System.Collections.Generic.IReadOnlyList`1<osu.Game.Rulesets.Mods.Mod>>": {
    "value": 32

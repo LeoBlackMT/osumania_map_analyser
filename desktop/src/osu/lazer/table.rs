@@ -366,16 +366,20 @@ pub fn load_table(
     // 但旧版 `gen.exe` 在选歌页生成过缺 `score`/`results` 的局部表。不能因为
     // APPDATA 里先找到局部表就丢掉壳目录里的完整表；同键候选按可选段完整度
     // 选最完整的一张（平手仍保持候选目录的原始优先级）。
-    let mut exact_best: Option<(PathBuf, OffsetTable, u8)> = None;
+    //
+    // 2026-11-20 追加：**结构自证优先于完整度**。同一版本的表可能内容不同
+    // （APPDATA 缓存里是错位移的旧表、壳目录里是修正表）；只按完整度平手时
+    // APPDATA 会赢，错误位移会继续被使用。`prove` 会现场解一遍 Storage 与
+    // beatmapClock 链；能解出真实播放时钟的表优先。`prove` 全失败时回退到
+    // 原来的完整度规则，避免在无法读内存的受限环境下把可用表全部拒掉。
+    let mut exact_candidates: Vec<(PathBuf, OffsetTable, u8)> = Vec::new();
     for dir in &candidate_dirs {
         for name in &expected_names {
             let expected = dir.join(name);
             if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
                 if usable(&table).is_ok() {
                     let score = optional_section_score(&table);
-                    if exact_best.as_ref().map_or(true, |(_, _, best)| score > *best) {
-                        exact_best = Some((expected, table, score));
-                    }
+                    exact_candidates.push((expected, table, score));
                 } else {
                     eprintln!(
                         "[osu] lazer offsets: {} rejected: {}",
@@ -384,6 +388,21 @@ pub fn load_table(
                     );
                 }
             }
+        }
+    }
+    let mut exact_best: Option<(PathBuf, OffsetTable, u8)> = None;
+    for candidate in exact_candidates {
+        let take = match &exact_best {
+            None => true,
+            Some((_, best_table, best_score)) => {
+                let candidate_proven = prove(&candidate.1);
+                let best_proven = prove(best_table);
+                candidate_proven > best_proven
+                    || (candidate_proven == best_proven && candidate.2 > *best_score)
+            }
+        };
+        if take {
+            exact_best = Some(candidate);
         }
     }
     if let Some((path, table, _)) = exact_best {
@@ -558,6 +577,66 @@ mod optional_section_tests {
         partial.score = None;
         partial.mods = None;
         assert!(optional_section_score(&full) > optional_section_score(&partial));
+    }
+}
+
+#[cfg(test)]
+mod exact_selection_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct MapFiles {
+        map: HashMap<PathBuf, Vec<u8>>,
+    }
+
+    impl TableFiles for MapFiles {
+        fn read(&self, path: &Path) -> Option<Vec<u8>> {
+            self.map.get(path).cloned()
+        }
+
+        fn list_json(&self, _dir: &Path) -> Vec<PathBuf> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn exact_table_with_broken_clock_is_replaced_by_proven_bundle_table() {
+        let good = std::fs::read("offsets/lazer/2026.1117.0.0__10.0.15__x64.json").unwrap();
+        let bad = String::from_utf8(good.clone())
+            .unwrap()
+            .replace("\"beatmapClock\": 1248", "\"beatmapClock\": 1240")
+            .into_bytes();
+        assert_ne!(good, bad);
+
+        let bad_table = PathBuf::from("offsets-test-root")
+            .join("offsets/lazer/2026.1117.0.0__10.0.15__x64.json");
+        let table_dir = PathBuf::from("offsets-test-root");
+        let exe_table = table_dir.join("offset/lazer/2026.1117.0.0__10.0.15__x64.json");
+
+        let mut map = HashMap::new();
+        map.insert(bad_table, bad);
+        map.insert(exe_table.clone(), good);
+        let files = MapFiles { map };
+
+        // 模拟结构自证：只有 beatmapClock 为 1248 的表能解出播放时钟。
+        let prove = |table: &OffsetTable| {
+            table
+                .types
+                .get("osu.Desktop.OsuGameDesktop")
+                .and_then(|fields| fields.get("beatmapClock"))
+                .copied()
+                == Some(1248)
+        };
+        let info = TargetInfo {
+            lazer_version: "2026.1117.0-lazer".to_string(),
+            runtime_version: "10.0.15".to_string(),
+            arch: "x64".to_string(),
+            storage_root: None,
+        };
+
+        let loaded = load_table(&files, None, &table_dir, &info, &prove).expect("load table");
+        assert_eq!(loaded.path, exe_table);
+        assert_eq!(loaded.origin, TableOrigin::Exact);
     }
 }
 

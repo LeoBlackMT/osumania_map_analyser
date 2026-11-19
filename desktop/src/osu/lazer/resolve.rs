@@ -1,6 +1,6 @@
 use crate::osu::offsets::OffsetTable;
-use super::fields::{GAME_BASE_HOPS, MAX_RESOLUTION_LINES};
-use super::source::{read_ptr_field, read_u64, Source};
+use super::fields::{GAME_BASE_HOPS, LIVE_TIME_MAX_MS, MAX_RESOLUTION_LINES};
+use super::source::{field_addr, read_f64, read_ptr_field, read_u64, Source};
 use super::types::Resolved;
 
 /// x64 用户态指针的合理性判据。
@@ -200,21 +200,101 @@ pub fn table_probe(
     let resolved = Resolved::from_table(table);
     let storage_offset = resolved
         .storage
+        .clone()
         .map_err(|error| format!("offsets-{error} for `<Storage>`"))?;
     let storage = read_ptr_field(source, game_base, storage_offset).ok_or_else(|| {
         format!("`[gameBase + {storage_offset:#x}]` (<Storage>) is not a plausible pointer")
     })?;
     let mut hops = format!("<Storage>@+{storage_offset:#x}=0x{storage:016X}");
-    match resolved.base_path {
+    match &resolved.base_path {
         Ok(offset) => {
-            let base_path = read_ptr_field(source, storage, offset).ok_or_else(|| {
+            let base_path = read_ptr_field(source, storage, *offset).ok_or_else(|| {
                 format!("`[storage + {offset:#x}]` (<BasePath>) is not a plausible pointer")
             })?;
             hops.push_str(&format!(" -> <BasePath>@+{offset:#x}=0x{base_path:016X}"));
         }
         Err(error) => hops.push_str(&format!(" (<BasePath> not in the table: offsets-{error})")),
     }
+    if let Some(clock) = clock_chain_probe(source, &resolved, game_base)? {
+        hops.push_str(" -> ");
+        hops.push_str(&clock);
+    }
     Ok(hops)
+}
+
+/// 播放时钟链（`beatmap.time.live`）的结构自证。
+///
+/// 为什么需要它：`OsuGameDesktop` 的字段会随 lazer 更新整体后移。若表里
+/// `beatmapClock` 仍指向上一个版本的位移，这一跳会落到**另一个托管对象**上；
+/// 再按 `interpolatedTrack.<CurrentTime>` 读 8 字节时，读到的往往只是指针位，
+/// 作为 double 是一个次正规小数，`round()` 后恒为 0——图表游标会一直停在
+/// 谱面起点，而且载荷里看不到任何 `offsets-*` 降级标记。
+///
+/// 合法的 `CurrentTime` 只有两种：0（时钟尚未启动）或 >= 0.5ms 的真实毫秒值。
+/// 指针位读成的次正规数（|v| < 0.5 且 != 0）一律拒绝，避免“错误的表也能通过”。
+fn clock_chain_probe(
+    source: &dyn Source,
+    resolved: &Resolved,
+    game_base: u64,
+) -> Result<Option<String>, String> {
+    let (Ok(clock_offset), Ok(track_offset), Ok(time_offset)) = (
+        resolved.beatmap_clock.clone(),
+        resolved.beatmap_track_clock.clone(),
+        resolved.beatmap_clock_time.clone(),
+    ) else {
+        // 旧表/局部表可以没有时钟段；这不是本次结构证明的必填项。
+        return Ok(None);
+    };
+
+    let clock = read_ptr_field(source, game_base, clock_offset).ok_or_else(|| {
+        format!("`[gameBase + {clock_offset:#x}]` (<beatmapClock>) is not a plausible pointer")
+    })?;
+    let track = read_ptr_field(source, clock, track_offset).ok_or_else(|| {
+        format!("`[beatmapClock + {track_offset:#x}]` (<interpolatedTrack>) is not a plausible pointer")
+    })?;
+    let address = field_addr(track, time_offset)
+        .ok_or_else(|| format!("`interpolatedTrack + {time_offset:#x}` overflows"))?;
+    let current = read_f64(source, address).ok_or_else(|| {
+        format!("`[interpolatedTrack + {time_offset:#x}]` (<CurrentTime>) is unreadable")
+    })?;
+    if !clock_value_is_sane(current) {
+        return Err(format!(
+            "`[interpolatedTrack + {time_offset:#x}]` (<CurrentTime>) = {current} — \
+             not a plausible millisecond clock value (pointer bits read as double?)"
+        ));
+    }
+
+    Ok(Some(format!(
+        "<beatmapClock>@+{clock_offset:#x}=0x{clock:016X} -> \
+         <interpolatedTrack>@+{track_offset:#x}=0x{track:016X} -> <CurrentTime>={current:.1}ms"
+    )))
+}
+
+fn clock_value_is_sane(value: f64) -> bool {
+    value.is_finite()
+        && value.abs() <= LIVE_TIME_MAX_MS
+        && (value == 0.0 || value.abs() >= 0.5)
+}
+
+#[cfg(test)]
+mod clock_probe_tests {
+    use super::{clock_value_is_sane, LIVE_TIME_MAX_MS};
+
+    #[test]
+    fn clock_value_accepts_zero_and_real_milliseconds() {
+        assert!(clock_value_is_sane(0.0));
+        assert!(clock_value_is_sane(0.5));
+        assert!(clock_value_is_sane(24137.2527));
+    }
+
+    #[test]
+    fn clock_value_rejects_pointer_bits_read_as_double() {
+        assert!(!clock_value_is_sane(1.0908187067103574e-232));
+        assert!(!clock_value_is_sane(6.9531711693787e-310));
+        assert!(!clock_value_is_sane(f64::NAN));
+        assert!(!clock_value_is_sane(f64::INFINITY));
+        assert!(!clock_value_is_sane(LIVE_TIME_MAX_MS + 1.0));
+    }
 }
 
 pub fn vtable_witness_note(table: &OffsetTable, observed: u64) -> String {

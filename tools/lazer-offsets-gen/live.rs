@@ -2166,8 +2166,8 @@ fn validate_and_emit(
         .filter(|s| s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()))
         .unwrap_or_else(|| "00000000000000000000000000000000".to_string());
 
-    // 活体验证 3: ScreenStack 链路与 TypeDef RID
-    let screen_stack = read_ptr(handle, game_base + 1568);
+    // 活体验证 3: ScreenStack 链路与 TypeDef RID（2026.1117：OsuGameDesktop 字段整体 +8）
+    let screen_stack = read_ptr(handle, game_base + 1576);
     let stack = screen_stack.and_then(|ss| read_ptr(handle, ss + 800));
     let array = stack.and_then(|st| read_ptr(handle, st + 8));
     // 栈深用 `Stack._size`（+0x10），**不是**数组容量 `_array.length`（+0x8）：
@@ -2364,11 +2364,11 @@ fn serde_json_table(
     out.push_str("    \"osu.Desktop.OsuGameDesktop\": {\n");
     out.push_str("      \"<Beatmap>k__BackingField\": 1104,\n");
     out.push_str("      \"<Host>k__BackingField\": 824,\n");
-    out.push_str("      \"<ScreenStack>k__BackingField\": 1568,\n");
+    out.push_str("      \"<ScreenStack>k__BackingField\": 1576,\n");
     out.push_str("      \"<Storage>k__BackingField\": 1088,\n");
     out.push_str("      \"<VersionHash>k__BackingField\": 976,\n");
     out.push_str("      \"SelectedMods\": 1120,\n");
-    out.push_str("      \"beatmapClock\": 1240\n");
+    out.push_str("      \"beatmapClock\": 1248\n");
     out.push_str("    },\n");
     out.push_str("    \"osu.Framework.Bindables.Bindable`1<System.Collections.Generic.IReadOnlyList`1<osu.Game.Rulesets.Mods.Mod>>\": {\n");
     out.push_str("      \"value\": 32\n");
