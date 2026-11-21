@@ -16,6 +16,7 @@
 | [pattern-analysis.md](pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [graph-visualization.md](graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
 | [graph-section-analysis.md](graph-section-analysis.md) | AI | 特定时间点谱面分析功能文档（图表选区、.osu 按时间切片、区间跑批、缓存/遥测/反馈严格门控） |
+| [rd-column-capsule.md](rd-column-capsule.md) | AI | RD 列置换胶囊（old→new 1-based、仅 ≤9K、RD+MR 最终映射、null seed/源串扰/二次置换防护） |
 | [pause-detection.md](pause-detection.md) | AI | 暂停检测功能文档（暂停次数检测、图表暂停位置显示、回放/历史结算的静态暂停与 `Pause Data Unavailable`；契约 v11） |
 | [mode-tagging.md](mode-tagging.md) | AI | 模式标签功能文档（HB/RC/LN/Mix/SV 模式判定） |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP 难度表现面板功能文档（5 行柱状图、v2Acc/PP 公式、Classic 感知星数、Max/Live 切换） |
@@ -51,6 +52,7 @@
 | [pattern-analysis.md](pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [graph-visualization.md](graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
 | [graph-section-analysis.md](graph-section-analysis.md) | AI | Time-range map analysis document (graph selection, .osu time slicing, section pipeline run, strict cache/telemetry/feedback gating) |
+| [rd-column-capsule.md](rd-column-capsule.md) | AI | RD column-order capsule (old→new 1-based, ≤9K only, final RD+MR map, null-seed/source-leak/double-remap guards) |
 | [pause-detection.md](pause-detection.md) | AI | Pause detection document (pause count detection, pause position display on graph, static replay/historical-result pauses with `Pause Data Unavailable`; contract v11) |
 | [mode-tagging.md](mode-tagging.md) | AI | Mode tagging document (HB/RC/LN/Mix/SV mode judgment) |
 | [rework-pp.md](rework-pp.md) | AI | ReworkPP performance panel document (5-row bar chart, v2Acc/PP formulas, Classic-aware star rating, Max/Live switching) |

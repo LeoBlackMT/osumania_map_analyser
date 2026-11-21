@@ -370,8 +370,9 @@ html.shell-mode .status-row {
     bottom: 12px;
 }
 
-/* 选区模式时间胶囊（Graph Section Analysis；仅桌面壳） */
-.section-time {
+/* 选区模式时间胶囊（Graph Section Analysis；仅桌面壳）与 RD 列置换胶囊 */
+.section-time,
+.rd-column-order {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
@@ -387,4 +388,5 @@ html.shell-mode .status-row {
     white-space: nowrap;
 }
 
-.section-time[hidden] { display: none !important; }
+.section-time[hidden],
+.rd-column-order[hidden] { display: none !important; }

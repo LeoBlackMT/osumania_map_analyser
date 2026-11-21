@@ -7,10 +7,12 @@ import {
     overlaySpinnerEl,
     overlayTitleEl,
     pauseCountEl,
+    rdColumnOrderEl,
     state,
     statusEl,
     svTagEl,
 } from "../core/appContext.js";
+import { formatColumnMap } from "../../parser/modColumnRemap.js";
 import { isSourcePlaying } from "../sources/sourceActivity.js";
 
 const SV_TAG_EXIT_DURATION_MS = 220;
@@ -134,6 +136,24 @@ export function setStatus(message, kind) {
         applyStatusMarquee(text);
     }
     updateCardPlayVisibility();
+}
+
+/**
+ * RD 列置换胶囊：按原列 1..K 顺序显示每个原列的新列（1-based）。
+ * map 为 null、恒等或 >9K 时 formatColumnMap 返回空串，胶囊隐藏。
+ */
+export function setRdColumnOrder(map) {
+    if (!rdColumnOrderEl) {
+        return;
+    }
+    const text = formatColumnMap(map);
+    rdColumnOrderEl.textContent = text;
+    rdColumnOrderEl.hidden = text === "";
+    if (text) {
+        rdColumnOrderEl.setAttribute("aria-label", `RD column order: ${text.split("").join(" ")}`);
+    } else {
+        rdColumnOrderEl.removeAttribute("aria-label");
+    }
 }
 
 export function refreshStatusRendering() {

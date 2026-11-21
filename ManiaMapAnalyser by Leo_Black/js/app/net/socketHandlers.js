@@ -26,7 +26,7 @@ import {
     refreshGraphTimeline,
     resetPauseRuntime,
 } from "../graph/index.js";
-import { updateCardPlayVisibility, updatePauseCountVisibility } from "../ui/hud.js";
+import { setRdColumnOrder, updateCardPlayVisibility, updatePauseCountVisibility } from "../ui/hud.js";
 import { filterReplayPauseTimes, normalizeReplayPauses } from "./replayPauses.js";
 import { scheduleRecompute } from "../core/scheduler.js";
 import { getCounterPathForCommand, resetContentBarTabOverride } from "../core/settings.js";
@@ -344,6 +344,8 @@ export function applySignalState(data) {
                 // 暂停不算离开（`nextIsPauseState` 时保留本局 seed）。
                 if ((leftPlayState && !nextIsPauseState) || wasResultScreen) {
                     state.randomSeed = null;
+                    // 离开 play/result 后 seed 立即作废，胶囊不能等下一次分析完成才消失。
+                    setRdColumnOrder(null);
                 }
             }
 
