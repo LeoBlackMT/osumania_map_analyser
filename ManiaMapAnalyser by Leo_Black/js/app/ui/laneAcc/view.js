@@ -205,7 +205,18 @@ export const laneAccView = (() => {
             return null;
         }
         const seed = Number(state.randomSeed);
-        return Number.isInteger(seed) && seed >= -2147483648 && seed <= 2147483647 ? seed : null;
+        if (!Number.isInteger(seed) || seed < -2147483648 || seed > 2147483647) {
+            return null;
+        }
+        // stable/ppysb 的 play 阶段 Score.Seed 可能还没写入（通常为 0）；
+        // 不能把占位 0 当成实际 RD seed，否则 LaneAcc 会用假映射。
+        if (seed === 0
+            && /^(stable|ppysb)$/i.test(String(state.client || ""))
+            && state.modContext !== "results"
+            && state.modContext !== "freeze") {
+            return null;
+        }
+        return seed;
     }
 
     function randomModBlocked() {

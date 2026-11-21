@@ -429,15 +429,21 @@ fn insert_mods(root: &mut Map<String, Value>, snapshot: &Snapshot) {
 
     let mut play_obj = Map::new();
     play_obj.insert("mods".to_string(), play.map(keys::menu_mods_value).unwrap_or(Value::Null));
-    if let Some(seed) = snapshot.play_seed {
-        play_obj.insert("seed".to_string(), json!(seed));
+    // seed 与 mods 同态门控：选歌态里 Score 链可能是上一局残留，不能把旧 seed
+    // 当成当前 RD seed 发布（否则页面会按旧 seed 生成固定映射并写缓存）。
+    if play.is_some() {
+        if let Some(seed) = snapshot.play_seed {
+            play_obj.insert("seed".to_string(), json!(seed));
+        }
     }
     root.insert("play".to_string(), Value::Object(play_obj));
 
     let mut result_obj = Map::new();
     result_obj.insert("mods".to_string(), result.map(keys::menu_mods_value).unwrap_or(Value::Null));
-    if let Some(seed) = snapshot.result_seed {
-        result_obj.insert("seed".to_string(), json!(seed));
+    if result.is_some() {
+        if let Some(seed) = snapshot.result_seed {
+            result_obj.insert("seed".to_string(), json!(seed));
+        }
     }
     root.insert("resultsScreen".to_string(), Value::Object(result_obj));
 }

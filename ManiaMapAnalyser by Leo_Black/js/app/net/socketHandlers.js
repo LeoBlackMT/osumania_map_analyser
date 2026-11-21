@@ -70,6 +70,17 @@ function getModData(data) {
     });
 }
 
+/** 离开 play/result 时 seed 作废：清掉签名里的 seed/engine 段，避免命中旧 seed 快照。 */
+function stripSeedFromSignature() {
+    const parts = String(state.modSignature || "").split("|");
+    if (parts.length < 7) {
+        return;
+    }
+    parts[4] = "none";
+    parts[5] = "none";
+    state.modSignature = parts.join("|");
+}
+
 function extractCurrentSongTimeMs(data) {
     return extractCurrentSongTimeMsFromPayload(data);
 }
@@ -344,7 +355,10 @@ export function applySignalState(data) {
                 // 暂停不算离开（`nextIsPauseState` 时保留本局 seed）。
                 if ((leftPlayState && !nextIsPauseState) || wasResultScreen) {
                     state.randomSeed = null;
-                    // 离开 play/result 后 seed 立即作废，胶囊不能等下一次分析完成才消失。
+                    // 离开 play/result 后 seed 立即作废：签名同步回 none，避免选中
+                    // 旧图时命中 play 阶段写下的 seed 快照（例如 3412）。
+                    stripSeedFromSignature();
+                    // 胶囊不能等下一次分析完成才消失。
                     setRdColumnOrder(null);
                 }
             }
@@ -441,6 +455,33 @@ export function applySignalState(data) {
                     state.pendingChangeKind = "mod";
                     scheduleRecompute("historical result mods", true);
                 }
+            }
+        }
+
+        // stable/ppysb：局内 Score.Seed 可能在 play 阶段仍为 0/未定，结算帧才有
+        // 真实 seed。play→result 的 freeze 不经过 getModData，这里只补 seed 并重算，
+        // 保留已有的 LaneAcc 终态（prepareChart 的 hasResult 分支）。
+        if (state.modContext === "freeze"
+            && state.resultsFromPlay
+            && (state.activeSource ?? "osu") === "osu"
+            && state.client === "stable") {
+            const resultSeed = Number(data?.resultsScreen?.seed);
+            // 结算帧的 seed 是权威值：即使 play 阶段读到了非 0 的旧值，
+            // 也以 resultsScreen.seed 覆盖并重算。
+            if (Number.isInteger(resultSeed)
+                && resultSeed !== state.randomSeed) {
+                state.randomSeed = resultSeed;
+                const signatureParts = String(state.modSignature || "").split("|");
+                if (signatureParts.length >= 7) {
+                    signatureParts[4] = String(resultSeed);
+                    signatureParts[5] = "stable";
+                    state.modSignature = signatureParts.join("|");
+                }
+                if (state.lastBeatmapIdentity) {
+                    state.lastBeatmapKey = `${state.lastBeatmapIdentity}|${state.modSignature}`;
+                }
+                state.pendingChangeKind = "mod";
+                scheduleRecompute("result seed", true);
             }
         }
 

@@ -6,7 +6,7 @@
 
 当 osu!mania 源处于 RD（Random）且拿到有效整数 seed、列变换实际改变了轨道时，在左上角状态行的 metadata 左侧显示一个胶囊，按**原列 1..K 的顺序**列出每个原列的新列（old → new，1-based）。例如 lazer 4K、seed `55` 的映射为 `[2, 3, 0, 1]`，胶囊显示 `3412`，表示原 1→3、2→4、3→1、4→2。
 
-以下情况不显示胶囊：MR-only（没有 RD seed）、RD 但 seed 为空/无效、非 osu! 源（Etterna/Malody）、列映射恰好是恒等（如 `1234`）、键数大于 9K、本次分析结果带 metadata 错误。MR-only 与 RD 无 seed 时的 MR 仍照旧参与主分析（谱面列镜像），只是不显示胶囊。RD + MR 时显示 RD→MR 复合后的最终映射；MR 只影响最终映射，不单独触发胶囊。
+以下情况不显示胶囊：MR-only（没有 RD seed）、RD 但 seed 为空/无效、非 osu! 源（Etterna/Malody）、列映射恰好是恒等（如 `1234`）、键数大于 9K、本次分析结果带 metadata 错误。stable/ppysb 的 `play.seed` 在 play 阶段可能尚未由 `Score.Seed` 写入（通常为 0）；此时页面不应用 stable RD 列变换，也不显示胶囊，避免显示 seed 0 的假映射。结算帧拿到 `resultsScreen.seed` 后再应用真实 RD 变换并显示映射。选歌态不会沿用上一局的 seed。MR-only 与 RD 无 seed 时的 MR 仍照旧参与主分析（谱面列镜像），只是不显示胶囊。RD + MR 时显示 RD→MR 复合后的最终映射；MR 只影响最终映射，不单独触发胶囊。
 
 ## 2. 数据流与单一事实源
 
@@ -40,6 +40,7 @@
 | 清卡（Malody 回 `other`） | `analysis.js clearSourceCard` / `invokeCardClear` | `setRdColumnOrder(null)` |
 | 离开 play/result 回到选歌，seed 清空 | `socketHandlers.applySignalState` | `setRdColumnOrder(null)`，不等下一次分析 |
 | 进入 play/replay 或结算，seed 仍有效 | 现有 freeze / recompute 流程 | 胶囊保持或由新结果覆盖；play→result 的 freeze 不重算时不闪 |
+| play→result，局内 seed 缺失/为 0，结算帧有真实 seed | `socketHandlers.applySignalState` | 用 `resultsScreen.seed` 补齐 seed 并触发一次重算；LaneAcc 终态仍由 `hasResult` 分支保留 |
 | 区间跑批 | `analysis.js` 的 `isSectionRun` 分支 | 使用同一 `rdColumnMap`；不额外复位胶囊 |
 
 ## 6. 旧 bug 防护

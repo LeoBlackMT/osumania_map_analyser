@@ -120,8 +120,8 @@ function escapeHtml(value) {
 /**
  * 从当前 state 快照一次列变换。
  * - MR 在选歌即可用；
- * - RD 只有拿到实际 seed 才应用；自定义 seed 在选歌可用，默认 null 等
- *   play 帧的 ScoreInfo.ModsJson（见 socketHandlers 的 modContext）。
+ * - lazer RD 拿到实际 seed 即应用；stable/ppysb RD 只在结算帧用
+ *   resultsScreen.seed 重算，live/select 不应用（Score.Seed 尚未写入）。
  */
 function currentColumnTransform() {
     // RD/MR 列变换只属于 osu!mania 源；Etterna/Malody 的谱面列语义不同，
@@ -129,11 +129,55 @@ function currentColumnTransform() {
     if ((state.activeSource ?? "osu") !== "osu") {
         return null;
     }
+    // stable/ppysb 的 RD seed 在 play/select 阶段不可信（Score.Seed 通常还是 0），
+    // 只在结算拿到 resultsScreen.seed 后才允许做 RD 重算。MR-only 仍保持原行为。
+    if (stableRdTransformBlocked()) {
+        return null;
+    }
     return columnTransformFromState({
         modCodes: state.modCodes,
         randomSeed: state.randomSeed,
         client: state.client,
     });
+}
+
+function isStableClient() {
+    return /^(stable|ppysb)$/i.test(String(state.client || ""));
+}
+
+function hasRandomMod() {
+    return Array.isArray(state.modCodes)
+        && state.modCodes.some((code) => /^RD$/i.test(String(code)));
+}
+
+/** stable/ppysb 的 RD 只在结算态重算；live/select 的 Score.Seed 不作为分析输入。 */
+function stableRdTransformBlocked() {
+    if (!isStableClient() || !hasRandomMod()) {
+        return false;
+    }
+    if (state.modContext === "results") {
+        return false;
+    }
+    if (state.modContext === "freeze") {
+        const seed = Number(state.randomSeed);
+        return !(state.randomSeed != null
+            && state.randomSeed !== ""
+            && Number.isInteger(seed)
+            && seed > 0);
+    }
+    return true;
+}
+
+/** cache key 不含未应用的列变换维度，避免 seed-0 原始文本快照被后续 RD 命中。 */
+function stripColumnTransformSignature(signature) {
+    const parts = String(signature || "").split("|");
+    if (parts.length < 7) {
+        return signature;
+    }
+    parts[4] = "none";
+    parts[5] = "none";
+    parts[6] = "0";
+    return parts.join("|");
 }
 
 function buildMetaError(errors) {
@@ -451,9 +495,12 @@ export async function fetchBeatmapFile(reason) {
     // 弱帧合并后同一张文件的键稳定，换文件（hash 变）时键必变。
     const requestContentKey = requestFrame.contentKey || requestIdentity;
     const requestMetaKey = requestFrame.metaKey || "";
-    const requestModSignature = state.modSignature || "";
+    let requestModSignature = state.modSignature || "";
     // 列变换也必须在请求开始时快照：fetch/worker 期间 state 可能切换。
     const requestColumnTransform = currentColumnTransform();
+    if (!requestColumnTransform) {
+        requestModSignature = stripColumnTransformSignature(requestModSignature);
+    }
     // 本次请求没有有效 RD seed（或非 osu 源）时先撤掉上一张图的胶囊；
     // 有 seed 时保留到本次结果确认，避免无谓闪烁。
     if (requestColumnTransform?.seed == null) {
