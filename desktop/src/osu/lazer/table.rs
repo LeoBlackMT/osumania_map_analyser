@@ -372,14 +372,14 @@ pub fn load_table(
     // APPDATA 会赢，错误位移会继续被使用。`prove` 会现场解一遍 Storage 与
     // beatmapClock 链；能解出真实播放时钟的表优先。`prove` 全失败时回退到
     // 原来的完整度规则，避免在无法读内存的受限环境下把可用表全部拒掉。
-    let mut exact_candidates: Vec<(PathBuf, OffsetTable, u8)> = Vec::new();
-    for dir in &candidate_dirs {
+    let mut exact_candidates: Vec<(PathBuf, OffsetTable, u8, usize)> = Vec::new();
+    for (dir_index, dir) in candidate_dirs.iter().enumerate() {
         for name in &expected_names {
             let expected = dir.join(name);
             if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
                 if usable(&table).is_ok() {
                     let score = optional_section_score(&table);
-                    exact_candidates.push((expected, table, score));
+                    exact_candidates.push((expected, table, score, dir_index));
                 } else {
                     eprintln!(
                         "[osu] lazer offsets: {} rejected: {}",
@@ -390,22 +390,27 @@ pub fn load_table(
             }
         }
     }
-    let mut exact_best: Option<(PathBuf, OffsetTable, u8)> = None;
+    let mut exact_best: Option<(PathBuf, OffsetTable, u8, usize)> = None;
     for candidate in exact_candidates {
         let take = match &exact_best {
             None => true,
-            Some((_, best_table, best_score)) => {
+            Some((_, best_table, best_score, best_dir_index)) => {
                 let candidate_proven = prove(&candidate.1);
                 let best_proven = prove(best_table);
                 candidate_proven > best_proven
                     || (candidate_proven == best_proven && candidate.2 > *best_score)
+                    // 证明和完整度都打平时，优先候选目录的后者（随包目录排在
+                    // APPDATA 缓存之后），避免旧缓存表在无法现场自证时重新获胜。
+                    || (candidate_proven == best_proven
+                        && candidate.2 == *best_score
+                        && candidate.3 > *best_dir_index)
             }
         };
         if take {
             exact_best = Some(candidate);
         }
     }
-    if let Some((path, table, _)) = exact_best {
+    if let Some((path, table, _, _)) = exact_best {
         return Ok(LoadedTable {
             mismatch: table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch),
             table,
@@ -636,6 +641,31 @@ mod exact_selection_tests {
 
         let loaded = load_table(&files, None, &table_dir, &info, &prove).expect("load table");
         assert_eq!(loaded.path, exe_table);
+        assert_eq!(loaded.origin, TableOrigin::Exact);
+    }
+
+    #[test]
+    fn unproven_duplicate_prefers_later_bundle_candidate() {
+        let good = std::fs::read("offsets/lazer/2026.1117.0.0__10.0.15__x64.json").unwrap();
+        let table_dir = PathBuf::from("offsets-test-root");
+        let appdata_like = table_dir.join("offsets/lazer/2026.1117.0.0__10.0.15__x64.json");
+        let bundle = table_dir.join("offset/lazer/2026.1117.0.0__10.0.15__x64.json");
+
+        let mut map = HashMap::new();
+        map.insert(appdata_like, good.clone());
+        map.insert(bundle.clone(), good);
+        let files = MapFiles { map };
+        let info = TargetInfo {
+            lazer_version: "2026.1117.0-lazer".to_string(),
+            runtime_version: "10.0.15".to_string(),
+            arch: "x64".to_string(),
+            storage_root: None,
+        };
+
+        // 模拟启动时结构证明不可用（Lazer 尚未进入可读时钟状态）：
+        // 两张表分数相同，必须让随包目录的候选胜出。
+        let loaded = load_table(&files, None, &table_dir, &info, &|_| false).expect("load table");
+        assert_eq!(loaded.path, bundle);
         assert_eq!(loaded.origin, TableOrigin::Exact);
     }
 }

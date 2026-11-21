@@ -21,7 +21,7 @@ OsuGameDesktop.beatmapClock
   → InterpolatingFramedClock.<CurrentTime>k__BackingField
 ```
 
-读侧在加载偏移表时会现场解一次这条链做结构自证（`lazer/resolve.rs::table_probe`）：`<CurrentTime>` 必须是有限的毫秒值，且只能是 `0`（时钟未启动）或 `>= 0.5ms` 的真实读数。lazer 更新后 `OsuGameDesktop` 的字段会整体后移；如果表里的 `beatmapClock` 还是旧位移，这一跳会落到别的托管对象上，读到的 8 字节只是指针位，作为 double 是次正规小数，`round()` 后恒为 0——表现就是图表游标一直停在谱面起点。该自证会拒绝这类表，并优先选择同键候选里能解出真实时钟的那一张（例如随包修正表而不是 APPDATA 里的旧缓存）。
+读侧在加载偏移表时会现场解一次这条链做结构自证（`lazer/resolve.rs::table_probe`）：`<CurrentTime>` 必须是有限的毫秒值，且只能是 `0`（时钟未启动）或 `>= 0.5ms` 的真实读数。lazer 更新后 `OsuGameDesktop` 的字段会整体后移；如果表里的 `beatmapClock` 还是旧位移，这一跳会落到别的托管对象上，读到的 8 字节只是指针位，作为 double 是次正规小数，`round()` 后恒为 0——表现就是图表游标一直停在谱面起点。该自证会拒绝这类表，并优先选择同键候选里能解出真实时钟的那一张（例如随包修正表而不是 APPDATA 里的旧缓存）。若现场自证暂时不可用（例如 lazer 尚未进入可读时钟状态），同键候选按可选段完整度比较；完整度也相同时优先候选目录中靠后的随包目录，避免 APPDATA 旧表重新获胜。
 
 示例骨架：
 
@@ -138,7 +138,7 @@ OsuGameDesktop.beatmapClock
   → InterpolatingFramedClock.<CurrentTime>k__BackingField
 ```
 
-When loading a table the reader resolves this chain once as a structural proof (`lazer/resolve.rs::table_probe`): `<CurrentTime>` must be a finite millisecond value and either `0` (clock not started) or a real reading `>= 0.5ms`. After a lazer update the `OsuGameDesktop` fields shift; a stale `beatmapClock` offset lands on a different managed object, and its pointer bits read as a subnormal double that rounds to 0 — the graph cursor then stays pinned at the chart start. The proof rejects such tables and prefers the same-key candidate that resolves a real clock (for example the corrected bundled table over a stale APPDATA cache).
+When loading a table the reader resolves this chain once as a structural proof (`lazer/resolve.rs::table_probe`): `<CurrentTime>` must be a finite millisecond value and either `0` (clock not started) or a real reading `>= 0.5ms`. After a lazer update the `OsuGameDesktop` fields shift; a stale `beatmapClock` offset lands on a different managed object, and its pointer bits read as a subnormal double that rounds to 0 — the graph cursor then stays pinned at the chart start. The proof rejects such tables and prefers the same-key candidate that resolves a real clock (for example the corrected bundled table over a stale APPDATA cache). When the proof is temporarily unavailable (for example lazer is not yet in a readable clock state), same-key candidates fall back to optional-section completeness; on a tie, the later bundled candidate wins so the old APPDATA table cannot take over again.
 
 ## 2. The `mods` Section
 
