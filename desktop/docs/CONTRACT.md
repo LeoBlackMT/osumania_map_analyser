@@ -1,6 +1,6 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**10**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> 版本：**12**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
 > v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > v2→v3 变更：新增第四数据源 **Malody 4.3.7 原生客户端**（零注入只读观察通道）——新增 `malody4_selection` 帧（八型）；`source` 枚举新增 `"malody4"`；`requestId` 新增 `n{seq}` 前缀；`identity` 新增 `mdy4:{md5}`；`sources` 新增 `malody4{alive,playing,screen,reason?,judge?}`；`meta` 新增可选 `judge`（Malody 4 判定档字母）。
 > v3→v4 变更：Malody V 通道新增**游戏内选曲桥**（BepInEx 插件 `POST /selection` → 壳 17653）——`sources.malody` 由 `{alive}` 扩为 `{alive,transport,screen,playing,eventSeq,judge}`；`song` 帧新增 `screen` / `judge` / `winScale`（仅桥通道携带）；`requestId` 新增 `b{eventSeq}`（真实事件）与 `b{eventSeq}r{k}`（重连补发）前缀；`identity` 的桥通道带 `u` 后缀（`mdy:…:{contentMd5}u`）；新增端口 **17653**；详情见 §11。**注**：v4 当时装的是上游插件，v5 起改为本仓库自建的 fork（§12），上面的历史描述保留原样。
@@ -9,13 +9,16 @@
 > v6→v7 变更：Malody V 桥通道新增 `cvt` / `cvtFlag`（Holds→`IN`、Taps→`HO`）——`POST /selection` 12 字段、`song.modData.cvtFlag`、内容判据扩为 **七元组**；详情见 §15。旧 6 字段/11 字段载荷仍按缺省 `null` 接受。
 > v7→v8 变更：新增 **`mania_hit_events` 下行**（局内逐判定事件）与 **`handacc_sync` 上行**（页面刷新/重连取本局全量）——LaneAcc / ScoreV1 转换的数据面。v8 未发布。
 > v8→v9 变更：特性统一命名为 **LaneAcc**（不再有 HandAcc 残留），上行帧 `handacc_sync` 改名 **`laneacc_sync`**；**字段与语义不变**。详情见 §16。
+> v9→v10 变更：新增 **`mania_replay_frames` 下行**（原始按键帧，供 Stable ScoreV1 重算与 Stable V2 分轨/左右手）；`laneacc_sync` 全量快照同时包含逐判定事件与原始帧。详情见 §17。
+> v10→v11 变更：新增 **`replay_pauses` 下行**与 **`replay_pauses_sync` 上行**（`.osr` 尾部 `scoreInfo` 解析出的回放暂停），24062 兼容 origin 新增 `replayHash` 校验字段。详情见 §18。
+> v11→v12 变更：stable/ppysb 新增可选 `play.seed` / `resultsScreen.seed`（RD 全卡重算用）；lazer 的 seed 仍来自 `mods.array[].settings.seed`。详情见 §19。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
 
 - 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback——解析 Origin 的 host 段**精确匹配** `127.0.0.1` / `localhost` / `[::1]`（子串匹配会放过 `localhost.evil.com` 类域）；24061 HTTP 侧同样校验 Host 头仅本机 24061。**17653 是另一个独立 listener（Malody 选曲桥的入站面向游戏插件，不是页面通道），只认 `POST /selection`，Host 头必须精确等于 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653`，且**任何** `Origin` 头出现即 403（见 §11）。**
-- 帧：`{v: 8, type, seq}`；`seq` 单向前递增。
-- type 全集（十型职责语义闭合）：
+- 帧：`{v: 12, type, seq}`；`seq` 单向前递增。
+- type 全集（十三型职责语义闭合）：
   | type | 方向 | 职责 |
   |---|---|---|
   | hello | 壳→页 | 握手：`{tosuOnline, contract}` + 全量状态复位 |
@@ -29,8 +32,10 @@
   | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增）：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块。生产者：Lazer `ScoreProcessor.hitEvents` 或 **Stable V1 per-note judgement**（列+档位，`offset=0`）；Stable V2 不消费该帧 |
   | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增）：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，以及 Stable V2 的每 note 头/尾分轨，全量快照 ≤4096 条/帧分块 |
   | laneacc_sync | 页→壳 | 页面刷新/重连取本局全量（v9 新增）：`{}`；壳把 `mania_hit_events` / `mania_replay_frames` 全量快照发给当前连接 |
+  | replay_pauses | 壳→页 | 回放暂停（v11 新增）：`{hash, pauses, available, speedRate}`；`pauses` 为物理谱面时间 ms，`available:false` = 拿不到；见 §18 |
+  | replay_pauses_sync | 页→壳 | 页面在 `hello` 后或刷新/重连时取当前回放暂停快照（v11 新增）：`{}`；壳只回当前连接一条，无状态回空帧；见 §18 |
 
-- diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入八型。
+- diag（页→壳，**诊断旁路**）：`{type:"diag", payload:{message}}`——页面诊断日志直写壳 debug 日志，不参与任何状态机/应答，不计数入十三型。
 - 浏览器模式（无壳）：24061 不可达 → 页面不建壳通道，osu 单源（现状行为）。
 
 ## 1. song 帧 schema
@@ -246,7 +251,7 @@
 | `5` | 接受：`sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`（tosu 传输）；`sources.malody` 八字段齐全 |
 | `4` | 接受：`sources.malody` 无 `pro`/`turbo`，桥帧也无这两个字段；`winScale` 恒为数值（旧语义）。页面据此关闭动态 OD 并说明原因 |
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
-| `< 3` 或 `> 10` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
+| `< 3` 或 `> 12` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
 即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 12`，区间为 `[3,12]`。
 
@@ -293,7 +298,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 | `/feedback` | POST / OPTIONS | 200 = `{payload, auth}` 签名信封（客观字段由 native 快照重算；页面负责转发到后端）；**400** body 非 JSON；**409** 无读取器/无快照；**422** gate 失败（`no_hits/no_bid/no_checksum/no_mods/mods/rate/total_hits/completion/accuracy/bad_vote/bad_displayed/bad_algorithm/bad_keycount/not_rc/bad_od/bad_settings_hash`）；**413** body >4KB；**403** Origin 不在白名单（无 Origin = 本机进程直连）；**405** 方法不允许。OPTIONS 返回 204 + CORS 预检头 |
 | `/cover/...` | GET | 200 白名单内的具体文件（`Access-Control-Allow-Origin: *`）；404 未列入白名单或读取失败 |
 | `/`、`/settings.html`、`/presets.html`、`/js/**`、`/styles/**` 等 | GET/HEAD | 200 插件目录静态文件（防穿越，`Cache-Control: no-store`）；405 其他方法；404 穿越/不存在 |
-| `/ws` | WS | 帧通道（§0–§12 的十型 + diag） |
+| `/ws` | WS | 帧通道（§0 的十三型 + diag） |
 
 改这一面（含状态码）只需更新本节与 `docs/features/desktop-shell.md` §3c；**只有当 `/ws` 上的帧字段/语义变化时才按 §10 升 `CONTRACT_VERSION`**。
 

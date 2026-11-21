@@ -17,7 +17,7 @@
 5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
 `desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `malody4/{mod,anchor,library,gamelog,selection,config,model}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**）；契约 `desktop/docs/CONTRACT.md`（**v10**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v12**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（app 模块 + config.rs）
 

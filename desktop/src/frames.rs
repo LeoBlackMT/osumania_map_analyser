@@ -1,4 +1,4 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 11 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 12 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

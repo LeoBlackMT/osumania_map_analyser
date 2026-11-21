@@ -14,8 +14,9 @@
 - 请按照用户的实际情况进行git操作，默认允许 commit，但是不允许 push。请在进行 push 之前征求用户意见。严禁直接 push 到 main 分支，除非用户明确要求。请在进行 push 之前确保代码已经过测试，并且不会破坏已有功能。请使用英文Pull Request的方式进行贡献。
 - 文档编写的规范和要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因。在编辑附属项目时，请先阅读对应的README和文档以获取信息。
 - 由于扩充了数据源，功能编写时请确保代码的兼容性和性能，避免使用不兼容的API和过于复杂的算法；不得要求用户启用一个如node的额外运行时环境；浏览器模式（无壳）必须保持 osu! 单源完整可用。除唯一后端（<https://mma-stats.leoblack.top/>）交互和本GitHub在线仓库外，不允许任何在线网络连接。
-- 发行相关：版本号三处必须同时改并写在同一次提交里——`index.js` 的 `_VERSION`、`metadata.txt` 的 `Version`、`backend/build.ps1` 的 `-Version` 默认值。打包用 `release.ps1`，产物落在 gitignore 的 `release/`；Ed25519 反馈签名 seed 只存在于 `.secrets/`，不得写入仓库、日志、文档或对话。发行版必须通过 GitHub Release + tag 发布。页面侧不匹配会进终态并停止重连。index.js中的版本号应当与metadata.txt中的版本号保持一致。metadata.txt中的版本号是暴露给 tosu 的插件版本号，用户可以在 tosu 的插件管理界面看到该版本号。index.js中的版本号是插件内部使用的版本号，用于判断插件是否需要更新。
-- 在tosu使用的settings.json中，请全程使用英文。设置描述和README应当简洁直白，以确保用户能够理解设置项的作用。checkbox类应当放在options类之前；Link部分应当放在最前面。
+- 发行相关：版本号三处必须同时改并写在同一次提交里——`index.js` 的 `_VERSION`、`metadata.txt` 的 `Version`、`backend/build.ps1` 的 `-Version` 默认值。打包用 `release.ps1`，产物落在 gitignore 的 `release/`；Ed25519 反馈签名 seed 存在于 `.secrets/` 以及 GitHub 仓库secret中，不得写入明文仓库、日志、文档或对话。发行版必须通过 GitHub Release + tag 发布。页面侧不匹配会进终态并停止重连。index.js中的版本号应当与metadata.txt中的版本号保持一致。metadata.txt中的版本号是暴露给 tosu 的插件版本号，用户可以在 tosu 的插件管理界面看到该版本号。index.js中的版本号是插件内部使用的版本号，用于判断插件是否需要更新。
+- 在tosu使用的settings.json中，请全程使用英文。checkbox类应当放在options类之前；Link部分应当放在最前面。
+- 设置描述和README应当简洁直白，以确保用户能够理解设置项的作用。
 - 合理安排代码的结构和模块划分，确保代码的可维护性。避免过于复杂的嵌套和冗余的代码逻辑。减少代码的重复性，增加复用程度。减少代码的耦合性，确保模块之间的独立性。遵循单一职责原则，确保每个模块只负责一个功能。
 - 在未得到用户允许的情况下，禁止添加co-author、license、copyright等信息。
 - 禁止在代码中添加任何形式的广告或推广内容。
