@@ -221,7 +221,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **RD seed 来源**：
   - Lazer：`play.mods[].settings.seed` / `resultsScreen.mods[].settings.seed`
     （`ScoreInfo.ModsJson`；默认 Seed=null 时只有进入 play 后才有实际值）。
-  - stable/ppysb：壳读 `Score.Seed`（`topology.score_seed=0x80`），发布为
+  - stable/ppysb：壳读 `Score.Seed`（`topology.score_seed=0x7C`），发布为
     `play.seed` / `resultsScreen.seed`。
 - **上下文**（`state.modContext`）：
   - `select`：`menu.mods`（lazer 原生载荷 `menu.mods=null` 时回退 `play.mods`）；
@@ -234,3 +234,4 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
   不重算（`clearSection("results", {recompute:false})` + freeze 上下文），避免清空
   LaneAcc 终态/暂停标记。
 - **状态行胶囊**：`#rd-column-order` 显示同一份 `buildColumnMap()` 的 old→new 结果（1-based，仅 ≤9K；RD+MR 显示最终映射，MR-only/无 seed/恒等不显示）。胶囊只读请求快照，不参与缓存键、Worker 或契约；详见 [features/rd-column-capsule.md](../features/rd-column-capsule.md)。
+- **seed 状态门**：壳只在 `play` 状态且局内链可信时发布 `play.seed`，只在 `resultScreen` 状态且结算链可信时发布 `resultsScreen.seed`；选歌态/链路残留不会把上一局的 seed 带进当前帧（否则页面会生成固定的旧映射并写入结果缓存）。stable/ppysb 的 RD 只在结算帧用真实 `resultsScreen.seed` 重算；live/select 的 `Score.Seed` 可能尚未写入（通常为 0），页面不应用 stable RD 变换，胶囊隐藏。play→result 若局内 seed 缺失/为 0，页面用结算 seed 补一次重算；离开 play/result 时 `randomSeed` 清空且签名里的 `seed|engine` 段归 `none`，避免旧 seed 快照被复用。
