@@ -233,3 +233,4 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **结果屏规则**：选歌 → resultScreen 用成绩自身 mods 重算；play/replay → resultScreen
   不重算（`clearSection("results", {recompute:false})` + freeze 上下文），避免清空
   LaneAcc 终态/暂停标记。
+- **状态行胶囊**：`#rd-column-order` 显示同一份 `buildColumnMap()` 的 old→new 结果（1-based，仅 ≤9K；RD+MR 显示最终映射，MR-only/无 seed/恒等不显示）。胶囊只读请求快照，不参与缓存键、Worker 或契约；详见 [features/rd-column-capsule.md](../features/rd-column-capsule.md)。

@@ -22,6 +22,8 @@
                 </span>
                 <!-- 选区模式时间胶囊（[mm:ss - mm:ss]）：只在壳内选区生效时显示，写入者 js/app/graphSection/overlay.js -->
                 <span id="section-time" class="section-time" hidden>[--:-- - --:--]</span>
+                <!-- RD 列置换胶囊（按原列顺序列出新列，1-based）：seed 有效且列变换实际生效时显示，写入者 js/app/ui/hud.js -->
+                <span id="rd-column-order" class="rd-column-order" hidden></span>
                 <p id="status" class="status">Waiting to load beatmap file...</p>
                 <!-- 壳相位提示：与 #status 同排的**独立**元素（扫描 13–23 s 期间显示壳下发的那句话）。写入者只有 js/app/sources/osuScanHint.js。 -->
                 <p id="osu-scan-hint" class="osu-scan-hint" hidden></p>

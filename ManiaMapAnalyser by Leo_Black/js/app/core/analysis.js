@@ -59,6 +59,7 @@ import {
     hideOverlay,
     setModeTag,
     setModeTagAdvanced,
+    setRdColumnOrder,
     setStatus,
     setSvTagVisible,
     showOverlay,
@@ -105,7 +106,7 @@ import {
     parseBeatmapIdentityFrame,
 } from "./beatmapIdentity.js";
 import { sliceOsuTextByTimeRange } from "../../parser/osuTimeSlice.js";
-import { applyColumnTransformToOsuText, columnTransformFromState } from "../../parser/modColumnRemap.js";
+import { columnMapFromOsuText, columnTransformFromState, remapOsuTextColumns } from "../../parser/modColumnRemap.js";
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -324,6 +325,7 @@ export function resetReworkDisplay(options = {}) {
     // keepGraph：区间跑批失败时保留全谱曲线/暂停标记/反馈上下文——否则一次空选区
     // 就把整张图清成 "Graph unavailable"，用户连重新拖拽的坐标系都没了。
     const { keepGraph = false } = options || {};
+    setRdColumnOrder(null);
     state.actualEstimatorAlgorithm = state.estimatorAlgorithm;
     state.ppMetrics = null;
     if (!keepGraph) {
@@ -397,6 +399,7 @@ function resetSourceContext() {
 export function clearSourceCard() {
     mainCardEl?.classList.add("card-source-stale");
     hideOverlay();
+    setRdColumnOrder(null);
     setStatus("Waiting for a data source…", "ok");
     resetSourceContext();
 }
@@ -421,6 +424,7 @@ export function setCardClearHandler(fn) {
  */
 export function invokeCardClear() {
     resetSourceContext();
+    setRdColumnOrder(null);
     // 清卡 = 换源/换图的极简路径：选区一并复位（不派发重算，调用方本就无图可算）。
     clearSection("card-clear", { recompute: false });
     cardClearHandler();
@@ -450,6 +454,11 @@ export async function fetchBeatmapFile(reason) {
     const requestModSignature = state.modSignature || "";
     // 列变换也必须在请求开始时快照：fetch/worker 期间 state 可能切换。
     const requestColumnTransform = currentColumnTransform();
+    // 本次请求没有有效 RD seed（或非 osu 源）时先撤掉上一张图的胶囊；
+    // 有 seed 时保留到本次结果确认，避免无谓闪烁。
+    if (requestColumnTransform?.seed == null) {
+        setRdColumnOrder(null);
+    }
     const requestBeatmapKey = state.lastBeatmapKey || "";
     // 点击已激活 Tab = 手动重算：本次跳过结果缓存一次。入口立即清零，避免
     // 早退/失败/下一次分析被这个一次性标志污染。
@@ -671,6 +680,9 @@ export async function fetchBeatmapFile(reason) {
         let parsedInfo = null;
         let rawText = null;
         let analysisText = null;
+        // 主分析实际使用的列映射（含 MR-only）；RD 胶囊只消费其中 seed 有效的那一份。
+        let analysisColumnMap = null;
+        let rdColumnMap = null;
         let laneAccChart = null;
         // 内容栏遵循用户设置：任何键数都不再强制降级为 Pattern。
         // （Graph 对任意键数均可渲染——star 序列为键数无关的 estimator 输出。）
@@ -786,6 +798,21 @@ export async function fetchBeatmapFile(reason) {
         if (!isSectionRun && rawText) {
             rememberFullChartText(rawText, requestContentKey, requestMetaKey);
         }
+        // RD 列置换胶囊与主分析共用同一份 map：从请求开始快照的 transform 和
+        // 原始谱面文本解析。缓存命中时 rawText 为 null，用快照保留的原文；
+        // 只认请求快照，绝不读可变的 state（避免 fetch 期间切图/切 mod 串值）。
+        const rdTextSource = rawText || cached?.laneAccText || "";
+        if (rdTextSource && requestColumnTransform) {
+            const map = columnMapFromOsuText(rdTextSource, requestColumnTransform);
+            if (rawText) {
+                analysisColumnMap = map;
+            }
+            // 胶囊只属于 RD：MR-only / RD 无 seed 的 transform 仍照旧参与主分析，
+            // 但不展示轨道变化。
+            if (requestColumnTransform.seed != null) {
+                rdColumnMap = map;
+            }
+        }
         // 区间跑批：把整谱文本截成 [start, end] 片段后再进管线（唯一的输入变换）。
         if (isSectionRun) {
             const sliced = sliceOsuTextByTimeRange(rawText, sectionRange.startMs, sectionRange.endMs);
@@ -799,8 +826,8 @@ export async function fetchBeatmapFile(reason) {
         // rawText 仍保留原图，供 LaneAcc、原文 LRU、identity 与缓存使用。
         // 这样 LaneAcc 自己的 applyRandomColumns() 不会二次置换。
         analysisText = rawText;
-        if (rawText && requestColumnTransform) {
-            analysisText = applyColumnTransformToOsuText(rawText, requestColumnTransform);
+        if (rawText && analysisColumnMap) {
+            analysisText = remapOsuTextColumns(rawText, analysisColumnMap).text;
         }
 
         // 估算分派 + 附属段（pattern/ett/interlude/Companella 二次 Ett）收敛为一次 pipeline
@@ -1694,6 +1721,10 @@ export async function fetchBeatmapFile(reason) {
 
         reworkMetaEl.innerHTML = resolvedMetaHtml;
 
+        // 胶囊必须在 setStatus 之前更新：状态行跑马灯按 clientWidth 计算溢出距离，
+        // 先占好胶囊宽度才能得到正确的滚动距离。错误结果不展示列置换。
+        setRdColumnOrder(metadataErrors.length > 0 ? null : rdColumnMap);
+
         if (metadataErrors.length > 0) {
             const errorText = buildMetaError(metadataErrors);
             setStatus(`[Error] ${errorText}`, "error");
@@ -1750,6 +1781,7 @@ export async function fetchBeatmapFile(reason) {
             && window.location
             && String(window.location.port) === "24061";
         if (isShellOfflinePage && !state.shellTosuOnline && !isRuntimeOsuOverrideActive()) {
+            setRdColumnOrder(null);
             setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
             resetReworkDisplay({ keepGraph: isSectionRun });
             patternClustersEl.innerHTML = "";
@@ -1757,6 +1789,7 @@ export async function fetchBeatmapFile(reason) {
             ppBarsEl.innerHTML = "";
             return;
         }
+        setRdColumnOrder(null);
         setStatus(`Failed to load beatmap file: ${error.message}`, "error");
         resetReworkDisplay({ keepGraph: isSectionRun });
         patternClustersEl.innerHTML = contentBarShows("Pattern")

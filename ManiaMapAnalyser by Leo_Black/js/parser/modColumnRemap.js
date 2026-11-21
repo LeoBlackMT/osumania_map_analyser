@@ -222,15 +222,43 @@ export function remapOsuTextColumns(osuText, columnMap) {
     return { text: lines.join(eol), changed, keyCount };
 }
 
-/** 便捷入口：按 transform 构建映射并重写文本。 */
-export function applyColumnTransformToOsuText(osuText, transform) {
-    if (!transform) return String(osuText ?? "");
+/**
+ * 按 .osu 文本与 transform 解析实际列映射（oldColumn -> newColumn）。
+ * 与 applyColumnTransformToOsuText 共用同一套 keyCount/SpecialStyle 规则；
+ * 无 transform、无键数或恒等映射时返回 null。
+ */
+export function columnMapFromOsuText(osuText, transform) {
+    if (!transform) return null;
     const keyCount = readOsuKeyCount(osuText);
-    if (!keyCount) return String(osuText ?? "");
-    const map = buildColumnMap(keyCount, {
+    if (!keyCount) return null;
+    return buildColumnMap(keyCount, {
         ...transform,
         specialStyle: transform.specialStyle ?? readOsuSpecialStyle(osuText),
     });
+}
+
+/**
+ * 把 oldColumn -> newColumn 映射格式化为胶囊文本。
+ * 方向：按原列 1..K 顺序列出每个原列的新列（old -> new），1-based。
+ * 仅支持 ≤9K（单字符 1..9）；>9K 返回空串，由调用方隐藏胶囊。
+ */
+export function formatColumnMap(map) {
+    if (!Array.isArray(map) || map.length === 0 || map.length > 9) {
+        return "";
+    }
+    if (map.every((column, index) => Number(column) === index)) {
+        return "";
+    }
+    const digits = map.map((column) => {
+        const value = Number(column);
+        return Number.isInteger(value) && value >= 0 && value <= 8 ? String(value + 1) : "";
+    });
+    return digits.some((digit) => digit === "") ? "" : digits.join("");
+}
+
+/** 便捷入口：按 transform 构建映射并重写文本。 */
+export function applyColumnTransformToOsuText(osuText, transform) {
+    const map = columnMapFromOsuText(osuText, transform);
     if (!map) return String(osuText ?? "");
     return remapOsuTextColumns(osuText, map).text;
 }
