@@ -379,7 +379,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ```json
 {
-  "v": 8,
+  "v": 12,
   "type": "mania_hit_events",
   "seq": 123,
   "payload": {

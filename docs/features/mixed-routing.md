@@ -84,7 +84,7 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L3 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 可用 | **Daniel** | Sunny 的 LN 半 | `"Daniel"` | 无 |
 | L4 | `columnCount === 4` 且 `star ≥ 9` 且 Daniel 不可用（或过低） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
 | L5 | `columnCount === 7` | **Polaris**（表修正：RC + LN 两半都校准） | 校准后的 LN 半 | `"Polaris"` | 无 |
-| L5 | 其余非 4K（6K/10K…） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
+| L6 | 其余非 4K（6K/10K…） | Sunny | Sunny 的 LN 半 | `"Sunny"` | 无 |
 
 - Azusa 在 L1/L2 的调用参数：`forceSunnyReferenceHo: false` + `precomputedSunnyResult: sunnyBaseline`（星数口径与缓存复用）。
 - **L1 实际上只在 `lnRatio ∈ [0.15, 0.18]` 这一窄带内可能触发**：Azusa 自带 `UnsupportedLN` 入口门（`lnRatio > 0.18` 直接返回无效结果），而 L1 要求 `canUseRcResult(azusa)`。行为数据集完全印证：4K RC 侧 `algo == "Azusa"` 的 19,839 行 `lnRatio` **最大值为 0.180，>0.18 的行数为 0**；LN 侧谱面（`lnRatio ≥ 0.375`）98.7% 落在 L2。⇒ **对真正的 LN 谱面，本树恒为 L2 的纯 Companella**，L1 的融合计划（`onDisagree = "companella"`）对它们不可达；带融合计划的 C8 路径实际来自 RC 树的 R4'（`onDisagree = "azusa"`）与这一窄带。
@@ -135,7 +135,8 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 | L1 Azusa 可用 | `Azusa` |
 | L2 Azusa 不可用 | `Companella` |
 | L3 Daniel 可用 | `Daniel` |
-| L4/L5 | `Sunny` |
+| L4/L6 | `Sunny` |
+| L5（7K） | `Polaris` |
 | 用户直接选择 Companella（任意 `lnRatio`） | `Companella` |
 | C6/C9 融合成功（Companella 值被采用） | `Companella` |
 | C8 融合成功（0.5/0.5 混合） | `Azusa+Companella` |
@@ -151,8 +152,8 @@ RC 半默认来自 Sunny 基线，**只有 4K 才会考虑 Azusa/Daniel**：
 3. **"选了 Mixed 却显示 `[Sunny]`？"** → 非 4/6/7K、RC 且非 4K 且非 7K、`star ≥ 9` 且 Daniel 不可用、或 R6/R7 都会落到 Sunny 基线，属设计行为。
 4. **"同一张 LN 图开 HO 后换了算法？"** → P4：`HO` 强制走 RC 树。
 5. **“6K/7K 为什么没有 Mixed 的效果？”** → RC 树早退、LN·Mix 树的 L1–L4 都要求 4K，故 6K 恒为 Sunny 基线、**7K 恒为 Polaris**（L5 与 RC 早退都指向它，胶囊显示 `Polaris`）。
-6. **"低难 4K 的 RC 值为什么和 Azusa 不同？"** → R4'/L1 的低难融合（C8 的 0.5/0.5 加权）会改变 RC 数值与标签；随后 Companella 系统性偏移**按权重 0.5** 施加（+0.2215），不是全额 +0.443。
-7. **"LN 主体图为什么没有 Companella 偏移？"** → Companella 偏移已整体移除（实机复测仍见高段受影响）；即便重启，它也只作用于 RC 侧——行为数据集对 LN 侧谱面取用的判定量是 LN 半段（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值不同量纲，无法据以拟合；LN 侧现有修正由 lnCorrection 承担（见 [companella-offset.md](companella-offset.md) §2.3）。
+6. **"低难 4K 的 RC 值为什么和 Azusa 不同？"** → R4'/L1 的低难融合（C8 的 0.5/0.5 加权）采用 Azusa 与 Companella 的数值均值，因此会改变 RC 数值与派生标签；注意历史上的 Companella 系统性偏移（+0.443/+0.2215）已整体移除（见 §7 第 7 点及 difficulty-estimation.md §3.8），当前不含任何附加偏移。
+7. **"LN 主体图为什么没有 Companella 偏移？"** → Companella 偏移已整体移除（低段与高段附加偏移均已撤销，见 [difficulty-estimation.md](difficulty-estimation.md) §3.8 与 [../learnings/difficulty-estimation.md](../learnings/difficulty-estimation.md)）；即便历史上存在，它也只作用于 RC 侧——行为数据集对 LN 侧谱面取用的判定量是 LN 半段（`verdict_used == "LN half"`），与 Companella 的 RC 半段数值不同量纲；且历史上的 `lnCorrection` 亦已随 v11 彻底移除，4K LN 半保持 Sunny 表原值。
 
 ---
 

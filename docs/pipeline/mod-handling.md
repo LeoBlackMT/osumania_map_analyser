@@ -69,7 +69,7 @@ const classic = !modCodes.has("SV2") && (client !== "lazer" || modCodes.has("CL"
 
 ## 3. modSignature 构成与何时应用
 
-**modSignature 格式 = `speedRate|odFlag|cvtFlag|classic|seed|engine|mirror`（七段）**，在 `getModData` 内构建（modData.js:234-239）：
+**modSignature 格式 = `speedRate|odFlag|cvtFlag|classic|seed|engine|mirror`（七段）**，在 `getModData` 内构建（`modData.js`）：
 
 ```js
 const modSignature = [
@@ -77,12 +77,16 @@ const modSignature = [
     odFlag == null ? "none" : String(odFlag),
     cvtFlag == null ? "none" : String(cvtFlag),
     classic ? "1" : "0",            // Classic 感知星数标志（第 4 段，§2.1）
+    randomSeed == null ? "none" : String(randomSeed), // RD 随机种子（第 5 段，§9）
+    randomEngine,                   // RD 引擎（none / stable / lazer，第 6 段，§9）
+    mirror ? "1" : "0",             // MR 镜像标志（第 7 段，§9）
 ].join("|");
 ```
 
-- 只含**计算相关维度**（modData.js:232-233 注释明确）：lazer mod payload 中与计算无关的字段（如隐藏外观类设置）波动不会改变签名，避免无谓重算。
-- 空值统一序列化为 `"none"`，如 `1.00000|none|none|0` 表示无 mod 且非 Classic。
+- 只含**计算相关维度**（`modData.js` 注释明确）：lazer mod payload 中与计算无关的字段（如隐藏外观类设置）波动不会改变签名，避免无谓重算。
+- 空值统一序列化为 `"none"`，如 `1.00000|none|none|0|none|none|0` 表示无 mod 且非 Classic。
 - `classic` 段（0/1）反映当前 Classic 语义——stable 开/关 SV2、lazer 开/关 CL 都会改变该段，从而改变缓存键（§7），使星数/难度/PP 全部重算为当前 Classic 语义。
+- 第 5~7 段纳入 RD 种子、RD 引擎（区分 stable 与 lazer 的不同置换算法，避免互相串键）与 MR 镜像标志，详见 §9。
 
 **应用时机**（socketHandlers.js:271-295）：api_v2 包可能是**部分包**（不一定带 mod 字段），因此不能每个包都覆盖：
 
@@ -196,7 +200,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 { speedRate: rate.toFixed(5), odFlag: "none", cvtFlag: "none", classic: 0 }
 ```
 
-并据此写入 `state.modSignature`。**外部源签名由 4 段扩为 7 段**（osu 侧仍是 §3 的 4 段，两套口径并存）；后 3 段只对 Malody V 的**游戏内选曲桥**通道生效，其余外部源逐个降级：
+并据此写入 `state.modSignature`。**外部源与 osu 侧均采用 7 段 modSignature 结构**：osu 侧为 `speedRate|odFlag|cvtFlag|classic|seed|engine|mirror`（§3/§9），外部源为 `speedRate|odFlag|cvtFlag|classic|judge|winSegment|proSegment`。外部源与 osu 的 key 集合由不同 identity 前缀（如 `ett:`、`mdy:`、`mdy4:`）隔离，各自在内部保持稳定完整；后 3 段只对 Malody V 的**游戏内选曲桥**通道生效，其余外部源逐个降级：
 
 ```
 `${speedRate.toFixed(5)}|${odFlag || "none"}|${cvtFlag || "none"}|${classic || 0}|${judgeSegment}${winSegment}${proSegment}`
@@ -206,7 +210,7 @@ const nextModSignature = shouldApplyModState ? modData.modSignature : previousMo
 - **第 6 段 = 窗口缩放因子**（仅桥通道；`|win{winScale}`，非桥帧为空串）。它与判定**必须同时进键**：Turbo 1.2 与 Dash 1.2 的 `speedRate` 相同而判定窗口不同，只加判定维度会让这两者互相命中缓存。
 - **第 7 段 = Pro**（仅桥通道；`|pro0` / `|pro1` / `|pro?`，非桥帧为空串）。**必须进键**：Pro 在**同一判定档与同一倍率**下改变换算出的 OD，不进键会在勾/去勾 Pro 后命中旧快照 —— 星数纹丝不动，而那正是 Pro 在用户侧唯一的可见效果。
 - **第 5 段是硬要求**：判定档决定等效 OD（Malody 4.3.7 见 [../features/malody-od.md](../features/malody-od.md)；Malody V 见同文换算说明与 `js/app/sources/odResolver.js`），**判定档 / Pro / 窗口缩放任一变化都必须重算**——不进键就会命中旧快照，出现"旧星数配新 OD"的静默错误结果。三者都随 song 帧下发，变化即触发一次重发。
-- 段数与 osu 侧不同（最多 7 vs 4）是有意为之：外部源的 key 集合与 osu 的 key 集合本就由不同 identity 前缀区分，签名只需在**外部源内部**稳定且完整；classic 位恒为 0、与 client 值无关，保证跨在线/离线模式签名稳定、缓存键不抖。
+- classic 位恒为 0、与 client 值无关，保证跨在线/离线模式签名稳定、缓存键不抖。
 - ⚠️ 签名里**没有** `judge` 的实际数值之外的 OD 值，也没有 `turbo` 本身：Turbo 与 Dash 的区分由第 6 段（`winScale`）承担，Pro 的区分由第 7 段承担。
 - `state.odFlag` / `state.cvtFlag` 侧仍把 `"none"`/空归一为 `null`（估算器 `parseFloat("none")` 会得 NaN），签名文本里的 `"none"` 只用于缓存键。
 - Etterna 的 rate（如 1.5x）进入 speedRate 段并联接 `state.speedRate`（分析消耗点 analysis.js `musicRate`/estimator `speedRate`），同图不同 rate 输出值不同且缓存独立；Malody 4 的 rate 来自 `config.json` 的模组位（DASH 1.2 / RUSH 1.5 / SLOW 0.8，互斥）。

@@ -149,7 +149,7 @@
     - **Analyze LN Parts**: 按LN分析谱面成分。
         - 显示谱面中有多少部分属于LN/HB/Mix/RC，并显示在左下角谱面标签胶囊中。
     - **Estimator Algorithm**: 选择用于难度估计的算法。
-        - Mixed: (推荐)综合下方四个算法的混合算法，准确度相对较高。自动选择适配当前谱面的算法。
+        - Mixed: (推荐)综合多种估计算法的混合路由算法，准确度相对较高。自动选择适配当前谱面的算法。
         - Azusa: 面向4K RC的融合算法，综合了下方算法并进行了针对调整，在RC场景下表现较好，但不适用于LN主体的谱面。
         - Roxy: 面向4K RC的元结构估算器。使用结构分析对谱面进行建模，再通过GBDT元模型融合Azusa/Sunny/Daniel的参考预测。
         - Sunny: 使用Sunny Rework直接映射段位星数，适配4/6/7K的LN与RC段位。
@@ -334,19 +334,19 @@
         - When enabled, the constant rating will force-override the top-left capsule content on 6K beatmaps, regardless of the Top-left Capsule Text setting.
     - **Extended Estimation Range**: Whether to enable the extended estimation range.
         - Not Recommended: When enabled, extended interval tables are used for difficulty estimation, significantly raising the estimation soft cap.
-        - Only effective with the Sunny estimator. Extended interval cover 4K RC, 4K LN, 7K RC; not extending 6K/7K LN.
+        - Only effective with the Sunny estimator. Extended intervals cover 4K RC, 4K LN, and 7K RC; 6K/7K LN are not extended.
         - Note: Estimates change when enabled. The extended tiers are purely experimental and accuracy is not guaranteed.
         - The data source for the extended tiers can be found [here](https://github.com/inuiyumegan/dan_piecewise#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86).
     - **Improve Sunny LN Estimation**: Improve Sunny Algorithm's LN Estimation
         - Removes rice parts and LN parts which LN% is too low, before Sunny Algorithm calculate Star Rate, making Sunny Algorithm more accurate on LN maps.
         - Note: This option affects all features that use the Sunny algorithm.
-    - **Analyze LN Parts**: Analyze LN Parts by LN
+    - **Analyze LN Parts**: Analyze LN composition of beatmaps
         - Display the percentage of beatmaps which are in LN/HB/Mix/RC parts, and show it in the bottom-left beatmap tag capsule.
     - **Estimator Algorithm**: Choose the algorithm used for difficulty estimation.
-        - Mixed: (Recommended) A hybrid algorithm combining the four below, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
+        - Mixed: (Recommended) A hybrid routing algorithm combining multiple estimators below, offering relatively higher accuracy. Automatically selects the algorithm best suited for the current beatmap.
         - Azusa: A fusion algorithm oriented towards 4K RC, combining the algorithms below with targeted adjustments. Performs well in RC scenarios but is not suitable for LN-dominant beatmaps.
         - Roxy: A 4K RC meta-structural estimator. It models the beatmap using structural analysis and then blends reference predictions from Azusa/Sunny/Daniel using a GBDT meta-model.
-        - Sunny: Maps directly to Dan star ratings using Suuny Rework. Compatible with LN and RC Dans for 4/6/7K.
+        - Sunny: Maps directly to Dan star ratings using Sunny Rework. Compatible with LN and RC Dans for 4/6/7K.
         - Polaris: A table-mapping correction estimator for Sunny. Covers both the RC and LN sides on 7K; other key counts automatically fall back to Sunny.
         - [Daniel](https://thebagelofman.github.io/Daniel/): Uses the Daniel algorithm for estimation, suitable for 4K Reform Alpha and above Dan difficulties.
         - [Companella](https://github.com/Leinadix/companella): Uses the Companella algorithm for estimation, suitable for 4K Reform Delta+ and below Dan difficulties.
