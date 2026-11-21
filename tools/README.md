@@ -201,14 +201,12 @@ Rebuild with the command above whenever the version table in `desktop/src/malody
 - `--scan-identity` / `--find-md5` 是**内存快照式**结论：游戏在跑、内存在变，同一条命令两次运行的地址可能不同；只回答“这次扫描看到什么”。
 - `--find-md5` 找的是**身份串** `<md5>_<slot>`，不是裸的 32 位 hex：若要看“游戏里是不是存在某个 md5，但与 slot 无关”，请用 `--scan-identity` 的完整列表比对。
 - `temp/malody4-anchor-check.exe` 是临时产物，验收后按 CLAUDE.md 的约定删除，不要提交。
-- 工具只读：不注入游戏、不写任何文件、不需要管理员权限（与游戏同用户即可）。
 
 - **This tool does not query the index and contains no MD5 implementation** (deliberate: untested hand-written crypto that silently misbehaves would misdiagnose exactly the "not following" case this tool exists for). **For the index hit path, read the shell log `logs/mma-shell-*.log` (set `logLevel` to `debug` in the shell config)**: on every signature change the shell logs `md5 -> path`, so comparing it with the `md5` printed by this tool tells you whether the chart is missing from the index or the follow chain broke. `--find-md5` only compares 32 hex characters; it computes no MD5 either.
 - **The tool never writes to the game**: no injection, no writes into the target's memory, no allocation inside the target, no administrator rights (same user as the game is enough) and **no game-side file whatsoever** (nothing under the game directory is read or written; `--scan-identity` only reads the target's own memory).
 - `--scan-identity` / `--find-md5` are **snapshot** answers: the game is running and its memory changes, so two runs of the same command can report different addresses; they only answer "what was visible during this scan".
 - `--find-md5` looks for the **identity string** `<md5>_<slot>`, not for a bare 32-hex string: to ask whether some md5 exists regardless of the slot, compare against the full list printed by `--scan-identity`.
 - `temp/malody4-anchor-check.exe` is a scratch artifact: delete it after acceptance per CLAUDE.md, never commit it.
-- The tool is read-only: no injection, no file writes, no administrator rights needed (same user as the game is enough).
 
 ## stable-offsets-gen（osu!stable 32位偏移表探测器）
 
@@ -251,4 +249,36 @@ node tools/i18n-check.mjs
 退出码 0 = 设置项与 `t()` 键全部有译文；非 0 = 有缺失（会逐条列出）。发版前跑一次即可。
 
 Exit code 0 means every setting title/description and every `t()` key is translated; non-zero lists what is missing. Run it before a release.
+
+## malody4-od-check（Malody 4.3.7 动态判定等效 OD 校验器）
+
+### 这个脚本是做什么的（What it does）
+
+针对 Malody 4.3.7（PC 端）判定档与速率组合，基于 96% 准确率等精度（$\sigma^*$）等效法重算等效 osu!mania OD，并与代码中的静态对照表（`js/parser/mcToOsuConverter.js`）逐值比对验证。
+
+A verification script that recalculates equivalent osu!mania OD for Malody 4.3.7 (PC) judge levels and speed rates based on 96%-accuracy equal-precision ($\sigma^*$) equivalence, validating consistency against the runtime lookup table in `js/parser/mcToOsuConverter.js`.
+
+### 使用方法（Usage）
+
+```bash
+python tools/malody4-od-check/verify.py            # 重算并执行内置断言自检
+python tools/malody4-od-check/verify.py --emit-md  # 输出 Markdown 对照表格
+python tools/malody4-od-check/verify.py --emit-js  # 输出 JS 代码表结构
+```
+
+## malody-v-od-check（Malody V 动态判定等效 OD 校验器）
+
+### 这个脚本是做什么的（What it does）
+
+针对 Malody V（6.7.x）判定档（普通档与 Pro 严格档）以及速率组合，基于 96% 准确率等精度（$\sigma^*$）等效法重算等效 osu!mania OD，并验证 `js/app/sources/odResolver.js` 中的映射表一致性。
+
+A verification script that recalculates equivalent osu!mania OD for Malody V (6.7.x) judge levels (normal and Pro strict) and speed rates using 96%-accuracy equal-precision ($\sigma^*$) equivalence, verifying consistency against the lookup table in `js/app/sources/odResolver.js`.
+
+### 使用方法（Usage）
+
+```bash
+python tools/malody-v-od-check/verify.py            # 重算并执行内置断言自检
+python tools/malody-v-od-check/verify.py --emit-md  # 输出 Markdown 对照表格
+python tools/malody-v-od-check/verify.py --emit-js  # 输出 JS 代码表结构
+```
 

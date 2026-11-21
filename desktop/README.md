@@ -21,9 +21,10 @@ ManiaMapAnalyser 桌面壳（mma-shell）基于 Tauri v2 开发，支持 Windows
 | `malody4/` | Malody 4.3.7 读取模块 | 在 Windows 下通过内存与日志观察 Malody 4.3.7 的选歌和游玩状态 |
 | Etterna 轮询 | 外部文件读取 | 轮询 Etterna 桥接脚本写入的数据文件 |
 
-## RC 难度反馈（默认开启，可关闭）
+## 难度反馈（默认开启，可关闭）
 
 - 只有插件设置 `enableDifficultyFeedback` 打开、且页面由壳承载（24061 或壳追加的 `#mma-shell` 标记）时，结算屏底部才出现五档评分条。
+- 适用范围：4K 仅限 RC 模式（非 RC 图门控隐藏）；6K 与 7K 支持全部模式（RC/LN/Mix/HB/SV）。详情参见 [docs/features/non-4k-feedback.md](../docs/features/non-4k-feedback.md)。
 - 页面只提交评分与显示值；壳从 native 快照重算客观字段（谱面 ID/checksum、mod、命中数、ScoreV1 权重）并用 Ed25519 签名。签名种子由构建期 `MMA_FEEDBACK_SIGNING_SEED` / `MMA_FEEDBACK_KEY_ID` 注入，未设置时使用 dev seed（后端默认拒绝）。
 - 本机端点：`POST /feedback`（24061）。壳不直接访问外网，签名信封由页面转发到后端。
 

@@ -30,7 +30,7 @@ No user accounts, no login, no personally identifiable information. The plugin s
 - Optionally snapshots the database to Huawei Cloud OBS (daily ×30 + monthly ×12).
 - One-shot rebuild command: `telemetry-server -migrate` (run with the service stopped; rebuilds every aggregate from raw events, idempotent).
 - One-shot cleanup command: `telemetry-server -clean` (run with the service stopped; purges historical contaminated algorithms, debug duration spikes, and unofficial versions).
-- Optional: **RC difficulty feedback** (only when `FEEDBACK_ENABLED=true`) — a separate `feedback.db` accepts shell-signed five-point ratings, validates them through the osu! API and strict rules, and exposes aggregate tables, a private admin page (`/feedback`), and CSV. Disabled by default.
+- Optional: **Difficulty feedback** (enabled only when `FEEDBACK_ENABLED=true` on the server) — a separate `feedback.db` accepts shell-signed five-point ratings, validates them through the osu! API and strict rules, and provides aggregate tables, a private admin page (`/feedback`), a public aggregate summary page (`/feedback-stats`, `GET /api/v1/feedback/summary`, no per-map details), and CSV export. Enabled by default on the client (can be toggled off in settings); returns 404 when disabled on the server.
 
 ## Privacy
 
@@ -38,7 +38,7 @@ No user accounts, no login, no personally identifiable information. The plugin s
 
 **Never collected or stored**: usernames, player ids, scores/acc, beatmap md5/title, IP addresses (not even a hash), user agent, OS, or timezone. The ingest handler applies a server-side whitelist and drops anything else.
 
-**RC difficulty feedback** is a second, opt-in category (off by default): it sends the beatmap ID/checksum, the displayed estimate, a five-point rating, a coarse weight, and features (key count, LN ratio, pattern) — never accuracy, score, username, or session. The `install_id` is only used inside a server-side HMAC and is never stored. See [docs/features/telemetry.md §7](../docs/features/telemetry.md) and [docs/security.md](docs/security.md) §5.
+**Difficulty feedback** is a second category, enabled by default on the client (can be turned off in settings): it sends the beatmap ID/checksum, the displayed estimate, a five-point rating, a coarse weight, and features (key count, LN ratio, pattern) — never accuracy, score, username, or session. The `install_id` is only used inside a server-side HMAC and is never stored. See [docs/features/telemetry.md §7](../docs/features/telemetry.md) and [docs/security.md](docs/security.md) §5.
 
 The dashboard and `/api/v1/stats` expose **aggregates only** — never an individual install id, event, or IP.
 
