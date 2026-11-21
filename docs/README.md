@@ -26,6 +26,7 @@
 | 文档或路径 | 目标 | 说明 |
 | --- | --- | --- |
 | docs/README.md | 人类 | 本文档 |
+| [architecture.md](architecture.md) | AI | 仓库顶层目录、插件模块与附属项目结构地图（含文档索引） |
 | [settings.md](settings.md) | 人类 | 插件设置说明文档 |
 | [shell-guide.md](shell-guide.md) | 人类 | 桌面壳使用教程（安装、窗口操作、桥接线、故障排查，中英双语） |
 | [presets-guide.md](presets-guide.md) | 人类 | 预设系统新手教程（零基础双语教学，逐按钮讲解） |
@@ -33,7 +34,7 @@
 | [roxy_algorithm.md](roxy_algorithm.md) | 人类/AI | Roxy算法说明文档(英文) |
 | [polaris_algorithm.md](polaris_algorithm.md) | 人类/AI | Polaris算法说明文档(英文，表修正估算器：7K 的 RC+LN；4K/6K 回退 Sunny) |
 | [features/README.md](features/README.md) | AI | 功能技术文档类别索引（难度估计、键型分析等） |
-| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（8 种估计算法、4/6/7K、LN/RC 段位） |
+| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | 难度估计功能文档（9 种估计算法、4/6/7K、LN/RC 段位） |
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed 路由技术文档（逐条判定顺序 R1–R7 / L1–L5 / C1–C10：何时路由到何算法、精确阈值与常量、R3' `Roxy+XDC1` 对称融合与双向 `≥0.50` 切 XDC1、R4-Hi `XDC1+Azusa` 融合、C8' 兜底与胶囊取值） |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | 键型分析功能文档（RC/LN 键型分布、SV 检测、vibro 检测） |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | 难度图表可视化功能文档（难度变化图、已玩/未玩着色） |
@@ -46,9 +47,9 @@
 | [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | 非 4K 难度反馈功能文档（6K/7K 的反馈范围与侧选择、双标签拆分、去重键、门控条件） |
 | [features/telemetry.md](features/telemetry.md) | AI | 匿名使用统计（遥测）功能文档（事件契约、字段白名单、心跳/在线语义、隐私边界；§7 为独立的难度反馈数据类别：4K RC + 6K/7K） |
 | [features/multi-source.md](features/multi-source.md) | AI | 多数据源功能文档（Etterna/Malody V/Malody 4 接入、转换器、路由决策表、败方门控、能力边界；osu 传输层一节：原生源 + tosu 兜底 + 浏览器模式不变式） |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v11**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | 桌面壳功能技术文档（架构、目录检测、**契约 v12**、24062 osu 兼容端点与端点下发、窗口操控、构建发布） |
 | [features/content-bar-tabs.md](features/content-bar-tabs.md) | AI | 卡片 Tab 胶囊栏与组合模式（壳专属单模块巡检、`contentBar=None` 隐藏、点击已激活 Tab 强制重算、`combinedMode` 配置/排序、`/shell-config` 传输、复位与已知限制） |
-| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v11 端点下发（含 `replayHash`）与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! 原生源功能文档（壳内只读内存层 stable 签名扫描 / lazer 偏移表、24062 tosu 兼容子集 origin、契约 v6 起端点下发（v11 加 `replayHash`，当前 v12）与页面 socket 切流、能力边界、reason 闭集与冻结/保持语义、L0–L3 健康机、锚点失效定位 + lazer 偏移表重建两手册、自检清单） |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 原生客户端数据源功能文档（零注入只读观察三条信号、版本门、谱面库索引与 `mdy4:` 身份、`malody4_selection` 帧与 `reason` 闭集、根目录解析链、路由与已知限制） |
 | [features/malody-od.md](features/malody-od.md) | 人类/AI | 判定档 → 等效 osu!mania OD，**覆盖两个客户端**：Malody 4.3.7 的 PC 表（20 格与逐格 σ*、96% 等精度方法学、窗口值来源、上界 21.3 的理由、FAIR 局限）**与 Malody V 的表**（判定档 × Pro × 倍率、Turbo 补偿、Holds/Taps 转换与复算工装） |
 | [features/presets.md](features/presets.md) | AI | 预设系统功能文档（自拓展 schema、presets.html 管理器、presetStorage、部分预设、导入导出） |
@@ -111,6 +112,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | Document or Path | Target | Description |
 | --- | --- | --- |
 | docs/README.md | Human | This document |
+| [architecture.md](architecture.md) | AI | Repository top-level directory, plugin modules and subproject map (with document index) |
 | [settings.md](settings.md) | Human | Plugin settings guide |
 | [shell-guide.md](shell-guide.md) | Human | Desktop shell tutorial (install, window controls, bridges, troubleshooting; bilingual) |
 | [presets-guide.md](presets-guide.md) | Human | Presets beginner guide (bilingual tutorial, every button explained) |
@@ -118,7 +120,7 @@ Use the links to jump to the corresponding document. For documents with the same
 | [roxy_algorithm.md](roxy_algorithm.md) | Human/AI | Roxy algorithm document (English) |
 | [polaris_algorithm.md](polaris_algorithm.md) | Human/AI | Polaris algorithm document (English; table-calibration estimator: 7K RC + LN; 4K/6K fall back to Sunny) |
 | [features/README.md](features/README.md) | AI | Index of feature technical documents (difficulty estimation, pattern analysis, etc.) |
-| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (8 algorithms, 4/6/7K, LN/RC dan tiers) |
+| [features/difficulty-estimation.md](features/difficulty-estimation.md) | AI | Difficulty estimation document (9 algorithms, 4/6/7K, LN/RC dan tiers) |
 | [features/mixed-routing.md](features/mixed-routing.md) | AI | Mixed routing document (step-by-step decision order R1-R7 / L1-L5 / C1-C10: R3' `Roxy+XDC1` symmetric fusion & bidirectional `>=0.50` XDC1 switch, R4-Hi `XDC1+Azusa` fusion, C8' fallback, exact thresholds, and capsule values) |
 | [features/pattern-analysis.md](features/pattern-analysis.md) | AI | Pattern analysis document (RC/LN pattern distribution, SV detection, vibro detection) |
 | [features/graph-visualization.md](features/graph-visualization.md) | AI | Difficulty graph visualization document (difficulty graph, played/unplayed coloring) |
@@ -131,9 +133,9 @@ Use the links to jump to the corresponding document. For documents with the same
 | [features/non-4k-feedback.md](features/non-4k-feedback.md) | AI | Non-4K difficulty feedback document (6K/7K feedback scope and side selection, dual-label split, dedup keys, gate conditions) |
 | [features/telemetry.md](features/telemetry.md) | AI | Anonymous usage statistics (telemetry) document (event contract, field whitelist, heartbeat/online semantics, privacy boundaries; §7 covers the separate RC difficulty feedback category) |
 | [features/multi-source.md](features/multi-source.md) | AI | Multi-source document (Etterna, Malody V and Malody 4 integration, converters, routing decision table, osu gate, capability boundaries; a transport-layer section: native osu source + tosu fallback + the browser-only invariant) |
-| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v11, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
+| [features/desktop-shell.md](features/desktop-shell.md) | AI | Desktop shell technical document (architecture, directory detection, contract v12, the 24062 osu-compatible origin and endpoint delivery, window controls, build & release) |
 | [features/content-bar-tabs.md](features/content-bar-tabs.md) | AI | Card tab capsule bar and Combined mode (shell-only single-section inspection, hidden when `contentBar=None`, active-tab forced recompute, `combinedMode` config/ordering, `/shell-config` transport, resets and known limits) |
-| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! native source document (in-shell read-only memory layer: stable signature scan vs the lazer offset table, the 24062 tosu-compatible subset origin, contract v11 endpoint delivery (including `replayHash`) and the page's socket-layer switch, capability boundaries, the `reason` closed set with freeze/hold semantics, the L0–L3 health machine, two manuals (locating an anchor failure / regenerating the lazer offset table) and the self-check list) |
+| [features/osu-native-source.md](features/osu-native-source.md) | AI | osu! native source document (in-shell read-only memory layer: stable signature scan vs the lazer offset table, the 24062 tosu-compatible subset origin, endpoint delivery since contract v6 (v11 adds `replayHash`; current v12) and the page's socket-layer switch, capability boundaries, the `reason` closed set with freeze/hold semantics, the L0–L3 health machine, two manuals (locating an anchor failure / regenerating the lazer offset table) and the self-check list) |
 | [features/malody4-source.md](features/malody4-source.md) | AI | Malody 4.3.7 native client data source document (zero-injection read-only observation, version gate, chart library index and `mdy4:` identity, `malody4_selection` frame and the `reason` closed set, root resolution chain, routing and known limitations) |
 | [features/malody-od.md](features/malody-od.md) | Human/AI | Judge level → equivalent osu!mania OD for **both clients**: the Malody 4.3.7 PC table (20 cells with per-cell σ*, the 96%-accuracy equal-precision method, window-value provenance, why the bound is 21.3, the FAIR caveat) **and the Malody V table** (judge × Pro × rate, Turbo compensation, Holds/Taps conversion, recompute tool) |
 | [features/presets.md](features/presets.md) | AI | Preset system document (self-extending schema, presets.html manager, presetStorage, partial presets, export/import) |

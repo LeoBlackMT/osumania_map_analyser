@@ -4,69 +4,19 @@
 > 注意：AGENTS.md和CLAUDE.md如果出现冲突，请以CLAUDE.md为准。除非用户明确要求。如果遇到不确定的情况，请向用户提问。
 
 ## 项目介绍
-- 本项目仓库地址 https://github.com/LeoBlackMT/osumania_map_analyser。
-- 本仓库是一个 VSRG 游戏内叠加界面（下称插件）：既可作 Osu! 内存 Hook 工具 [tosu](https://github.com/tosuapp/tosu) 的 ppcounter 运行，也可由自带桌面壳独立运行。谱面数据源四类——osu!（Stable/Lazer）、Etterna、Malody V、Malody 4.3.7；在 4/6/7K 及其各种 mod 下提供估算难度、RC/LN 键型分析、自定义 ett 版本计算 MSD、难度图表与暂停检测。详见 [README.md](README.md)。
-- 本仓库还有附属项目：
-    - desktop/，桌面壳子项目（Tauri v2 + Rust），用于在桌面环境下运行插件。详见 [desktop/README.md](desktop/README.md)。
-    - bridges/, 游戏桥接项目，包含 Etterna 与 Malody V 的桥接代码（Malody 4.3.7 不需要桥文件）。详见 [bridges/README.md](bridges/README.md)。
-    - backend/，后端项目（Go + SQLite），用于收集匿名使用统计（遥测）数据。详见 [backend/README.md](backend/README.md)。
-    - tools/, 工具项目，包含一些辅助工具和脚本。详见 [tools/README.md](tools/README.md)。
-
-## 项目结构
-- docs/: 项目功能说明和指南。
-    - docs/README.md: 目录说明和索引文档。
-- img/: 为README.md提供图片资源。
-- backup/(本地私有): 用于存放本地备份的文件夹，仅在本地使用，远程仓库不存在。
-- temp/(本地私有): 用于存放本地临时文件的文件夹，仅在本地使用，远程仓库不存在。
-- ManiaMapAnalyser by Leo_Black/: 插件的源代码文件夹，包含插件的所有源代码文件。其路径携带空格，为tosu的命名要求。请在使用时注意。
-    - js/app/: 插件核心功能的 js 目录（仅浏览器端运行），已按职责划分为内聚子目录：
-        - js/app/core/: 核心流程控制（analysis、main、appContext、settings、scheduler、resultCache、modeLogic）。
-        - js/app/net/: 网络连接、WebSocket 与遥测（socket、socketHandlers、telemetry、updateChecker、shellConfigClient）。
-        - js/app/ui/: DOM 呈现、HUD、主题与组件（display、hud、combinedMode、contentBarTabs、coverTheme、triangles 等），包含子目录 ui/laneAcc/ 交互视图。
-        - js/app/live/: 局内实时状态与计数（livePp、livePpCounts、changeKind）。
-        - js/app/graph/: 难度走势图表与选区分析（index、math、section、sectionOverlay）。
-        - js/app/worker/: worker 线程（compute.worker.js + manager.js），把计算移出主线程，避免 UI 卡顿。
-        - js/app/sources/: 四数据源路由（sourceManager）、壳桥客户端、外部源注入。
-        - js/app/feedback/: 难度反馈的门控、评分条与协议。
-        - js/app/presets/: 预设系统（schema、存储、tosu/壳两种传输）。
-        - js/app/settingsPage/: 壳内设置页。
-        - js/app/i18n/: 壳内页面（设置页、预设管理）的词典与取词模块（t/tf）。settings.json 保持英文，翻译只作用于壳自己的页面显示。
-    - js/laneAcc/: 独立通用数据与计算模型（无 DOM，按键回放帧解析与精度累加，accumulator、chart、format、rawFrames）。
-    - js/pipeline/: runAnalysisPipeline.js——一次调用完成解析 → 估算 → 标准化 → 附属段的纯函数管线。
-    - js/debug/: 插件的调试目录，包含插件的调试工具和调试代码。应当保留。
-    - js/estimator/: 九个难度估算算法的实现及共享数学工具（estimatorMath）。
-        - js/estimator/companella/: Companella难度估计算法的ONNX模型及其WASM运行时。
-        - js/estimator/intervals/: Sunny 难度估计算法的星数映射表。
-    - js/ett/: 插件集成的 Etterna MinaCalc 目录，包含Etterna MinaCalc的六个版本WASM运行时。
-    - js/interlude/: 插件集成的 Interlude 星数计算模块。
-    - js/parser/: 谱面解析、Mod 解析（modData）、时间切片（osuTimeSlice）、设置解析、判定档→OD 表，以及 sm/ssc/mc → .osu 转换器；第三方 simfile 解析器在 vendor/simfile-parser。
-    - js/patterns/: 插件的键型分析模块，包含RC/LN键型分析器。其中RC键型分析器使用了Interlude的算法，并在其基础上新增了LN检测算法。
-    - js/rework/: 插件集成的星数重算算法模块，主要包含 Sunny / SunnyWindow 算法核心及 sunnyCore 共享计算。
-    - styles/: 插件的样式目录，包含插件的CSS样式文件。
-    - styles/fonts/: 插件的字体目录，包含插件的字体文件。
-    - presets/: 内置预设 JSON，index.json 为清单。
-    - presets.html: 预设管理页；settings.html: 壳内设置页入口。
-    - config.js: 插件内部的配置文件，包含一些全局定义和常数。注意其options部分为tosu侧配置文件的枚举。
-    - debug.html: 插件的调试页面，主要用于调试插件的估计算法和tosu api。
-    - index.html: 插件的主页面，显示插件的核心功能。
-    - index.js: 插件的主入口文件，负责初始化插件和注册插件的功能。包含版本号（内部）。
-    - metadata.txt: 用于 tosu 读取的插件元信息文件，包含插件的名称、版本（外部）、作者和描述等信息。
-    - settings.json: 暴露给 tosu 的插件设置定义文件，包含插件的设置项和默认值。但是，这并不是设置文件。用户可以通过 tosu 的设置界面修改这里定义的内容，从而改变插件的行为。实际的设置文件位于 tosu 的 `settings` 目录下，文件名为 `<插件目录名>.json`
-- 其它顶层内容：.github/（壳与后端构建 CI）、release.ps1（发行打包脚本）、release/ 与 .secrets/（本地私有，均已 gitignore）。
-- 附属项目见上方项目介绍。
+- 本项目仓库地址 https://github.com/LeoBlackMT/osumania_map_analyser
+- 本仓库是一个 VSRG 游戏内叠加界面（下称插件）：既可作 Osu! 内存 Hook 工具 [tosu](https://github.com/tosuapp/tosu) 的 ppcounter 运行，也可由自带桌面壳独立运行。实时在 osu!mania(4/6/7K/Lazer/Stable)、Etterna、Malody V（及其编辑器）、Malody 4.3.7下，提供估算难度、RC/LN键型分析、MSD计算、难度分布、区间分析和分轨准确度等多种实用功能。
+- 仓库和项目结构详见 [docs/architecture.md](docs/architecture.md)
 
 ## 要求限制
 - 在对代码进行破坏性修改、对未被git跟踪的文件进行修改、对已有功能进行大幅度改动之前，请务必先征求用户意见，确保用户理解你的修改意图。随后，在 backup 目录下创建备份文件夹，并将你要修改的文件复制到备份文件夹中，以便在出现问题时可以快速恢复。请使用时间戳和修改内容命名目录。
-- 在生成测试代码/保存临时文件/生成调试文件时，请将其放置在 temp 目录下，并确保不会被提交到远程仓库。随后在实现功能后，请删除 temp 目录下本次相关的文件，以避免占用磁盘空间。测试脚本等临时文件建议等用户完全验收后再删除，避免验收时无法复用。测试脚本一律不得提交到仓库。
-- desktop/ 为可选桌面壳子项目（Tauri v2 + Rust）：改动涉及 `desktop/**` 时遵循其自身构建（cargo build）与契约（desktop/docs/CONTRACT.md，其版本号须与页面 `js/app/sources/bridgeClient.js` 的 CONTRACT_VERSION 一致）；壳构建 CI 仅监听 main 分支的 desktop/** 变动。
-- 请按照用户的实际情况进行git操作，默认允许 commit，但是不允许 push。请在进行 push 之前征求用户意见。严禁直接 push 到 main 分支，除非用户明确要求。请在进行 push 之前确保代码已经过测试，并且不会破坏已有功能。请使用Pull Request的方式进行贡献，以便后续进行代码审查和测试。
-- 文档编写的规范和要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因，以便后续进行代码审查和测试。
-- 插件的谱面数据源共四类：osu!（经 tosu）、Etterna 与 Malody V（经桌面壳 desktop/ 与游戏桥 bridges/ 接入）、Malody 4.3.7 原生客户端（经桌面壳以**零注入只读观察**接入：进程外读锚点身份键、游戏日志与 config.json，游戏侧无需任何文件，不向游戏目录写入、不注入；架构见 [docs/features/multi-source.md](docs/features/multi-source.md)，该源细节见 [docs/features/malody4-source.md](docs/features/malody4-source.md)）。浏览器本体仍只运行在纯浏览器环境下：功能编写时请确保代码的兼容性和性能，避免使用不兼容的API和过于复杂的算法；不得要求用户启用一个如node的额外运行时环境；浏览器模式（无壳）必须保持 osu! 单源完整可用，以确保插件的独立性和可移植性。
-- 【豁免】匿名使用统计（遥测）是第一类允许的 tosu 之外数据去向：`js/app/telemetry.js` 向自建后端（`backend/`，Go + SQLite）匿名上报聚合属性（算法/键数/mod/模式/难度/耗时等）。约束：默认开启可关（`enableTelemetry` 设置，Network 分组）、endpoint 硬编码于 `index.js`、静默失败不影响插件、绝不采集用户名/玩家id/分数/谱面标识/IP。后端代码随仓库提交（`backend/`，其中 `backend/docs/`、`.env`、`telemetry.db` 为 gitignore 私有）。
-- 【豁免】RC 难度反馈是第二类、**独立可关闭** 的 tosu 之外数据去向：仅桌面壳、仅 osu!mania 的 RC 谱面、默认开启（`enableDifficultyFeedback`，可在设置中关闭）、由壳构造客观字段并 Ed25519 签名后上报。约束：只传谱面 ID/checksum、粗粒度 weight、显示值与玩家五档评分；不传 acc/分数/用户名/session，`install_id` 只用于 HMAC 去重且不落库；后端任一校验失败直接丢弃。详见 `docs/features/telemetry.md` §7。
-- 发行相关：版本号三处必须同时改并写在同一次提交里——`index.js` 的 `_VERSION`、`metadata.txt` 的 `Version`、`backend/build.ps1` 的 `-Version` 默认值。打包用 `release.ps1`，产物落在 gitignore 的 `release/`；Ed25519 反馈签名 seed 只存在于 `.secrets/`，不得写入仓库、日志、文档或对话。发行版必须通过 GitHub Release + tag 发布（插件更新检查读 `releases/latest`）。
-- 在README和settings.json中，由于目标为普通用户，请使用直白的语言描述功能，不要使用过于专业，或内部使用的术语。
-- settings.json中，请全程使用英文。设置描述应当简洁直白，以确保用户能够理解设置项的作用。checkbox类应当放在options类之前；Link部分应当放在最前面。
+- 在生成测试代码/保存临时文件/生成调试文件时，请将其放置在 temp 目录下，并确保不会被提交到远程仓库。随后在实现功能后，请删除 temp 目录下本次相关的文件。测试脚本等临时文件建议等用户完全验收后再删除，避免验收时无法复用。测试脚本一律不得提交到仓库。
+- 请按照用户的实际情况进行git操作，默认允许 commit，但是不允许 push。请在进行 push 之前征求用户意见。严禁直接 push 到 main 分支，除非用户明确要求。请在进行 push 之前确保代码已经过测试，并且不会破坏已有功能。请使用英文Pull Request的方式进行贡献。
+- 文档编写的规范和要求详见 [docs/README.md](docs/README.md)，请务必遵守。在新增功能/修改功能/修改管线时，请务必修改对应的文档，确保文档内容与实际功能一致。在进行重大破坏性修改时，请务必编写文档并标注修改内容和修改原因。在编辑附属项目时，请先阅读对应的README和文档以获取信息。
+- 由于扩充了数据源，功能编写时请确保代码的兼容性和性能，避免使用不兼容的API和过于复杂的算法；不得要求用户启用一个如node的额外运行时环境；浏览器模式（无壳）必须保持 osu! 单源完整可用。除唯一后端（<https://mma-stats.leoblack.top/>）交互和本GitHub在线仓库外，不允许任何在线网络连接。
+- 发行相关：版本号三处必须同时改并写在同一次提交里——`index.js` 的 `_VERSION`、`metadata.txt` 的 `Version`、`backend/build.ps1` 的 `-Version` 默认值。打包用 `release.ps1`，产物落在 gitignore 的 `release/`；Ed25519 反馈签名 seed 存在于 `.secrets/` 以及 GitHub 仓库secret中，不得写入明文仓库、日志、文档或对话。发行版必须通过 GitHub Release + tag 发布。页面侧不匹配会进终态并停止重连。index.js中的版本号应当与metadata.txt中的版本号保持一致。metadata.txt中的版本号是暴露给 tosu 的插件版本号，用户可以在 tosu 的插件管理界面看到该版本号。index.js中的版本号是插件内部使用的版本号，用于判断插件是否需要更新。
+- 在tosu使用的settings.json中，请全程使用英文。checkbox类应当放在options类之前；Link部分应当放在最前面。
+- 设置描述和README应当简洁直白，以确保用户能够理解设置项的作用。
 - 合理安排代码的结构和模块划分，确保代码的可维护性。避免过于复杂的嵌套和冗余的代码逻辑。减少代码的重复性，增加复用程度。减少代码的耦合性，确保模块之间的独立性。遵循单一职责原则，确保每个模块只负责一个功能。
 - 在未得到用户允许的情况下，禁止添加co-author、license、copyright等信息。
 - 禁止在代码中添加任何形式的广告或推广内容。
@@ -76,10 +26,7 @@
 
 ## 注意事项
 - 在有必要的情况下，你可以根据下方[参考链接](#参考链接)下载涉及到的仓库到本地进行分析。
-- 数据源的接入方式见上方「要求限制」；你无需关心数据是如何得来的，但必须保证浏览器模式（壳不可达）下自动回落 osu! 单源且功能完整。
-- 壳与页面的契约版本必须同号：`js/app/sources/bridgeClient.js` 的 `CONTRACT_VERSION`、`desktop/docs/CONTRACT.md`、`desktop/src/frames.rs` 三者一致；改帧结构即 +1，页面侧不匹配会进终态并停止重连。
-- config.js文件是提供给js内部使用的配置文件，而 settings.json 文件是暴露给 tosu 的插件设置定义文件，包含插件的设置项和默认值,用户可以通过 tosu 的设置界面修改这里定义的内容，从而改变插件的行为。但是，这并不是设置文件。实际的设置文件位于 tosu 的 `settings` 目录下，文件名为 `<插件目录名>.json`。实际的设置是通过 Websocket 从 tosu 传递给插件的，你无需关心设置是如何被修改的。
-- index.js中的版本号应当与metadata.txt中的版本号保持一致。metadata.txt中的版本号是暴露给 tosu 的插件版本号，用户可以在 tosu 的插件管理界面看到该版本号。index.js中的版本号是插件内部使用的版本号，用于判断插件是否需要更新。
+- config.js文件是提供给js内部使用的配置文件，而 settings.json 文件是暴露给 tosu 的插件设置定义文件，包含插件的设置项和默认值,用户可以通过 tosu 的设置界面修改这里定义的内容，从而改变插件的行为。但是，这并不是设置文件。实际的设置文件位于 tosu 的 `settings` 目录下，文件名为 `<插件目录名>.json`。实际的设置是通过 Websocket 从 tosu 传递给插件的，你无需关心 tosu 的设置是如何被修改的。
 - tosu 的默认端口为24050，其获取谱面数据的端点为http://{host:port}/files/beatmap/file。
 
 ## 对话要求
@@ -88,16 +35,15 @@
 - 部分专有名词你可能需要联网搜索获取资料。如果你对某个概念或术语不熟悉，请积极搜索相关资料或向用户提问。
 - 在进行实施之前，务必对接需求，有必要时向用户提问，确保对需求的理解准确无误。多种理解会导致实质不同的工作时用 ask 澄清，不自行选一种。
 - 使用用户的语言进行对话，使用中文/英文编写注释和文档。当用户语言非中文时，使用英文编写。
-- 当使用plan模式时，尽可能详细的描述你要做什么，为什么这么做，以及你是怎么做的。让用户能够清晰地理解你的思路和实现细节。
+- 当编写计划书时，尽可能详细的描述你要做什么，为什么这么做，以及你是怎么做的。让用户能够清晰地理解你的思路和实现细节。
 - 交流时先给影响与结论，再给必要证据，最后给接下来的行动、待决策和建议，没有对应内容就省略。
 - 优先使用具体、简单的词和通俗易懂的表达，避免无意义术语、套话、重复总结。
 - 技术细节只保留对理解结论、判断风险或复现结果有帮助的部分；解释复杂内容时可使用可视化功能进行辅助理解。
-- 按用户意图区分咨询和执行请求：评估、解释、讨论只回答；要求完成工作的表达按执行请求处理。
 
 ## 估计算法 Benchmark
 - 如果你在制作/改进估计难度算法，你需要使用 Benchmark 来验证算法的准确性。
 - Benchmark 目前位于仓库[VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)，请clone后阅读其README文件，了解如何使用Benchmark进行算法验证。
-- 无论如何你都需要避免读取 samples 中各个分类文件夹中的谱面样本数据，否则你可能会在算法中对这些谱面进行硬编码，或形成严重的过拟合，导致算法在实际使用中失效。
+- 无论如何你都需要避免读取 samples 中各个分类文件夹中的谱面样本数据，否则你可能会在算法中对这些谱面数据硬编码，或形成严重的过拟合，导致算法在实际使用中失效。
 
 ## 参考链接
 - 本项目仓库地址 https://github.com/LeoBlackMT/osumania_map_analyser 。
@@ -108,5 +54,7 @@
 - [Interlude](https://github.com/YAVSRG/YAVSRG): 使用了Interlude的RC键型分析算法并在基础上新增LN检测算法。
 - [Daniel](https://thebagelofman.github.io/Daniel/): 使用了Daniel的算法进行难度估计。
 - [Companella](https://github.com/Leinadix/companella): 使用了Companella的算法进行难度估计。
+- [XDC1](https://github.com/TheBagelOfMan/xdc1): 使用了 XDC1 的算法进行 4K 难度估计。
+- [Proj7k](https://github.com/ka1z07/proj7k):使用了 Proj7k 的算法进行 7K 难度估计。
 - [VSRG-DanEstimation-Benchmark](https://github.com/LeoBlackMT/VSRG-DanEstimation-Benchmark)：估计算法基准测试仓库。
 - [DanielEtterna](https://github.com/JoseMGS3/DanielEtterna)：参考了其获取Etterna数据的方法。
