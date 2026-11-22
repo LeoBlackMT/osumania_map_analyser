@@ -519,57 +519,68 @@ function renderTrendSection(s) {
 // ── Donut + legend ───────────────────────────────────
 function renderDonut(id, items, maxSlices) {
   const c = document.getElementById(id);
-  c.textContent = "";
-  if (!items.length) { emptyBox(c); return; }
   const MAX = maxSlices || 6;
-  let slices = items;
-  if (items.length > MAX) {
-    const top = items.slice(0, MAX - 1);
-    const other = items.slice(MAX - 1).reduce((s, it) => s + it.count, 0);
-    slices = top.concat([{ key: "Other", count: other }]);
-  }
-  const total = slices.reduce((s, it) => s + it.count, 0) || 1;
-  const svg = svgEl("svg", { viewBox: "0 0 42 42", width: "108", height: "108", "aria-hidden": "true" });
-  let angle = 0;
-  slices.forEach((it, i) => {
-    const frac = it.count / total;
-    const circle = svgEl("circle", {
-      cx: 21, cy: 21, r: 15.915, fill: "none", "stroke-width": 4,
-      stroke: PALETTE[i % PALETTE.length],
-      "stroke-dasharray": (frac * 100).toFixed(2) + " " + (100 - frac * 100).toFixed(2),
-      "stroke-dashoffset": (-angle * 100).toFixed(2),
-    });
-    bindTip(circle, it.key + " — " + it.count + " (" + Math.round((it.count / total) * 100) + "%)");
-    svg.appendChild(circle);
-    angle += frac;
-  });
-  const center = svgEl("text", {
-    x: 21, y: 21, "text-anchor": "middle", "dominant-baseline": "central",
-    "font-size": "5.4", "font-weight": "600",
-  });
-  center.textContent = fmtCompact(total);
-  bindTip(center, String(total));
-  svg.appendChild(center);
+  const canExpand = items.length > MAX;
 
-  const legend = el("div", "legend");
-  slices.forEach((it, i) => {
-    const row = el("div", "legend-row");
-    const sw = el("span", "sw");
-    sw.style.background = PALETTE[i % PALETTE.length];
-    row.appendChild(sw);
-    row.appendChild(el("span", "lk", it.key));
-    const lv = el("span", "lv");
-    const lvNum = el("span", "num", fmtCompact(it.count));
-    bindTip(lvNum, String(it.count));
-    lv.appendChild(lvNum);
-    lv.appendChild(el("span", "pct", Math.round((it.count / total) * 100) + "%"));
-    row.appendChild(lv);
-    legend.appendChild(row);
-  });
-  const wrap = el("div", "donut-wrap");
-  wrap.appendChild(svg);
-  wrap.appendChild(legend);
-  c.appendChild(wrap);
+  function draw(expanded) {
+    c.textContent = "";
+    if (!items.length) { emptyBox(c); return; }
+    let slices = items;
+    if (canExpand && !expanded) {
+      const top = items.slice(0, MAX - 1);
+      const other = items.slice(MAX - 1).reduce((s, it) => s + it.count, 0);
+      slices = top.concat([{ key: "Other", count: other }]);
+    }
+    const total = slices.reduce((s, it) => s + it.count, 0) || 1;
+    const svg = svgEl("svg", { viewBox: "0 0 42 42", width: "108", height: "108", "aria-hidden": "true" });
+    let angle = 0;
+    slices.forEach((it, i) => {
+      const frac = it.count / total;
+      const circle = svgEl("circle", {
+        cx: 21, cy: 21, r: 15.915, fill: "none", "stroke-width": 4,
+        stroke: PALETTE[i % PALETTE.length],
+        "stroke-dasharray": (frac * 100).toFixed(2) + " " + (100 - frac * 100).toFixed(2),
+        "stroke-dashoffset": (-angle * 100).toFixed(2),
+      });
+      bindTip(circle, it.key + " — " + it.count + " (" + Math.round((it.count / total) * 100) + "%)");
+      svg.appendChild(circle);
+      angle += frac;
+    });
+    const center = svgEl("text", {
+      x: 21, y: 21, "text-anchor": "middle", "dominant-baseline": "central",
+      "font-size": "5.4", "font-weight": "600",
+    });
+    center.textContent = fmtCompact(total);
+    bindTip(center, String(total));
+    svg.appendChild(center);
+
+    const legend = el("div", "legend");
+    slices.forEach((it, i) => {
+      const row = el("div", "legend-row");
+      const sw = el("span", "sw");
+      sw.style.background = PALETTE[i % PALETTE.length];
+      row.appendChild(sw);
+      row.appendChild(el("span", "lk", it.key));
+      const lv = el("span", "lv");
+      const lvNum = el("span", "num", fmtCompact(it.count));
+      bindTip(lvNum, String(it.count));
+      lv.appendChild(lvNum);
+      lv.appendChild(el("span", "pct", Math.round((it.count / total) * 100) + "%"));
+      row.appendChild(lv);
+      legend.appendChild(row);
+    });
+    const wrap = el("div", "donut-wrap");
+    wrap.appendChild(svg);
+    wrap.appendChild(legend);
+    c.appendChild(wrap);
+    if (canExpand && !expanded) {
+      const btn = el("button", "more-btn", "Show all " + items.length);
+      btn.addEventListener("click", () => draw(true));
+      c.appendChild(btn);
+    }
+  }
+
+  draw(false);
 }
 
 // ── Bottom metric chips ──────────────────────────────
@@ -659,7 +670,9 @@ function render(s) {
   renderHBar("keycounts", s.keycounts || []);
   renderDonut("modes", s.modes || []);
   renderDonut("mods", s.mods || []);
-  renderDonut("clients", s.clients || []);
+  // `osu` is the pre-2.1.0 source-only label, not a current client; hide it
+  // so it cannot push Etterna/Malody out of the top-5+Other view.
+  renderDonut("clients", (s.clients || []).filter((it) => it.key !== "osu"));
   renderDonut("versions", s.versions || []);
   renderHBar("algorithms", s.algorithms || [], 8);
   renderHBar("actualAlgorithms", s.actualAlgorithms || [], 8);
