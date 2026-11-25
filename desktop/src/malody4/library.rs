@@ -577,6 +577,6 @@ fn match_braces(text: &str, start: usize) -> Option<usize> {
     None
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_library"))]
 #[path = "../../tests-local/malody4_library.rs"]
 mod tests;

@@ -10,6 +10,6 @@ pub use http::*;
 pub use settings::*;
 pub use state::*;
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "server_bridge"))]
 #[path = "../../tests-local/server_bridge.rs"]
 mod tests;

@@ -60,10 +60,7 @@ pub struct SosObject {
 impl SosObject {
     /// 模块文件名（小写，`File:` 行的 basename）。
     pub fn module(&self) -> String {
-        Path::new(&self.file)
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default()
+        crate::minidump::module_basename(&self.file)
     }
 
     /// 按字段名找一行（同名多行 = 返回全部，由调用方判"歧义"）。
@@ -510,10 +507,7 @@ impl DumpMt {
 
     /// `File:` 的 basename（小写保留原形；表里的键用它）。
     pub fn module_file(&self) -> String {
-        Path::new(&self.file)
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| self.file.clone())
+        crate::minidump::module_basename(&self.file)
     }
 
     /// `BaseSize: 0x730` 的十六进制值（交叉核对用；不发布）。
@@ -542,10 +536,7 @@ impl DumpModule {
     }
 
     pub fn module_file(&self) -> String {
-        Path::new(&self.name)
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| self.name.clone())
+        crate::minidump::module_basename(&self.name)
     }
 }
 

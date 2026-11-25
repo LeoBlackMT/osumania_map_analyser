@@ -61,7 +61,7 @@ impl TargetInfo {
     pub fn songs_folder(&self) -> Option<String> {
         self.storage_root
             .as_deref()
-            .map(|root| format!("{root}\\{}", FILES_DIR))
+            .map(|root| Path::new(root).join(FILES_DIR).to_string_lossy().into_owned())
     }
 
     /// 实际用于载荷 `folders.songs` 的目录：先信 `storage.ini`，

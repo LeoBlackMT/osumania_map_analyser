@@ -283,6 +283,6 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_lazer_osr"))]
 #[path = "../../../tests-local/osu_lazer_osr.rs"]
 mod tests_osr;

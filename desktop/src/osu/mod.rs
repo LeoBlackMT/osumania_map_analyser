@@ -572,27 +572,27 @@ pub fn state_json(reader: &Reader) -> Value {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_beatmap_corpus"))]
 #[path = "../../tests-local/osu_beatmap_corpus.rs"]
 mod tests_beatmap_corpus;
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, mma_local_test = "osu_hold"))]
 #[path = "../../tests-local/osu_hold.rs"]
 mod tests_hold;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_keys"))]
 #[path = "../../tests-local/osu_keys.rs"]
 mod tests_keys;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_model"))]
 #[path = "../../tests-local/osu_model.rs"]
 mod tests_model;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_scan"))]
 #[path = "../../tests-local/osu_scan.rs"]
 mod tests_scan;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_anchor_cache"))]
 #[path = "../../tests-local/osu_anchor_cache.rs"]
 mod tests_anchor_cache;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_sweep"))]
 #[path = "../../tests-local/osu_sweep.rs"]
 mod tests_sweep;
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_phase"))]
 #[path = "../../tests-local/osu_phase.rs"]
 mod tests_phase;

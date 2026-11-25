@@ -18,6 +18,24 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let root = Path::new(&manifest_dir);
 
+    // tests-local contains optional, unpublished module tests. Cargo also watches
+    // directory membership so adding or removing a suite updates the next test run.
+    println!("cargo:rustc-check-cfg=cfg(mma_local_test, values(any()))");
+    println!("cargo:rerun-if-changed=tests-local");
+    let tests_dir = root.join("tests-local");
+    if tests_dir.is_dir() {
+        for entry in std::fs::read_dir(&tests_dir).expect("read tests-local") {
+            let file = entry.expect("read test entry").path();
+            if file.extension().and_then(|s| s.to_str()) == Some("rs") {
+                if let Some(stem) = file.file_stem().and_then(|s| s.to_str()) {
+                    if stem.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                        println!("cargo:rustc-cfg=mma_local_test=\"{stem}\"");
+                    }
+                }
+            }
+        }
+    }
+
     let mut attrs = tauri_build::Attributes::new();
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let manifest_path = root.join("app.manifest");

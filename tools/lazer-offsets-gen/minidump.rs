@@ -36,13 +36,15 @@ pub struct Module {
     pub file_version: Option<String>,
 }
 
+/// Paths in dump records use the producer's separators regardless of the analysis host.
+pub fn module_basename(path: &str) -> String {
+    path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or("").to_owned()
+}
+
 impl Module {
     /// 模块文件名（小写），例如 `osu!.dll`。
     pub fn file_name(&self) -> String {
-        Path::new(&self.path)
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| self.path.clone())
+        module_basename(&self.path)
     }
 }
 

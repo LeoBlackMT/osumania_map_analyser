@@ -439,6 +439,6 @@ pub fn unavailable_from_anchor(err: AnchorError) -> UnavailableReason {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_mod"))]
 #[path = "../../tests-local/malody4_mod.rs"]
 mod tests;

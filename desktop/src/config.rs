@@ -12,6 +12,6 @@ pub use json::*;
 pub use tosu::*;
 pub use window::*;
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "config"))]
 #[path = "../tests-local/config.rs"]
 mod tests;

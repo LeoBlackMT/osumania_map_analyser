@@ -7,7 +7,7 @@ use std::path::Path;
 pub mod spec;
 pub use self::spec::*;
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_anchor"))]
 #[path = "../../tests-local/malody4_anchor.rs"]
 mod tests;
 
@@ -512,6 +512,6 @@ pub fn read_settings(_at: &Attachment) -> Result<MemoryProbe, AnchorError> {
 }
 
 /// Win32 层测试（布局只在 Windows 调用方下有效，故整体 cfg 门控）。
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, mma_local_test = "malody4_anchor_win32"))]
 #[path = "../../tests-local/malody4_anchor_win32.rs"]
 mod win32_tests;

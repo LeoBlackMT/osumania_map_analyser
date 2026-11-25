@@ -198,6 +198,6 @@ pub fn native_reachable(forced_tosu: bool, compat_bound: bool) -> bool {
     compat_bound && !forced_tosu
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "server_osu_source"))]
 #[path = "../../tests-local/server_osu_source.rs"]
 mod tests;

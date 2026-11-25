@@ -36,6 +36,6 @@ pub use score::*;
 pub use osr::*;
 pub use frame::*;
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_lazer"))]
 #[path = "../../tests-local/osu_lazer.rs"]
 mod tests_lazer;

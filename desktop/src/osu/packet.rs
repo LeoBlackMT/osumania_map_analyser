@@ -547,6 +547,6 @@ fn insert_hits(root: &mut Map<String, Value>, snapshot: &Snapshot) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_packet"))]
 #[path = "../../tests-local/osu_packet.rs"]
 mod tests_packet;

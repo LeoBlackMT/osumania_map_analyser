@@ -1122,6 +1122,6 @@ fn variant_verdict(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_compare"))]
 #[path = "../../tests-local/osu_compare.rs"]
 mod tests_compare;

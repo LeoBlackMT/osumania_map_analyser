@@ -328,6 +328,6 @@ pub fn anchor_pattern_and_offset<'a>(
     ANCHORS.iter().find(|a| a.key == key).map(|a| (a.pattern, a.offset))
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_patterns"))]
 #[path = "../../tests-local/osu_patterns.rs"]
 mod tests_patterns;

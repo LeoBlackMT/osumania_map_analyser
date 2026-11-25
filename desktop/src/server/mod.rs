@@ -643,6 +643,6 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     shared
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "server_mod"))]
 #[path = "../../tests-local/server_mod.rs"]
 mod tests;

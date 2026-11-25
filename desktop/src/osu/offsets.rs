@@ -249,57 +249,15 @@ mod tests {
     }
 
     #[test]
-    fn test_master_keypair_and_manifest_generation() {
-        use ed25519_compact::{Seed, KeyPair};
-        let seed_bytes = [
-            0x4d, 0x4d, 0x41, 0x5f, 0x4f, 0x46, 0x46, 0x53, // "MMA_OFFS"
-            0x45, 0x54, 0x53, 0x5f, 0x4d, 0x41, 0x53, 0x54, // "ETS_MAST"
-            0x45, 0x52, 0x5f, 0x53, 0x45, 0x45, 0x44, 0x5f, // "ER_SEED_"
-            0x32, 0x30, 0x32, 0x36, 0x31, 0x30, 0x30, 0x38, // "20261008"
-        ];
-        let seed = Seed::from_slice(&seed_bytes).unwrap();
-        let keypair = KeyPair::from_seed(seed);
-        assert_eq!(keypair.pk.as_ref(), &ED25519_MASTER_PUBLIC_KEY);
-
-        let table_files = [
-            ("stable", "stable__x86.json", "stable", "x86", "2026-latest", "CLRv4"),
-            ("lazer", "2026.1005.0.0__10.0.12__x64.json", "lazer", "x64", "2026.1005.0.0", "10.0.12"),
-        ];
-
-        let mut manifest_tables = Vec::new();
-        for (sub_dir, file_name, client, arch, g_ver, r_ver) in &table_files {
-            let path = PathBuf::from("offsets").join(sub_dir).join(file_name);
-            if path.exists() {
-                let bytes = std::fs::read(&path).unwrap();
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
-                let sha256_hex = format!("{:x}", hasher.finalize());
-                let sig = keypair.sk.sign(&bytes, None);
-                let sig_hex: String = sig.as_ref().iter().map(|b| format!("{b:02x}")).collect();
-
-                // 验证自洽
-                assert!(verify_table_signature(&bytes, &sha256_hex, &sig_hex, &ED25519_MASTER_PUBLIC_KEY).is_ok());
-
-                manifest_tables.push(RemoteManifestTable {
-                    filename: file_name.to_string(),
-                    client: client.to_string(),
-                    game_version: g_ver.to_string(),
-                    runtime_version: r_ver.to_string(),
-                    arch: arch.to_string(),
-                    sha256: sha256_hex,
-                    signature: sig_hex,
-                });
-            }
-        }
-
-        if !manifest_tables.is_empty() {
-            let manifest = RemoteManifest {
-                schema_version: 2,
-                updated_at: "2026-10-08T12:00:00Z".to_string(),
-                tables: manifest_tables,
-            };
-            let json = serde_json::to_string_pretty(&manifest).unwrap();
-            let _ = std::fs::write("offsets/manifest.json", json);
+    fn bundled_manifest_references_packaged_tables() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("offsets");
+        let manifest: RemoteManifest =
+            serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest.schema_version, 2);
+        assert!(!manifest.tables.is_empty());
+        for table in manifest.tables {
+            let path = root.join(&table.client).join(&table.filename);
+            assert!(path.is_file(), "missing packaged table: {}", path.display());
         }
     }
 }
