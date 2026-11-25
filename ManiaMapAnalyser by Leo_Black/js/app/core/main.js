@@ -58,7 +58,7 @@ export async function initialize() {
             .then((response) => (response.ok ? response.json() : null))
             .then((body) => {
                 state.laneAccReady = {
-                    lazer: body?.lazer?.score_ready === true,
+                    lazer: body?.lazer?.loaded ? body.lazer.score_ready : null,
                     stable: body?.stable?.replay_frames_ready === true,
                     stableNotes: body?.stable?.notes_ready === true,
                     ppysbActive: body?.ppysb_active === true,

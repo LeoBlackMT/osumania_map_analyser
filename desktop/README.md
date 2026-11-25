@@ -33,7 +33,7 @@ ManiaMapAnalyser 桌面壳（mma-shell）基于 Tauri v2 开发，支持 Windows
 - 主窗口：支持透明背景、无边框拖拽、窗口缩放、窗口置顶与点击穿透。相关状态（位置、尺寸、置顶、穿透）自动记录在 `mma-shell-state.json` 中。
 - 设置窗口：独立的配置窗口，承载 `settings.html`。可通过全局快捷键 `Ctrl+Shift+S`、命令行参数 `--settings` 或接口调用打开。
 - 全局快捷键：默认提供置顶（`Ctrl+Shift+T`）、点击穿透（`Ctrl+Shift+C`）、打开设置（`Ctrl+Shift+S`）以及退出（`Ctrl+Q`）。快捷键可在 `mma-shell-config.json` 中自定义。在 Linux Wayland 环境下，全局快捷键受限时由窗口聚焦后的内部快捷键处理。
-- KDE Wayland：系统安装 XWayland 后，壳会自动通过它运行，支持顶部把手拖动和置顶；选中窗口后按 `Ctrl+Shift+T` 切换置顶。原生 Wayland 游戏获得焦点时，全局快捷键可能不触发。用户显式设置的 `GDK_BACKEND` 优先于自动选择。
+- KDE Wayland：系统安装 XWayland 后，壳会自动通过它运行，支持顶部把手拖动和置顶；选中窗口后按 `Ctrl+Shift+T` 切换置顶。原生 Wayland 游戏获得焦点时，全局快捷键可能不触发。连接不上 XWayland 时自动回落到原生 Wayland；用户显式设置的 `GDK_BACKEND` 优先。
 
 ## 平台支持情况
 
@@ -127,7 +127,7 @@ For end-user operation guides, see [docs/shell-guide.md](../docs/shell-guide.md)
 - Main Window: Supports transparency, borderless dragging, resizing, always-on-top, and click-through mode. Window geometry and toggle states are saved in `mma-shell-state.json`.
 - Settings Window: A dedicated configuration window hosting `settings.html`. Can be opened via the global shortcut `Ctrl+Shift+S`, CLI flag `--settings`, or the HTTP trigger endpoint.
 - Global Hotkeys: Default hotkeys include always-on-top (`Ctrl+Shift+T`), click-through (`Ctrl+Shift+C`), settings (`Ctrl+Shift+S`), and close (`Ctrl+Q`). Keys can be customized in `mma-shell-config.json`. Under Linux Wayland where global shortcuts may not trigger, internal hotkeys handle events when the window is focused.
-- KDE Wayland: With XWayland installed, the shell automatically uses it for dragging via the top handle and always-on-top. Focus the window and press `Ctrl+Shift+T` to toggle always-on-top. Global shortcuts may not trigger while a native Wayland game is focused. An explicitly set `GDK_BACKEND` overrides automatic selection.
+- KDE Wayland: With XWayland installed, the shell automatically uses it for dragging via the top handle and always-on-top. Focus the window and press `Ctrl+Shift+T` to toggle always-on-top. Global shortcuts may not trigger while a native Wayland game is focused. If XWayland is unreachable, the shell opens on native Wayland. An explicit `GDK_BACKEND` takes precedence.
 
 ## Platform Support
 

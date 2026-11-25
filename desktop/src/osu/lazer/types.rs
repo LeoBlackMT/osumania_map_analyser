@@ -78,9 +78,26 @@ pub struct Attach {
     pub last_lazer_mods: Option<(Vec<LazerMod>, bool)>,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct TableStatus {
+    pub version: String,
+    pub runtime_version: String,
+    pub arch: String,
+    pub types_count: usize,
+    pub score_ready: bool,
+}
+
+impl From<&OffsetTable> for TableStatus {
+    fn from(table: &OffsetTable) -> Self {
+        Self { version: table.lazer_version.clone(), runtime_version: table.runtime_version.clone(),
+            arch: table.arch.clone(), types_count: table.types.len(), score_ready: table.score().is_some() }
+    }
+}
+
 /// 逐帧诊断。
 #[derive(Clone, Debug, Default)]
 pub struct Diagnostics {
+    pub active_table: Option<TableStatus>,
     pub table_key: Option<String>,
     pub table_origin: Option<String>,
     pub table_path: Option<String>,
@@ -96,6 +113,7 @@ pub struct Diagnostics {
 impl Diagnostics {
     pub fn from_attach(attach: &Attach) -> Diagnostics {
         Diagnostics {
+            active_table: Some((&attach.table).into()),
             table_key: Some(attach.table.key()),
             table_origin: Some(attach.origin.as_str().to_string()),
             table_path: Some(attach.table_path.to_string_lossy().to_string()),

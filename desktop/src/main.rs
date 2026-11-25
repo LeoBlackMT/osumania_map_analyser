@@ -14,7 +14,7 @@ fn main() {
         })
         && std::env::var_os("DISPLAY").is_some_and(|display| !display.is_empty())
     {
-        std::env::set_var("GDK_BACKEND", "x11");
+        std::env::set_var("GDK_BACKEND", "x11,wayland");
         // 共享内存传输避开 NVIDIA 的 DMA-BUF 导入问题，保留加速合成。
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
             && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none()

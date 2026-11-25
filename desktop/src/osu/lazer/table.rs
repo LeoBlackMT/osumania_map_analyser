@@ -131,10 +131,12 @@ fn default_lazer_files_dirs() -> Vec<PathBuf> {
             appdata.join("osu!").join(FILES_DIR),
         ]
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     {
-        Vec::new()
+        linux_osu_root().map(|r| r.join(FILES_DIR)).into_iter().collect()
     }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    { Vec::new() }
 }
 
 /// 不依赖读取器快照的存储根探测（设置页 `resolved` 与显式覆盖共用）：
@@ -337,14 +339,7 @@ pub fn load_table(
         candidate_dirs.push(PathBuf::from(&offsets_dir).join("lazer"));
         candidate_dirs.push(PathBuf::from(&offsets_dir));
     }
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        candidate_dirs.push(
-            PathBuf::from(appdata)
-                .join("ManiaMapAnalyser")
-                .join("offsets")
-                .join("lazer"),
-        );
-    }
+    candidate_dirs.push(crate::osu::offsets::remote_offsets_dir("lazer"));
     candidate_dirs.push(table_dir.join("offsets").join("lazer"));
     candidate_dirs.push(table_dir.join("offset").join("lazer"));
     candidate_dirs.push(table_dir.join(TABLE_DIR));
@@ -557,7 +552,17 @@ pub fn storage_ini_path() -> Option<PathBuf> {
     candidates.into_iter().next()
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn linux_osu_root() -> Option<PathBuf> {
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/share")))
+        .map(|dir| dir.join("osu"))
+}
+
+#[cfg(target_os = "linux")]
+pub fn storage_ini_path() -> Option<PathBuf> { linux_osu_root().map(|p| p.join("storage.ini")) }
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn storage_ini_path() -> Option<PathBuf> {
     None
 }

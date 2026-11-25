@@ -192,6 +192,10 @@ pub struct OsuSource {
     pub alive: bool,
     /// Linux lazer can supply LaneAcc events alongside the tosu transport.
     pub lazer_lane_acc_ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lazer_lane_acc_notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lazer_score_ready: Option<bool>,
     /// 字段名 = 契约里的 `osuTransport`（结构体名 `OsuTransport` 为避免与字段同名而分开）。
     #[serde(rename = "osuTransport")]
     pub transport: OsuTransport,

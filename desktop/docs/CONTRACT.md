@@ -483,6 +483,8 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - **`sources.osu` 新增 `lazerLaneAccReady`（boolean）**：
   - 当 Linux x86_64 osu!lazer 读取器通过 `/proc/<pid>/mem` 成功附着游戏并验证匹配的 `score` 偏移表时置 `true`（脱离进程时复位 `false`）。
   - 页面在 lazer 模式下即使 `osuTransport.mode == "tosu"`，只要 `lazerLaneAccReady == true` 就可启用 LaneAcc（经 tosu 获取谱面、时钟与状态，经壳 24061 WS 接收 `mania_hit_events` / `mania_replay_frames`）。
+- 已附着时，可选的 `sources.osu.lazerScoreReady` 表示实际偏移表是否含可用的判定字段；Linux 的 `lazerLaneAccNotice` 在等游戏、权限不足、缺表或谱面不可读时给出原因。两者均不改变 tosu 的传输选择。Linux 的 LaneAcc 仅采集原生 mania 谱。
+- `GET /offsets/status` 的 `lazer.loaded` 表示当前是否已附着。已附着时版本、运行时与 `score_ready` 来自实际表；空闲时展示随包表，`lazer.bundled` 始终标识该参考表。Linux 通过 Check Remote Updates 更新表，实时生成仅支持 Windows。
 - **兼容矩阵**：
   - v13 壳 + v12 页 ⇒ `hello.contract` 越界进入终态提示（**必须同包更新**）；
   - v12 壳 + v13 页 ⇒ 页面接受（在 `[3,13]` 内），但旧壳无 `lazerLaneAccReady` 且不识别 `resizeStart`（Windows 依赖原生边框缩放不受影响，Linux 侧无法在 tosu 传输下开启 lazer LaneAcc）。

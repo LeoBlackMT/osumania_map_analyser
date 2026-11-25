@@ -74,7 +74,14 @@ export function applyShellState(payload) {
     // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
     // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
     const osu = sources.osu || null;
-    state.shellLazerLaneAccReady = osu?.lazerLaneAccReady === true;
+    const laneReady = osu?.lazerLaneAccReady === true;
+    const laneNotice = osu?.lazerLaneAccNotice || null;
+    const scoreReady = osu?.lazerScoreReady ?? null;
+    const laneChanged = laneReady !== state.shellLazerLaneAccReady
+        || laneNotice !== state.shellLazerLaneAccNotice || scoreReady !== state.shellLazerScoreReady;
+    state.shellLazerLaneAccReady = laneReady;
+    state.shellLazerLaneAccNotice = laneNotice;
+    state.shellLazerScoreReady = scoreReady;
     const previousOsuPhase = state.shellOsuPhase;
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
@@ -95,7 +102,8 @@ export function applyShellState(payload) {
     // 读取器从扫描/附着/不可用回到 healthy：重算当前谱面，清掉掉线期间 24062 的 404。
     // 同一 identity 的后续帧不会触发重算（socketHandlers 的 `!hasStateMismatch` 早退），
     // 所以必须在这里补一次；结果命中缓存时几乎无开销。
-    if (shouldRecomputeAfterOsuReaderRecovery(previousOsuPhase, state.shellOsuPhase, currentRoute())) {
+    if ((laneChanged && state.activeSource === "osu" && String(state.client || "").toLowerCase().includes("lazer"))
+        || shouldRecomputeAfterOsuReaderRecovery(previousOsuPhase, state.shellOsuPhase, currentRoute())) {
         scheduleRecompute("osu-reader-recovered", true);
     }
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，

@@ -70,6 +70,11 @@ pub fn try_forward_and_exit() -> bool {
     match probe_existing_instance() {
         ExistingInstance::OurShell => {
             server::log::log_line("existing mma-shell instance detected on 24061");
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if std::env::args_os().any(|arg| arg == "--launch-lazer") {
+                eprintln!("Close the existing mma-shell first, then run --launch-lazer again.");
+                std::process::exit(2);
+            }
             if want_settings {
                 match shell_http_request("POST", "/open-settings", "Content-Length: 0\r\n") {
                     Ok(response) => server::log::log_line(&format!(

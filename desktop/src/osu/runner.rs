@@ -113,6 +113,7 @@ pub fn run(
             anchors = None;
             stable_table = None;
             lazer_attach = None;
+            reader.inner.lock().unwrap().lazer = None;
             osu_cache = None;
             last_scan_fail = None;
             publish_phase(&reader, Phase::Scanning, None, "reason=freeze-window-expired");
@@ -145,6 +146,7 @@ pub fn run(
                     anchors = None;
                     stable_table = None;
                     lazer_attach = None;
+                    reader.inner.lock().unwrap().lazer = None;
                     regions = scan::RegionCache::new();
                     scan_fail_attempt = 0;
                     last_scan_fail = None;
@@ -601,6 +603,7 @@ pub fn run(
                     attached = None;
                     anchors = None;
                     lazer_attach = None;
+                    reader.inner.lock().unwrap().lazer = None;
                     osu_cache = None;
                     previous_live = None;
                     regions = scan::RegionCache::new();

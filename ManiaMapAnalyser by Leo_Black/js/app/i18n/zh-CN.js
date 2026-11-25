@@ -187,6 +187,7 @@ export default {
     "ui.shell.offsets.title": "内存偏移表管理",
     "ui.shell.offsets.stableTitle": "osu!stable 偏移表",
     "ui.shell.offsets.lazerTitle": "osu!lazer 偏移表",
+    "ui.shell.offsets.bundled": "随包表",
     "ui.shell.offsets.fallbackDesc": "当前使用回退偏移表",
     "ui.shell.offsets.active": "已启用",
     "ui.shell.offsets.fallback": "回退",

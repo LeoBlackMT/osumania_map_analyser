@@ -144,7 +144,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`。**整窗移动**用卡片上方的 40px 高拖动条（中间 `⋮⋮` 提示）；**改变尺寸**用窗口四边和四角的 16px 命中区；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
 
-**KDE Wayland 后端选择**：Linux 入口 `desktop/src/main.rs` 在 GTK 初始化和线程启动前，检测 `XDG_SESSION_TYPE=wayland`、`XDG_CURRENT_DESKTOP` 含 `KDE`（冒号分隔，不区分大小写）、`DISPLAY` 非空且未设置 `GDK_BACKEND`，此时设为 `x11`，通过 XWayland 使用已有的 `start_dragging`、`set_always_on_top` 和窗口位置恢复。该路径在 `WEBKIT_DISABLE_DMABUF_RENDERER`、`WEBKIT_DMABUF_RENDERER_FORCE_SHM` 均未设置时，默认设置 `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`：用共享内存传递合成帧，避开 NVIDIA DMA-BUF 导入导致的透明窗口空白，保留 WebKit 的加速合成与 WebGL。用户显式设置上述渲染变量或 `GDK_BACKEND` 时优先采用用户配置。需要系统提供 XWayland；显式选择原生 GTK Wayland 时仍受该后端不支持置顶和窗口定位的限制。窗口状态格式不变。此外 `desktop/src/app/kde_overlay.rs` 会在全屏置顶启用时同步 KWin 窗口规则，并将原规则备份到插件目录 `backup/` 下。
+**KDE Wayland 后端选择**：Linux 入口 `desktop/src/main.rs` 在 GTK 初始化和线程启动前，检测 `XDG_SESSION_TYPE=wayland`、`XDG_CURRENT_DESKTOP` 含 `KDE`（冒号分隔，不区分大小写）、`DISPLAY` 非空且未设置 `GDK_BACKEND`，此时设为 `x11,wayland`，通过 XWayland 使用已有的 `start_dragging`、`set_always_on_top` 和窗口位置恢复。该路径在 `WEBKIT_DISABLE_DMABUF_RENDERER`、`WEBKIT_DMABUF_RENDERER_FORCE_SHM` 均未设置时，默认设置 `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`：用共享内存传递合成帧，避开 NVIDIA DMA-BUF 导入导致的透明窗口空白，保留 WebKit 的加速合成与 WebGL。用户显式设置上述渲染变量或 `GDK_BACKEND` 时优先采用用户配置。XWayland 无法连接时回落到原生 GTK Wayland，此时仍受该后端不支持置顶和窗口定位的限制。窗口状态格式不变。此外 `desktop/src/app/kde_overlay.rs` 会在全屏置顶启用时同步 KWin 窗口规则，并将原规则一次性备份到用户状态目录 `ManiaMapAnalyser/backup/kwinrulesrc.before-overlay`。
 
 **页面侧窗口交互（`js/app/ui/windowAffordances.js`，`main.js` 在 `initialize()` 里装配）**：只在 `html.shell-mode` 下启用；浏览器/tosu 模式隐藏把手和缩放区，并清除把手的内联位置、高度与高亮。
 

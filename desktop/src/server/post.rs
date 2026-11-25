@@ -146,7 +146,10 @@ fn handle_resolve(shared: &Shared, stream: &mut TcpStream, title: &str, artist: 
     // 安全：path 仅允许 malodyRoot 内的文件（canonicalize 后前缀校验）——
     // 本地 HTTP 端点不得成为任意文件读取原语（Host 伪造/DNS rebinding 防护）。
     if !chart_path.is_empty() {
-        let p = PathBuf::from(config::normalize_path(chart_path));
+        let normalized = config::normalize_path(chart_path);
+        let p = root.as_ref()
+            .map(|r| super::bridge::host_chart_path(r, &normalized))
+            .unwrap_or_else(|| PathBuf::from(&normalized));
         if p.exists() {
             let root_ok = malody_root(shared)
                 .and_then(|root| root.canonicalize().ok())

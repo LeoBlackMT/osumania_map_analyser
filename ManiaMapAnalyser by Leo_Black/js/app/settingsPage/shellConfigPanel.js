@@ -762,12 +762,11 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const lazerInfo = offsetsInfo.lazer || {};
         const generatedSections = lastGeneratedSections ? ` · ${sectionStateText(lastGeneratedSections)}` : "";
-        const lazerDesc = lazerInfo.loaded
-            ? `v${lazerInfo.version || "unknown"} (runtime: ${lazerInfo.runtime_version || "unknown"}, ${lazerInfo.types_count || 0} types)${generatedSections}`
-            : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
+        const tableDesc = `v${lazerInfo.version || "?"} / .NET ${lazerInfo.runtime_version || "?"}`;
+        const lazerDesc = [tableDesc + generatedSections, lazerInfo.notice].filter(Boolean).join(" · ");
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
-        lazerBadge.textContent = lazerInfo.loaded ? t("ui.shell.offsets.active", "Active") : t("ui.shell.offsets.fallback", "Fallback");
+        lazerBadge.textContent = lazerInfo.loaded ? t("ui.shell.offsets.active", "Active") : t("ui.shell.offsets.bundled", "Bundled");
         wrap.appendChild(buildRow("offsetsLazer", t("ui.shell.offsets.lazerTitle", "osu!lazer Offsets"), lazerDesc, lazerBadge));
 
         const actionsWrap = document.createElement("div");
@@ -782,7 +781,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             : t("ui.shell.offsets.generateMissing", "gen.exe not detected");
         genBtn.disabled = !offsetsInfo.generator_ready;
         genBtn.addEventListener("click", () => generateOffsets());
-        actionsWrap.appendChild(genBtn);
+        if (offsetsInfo.generator_supported !== false) actionsWrap.appendChild(genBtn);
 
         const updateBtn = document.createElement("button");
         updateBtn.type = "button";
@@ -805,7 +804,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
             "ui.shell.offsets.workflowHint",
             "New lazer version: generate once in play/replay for score, then once on the result screen for results.",
         );
-        actionsWrap.appendChild(workflowHint);
+        if (offsetsInfo.generator_ready) actionsWrap.appendChild(workflowHint);
 
         wrap.appendChild(buildRow("offsetsActions", t("ui.shell.offsets.actionsTitle", "Offsets Actions"), t("ui.shell.offsets.actionsDescription", "Update or generate memory layout tables for osu! clients."), actionsWrap));
 

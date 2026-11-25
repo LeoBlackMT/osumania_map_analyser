@@ -160,6 +160,8 @@ pub fn build(inputs: Inputs<'_>) -> OsuSource {
     OsuSource {
         alive: native,
         lazer_lane_acc_ready: inputs.lazer_lane_acc_ready,
+        lazer_lane_acc_notice: None,
+        lazer_score_ready: None,
         transport: OsuTransport {
             mode: mode.to_string(),
             host,

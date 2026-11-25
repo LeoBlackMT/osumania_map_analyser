@@ -39,20 +39,29 @@ impl SandboxError {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn proton_chart_path(root: &Path, path: &str) -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStrExt;
-
-    let bytes = path.as_bytes();
-    if bytes.len() < 3 || !bytes[0].is_ascii_alphabetic() || bytes[1..3] != *b":/" {
-        return None;
+/// Translate a path supplied by Malody. Callers enforce their own canonical root.
+pub(crate) fn host_chart_path(_root: &Path, normalized: &str) -> PathBuf {
+    #[cfg(target_os = "linux")]
+    if let Some((drive, tail)) = normalized.split_once(":/") {
+        if drive.len() == 1 && drive.as_bytes()[0].is_ascii_alphabetic() {
+            let drive = format!("{}:", drive.to_ascii_lowercase());
+            let steam_prefix = |root: &Path| root.parent().and_then(Path::parent)
+                .map(|apps| apps.join("compatdata/1512940/pfx")).filter(|p| p.is_dir());
+            let prefix = std::env::var_os("STEAM_COMPAT_DATA_PATH")
+                .map(PathBuf::from).filter(|p| p.is_absolute()).map(|p| p.join("pfx"))
+                .or_else(|| std::env::var_os("WINEPREFIX").map(PathBuf::from).filter(|p| p.is_absolute()))
+                // A symlink may be inside steamapps/common or point into it.
+                .or_else(|| steam_prefix(_root))
+                .or_else(|| _root.canonicalize().ok().and_then(|real| steam_prefix(&real)));
+            if let Some(prefix) = prefix {
+                let mapped = prefix.join("dosdevices").join(&drive);
+                if mapped.is_dir() { return mapped.join(tail.trim_start_matches('/')); }
+            }
+            // Wine's default Z: is the host filesystem. The caller still verifies containment.
+            if drive == "z:" { return Path::new("/").join(tail.trim_start_matches('/')); }
+        }
     }
-    let steam_apps = root.parent()?.parent()?;
-    let drive = [bytes[0].to_ascii_lowercase(), b':'];
-    let mut host_path = steam_apps.join("compatdata/1512940/pfx/dosdevices");
-    host_path.push(std::ffi::OsStr::from_bytes(&drive));
-    host_path.push(&path[3..]);
-    Some(host_path)
+    PathBuf::from(normalized)
 }
 
 /// 路径沙箱（`screen ∈ {selection, playing, result}` 时必过；`other` 跳过）。
@@ -70,12 +79,7 @@ pub fn sandbox_chart_path(root: &Path, raw_path: &str) -> Result<PathBuf, Sandbo
     if normalized.is_empty() {
         return Err(SandboxError::Unresolvable);
     }
-    let path = Path::new(&normalized);
-    #[cfg(target_os = "linux")]
-    let proton_path = proton_chart_path(&root_canon, &normalized);
-    #[cfg(target_os = "linux")]
-    let path = proton_path.as_deref().unwrap_or(path);
-    let candidate = path.canonicalize().map_err(|_| SandboxError::Unresolvable)?;
+    let candidate = host_chart_path(root, &normalized).canonicalize().map_err(|_| SandboxError::Unresolvable)?;
     if !candidate.starts_with(&chart_root) {
         return Err(SandboxError::Escape);
     }

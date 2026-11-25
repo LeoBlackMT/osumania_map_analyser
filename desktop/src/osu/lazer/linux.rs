@@ -40,6 +40,9 @@ struct Session {
     game_base: u64,
     game_type: u64,
     screen_module: u64,
+    table_path: PathBuf,
+    storage_root: Option<PathBuf>,
+    default_files: Option<PathBuf>,
 }
 
 // The upstream table may only list osu.Game.dll types. Read the desktop
@@ -107,23 +110,26 @@ fn attach(proc_dir: PathBuf, exe: &Path) -> Result<Session, String> {
     let files = RealFiles;
     let info = target_from_files(&files, &TargetEnv {
         exe_dir: exe.parent().ok_or("Missing osu!lazer executable directory")?.to_path_buf(),
-        storage_ini: None,
+        storage_ini: super::storage_ini_path(),
         arch: "x64".to_string(),
-    });
+    }).with_storage_root_override(crate::config::lazer_storage_root().as_deref());
     if info.lazer_version.is_empty() || info.runtime_version.is_empty() {
         return Err("Cannot identify the installed osu!lazer and .NET versions".to_string());
     }
     let loaded = load_table(&files, env_table_path().as_deref(), &shell_exe_dir(), &info, &|_| false)
-        .map_err(|reason| reason.as_str().to_string())?;
+        .map_err(|_| format!("No matching offset table for osu!lazer {} / .NET {}. Check Remote Updates in Shell Configuration.", info.lazer_version, info.runtime_version))?;
     if loaded.mismatch.is_some() || loaded.table.score().is_none() {
         return Err(format!("LaneAcc needs a matching score offset table for {} / {}", info.lazer_version, info.runtime_version));
     }
+    let table_path = loaded.path;
     let table = loaded.table;
     let fields = Resolved::from_table(&table);
     let desktop = DiskPe::open(&exe.with_file_name("osu!.dll"));
     let (game_base, game_type, screen_module) = locate_game(&memory, &table, &fields, desktop.as_ref())
         .ok_or("Cannot resolve the osu!lazer game object and screen stack")?;
-    Ok(Session { memory, table, fields, game_base, game_type, screen_module })
+    Ok(Session { memory, table, fields, game_base, game_type, screen_module, table_path,
+        default_files: info.effective_songs_folder().map(PathBuf::from),
+        storage_root: info.storage_root.map(PathBuf::from) })
 }
 
 fn locate_game(memory: &ProcessMemory, table: &OffsetTable, fields: &Resolved, desktop: Option<&DiskPe>) -> Option<(u64, u64, u64)> {
@@ -198,22 +204,88 @@ impl Session {
     }
 }
 
+// Identify native mania from the game's current content-addressed chart, before
+// either poller interprets a hit object or a replay action as a mania column.
+impl Session {
+    fn beatmap_info(&self) -> Option<u64> {
+        let f = &self.fields;
+        let mut object = self.game_base;
+        for field in [&f.beatmap, &f.bindable_value, &f.working_beatmap_info] {
+            object = super::read_ptr_field(&self.memory, object, *field.as_ref().ok()?)?;
+        }
+        Some(object)
+    }
+
+    fn chart_path(&self, info: u64) -> Option<PathBuf> {
+        use super::{read_ptr_field, read_string, to_lazer_path};
+        let f = &self.fields;
+        let ptr = |base, field: &Result<i64, crate::osu::offsets::LookupError>|
+            read_ptr_field(&self.memory, base, *field.as_ref().ok()?);
+        let layout = f.string_layout().ok()?;
+        let hash = read_string(&self.memory, ptr(info, &f.beatmap_hash)?, layout)?;
+        let rel = to_lazer_path(&hash)?.replace('\\', "/");
+        let live_root = || {
+            let storage = ptr(self.game_base, &f.storage)?;
+            read_string(&self.memory, ptr(storage, &f.base_path)?, layout).map(PathBuf::from)
+        };
+        if let Some(path) = self.storage_root.as_ref().map(|root| root.join("files").join(&rel)).filter(|p| p.is_file()) {
+            return Some(path);
+        }
+        live_root().map(|p| p.join("files")).into_iter().chain(self.default_files.clone())
+            .map(|dir| dir.join(&rel)).find(|p| p.is_file())
+    }
+}
+
+fn native_mania_chart(path: &Path) -> std::io::Result<bool> {
+    use std::io::{BufRead, BufReader};
+    let mut general = String::new();
+    for line in BufReader::new(File::open(path)?).lines() {
+        let line = line?;
+        let text = line.trim().trim_start_matches('\u{feff}');
+        if text.starts_with('[') {
+            if !general.is_empty() { break; }
+            if text != "[General]" { continue; }
+        }
+        if text == "[General]" || !general.is_empty() {
+            general.push_str(text);
+            general.push('\n');
+        }
+    }
+    Ok(crate::osu::beatmap_file::parse(&general).is_mania())
+}
+
+fn launch_game() -> Result<Child, String> {
+    if find_game()?.is_some() {
+        return Err("osu!lazer is already running. Close it and run the launcher again.".into());
+    }
+    let exe = std::env::var_os("MMA_LAZER_EXECUTABLE").unwrap_or_else(|| "osu-lazer".into());
+    Command::new(&exe).spawn().map_err(|e| format!("Cannot start {}: {e}. Set MMA_LAZER_EXECUTABLE to the game executable.", Path::new(&exe).display()))
+}
+
 pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFrameLog>) {
-    let mut game_child: Option<Child> = None;
+    let mut child = None;
+    let mut launch_error = None;
     if std::env::args_os().any(|arg| arg == "--launch-lazer") {
-        match Command::new("osu-lazer").spawn() {
-            Ok(child) => game_child = Some(child),
-            Err(error) => crate::server::log::log_at("warn", &format!("[osu] Cannot launch osu-lazer: {error}")),
+        match launch_game() {
+            Ok(game) => child = Some(game),
+            Err(error) => {
+                crate::server::log::log_at("warn", &error);
+                launch_error = Some(error);
+            }
         }
     }
     let mut last_error = None;
     loop {
-        if game_child.as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_some()) {
-            game_child = None;
+        if let Some(status) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+            if !status.success() {
+                launch_error = Some(format!("osu!lazer launcher exited with {status}. Check MMA_LAZER_EXECUTABLE and run the game executable directly."));
+            }
+            child = None;
         }
         let session = match find_game().and_then(|game| game.map(|(dir, exe)| attach(dir, &exe)).transpose()) {
             Ok(Some(session)) => session,
             Ok(None) => {
+                reader.inner.lock().unwrap().reason = Some(launch_error.as_deref().unwrap_or("Waiting for osu!lazer.").into());
                 last_error = None;
                 thread::sleep(ATTACH_RETRY);
                 continue;
@@ -221,26 +293,65 @@ pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFra
             Err(error) => {
                 if last_error.as_ref() != Some(&error) {
                     crate::server::log::log_at("warn", &format!("[osu] Linux LaneAcc: {error}"));
+                    reader.inner.lock().unwrap().reason = Some(error.clone());
                     last_error = Some(error);
                 }
                 thread::sleep(SCAN_RETRY);
                 continue;
             }
         };
+        launch_error = None;
         last_error = None;
         crate::server::log::log_at("info", &format!("[osu] Linux LaneAcc attached ({})", session.table.key()));
         let section = session.table.score().expect("attach requires score offsets");
         let mut hit_state = PollState::default();
         let mut replay_state = ReplayPollState::default();
-        reader.inner.lock().unwrap().lazer_lane_acc_ready = true;
+        {
+            let mut state = reader.inner.lock().unwrap();
+            state.reason = None;
+            state.lazer_lane_acc_ready = true;
+            state.lazer = Some(super::Diagnostics {
+                table_key: Some(session.table.key()),
+                table_path: Some(session.table_path.display().to_string()),
+                active_table: Some((&session.table).into()),
+                ..Default::default()
+            });
+        }
+        let mut chart_mode = None;
         while read_u64(&session.memory, session.game_base) == Some(session.game_type) {
+            let mut notice = None;
             if let Some(player) = session.player() {
-                let _ = score::poll(&session.memory, section, player, &hits, &mut hit_state);
-                let _ = score::poll_replay(&session.memory, section, player, &replays, &mut replay_state);
+                // Cache the mode for this player and beatmap. Never carry that decision
+                // across retries, map changes, or a return to the menu.
+                let key = session.beatmap_info().map(|info| (player, info));
+                if key != chart_mode.map(|(k, _)| k) {
+                    chart_mode = key.and_then(|k| {
+                        let mode = native_mania_chart(&session.chart_path(k.1)?).ok()?;
+                        Some((k, mode))
+                    });
+                }
+                match chart_mode {
+                    Some((_, true)) => {
+                        let _ = score::poll(&session.memory, section, player, &hits, &mut hit_state);
+                        let _ = score::poll_replay(&session.memory, section, player, &replays, &mut replay_state);
+                    }
+                    Some((_, false)) => notice = Some("LaneAcc supports native mania maps only."),
+                    None => notice = Some("Cannot read the active chart. Check the lazer storage folder in Shell Configuration."),
+                }
+            } else {
+                chart_mode = None;
             }
+            let mut state = reader.inner.lock().unwrap();
+            if state.reason.as_deref() != notice { state.reason = notice.map(str::to_owned); }
+            drop(state);
             thread::sleep(POLL_INTERVAL);
         }
-        reader.inner.lock().unwrap().lazer_lane_acc_ready = false;
+        {
+            let mut state = reader.inner.lock().unwrap();
+            state.lazer_lane_acc_ready = false;
+            state.lazer = None;
+            state.reason = None;
+        }
         hits.clear();
         replays.clear();
     }
