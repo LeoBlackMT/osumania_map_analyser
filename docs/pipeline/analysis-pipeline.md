@@ -319,7 +319,7 @@ const response = await fetch(getEndpoint(), { method: "GET", cache: "no-store" }
 
 多数据源场景（Etterna、Malody V、Malody 4.3.7，见 [../features/multi-source.md](../features/multi-source.md)）下，`fetchBeatmapFile` 多一个输入口：
 
-- 外部文本入口：`state.pendingSourceText` 存在时跳过 tosu HTTP 抓取（`analysis.js` fetch 分支；缓存命中短路在前，转换器只在 miss 路径执行——转换由 `js/app/sources/externalSource.js` 主线程完成）。
+- 外部文本入口：`externalSource.js` 在收到桥帧时转换全谱，将原文保存在该谱面的身份帧上（`externalText`）。标签切换、设置重算和图表选区复用这份文本，直至切谱或清卡；不请求 osu 的取谱端点。
 - result 帧 finally 汇合：外部源触发的分析在 `finally`（非 stale 守卫）统一发 result 帧（成功/失败/缓存命中/未命中四路；浏览器无壳 no-op）。requestId 在函数开头快照（沿用请求序号本地快照模式）。
 
 ---

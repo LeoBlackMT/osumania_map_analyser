@@ -99,7 +99,7 @@
 | H1 | 入口 | 快照选区 |
 | H2 | 缓存读取 | 区间不读（短路在 `state.enableResultCache` 之前） |
 | H3 | 图表加载态 | 区间**跳过** `setGraphLoading`（保留曲线与 `graphSeriesSource`）；曲线已为空时 `clearSection("graph-missing")` 后 return |
-| H4 | 文本获取 + `pendingSource*` | 区间用 `getFullChartText(contentKey, metaKey)`；**不消费** `pendingSourceText/RequestId/Active`；取不到 ⇒ `clearSection("text-missing")` 后 return |
+| H4 | 文本获取 + `pendingSource*` | 外部源从当前桥帧取转换后的全谱，osu 从 `getFullChartText(contentKey, metaKey)` 取原文；**不消费** `pendingSourceRequestId/Active`；取不到 ⇒ `clearSection("text-missing")` 后 return |
 | H5 | 文本获取后 | 非区间才 `rememberFullChartText(rawText, contentKey, metaKey)`；取到的原文先过 `beatmapTextMatchesFrame` 内容校验 |
 | H6 | 进管线前 | `rawText = sliceOsuTextByTimeRange(...).text`（唯一输入变换） |
 | H7 | `needComputed.graph` | 区间为 `false`（不产图） |

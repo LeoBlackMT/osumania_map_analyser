@@ -1,11 +1,11 @@
 # 卡片 Tab 胶囊栏与组合模式（Combined）
 
-> 目标读者：AI / 开发者｜语言：中文｜基线：插件版本 3.0.3，契约 v12
+> 目标读者：AI / 开发者｜语言：中文｜基线：插件版本 3.0.3，契约 v13
 > 本文描述桌面壳专属的卡片主体交互；浏览器/OBS（tosu 24050）不启用其中任何一项。
 
 ## 1. 功能范围
 
-- **Tab 胶囊栏**：壳窗口内、卡片主体顶部的 5 枚微型胶囊（Pattern / Etterna / Graph / PP / LaneAcc）。左键单击临时切换当前谱面的展示模块；不写设置、不进预设、不写 localStorage。
+- **Tab 胶囊栏**：壳窗口内、卡片主体顶部的 5 枚微型胶囊（Pattern / Etterna / Graph / PP / LaneAcc）。外部源切换标签时复用当前桥帧的谱面文本，清理计算缓存后也无需向 tosu 取谱。左键单击临时切换当前谱面的展示模块；不写设置、不进预设、不写 localStorage。
 - **组合模式（Combined）**：原 `Full` 的替代。由 `mma-shell-config.json` 的 `combinedMode` 控制，在卡片中同时显示多个模块，并按配置顺序排列。入口在设置页 `Shell Configuration`。
 - **tosu 侧**：`contentBar` 枚举只保留 `None / Auto / Pattern / Etterna / Graph / ReworkPP / LaneAcc`；旧值 `"Full"` 静默降级为 `"Auto"`。旧的 `Full` 不再能把多模块塞回 tosu 叠加层。
 
@@ -92,7 +92,7 @@ contentBarTabsEl.addEventListener("click", (event) => {
 
 ### 4.4 闲置淡化
 
-卡片 3 秒无指针 hover/操作时，胶囊栏通过 `is-idle` 类淡化至隐藏（`opacity→0` + `pointer-events:none`，CSS 0.45s 过渡）。恢复信号：卡片上的 `pointerenter/pointermove/pointerdown`、Tab 栏 `focusin`（键盘可达性：`:focus-within` 期间保持可见）、每次 Tab 点击。`syncContentBarTabs()` 把栏切到隐藏时同时清掉闲置计时与 `is-idle` 类。闲置监听只在壳内挂载；浏览器/OBS 页面零监听。
+鼠标停留在卡片内或键盘焦点位于 Tab 栏内时，胶囊栏持续显示；指针离开卡片且 Tab 栏失去焦点后，3 秒无操作才通过 `is-idle` 类淡化至隐藏（`opacity→0` + `pointer-events:none`，CSS 0.45s 过渡）。恢复信号：卡片上的 `pointerenter/pointermove/pointerdown`、Tab 栏 `focusin`、每次 Tab 点击；`pointerleave` 和 `focusout` 重新安排闲置计时。`syncContentBarTabs()` 把栏切到隐藏时同时清掉闲置计时与 `is-idle` 类。闲置监听只在壳内挂载；浏览器/OBS 页面零监听。
 
 ### 4.5 图表选区与 Tab 切换
 

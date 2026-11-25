@@ -41,7 +41,7 @@ osu!lazer Player
       time_offset (f64) / result (i32) / hit_object (ptr)
   hit_object + column (i32)        → mania 列号
   ↓ 壳 100ms 轮询（增量；首帧/回退/重试 = reset + 全量）
-WebSocket 24061 /ws → mania_hit_events / mania_replay_frames（契约 v10）
+WebSocket 24061 /ws → mania_hit_events / mania_replay_frames
   ↓
 laneAccAccumulator（纯 JS，O(1)/事件）
   ├─ 游戏口径 305 → 分轨/左右手/Miss
@@ -49,6 +49,8 @@ laneAccAccumulator（纯 JS，O(1)/事件）
   ↓
 laneAccView（#laneacc-wrap）
 ```
+
+Linux x86_64 上，tosu 提供谱面、时钟和游戏状态，壳通过只读 `/proc/<pid>/mem` 采集同一 `Player` 的逐轨判定与回放帧。`--launch-lazer` 将游戏作为壳的子进程启动，使读取权限符合 Linux 的父子进程规则。附着使用游戏与 .NET 版本精确匹配的偏移表，校验 `OsuGameDesktop`、`OsuScreenStack` 和游玩屏幕的类型，再设置契约 v13 的 `sources.osu.lazerLaneAccReady`。结算保留本局数据，重连用 `laneacc_sync` 取回快照。若表中缺少桌面主类的类型名，壳从游戏随附的 `osu!.dll` 读取 TypeDef，仍须通过相同的类型校验。已实测 2026.1005.0（.NET 10.0.12）的 4K、6K 游玩，以及 2026.1117.0（.NET 10.0.15）的 4K 四轨判定。启动方式见[桌面壳使用教程](../shell-guide.md)。
 
 ### 2.1 偏移表 `score` 段
 

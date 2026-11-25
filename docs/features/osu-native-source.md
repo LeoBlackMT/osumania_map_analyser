@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v12）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v13）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -9,7 +9,7 @@
 三条边界（DEC-08 / DEC-03 / DEC-04）：
 
 - **只承诺本插件消费的子集**：不承诺完整 tosu 兼容；不实现 tosu 的其它 overlay 面。
-- **Windows only**：Linux 上整条通道以 `platform-unsupported` 优雅不可用（`desktop/src/osu/model.rs:32-33`），浏览器模式与其余三源不受影响。
+- **平台**：完整的原生 osu! 传输（24062）面向 Windows。Linux x86_64 的 osu!lazer 使用 tosu 传输，由壳的[判定读取器](lane-acc.md#2-数据链路)补充 LaneAcc 数据。
 - **只读**：只声明 `ReadProcessMemory` / `VirtualQueryEx` / Toolhelp32；句柄权限恒为 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`（`desktop/src/osu/win.rs:28`：`0x0010 | 0x0400`），无任何写/挂起/注入 API。dump 采集只存在于 dev-time 工具（§10），产品内不存在。
 
 tosu 保留为兜底传输：读取器不健康、24062 未绑定、或操作者显式逃生时，壳下发 `mode:"tosu"`，页面回到自己设置里的 `wsEndpoint`，行为与无壳时逐字节相同（`desktop/src/server/osu_source.rs:95-112`）。
@@ -207,7 +207,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 | 项 | 结论 |
 |---|---|
-| Linux 内存读取 | 不做（DEC-03；`platform-unsupported`） |
+| Linux 内存读取 | x86_64 上支持 osu!lazer LaneAcc，谱面和游戏状态经 tosu 传输 |
 | "已验证 exe 哈希"白名单硬门 | 不做（DEC-05/REJ-02）；`unsupported-build:<hash>` 只是**人工诊断标签**，没有任何哈希白名单会让它自动触发 |
 | 第五来源（`osun:` identity / 独立帧型） | 不做（REJ-03） |
 | 壳内 WS 中继（页面永远只看壳） | 暂缓（REJ-07，DEC-06 的升级路径；固定 24062 就是为它留的） |
