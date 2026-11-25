@@ -3,7 +3,6 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -99,7 +98,7 @@ fn game_entry(dir: &Path) -> Option<PathBuf> {
     }
 }
 
-fn find_game() -> Result<Option<(PathBuf, PathBuf)>, String> {
+pub(crate) fn find_game() -> Result<Option<(PathBuf, PathBuf)>, String> {
     let mut game = None;
     for entry in fs::read_dir("/proc").map_err(|error| error.to_string())?.flatten() {
         if entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()).is_none() {
@@ -281,54 +280,12 @@ fn native_mania_chart(path: &Path) -> std::io::Result<bool> {
     Ok(crate::osu::beatmap_file::parse(&general).is_mania())
 }
 
-fn launch_game() -> Result<Child, String> {
-    if find_game()?.is_some() {
-        return Err("osu!lazer is already running. Close it and run the launcher again.".into());
-    }
-    let program = PathBuf::from(std::env::var_os("MMA_LAZER_EXECUTABLE").unwrap_or_else(|| "osu-lazer".into()));
-    // Resolve before changing cwd: package launchers and portable builds can load
-    // assets relative to the installation, even when invoked by name on PATH.
-    use std::os::unix::fs::PermissionsExt;
-    let path = if program.components().count() > 1 || program.file_name() == Some(OsStr::new("osu!.dll")) {
-        Some(std::path::absolute(&program).map_err(|e| e.to_string())?)
-    } else {
-        std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths)
-            .map(|dir| dir.join(&program))
-            .find(|p| p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
-            .and_then(|p| std::path::absolute(p).ok()))
-    };
-    let mut cmd = if let Some(path) = path {
-        let mut cmd = if path.file_name() == Some(OsStr::new("osu!.dll")) {
-            let mut cmd = Command::new("dotnet");
-            cmd.arg(&path);
-            cmd
-        } else { Command::new(&path) };
-        let install_path = path.canonicalize().unwrap_or(path);
-        if let Some(dir) = install_path.parent() { cmd.current_dir(dir); }
-        cmd
-    } else { Command::new(&program) };
-    cmd.spawn().map_err(|e| format!("Cannot start {}: {e}. Set MMA_LAZER_EXECUTABLE to the game executable.", program.display()))
-}
-
 pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFrameLog>) {
-    let mut child = None;
     let mut launch_error = None;
-    if std::env::args_os().any(|arg| arg == "--launch-lazer") {
-        match launch_game() {
-            Ok(game) => child = Some(game),
-            Err(error) => {
-                crate::server::log::log_at("warn", &error);
-                launch_error = Some(error);
-            }
-        }
-    }
     let mut last_error = None;
     loop {
-        if let Some(status) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
-            if !status.success() {
-                launch_error = Some(format!("osu!lazer launcher exited with {status}. Check MMA_LAZER_EXECUTABLE and run the game executable directly."));
-            }
-            child = None;
+        if let Some(error) = crate::app::lazer_launcher::take_error() {
+            launch_error = Some(error);
         }
         let session = match find_game().and_then(|game| game.map(|(dir, exe)| attach(dir, &exe)).transpose()) {
             Ok(Some(session)) => session,

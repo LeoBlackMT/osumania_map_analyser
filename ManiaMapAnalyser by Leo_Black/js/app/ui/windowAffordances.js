@@ -76,16 +76,18 @@ function buildHints(doc) {
     outline.className = "mma-window-outline";
     root.appendChild(outline);
 
+    const bands = {};
     for (const edge of EDGES) {
         const band = doc.createElement("span");
         band.className = `mma-edge mma-edge-${edge}`;
         root.appendChild(band);
+        bands[edge] = band;
     }
 
     for (const direction of ["North", "NorthEast", "East", "SouthEast", "South", "SouthWest", "West", "NorthWest"]) {
         const handle = doc.createElement("span");
         handle.className = `mma-resize-handle mma-resize-${direction.toLowerCase()}`;
-        handle.dataset.direction = direction;
+        handle.setAttribute("data-direction", direction);
         root.appendChild(handle);
     }
 
@@ -93,7 +95,30 @@ function buildHints(doc) {
     if (parent) {
         parent.appendChild(root);
     }
-    return root;
+    return { hints: root, bands };
+}
+
+function layoutGrip(doc, win, bar, card, hints) {
+    const zoom = win.getComputedStyle?.(doc.documentElement)?.zoom;
+    const number = Number.parseFloat(zoom);
+    const factor = String(zoom).trim().endsWith("%") ? number / 100 : number;
+    const scale = Number.isFinite(factor) && factor > 0 ? factor : 1;
+    const unit = 1 / scale;
+    doc.body?.style?.setProperty?.("--mma-window-unit", `${unit}px`);
+    const height = DRAG_BAR_HEIGHT * unit;
+    bar.style.height = `${height}px`;
+    hints.style.zoom = String(unit);
+    const rect = card?.getBoundingClientRect?.();
+    const top = computeBarTop(rect?.top / scale, height, win.innerHeight / scale);
+    bar.style.top = `${Math.max(6 * unit, top)}px`;
+    if (rect) bar.style.left = `${(rect.left + rect.width / 2) / scale}px`;
+}
+
+function windowTiming(win) {
+    const later = win.setTimeout?.bind(win) ?? globalThis.setTimeout;
+    const cancel = win.clearTimeout?.bind(win) ?? globalThis.clearTimeout;
+    const nextFrame = win.requestAnimationFrame?.bind(win) ?? ((fn) => later(fn, 16));
+    return { later, cancel, nextFrame };
 }
 
 /**
@@ -113,9 +138,7 @@ export function initWindowAffordances(
         return null;
     }
     if (!isShellRuntime(win.location) || !doc.documentElement?.classList?.add) return null;
-    const later = win.setTimeout?.bind(win) ?? globalThis.setTimeout;
-    const cancel = win.clearTimeout?.bind(win) ?? globalThis.clearTimeout;
-    const nextFrame = win.requestAnimationFrame?.bind(win) ?? ((fn) => later(fn, 16));
+    const { later, cancel, nextFrame } = windowTiming(win);
     const bar = doc.querySelector(".mma-drag-bar");
     if (!bar) {
         return null;
@@ -123,11 +146,7 @@ export function initWindowAffordances(
     doc.documentElement.classList.add("shell-window");
 
     const card = doc.querySelector(".main-card");
-    const hints = buildHints(doc);
-    const bands = {};
-    for (const edge of EDGES) {
-        bands[edge] = hints.querySelector(`.mma-edge-${edge}`);
-    }
+    const { hints, bands } = buildHints(doc);
 
     let pointer = null; // 最近一次鼠标位置（窗口坐标）
     let frame = 0;
@@ -136,36 +155,17 @@ export function initWindowAffordances(
     let hintDirty = false;
     let hintTimer = 0;
 
-    function applyBarTop() {
-        const scale = Number.parseFloat(win.getComputedStyle?.(doc.documentElement)?.zoom) || 1;
-        doc.body.style.setProperty("--mma-window-unit", `${1 / scale}px`);
-        const barHeight = DRAG_BAR_HEIGHT / scale;
-        bar.style.height = `${barHeight}px`;
-        // Keep the frame independent of the content zoom.
-        hints.style.zoom = String(1 / scale);
-        const rect = card && typeof card.getBoundingClientRect === "function"
-            ? card.getBoundingClientRect()
-            : null;
-        const cardTop = rect ? Number(rect.top) / scale : Number.NaN;
-        const windowHeight = (Number(win.innerHeight) || 0) / scale;
-        const top = computeBarTop(cardTop, barHeight, windowHeight);
-        bar.style.top = `${Math.max(6 / scale, top)}px`;
-        if (rect) bar.style.left = `${(rect.left + rect.width / 2) / scale}px`;
-    }
-
     /** 四条边带的亮灭：按最近一次鼠标位置重算（离开窗口 = 全灭）。 */
     function applyEdges() {
         const active = new Set(pointer
             ? edgeFor(pointer.x, pointer.y, Number(win.innerWidth) || 0, Number(win.innerHeight) || 0)
             : []);
         const overBar = Boolean(pointer?.overBar);
-        bar.classList?.toggle("drag-hover", overBar);
-        hints.classList?.toggle("drag-active", overBar);
+        bar.classList?.toggle?.("drag-hover", overBar);
+        hints.classList?.toggle?.("drag-active", overBar);
         for (const edge of EDGES) {
             const band = bands[edge];
-            if (band && band.classList) {
-                band.classList.toggle("active", active.has(edge));
-            }
+            band.classList?.toggle?.("active", active.has(edge));
         }
         // 只有新的鼠标输入延长提示；卡片布局刷新不延长高亮。
         if (hintDirty) {
@@ -185,7 +185,7 @@ export function initWindowAffordances(
             frame = 0;
             if (barDirty) {
                 barDirty = false;
-                applyBarTop();
+                layoutGrip(doc, win, bar, card, hints);
             }
             if (edgeDirty) {
                 edgeDirty = false;
@@ -212,8 +212,8 @@ export function initWindowAffordances(
     }
 
     function clearDragHover() {
-        bar.classList?.remove("drag-hover");
-        hints.classList?.remove("drag-active");
+        bar.classList?.remove?.("drag-hover");
+        hints.classList?.remove?.("drag-active");
     }
 
     function clearPointer() {
@@ -224,7 +224,7 @@ export function initWindowAffordances(
         edgeDirty = false;
         clearDragHover();
         for (const band of Object.values(bands)) {
-            band?.classList?.remove("active");
+            band?.classList?.remove?.("active");
         }
     }
 
@@ -239,26 +239,26 @@ export function initWindowAffordances(
         }
     }
 
-    bar.addEventListener("mouseenter", onPointerMove);
-    bar.addEventListener("mouseleave", clearPointer);
-    bar.addEventListener("mousedown", (event) => startGesture(event, "dragStart"));
-    hints.addEventListener("mousedown", (event) => {
+    bar.addEventListener?.("mouseenter", onPointerMove);
+    bar.addEventListener?.("mouseleave", clearPointer);
+    bar.addEventListener?.("mousedown", (event) => startGesture(event, "dragStart"));
+    hints.addEventListener?.("mousedown", (event) => {
         const handle = event.target?.closest?.(".mma-resize-handle");
         if (handle) {
             startGesture(event, "resizeStart", handle.dataset.direction);
         }
     });
     win.addEventListener("mousemove", onPointerMove);
-    doc.addEventListener("mouseleave", clearPointer);
-    doc.documentElement.addEventListener("pointerleave", clearPointer);
-    doc.addEventListener("mouseout", (event) => {
+    doc.addEventListener?.("mouseleave", clearPointer);
+    doc.documentElement.addEventListener?.("pointerleave", clearPointer);
+    doc.addEventListener?.("mouseout", (event) => {
         if (!event.relatedTarget) {
             clearPointer();
         }
     });
     win.addEventListener("blur", clearPointer);
     win.addEventListener("pointercancel", clearPointer);
-    doc.addEventListener("visibilitychange", () => {
+    doc.addEventListener?.("visibilitychange", () => {
         if (doc.hidden) {
             clearPointer();
         }

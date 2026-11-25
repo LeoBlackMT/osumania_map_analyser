@@ -91,6 +91,8 @@ impl AppBuilder {
 
                 let shared = server::start(plugin_dir.clone(), tosu);
                 server::set_app_handle(&shared, app.handle().clone());
+                #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+                super::lazer_launcher::launch_if_requested();
 
                 if let Some(window) = app.get_webview_window("main") {
                     server::set_main_window(&shared, window.clone());

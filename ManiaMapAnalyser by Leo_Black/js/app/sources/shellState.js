@@ -137,8 +137,13 @@ function applyMalodyBridgeFields(malody) {
     state.malodyPlaying = Boolean(malody.playing);
     state.malodyEventSeq = Number(malody.eventSeq) || 0;
     state.malodyJudge = malody.judge ?? null;
-    // 静默后不再应答旧请求；谱面原文随身份保存，不会用于下一张 osu 谱。
+    // 静默时保留卡片，但失效这张桥谱，避免延迟重算分析已离场的游戏。
     if (malody.transport !== "bridge" && state.cardOwner === "malody-bridge") {
+        const frame = state.lastBeatmapIdentityInfo;
+        if (frame?.source === "malody" && frame.externalText) {
+            frame.externalText = null;
+            state.analysisEpoch++;
+        }
         state.pendingSourceRequestId = null;
         state.pendingSourceActive = null;
     }
