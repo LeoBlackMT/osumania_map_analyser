@@ -218,6 +218,7 @@ fn osu_source(shared: &Shared) -> OsuSource {
         .unwrap_or_else(|| ("127.0.0.1".to_string(), TOSU_DEFAULT_PORT));
     osu_source::build(osu_source::Inputs {
         reader_alive,
+        lazer_lane_acc_ready: reader.as_ref().is_some_and(|state| state.lazer_lane_acc_ready),
         reader_down_ms,
         gate: &gate,
         client,

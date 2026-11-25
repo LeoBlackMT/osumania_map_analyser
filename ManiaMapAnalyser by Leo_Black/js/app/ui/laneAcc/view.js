@@ -674,7 +674,8 @@ export const laneAccView = (() => {
         } else if (client) {
             return "lazer";
         }
-        if (state.externalBridgeAvailable && state.shellOsuNativeAlive === false) {
+        const lazerReaderReady = client.includes("lazer") && state.shellLazerLaneAccReady;
+        if (state.externalBridgeAvailable && !state.shellOsuNativeAlive && !lazerReaderReady) {
             return "native";
         }
         if (activeChart && (activeChart.columnCount < 4 || activeChart.columnCount > 18)) {

@@ -37,39 +37,12 @@ pub fn read_eetype(
     object: u64,
     modules: &[(u64, String)],
 ) -> Result<EetypeRead, String> {
-    let token = table
-        .runtime_entry("eetype", "token")
-        .ok_or_else(|| "offsets-missing-runtime:eetype.token".to_string())?;
-    if token.shift > 24 {
-        return Err("token-domain".to_string());
-    }
-    let loader_module = table
-        .runtime_entry("eetype", "loader_module")
-        .ok_or_else(|| "offsets-missing-runtime:eetype.loader_module".to_string())?;
+    let mut read = read_eetype_identity(source, table, object)?;
     let image_base_entry = table
         .runtime_entry("module", "image_base")
         .ok_or_else(|| "offsets-missing-runtime:module.image_base".to_string())?;
 
-    let mut read = EetypeRead {
-        object,
-        ..EetypeRead::default()
-    };
-    read.method_table = read_u64(source, object).ok_or_else(|| "read-methodtable".to_string())?;
-    if !plausible_ptr(read.method_table) {
-        return Err("methodtable-implausible".to_string());
-    }
-    let token_addr = field_addr(read.method_table, token.offset).ok_or_else(|| "token-domain".to_string())?;
-    let packed = read_u32(source, token_addr).ok_or_else(|| "read-token".to_string())?;
-    read.rid = packed >> token.shift;
-    if read.rid == 0 {
-        return Err("token-domain".to_string());
-    }
-    let module_addr =
-        field_addr(read.method_table, loader_module.offset).ok_or_else(|| "module-implausible".to_string())?;
-    read.module = read_u64(source, module_addr).ok_or_else(|| "read-loader-module".to_string())?;
-    if !plausible_ptr(read.module) {
-        return Err("module-implausible".to_string());
-    }
+    // Windows identifies the loader module by its mapped PE image.
     let image_addr =
         field_addr(read.module, image_base_entry.offset).ok_or_else(|| "image-base-implausible".to_string())?;
     read.image_base = read_u64(source, image_addr).ok_or_else(|| "read-image-base".to_string())?;
@@ -89,6 +62,38 @@ pub fn read_eetype(
     read.module_name = Some(module_name);
     read.type_name = Some(type_name);
     Ok(read)
+}
+
+pub(crate) fn read_eetype_identity(
+    source: &dyn Source,
+    table: &OffsetTable,
+    object: u64,
+) -> Result<EetypeRead, String> {
+    let token = table
+        .runtime_entry("eetype", "token")
+        .ok_or_else(|| "offsets-missing-runtime:eetype.token".to_string())?;
+    if token.shift > 24 {
+        return Err("token-domain".to_string());
+    }
+    let loader_module = table
+        .runtime_entry("eetype", "loader_module")
+        .ok_or_else(|| "offsets-missing-runtime:eetype.loader_module".to_string())?;
+    let method_table = read_u64(source, object).ok_or_else(|| "read-methodtable".to_string())?;
+    if !plausible_ptr(method_table) {
+        return Err("methodtable-implausible".to_string());
+    }
+    let token_addr = field_addr(method_table, token.offset).ok_or_else(|| "token-domain".to_string())?;
+    let rid = read_u32(source, token_addr).ok_or_else(|| "read-token".to_string())? >> token.shift;
+    if rid == 0 {
+        return Err("token-domain".to_string());
+    }
+    let module_addr = field_addr(method_table, loader_module.offset)
+        .ok_or_else(|| "module-implausible".to_string())?;
+    let module = read_u64(source, module_addr).ok_or_else(|| "read-loader-module".to_string())?;
+    if !plausible_ptr(module) {
+        return Err("module-implausible".to_string());
+    }
+    Ok(EetypeRead { object, method_table, rid, module, ..EetypeRead::default() })
 }
 
 /// 直接从已加载 PE 模块的 CLI 元数据表解析 TypeDef 名字。
@@ -283,64 +288,11 @@ pub fn read_screen_state(
     chain: &mut ChainAddrs,
     modules: &[(u64, String)],
 ) -> ScreenOutcome {
-    let unresolved = |reason: String| ScreenOutcome::Unresolved(reason);
-    let lookup = |offset: &Result<i64, LookupError>| -> Result<i64, String> {
-        offset.clone().map_err(|error| format!("offsets-{error}"))
-    };
-    let stack_offset = match lookup(&resolved.screen_stack) {
-        Ok(value) => value,
+    let unresolved = ScreenOutcome::Unresolved;
+    let element = match read_screen_top(source, table, game_base, resolved, chain) {
+        Ok(element) => element,
         Err(reason) => return unresolved(reason),
     };
-    let list_offset = match lookup(&resolved.screen_stack_list) {
-        Ok(value) => value,
-        Err(reason) => return unresolved(reason),
-    };
-    let array_offset = match lookup(&resolved.screen_stack_array) {
-        Ok(value) => value,
-        Err(reason) => return unresolved(reason),
-    };
-    let size_offset = match lookup(&resolved.screen_stack_size) {
-        Ok(value) => value,
-        Err(reason) => return unresolved(reason),
-    };
-
-    chain.screen_stack = read_ptr_field(source, game_base, stack_offset);
-    let Some(screen_stack) = chain.screen_stack else {
-        return unresolved("read-<ScreenStack>".to_string());
-    };
-    chain.screen_stack_list = read_ptr_field(source, screen_stack, list_offset);
-    let Some(stack) = chain.screen_stack_list else {
-        return unresolved("read-OsuScreenStack.stack".to_string());
-    };
-    chain.screen_stack_array = read_ptr_field(source, stack, array_offset);
-    let Some(array) = chain.screen_stack_array else {
-        return unresolved("read-Stack._array".to_string());
-    };
-    let array_entry = match table.runtime_entry("screen_array", "elements") {
-        Some(entry) => entry,
-        None => return unresolved("offsets-missing-runtime:screen_array.elements".to_string()),
-    };
-    let Some(size_addr) = field_addr(stack, size_offset) else {
-        return unresolved("read-Stack._size".to_string());
-    };
-    let Some(size) = read_i32(source, size_addr) else {
-        return unresolved("read-Stack._size".to_string());
-    };
-    if size <= 0 || size > SCREEN_STACK_MAX {
-        return unresolved(format!("screen-stack-empty:{size}"));
-    }
-    let index = (size - 1) as i64;
-    let stride = array_entry.stride.max(8);
-    let Some(element_addr) = field_addr(array, array_entry.offset + index.saturating_mul(stride)) else {
-        return unresolved("element-address".to_string());
-    };
-    let Some(element) = read_u64(source, element_addr) else {
-        return unresolved("read-screen-element".to_string());
-    };
-    if !plausible_ptr(element) {
-        return unresolved("screen-element-implausible".to_string());
-    }
-    chain.screen_top = Some(element);
     let read = match read_eetype(source, table, element, modules) {
         Ok(read) => read,
         Err(reason) => {
@@ -370,6 +322,45 @@ pub fn read_screen_state(
         },
         None => ScreenOutcome::Unmapped(type_name),
     }
+}
+
+pub(crate) fn read_screen_top(
+    source: &dyn Source,
+    table: &OffsetTable,
+    game_base: u64,
+    resolved: &Resolved,
+    chain: &mut ChainAddrs,
+) -> Result<u64, String> {
+    let lookup = |offset: &Result<i64, LookupError>| {
+        offset.clone().map_err(|error| format!("offsets-{error}"))
+    };
+    let stack_offset = lookup(&resolved.screen_stack)?;
+    let list_offset = lookup(&resolved.screen_stack_list)?;
+    let array_offset = lookup(&resolved.screen_stack_array)?;
+    let size_offset = lookup(&resolved.screen_stack_size)?;
+    chain.screen_stack = read_ptr_field(source, game_base, stack_offset);
+    let screen_stack = chain.screen_stack.ok_or("read-<ScreenStack>")?;
+    chain.screen_stack_list = read_ptr_field(source, screen_stack, list_offset);
+    let stack = chain.screen_stack_list.ok_or("read-OsuScreenStack.stack")?;
+    chain.screen_stack_array = read_ptr_field(source, stack, array_offset);
+    let array = chain.screen_stack_array.ok_or("read-Stack._array")?;
+    let array_entry = table.runtime_entry("screen_array", "elements")
+        .ok_or("offsets-missing-runtime:screen_array.elements")?;
+    let size_addr = field_addr(stack, size_offset).ok_or("read-Stack._size")?;
+    let size = read_i32(source, size_addr).ok_or("read-Stack._size")?;
+    if size <= 0 || size > SCREEN_STACK_MAX {
+        return Err(format!("screen-stack-empty:{size}"));
+    }
+    let index = i64::from(size - 1);
+    let stride = array_entry.stride.max(8);
+    let element_addr = field_addr(array, array_entry.offset + index.saturating_mul(stride))
+        .ok_or("element-address")?;
+    let element = read_u64(source, element_addr).ok_or("read-screen-element")?;
+    if !plausible_ptr(element) {
+        return Err("screen-element-implausible".to_string());
+    }
+    chain.screen_top = Some(element);
+    Ok(element)
 }
 
 pub fn runtime_probe(

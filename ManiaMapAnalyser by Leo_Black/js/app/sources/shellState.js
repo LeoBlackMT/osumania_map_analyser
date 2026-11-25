@@ -74,6 +74,7 @@ export function applyShellState(payload) {
     // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
     // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
     const osu = sources.osu || null;
+    state.shellLazerLaneAccReady = osu?.lazerLaneAccReady === true;
     const previousOsuPhase = state.shellOsuPhase;
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;

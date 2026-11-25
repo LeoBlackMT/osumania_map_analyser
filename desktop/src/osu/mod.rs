@@ -166,6 +166,7 @@ pub struct ReaderState {
     pub phase_notice: String,
     pub scan: Option<ScanProgress>,
     pub lazer: Option<lazer::Diagnostics>,
+    pub lazer_lane_acc_ready: bool,
 }
 
 impl Default for ReaderState {
@@ -190,6 +191,7 @@ impl Default for ReaderState {
             phase_notice: String::new(),
             scan: None,
             lazer: None,
+            lazer_lane_acc_ready: false,
         }
     }
 }

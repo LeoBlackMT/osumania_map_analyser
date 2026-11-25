@@ -22,6 +22,8 @@ pub mod score;
 pub mod mods;
 pub mod osr;
 pub mod frame;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) mod linux;
 
 pub use fields::*;
 pub use source::*;
