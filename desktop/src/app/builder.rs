@@ -8,7 +8,7 @@ use crate::settings_window;
 use super::shortcuts::register_global_shortcuts;
 use super::url::startup_url;
 use super::window_events::{handle_window_event, APP_INITIALIZED};
-use super::window_state::{spawn_window_state_watchdog, WINDOW_STATE};
+use super::window_state::{initialize_topmost, spawn_window_state_watchdog, WINDOW_STATE};
 
 /// 检查窗口矩形是否与任意可用显示器有重叠（防止断开显示器或分辨率改变后窗口落在虚空中）。
 pub fn is_window_visible_on_any_monitor(
@@ -113,7 +113,7 @@ impl AppBuilder {
                     }
                     let _ = window.set_size(tauri::PhysicalSize::new(saved.w, saved.h));
                     *WINDOW_STATE.lock().unwrap() = saved.clone();
-                    let _ = window.set_always_on_top(saved.topmost);
+                    initialize_topmost(&window, saved.topmost);
                     if saved.click_through {
                         let _ = window.set_ignore_cursor_events(true);
                     }

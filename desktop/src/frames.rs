@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 12 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 13 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 12;
+pub const CONTRACT_VERSION: u32 = 13;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -315,12 +315,13 @@ pub struct HitEventItem {
     pub offset: f64,
 }
 
-// 页面 → 壳控制帧（契约 v2：窗口操控）。
+// 页面 → 壳控制帧（v13 增加 resizeStart 的 direction）。
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ControlInbound {
     pub action: String,
     pub value: Option<bool>,
+    pub direction: Option<tauri_runtime::ResizeDirection>,
 }
 
 // Malody 编辑器 POST 载荷。

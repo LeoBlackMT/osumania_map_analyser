@@ -54,6 +54,30 @@ pub fn merge_disk_flags_and_persist() {
     mark_geometry_dirty();
 }
 
+/// 初次映射后重设置顶，避免 GTK 建窗时的映射流程覆盖已保存的状态。
+pub(super) fn initialize_topmost(window: &tauri::WebviewWindow, topmost: bool) {
+    #[cfg(target_os = "linux")]
+    if let Ok(native) = window.gtk_window() {
+        use gtk::prelude::WidgetExt;
+        native.connect_map(|native| {
+            super::kde_overlay::apply(native, config::read_window_state().topmost);
+        });
+    }
+    apply_topmost(window, topmost);
+}
+
+pub(crate) fn apply_topmost(window: &tauri::WebviewWindow, topmost: bool) {
+    let handle = window.app_handle().clone();
+    let window = window.clone();
+    let _ = handle.run_on_main_thread(move || {
+        let _ = window.set_always_on_top(topmost);
+        #[cfg(target_os = "linux")]
+        if let Ok(native) = window.gtk_window() {
+            super::kde_overlay::apply(&native, topmost);
+        }
+    });
+}
+
 /// 切换置顶/穿透：入参为目标值；应用窗口 API 并立即写盘。
 pub fn apply_flag_change(app: &tauri::AppHandle, topmost: Option<bool>, click_through: Option<bool>) {
     {
@@ -69,7 +93,7 @@ pub fn apply_flag_change(app: &tauri::AppHandle, topmost: Option<bool>, click_th
             return;
         };
         if let Some(v) = topmost {
-            let _ = window.set_always_on_top(v);
+            apply_topmost(&window, v);
         }
         if let Some(v) = click_through {
             let _ = window.set_ignore_cursor_events(v);

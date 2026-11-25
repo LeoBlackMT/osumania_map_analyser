@@ -16,14 +16,19 @@ pub fn handle_control(shared: &Shared, ctrl: &ControlInbound) {
             let _ = window.close();
         }
         "alwaysOnTop" => {
-            let _ = window.set_always_on_top(ctrl.value.unwrap_or(true));
+            crate::app::window_state::apply_flag_change(window.app_handle(), Some(ctrl.value.unwrap_or(true)), None);
         }
         "clickThrough" => {
-            let _ = window.set_ignore_cursor_events(ctrl.value.unwrap_or(true));
+            crate::app::window_state::apply_flag_change(window.app_handle(), None, Some(ctrl.value.unwrap_or(true)));
         }
         "dragStart" => {
             let window2 = window.clone();
             let _ = window2.start_dragging();
+        }
+        "resizeStart" => {
+            if let Some(direction) = ctrl.direction {
+                let _ = window.as_ref().window_ref().start_resize_dragging(direction);
+            }
         }
         // 窗口内快捷键兜底（Wayland 无全局快捷键；页面 keydown → 此处 toggle）。
         // 状态以 mma-shell-state.json 为准（main.rs 全局快捷键同源写盘），
@@ -40,15 +45,12 @@ fn toggle_window_flag(window: &tauri::WebviewWindow, topmost: bool) {
     // 状态读写都在主线程闭包内进行：read → 取反 → set → 写盘。
     // （若在闭包外读，连续两次 toggle 会读到同一旧值 → 竞态翻转失效。）
     let _ = app.run_on_main_thread(move || {
-        let mut saved = crate::config::read_window_state();
-        if topmost {
-            saved.topmost = !saved.topmost;
-            let _ = window2.set_always_on_top(saved.topmost);
-        } else {
-            saved.click_through = !saved.click_through;
-            let _ = window2.set_ignore_cursor_events(saved.click_through);
-        }
-        crate::config::write_window_state(&saved);
+        let saved = crate::config::read_window_state();
+        crate::app::window_state::apply_flag_change(
+            window2.app_handle(),
+            topmost.then_some(!saved.topmost),
+            (!topmost).then_some(!saved.click_through),
+        );
     });
 }
 

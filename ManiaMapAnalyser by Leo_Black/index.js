@@ -5,20 +5,6 @@ const _VERSION = "3.0.3";
 
 const TELEMETRY_ENDPOINT = "https://mma-stats.leoblack.top";
 
-// 壳窗口拖动把手：HTML drag region 在透明窗口部分环境失效 → mousedown 经桥
-// control 帧触发窗口 start_dragging（浏览器模式 no-op）。
-document.addEventListener("DOMContentLoaded", () => {
-    const dragBar = document.querySelector(".mma-drag-bar");
-    if (dragBar) {
-        dragBar.addEventListener("mousedown", (event) => {
-            if (event.button === 0) {
-                event.preventDefault();
-                sendControl("dragStart", null);
-            }
-        });
-    }
-});
-
 // 窗口内快捷键（Wayland 兜底）：tauri-plugin-global-shortcut 基于 X11 XGrabKey，
 // Wayland 会话下注册成功却永不触发 → 壳窗口聚焦时改由页面 keydown 经 control 帧
 // toggle（X11/Windows 全局快捷键仍照常工作，两通道并存）。键位与壳默认一致：

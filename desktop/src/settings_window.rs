@@ -1,14 +1,13 @@
 // 设置窗口（壳内第二个 OS 窗口，承载壳本机 HTTP 端口上的 settings.html）。
 //
 // ---- 线程规则（必须遵守；改动本文件前先读）----
-// 除原子标志与文件 I/O 外，**一切** Tauri 窗口 API（`get_webview_window` / `show` /
-// `unminimize` / `set_focus` / `build` / `close` / `set_always_on_top`）只在
-// `std::thread::spawn` 的闭包内调用；快捷键回调、`on_window_event`、HTTP 线程只碰
-// 原子标志与文件。理由（三条均已按源码核实）：
+// 设置窗口的查找、显隐、聚焦、创建与关闭 API 只在 std::thread::spawn 的闭包内调用；
+// 主窗置顶经 window_state::apply_topmost 转交主线程，确保 GTK 操作线程正确。
+// 快捷键与窗口事件回调只碰原子标志、文件 I/O 或启动独立线程。理由（三条均已核实）：
 //   * `tauri-runtime-wry-2.11.4/src/lib.rs:235-255`：`send_user_message` 在
 //     `current_thread().id() == context.main_thread_id` 时**直接内联**调用
 //     `handle_user_message`——主线程调用不是"排队延迟"，故 `run_on_main_thread`
-//     也不是解法；
+//     也不能用于设置窗口的同步创建；主窗已有 GTK 对象的属性更新由适配器处理；
 //   * `tauri-runtime-wry-2.11.4/src/lib.rs:2757-2768`（上游注释，`create_window` /
 //     `create_webview`）："must be called from a separate thread, otherwise the
 //     channel will introduce a deadlock"；
@@ -114,7 +113,7 @@ pub fn open_or_focus(app: &AppHandle, plugin_dir: &Path) {
                 crate::server::log::log_line("settings window opened");
                 // 设置窗口在前期间取消主窗置顶（不写盘；关闭/失败时按磁盘恢复）。
                 if let Some(main) = app.get_webview_window("main") {
-                    let _ = main.set_always_on_top(false);
+                    crate::app::window_state::apply_topmost(&main, false);
                 }
             }
             Err(e) => {
@@ -143,7 +142,7 @@ pub fn restore_main_topmost(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         if let Some(main) = app.get_webview_window("main") {
-            let _ = main.set_always_on_top(crate::config::read_window_state().topmost);
+            crate::app::window_state::apply_topmost(&main, crate::config::read_window_state().topmost);
         }
     });
 }

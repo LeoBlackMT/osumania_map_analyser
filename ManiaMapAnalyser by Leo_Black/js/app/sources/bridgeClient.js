@@ -8,7 +8,7 @@ import { state } from "../core/appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 12;
+const CONTRACT_VERSION = 13;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *
@@ -20,8 +20,10 @@ const CONTRACT_VERSION = 12;
  * （原生传输的端点下发，缺省 ⇒ 页面继续用 `wsEndpoint`）；**v7** 增加桥通道
  * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）；**v9** 新增 `mania_hit_events` 下行与
  * `laneacc_sync` 上行（LaneAcc / ScoreV1）；**v11** 新增 `replay_pauses` 下行与
- * `replay_pauses_sync` 上行（回放暂停）。页面按字段**逐个存在性**降级，
- * 不按版本号分支。只有越界（< 3 或 > 11）才算不匹配。
+ * `replay_pauses_sync` 上行（回放暂停）；**v12** 新增 Stable/ppysb `RD` seed；
+ * **v13** 新增 `control` `resizeStart`（`direction`）与 `sources.osu.lazerLaneAccReady`。
+ * 页面按字段**逐个存在性**降级，不按版本号分支。握手版本在 `MIN_ACCEPTED_CONTRACT` 到
+ * `CONTRACT_VERSION` 之外才算不匹配。
  *
  * ⚠️ 这个常量必须与壳侧 `desktop/src/frames.rs::CONTRACT_VERSION` 同步：壳升而页面不升，
  * `hello` 会被判为越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 不只数据帧不通，
@@ -65,8 +67,8 @@ export function sendResult(payload) {
     }
 }
 
-/** 发送窗口控制帧（契约 v2 control；供未来 UI 按钮使用，快捷键走壳全局注册）。 */
-export function sendControl(action, value) {
+/** 发送窗口控制帧；resizeStart 携带系统缩放方向。 */
+export function sendControl(action, value, direction = null) {
     if (!bridgeOnline()) {
         return;
     }
@@ -75,7 +77,7 @@ export function sendControl(action, value) {
         v: CONTRACT_VERSION,
         type: "control",
         seq,
-        payload: { action, value },
+        payload: { action, value, direction },
     });
     try {
         socket.send(frame);

@@ -2,6 +2,8 @@
 
 pub mod builder;
 pub mod instance;
+#[cfg(target_os = "linux")]
+mod kde_overlay;
 pub mod profile;
 pub mod shortcuts;
 pub mod url;
