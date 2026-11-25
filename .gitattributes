@@ -1,2 +1,6 @@
 # The Linux packager runs inside Docker; a CRLF checkout breaks bash with `$'\r'`.
 desktop/build-linux.sh text eol=lf
+
+# The release signatures cover the actual bytes in Git and in the installed package.
+desktop/offsets/lazer/*.json -text whitespace=trailing-space,space-before-tab,cr-at-eol
+desktop/offsets/stable/*.json -text whitespace=trailing-space,space-before-tab,cr-at-eol

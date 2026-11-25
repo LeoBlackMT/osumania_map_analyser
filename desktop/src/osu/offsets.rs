@@ -260,4 +260,19 @@ mod tests {
             assert!(path.is_file(), "missing packaged table: {}", path.display());
         }
     }
+
+    #[test]
+    fn bundled_lazer_tables_match_release_signatures() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("offsets");
+        let manifest: RemoteManifest =
+            serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        let mut checked_embedded = false;
+        for entry in manifest.tables.iter().filter(|t| t.client == "lazer") {
+            let bytes = std::fs::read(root.join(&entry.client).join(&entry.filename)).unwrap();
+            verify_table_signature(&bytes, &entry.sha256, &entry.signature, &ED25519_MASTER_PUBLIC_KEY)
+                .unwrap_or_else(|why| panic!("{}: {why}", entry.filename));
+            checked_embedded |= bytes == DEFAULT_LAZER_TABLE_JSON.as_bytes();
+        }
+        assert!(checked_embedded, "embedded lazer table missing from signed manifest");
+    }
 }

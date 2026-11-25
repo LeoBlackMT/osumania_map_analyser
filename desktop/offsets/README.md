@@ -6,6 +6,8 @@
 
 > **回放暂停**：看回放时如果右下角显示 `Pause Data Unavailable`，说明当前 lazer 版本的偏移表缺少回放哈希字段（`score_hash`）、该成绩没有回放文件，或成绩来自 **2025.816.0 之前**的 lazer（那时只记录暂停次数、不记录时间点）。2026.921 的偏移表已移除（该构建原生读取不可用、回落 tosu）；2026.1005 / 2026.1115 / 2026.1117 已包含。需要该功能时，可在游玩/回放中与结算屏各运行一次 `gen.exe` 重新生成表（见下文「方式三」）。
 
+发布偏移表前，在 `desktop/` 运行 `cargo run --example verify-offsets -- <待发布的 offsets 目录>`。它逐项检查发布字节的 SHA-256、Ed25519 签名和两张内嵌默认表是否在清单中。签名覆盖换行符；修改表的字段后，用偏移表的原发布密钥签署新字节，再更新清单。这与玩家反馈签名使用的密钥独立。
+
 ## 目录结构
 
 ```text
@@ -53,6 +55,8 @@ This directory contains configuration files and helper tools used by the desktop
 > **Replay pauses**: if the overlay shows `Pause Data Unavailable` while watching a replay, the offset table for this lazer build lacks the replay hash fields (`score_hash`), the score has no replay file, or the score was produced by a lazer build **older than 2025.816.0** (those only stored a pause count, not timestamps). The 2026.921 offset tables were removed (that build falls back to tosu); 2026.1005 / 2026.1115 / 2026.1117 do. To enable the feature, run `gen.exe` once during play/replay and once at the results screen (see "Method 3" below).
 
 ## Directory Layout
+
+Before publishing offsets, run `cargo run --example verify-offsets -- <staged-offsets-directory>` from `desktop/`. It checks each file’s SHA-256 and Ed25519 signature and the presence of both embedded defaults. Sign the final bytes, including line endings, with the existing offset publisher key. Client feedback uses a separate key.
 
 ```text
 offsets/
