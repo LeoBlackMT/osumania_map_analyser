@@ -11,18 +11,20 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const USAGE: &str = "\
 stable-offsets-gen - Maintainer probing tool for osu!stable 32-bit (MMA Offset v2)
 
 USAGE:
-  stable-offsets-gen [--out <file>] [--pid <n>] [--client <stable|ppysb>] [--json]
+  stable-offsets-gen [--out <file>] [--pid <n>] [--client <stable|ppysb>] [--revision <YYYYMMDD>] [--json]
   stable-offsets-gen -h | --help
 
 OPTIONS:
   --out <file>  Output json file path (default: stdout or desktop/offsets/stable/stable__x86.json)
   --pid <n>     Target specific osu!.exe process ID
   --client <c>  Emit client field: stable (default) or ppysb
+  --revision <n>  Monotonic table revision (default: current UTC date, YYYYMMDD)
   --json        Emit compact machine-readable json
 ";
 
@@ -173,6 +175,7 @@ fn run(args: &[String]) -> i32 {
     let mut out_path: Option<PathBuf> = None;
     let mut explicit_pid: Option<u32> = None;
     let mut client = "stable".to_string();
+    let mut revision = current_revision();
 
     let mut i = 0;
     while i < args.len() {
@@ -192,6 +195,10 @@ fn run(args: &[String]) -> i32 {
                 };
                 i += 2;
             }
+            "--revision" if i + 1 < args.len() => {
+                revision = args[i + 1].parse().unwrap_or_else(|_| current_revision());
+                i += 2;
+            }
             _ => {
                 i += 1;
             }
@@ -205,7 +212,7 @@ fn run(args: &[String]) -> i32 {
     }
 
     #[cfg(windows)]
-    match probe_stable(explicit_pid, &client) {
+    match probe_stable(explicit_pid, &client, revision) {
         Ok(table_json) => {
             if let Some(path) = out_path {
                 if let Err(e) = fs::write(&path, &table_json) {
@@ -236,7 +243,7 @@ fn run(args: &[String]) -> i32 {
 }
 
 #[cfg(windows)]
-fn probe_stable(explicit_pid: Option<u32>, client: &str) -> Result<String, String> {
+fn probe_stable(explicit_pid: Option<u32>, client: &str, revision: u64) -> Result<String, String> {
     use win_api::*;
 
     // 1. 查找 32 位 stable 进程
@@ -276,7 +283,7 @@ fn probe_stable(explicit_pid: Option<u32>, client: &str) -> Result<String, Strin
     }
 
     // 4. 组装标准 stable__x86.json 表
-    let json = format_stable_json(&probed_anchors, client);
+    let json = format_stable_json(&probed_anchors, client, revision);
     Ok(json)
 }
 
@@ -432,13 +439,45 @@ fn scan_pattern(handle: win_api::Handle, pattern_str: &str) -> Vec<usize> {
     hits
 }
 
-fn format_stable_json(anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>, client: &str) -> String {
+fn current_revision() -> u64 {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let days = seconds.div_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    (year as u64) * 10_000 + (month as u64) * 100 + day as u64
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (
+        if month <= 2 { year + 1 } else { year },
+        month as u32,
+        day as u32,
+    )
+}
+
+fn format_stable_json(
+    anchors: &BTreeMap<&'static str, (&PatternSpec, usize)>,
+    client: &str,
+    revision: u64,
+) -> String {
     let mut out = String::new();
     out.push_str("{\n");
     out.push_str("  \"$schema\": \"mma-offset-v2\",\n");
     out.push_str(&format!("  \"client\": \"{client}\",\n"));
     out.push_str(&format!("  \"version\": \"{client}-latest\",\n"));
     out.push_str("  \"arch\": \"x86\",\n");
+    out.push_str(&format!("  \"revision\": {revision},\n"));
     out.push_str("  \"anchors\": {\n");
 
     let count = anchors.len();

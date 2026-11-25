@@ -274,6 +274,9 @@ pub struct StableTable {
     pub client: String,
     pub version: String,
     pub arch: String,
+    /// 单调递增的发布修订号；旧表缺省为 0。
+    #[serde(default)]
+    pub revision: u64,
     pub anchors: BTreeMap<String, StableAnchorDef>,
     #[serde(default)]
     pub topology: StableTopology,

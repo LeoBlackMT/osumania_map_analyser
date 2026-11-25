@@ -87,7 +87,7 @@ desktop/src/
 │   │   ├── lazer_table.rs         # OffsetTable、RuntimeSection、就近回落
 │   │   ├── stable_table.rs        # StableTable、StableTopology、本地梯子发现
 │   │   ├── validation.rs          # 纯数据 Schema 安全与合理性校验器
-│   │   └── remote.rs              # Ed25519 签名验证、清单解析与原子落盘
+│   │   └── remote.rs              # Ed25519 签名验证、revision 门、清单解析、路径白名单与原子落盘
 │   ├── invariants.rs              # L1/L2 不变量、健康状态机与字段级冻结（L0 在 mod.rs，L3 影子在 shadow.rs）
 │   ├── stable.rs                  # 32 位 stable 内存读取、多跳链解析、hits 抽取
 │   ├── anchor_cache.rs            # 锚点特征码缓存池与复核

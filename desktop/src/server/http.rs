@@ -11,6 +11,7 @@ use crate::server::{
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -248,6 +249,131 @@ pub(crate) fn is_local_host(head: &str, port: u16) -> bool {
         format!("[::1]:{}", port),
     ];
     allowed.iter().any(|a| a == &host)
+}
+
+/// 本地运行期 offsets 缓存根目录，与 `remote_offsets_dir` 的 base_dir 规则一致。
+fn local_offsets_cache_root() -> Option<std::path::PathBuf> {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        Some(std::path::PathBuf::from(appdata).join("ManiaMapAnalyser").join("offsets"))
+    } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        Some(std::path::PathBuf::from(xdg).join("ManiaMapAnalyser").join("offsets"))
+    } else {
+        std::env::var("HOME").ok().map(|home| {
+            std::path::PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("ManiaMapAnalyser")
+                .join("offsets")
+        })
+    }
+}
+
+/// 当前可用的最新 lazer 表（APPDATA 缓存 / MMA_OFFSETS_DIR / 随包目录）。
+///
+/// 状态页只需要展示“当前最可能被加载的表”，不依赖正在运行的 osu! 进程；
+/// 真正的版本匹配仍由 `osu::lazer::table::load_table` 在读取时完成。
+fn latest_lazer_table() -> (crate::osu::offsets::OffsetTable, String) {
+    let mut best = crate::osu::offsets::default_lazer_table();
+    let mut best_source = "embedded".to_string();
+
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(dir) = std::env::var("MMA_OFFSETS_DIR") {
+        dirs.push(std::path::PathBuf::from(dir).join("lazer"));
+    }
+    if let Some(root) = local_offsets_cache_root() {
+        dirs.push(root.join("lazer"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            dirs.push(parent.join("offsets").join("lazer"));
+            dirs.push(parent.join("offset").join("lazer"));
+        }
+    }
+
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let Ok(table) = crate::osu::offsets::OffsetTable::load(&bytes) else {
+                continue;
+            };
+            let candidate_newer = if table.revision() > 0 && best.revision() > 0 {
+                table.revision() > best.revision()
+            } else {
+                crate::osu::offsets::version_is_newer(
+                    &table.lazer_version,
+                    &best.lazer_version,
+                )
+            };
+            if candidate_newer {
+                best = table;
+                best_source = path.display().to_string();
+            }
+        }
+    }
+
+    (best, best_source)
+}
+
+fn stable_table_source(variant: &str) -> String {
+    let is_ppysb = variant.eq_ignore_ascii_case("ppysb");
+    let filename = if is_ppysb {
+        "ppysb__x86.json"
+    } else {
+        "stable__x86.json"
+    };
+    let folders: &[&str] = if is_ppysb {
+        &["stable", "ppysb"]
+    } else {
+        &["stable"]
+    };
+    let explicit_var = if is_ppysb {
+        "MMA_PPYSB_OFFSETS"
+    } else {
+        "MMA_STABLE_OFFSETS"
+    };
+    if let Ok(explicit) = std::env::var(explicit_var) {
+        if std::path::Path::new(&explicit).is_file() {
+            return explicit;
+        }
+    }
+
+    let check = |base: std::path::PathBuf| -> Option<String> {
+        for folder in folders {
+            let path = base.join(folder).join(filename);
+            if path.is_file() {
+                return Some(path.display().to_string());
+            }
+        }
+        None
+    };
+
+    if let Ok(dir) = std::env::var("MMA_OFFSETS_DIR") {
+        if let Some(path) = check(std::path::PathBuf::from(dir)) {
+            return path;
+        }
+    }
+    if let Some(root) = local_offsets_cache_root() {
+        if let Some(path) = check(root) {
+            return path;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            if let Some(path) = check(parent.join("offsets")) {
+                return path;
+            }
+        }
+    }
+    "embedded".to_string()
 }
 
 fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &str) {
@@ -493,7 +619,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     if path == "/offsets/status" {
         let stable_table = crate::osu::offsets::find_stable_table(None);
         let ppysb_table = crate::osu::offsets::find_stable_table_variant(None, "ppysb");
-        let lazer_default = crate::osu::offsets::default_lazer_table();
+        let (lazer_table, lazer_source) = latest_lazer_table();
+        let stable_source = stable_table_source("stable");
+        let ppysb_source = stable_table_source("ppysb");
         let gen_ready = find_gen_executable(&shared).is_some();
         let body = serde_json::json!({
             "status": "ok",
@@ -502,7 +630,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             "stable": {
                 "client": stable_table.as_ref().map(|t| t.client.clone()).unwrap_or_else(|_| "stable".to_string()),
                 "version": stable_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
+                "revision": stable_table.as_ref().map(|t| t.revision).unwrap_or(0),
                 "arch": "x86",
+                "source": stable_source,
                 "anchors_count": stable_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
                 "loaded": stable_table.is_ok(),
                 "replay_frames_ready": stable_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
@@ -511,7 +641,9 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             "ppysb": {
                 "client": "ppysb",
                 "version": ppysb_table.as_ref().map(|t| t.version.clone()).unwrap_or_else(|_| "unknown".to_string()),
+                "revision": ppysb_table.as_ref().map(|t| t.revision).unwrap_or(0),
                 "arch": "x86",
+                "source": ppysb_source,
                 "anchors_count": ppysb_table.as_ref().map(|t| t.anchors.len()).unwrap_or(0),
                 "loaded": ppysb_table.is_ok(),
                 "replay_frames_ready": ppysb_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
@@ -519,11 +651,13 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             },
             "lazer": {
                 "client": "lazer",
-                "version": lazer_default.lazer_version,
-                "runtime_version": lazer_default.runtime_version,
-                "arch": lazer_default.arch,
-                "types_count": lazer_default.types.len(),
-                "score_ready": lazer_default.score().is_some(),
+                "version": lazer_table.lazer_version,
+                "revision": lazer_table.revision(),
+                "runtime_version": lazer_table.runtime_version,
+                "arch": lazer_table.arch,
+                "source": lazer_source,
+                "types_count": lazer_table.types.len(),
+                "score_ready": lazer_table.score().is_some(),
                 "loaded": true
             }
         });
@@ -754,62 +888,287 @@ fn create_curl_command() -> std::process::Command {
 pub const REMOTE_OFFSETS_MANIFEST: &str =
     "https://raw.githubusercontent.com/LeoBlackMT/osumania_map_analyser/main/desktop/offsets/manifest.json";
 
-fn local_table_version(client: &str, filename: &str) -> Option<String> {
-    let embedded = match client {
-        "lazer" => Some(crate::osu::offsets::default_lazer_table().lazer_version),
-        "stable" => Some(crate::osu::offsets::default_stable_table().version),
-        "ppysb" => Some(crate::osu::offsets::default_ppysb_table().version),
-        _ => None,
-    };
-    let installed = fs::read(crate::osu::offsets::remote_table_path(client, filename))
-        .ok()
-        .and_then(|bytes| match client {
-            "lazer" => crate::osu::offsets::OffsetTable::load(&bytes)
-                .ok()
-                .map(|table| table.lazer_version),
-            "stable" | "ppysb" => crate::osu::offsets::StableTable::load(&bytes)
-                .ok()
-                .map(|table| table.version),
-            _ => None,
-        });
-    match (embedded, installed) {
-        (Some(embedded), Some(installed)) => {
-            if crate::osu::offsets::version_is_newer(&installed, &embedded) {
-                Some(installed)
-            } else {
-                Some(embedded)
+#[derive(Clone, Debug, Default)]
+struct LocalTableInfo {
+    version: String,
+    revision: u64,
+}
+
+fn embedded_table_info(client: &str) -> LocalTableInfo {
+    match client {
+        "lazer" => {
+            let table = crate::osu::offsets::default_lazer_table();
+            let revision = table.revision();
+            LocalTableInfo {
+                version: table.lazer_version,
+                revision,
             }
         }
-        (embedded, installed) => installed.or(embedded),
+        "stable" => {
+            let table = crate::osu::offsets::default_stable_table();
+            LocalTableInfo {
+                version: table.version,
+                revision: table.revision,
+            }
+        }
+        "ppysb" => {
+            let table = crate::osu::offsets::default_ppysb_table();
+            LocalTableInfo {
+                version: table.version,
+                revision: table.revision,
+            }
+        }
+        _ => LocalTableInfo::default(),
     }
 }
 
-pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+fn read_table_info(path: &std::path::Path, client: &str) -> Option<LocalTableInfo> {
+    let bytes = fs::read(path).ok()?;
+    match client {
+        "lazer" => crate::osu::offsets::OffsetTable::load(&bytes)
+            .ok()
+            .map(|table| {
+                let revision = table.revision();
+                LocalTableInfo {
+                    version: table.lazer_version,
+                    revision,
+                }
+            }),
+        "stable" | "ppysb" => crate::osu::offsets::StableTable::load(&bytes)
+            .ok()
+            .map(|table| LocalTableInfo {
+                version: table.version,
+                revision: table.revision,
+            }),
+        _ => None,
+    }
+}
+
+fn table_info_is_newer(candidate: &LocalTableInfo, current: &LocalTableInfo) -> bool {
+    if candidate.revision > 0 && current.revision > 0 {
+        return candidate.revision > current.revision;
+    }
+    crate::osu::offsets::version_is_newer(&candidate.version, &current.version)
+}
+
+fn local_table_info(client: &str, filename: &str) -> LocalTableInfo {
+    let mut best = embedded_table_info(client);
+    let mut paths = vec![crate::osu::offsets::remote_table_path(client, filename)];
+
+    if let Ok(dir) = std::env::var("MMA_OFFSETS_DIR") {
+        let root = std::path::PathBuf::from(dir);
+        if client == "ppysb" {
+            paths.push(root.join("stable").join(filename));
+            paths.push(root.join("ppysb").join(filename));
+        } else {
+            paths.push(root.join(client).join(filename));
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            for folder in ["offsets", "offset"] {
+                let root = parent.join(folder);
+                if client == "ppysb" {
+                    paths.push(root.join("stable").join(filename));
+                    paths.push(root.join("ppysb").join(filename));
+                } else {
+                    paths.push(root.join(client).join(filename));
+                }
+            }
+        }
+    }
+
+    for path in paths {
+        if let Some(candidate) = read_table_info(&path, client) {
+            if table_info_is_newer(&candidate, &best) {
+                best = candidate;
+            }
+        }
+    }
+    best
+}
+
+fn read_remote_table_info(client: &str, content: &[u8]) -> Result<LocalTableInfo, String> {
+    match client {
+        "stable" | "ppysb" => {
+            let table = crate::osu::offsets::StableTable::load(content)
+                .map_err(|error| format!("stable_table_load: {error}"))?;
+            crate::osu::offsets::validate_stable_schema(&table)
+                .map_err(|error| format!("stable_schema: {error}"))?;
+            Ok(LocalTableInfo {
+                version: table.version,
+                revision: table.revision,
+            })
+        }
+        "lazer" => {
+            let table = crate::osu::offsets::OffsetTable::load(content)
+                .map_err(|error| format!("lazer_table_load: {error}"))?;
+            crate::osu::offsets::validate_lazer_schema(&table)
+                .map_err(|error| format!("lazer_schema: {error}"))?;
+            let revision = table.revision();
+            Ok(LocalTableInfo {
+                version: table.lazer_version,
+                revision,
+            })
+        }
+        _ => Err(format!("unsupported_client: {client}")),
+    }
+}
+
+fn remote_table_url_folder(client: &str) -> &str {
+    // ppysb 的随包表放在 offsets/stable 下；运行期缓存仍写 offsets/ppysb。
+    if client == "ppysb" {
+        "stable"
+    } else {
+        client
+    }
+}
+
+fn download_offsets_bytes(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+    let max_bytes_arg = max_bytes.to_string();
     let mut cmd = create_curl_command();
-    cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(manifest_url);
-    let output = match cmd.output() {
-        Ok(out) if out.status.success() => out,
-        _ => {
+    cmd.arg("-sS")
+        .arg("-f")
+        .arg("-L")
+        .arg("--connect-timeout")
+        .arg("5")
+        .arg("--max-time")
+        .arg("20")
+        .arg("--retry")
+        .arg("2")
+        .arg("--retry-delay")
+        .arg("1")
+        .arg("--max-filesize")
+        .arg(&max_bytes_arg)
+        .arg(url);
+    let output = cmd
+        .output()
+        .map_err(|error| format!("curl_spawn: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "curl_exit_{}: {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        ));
+    }
+    if output.stdout.len() > max_bytes {
+        return Err(format!(
+            "response_too_large: {} > {max_bytes}",
+            output.stdout.len()
+        ));
+    }
+    Ok(output.stdout)
+}
+
+fn offsets_update_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn push_offsets_error(
+    errors: &mut Vec<serde_json::Value>,
+    filename: &str,
+    stage: &str,
+    detail: impl Into<String>,
+) {
+    errors.push(serde_json::json!({
+        "filename": filename,
+        "stage": stage,
+        "detail": detail.into(),
+    }));
+}
+
+pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
+    let _guard = match offsets_update_lock().try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
             return serde_json::json!({
-                "status": "offline_fallback",
-                "code": "network_unavailable",
-                "message": "Network unavailable or remote host unreachable; keeping existing local offsets",
+                "status": "busy",
+                "code": "update_in_progress",
+                "message": "Another offsets update is already running",
                 "updated": 0,
-                "skipped": 0
+                "skipped": 0,
+                "failed": 0,
+                "errors": []
             });
         }
     };
 
-    let manifest_bytes = output.stdout;
-    let Ok(manifest) = serde_json::from_slice::<crate::osu::offsets::RemoteManifest>(&manifest_bytes) else {
+    let manifest_bytes = match download_offsets_bytes(manifest_url, 1024 * 1024) {
+        Ok(bytes) => bytes,
+        Err(detail) => {
+            return serde_json::json!({
+                "status": "offline_fallback",
+                "code": "network_unavailable",
+                "message": "Network unavailable or remote host unreachable; keeping existing local offsets",
+                "detail": detail,
+                "updated": 0,
+                "skipped": 0,
+                "failed": 0,
+                "errors": []
+            });
+        }
+    };
+
+    let manifest = match serde_json::from_slice::<crate::osu::offsets::RemoteManifest>(
+        &manifest_bytes,
+    ) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            return serde_json::json!({
+                "status": "error",
+                "code": "manifest_unreadable",
+                "message": "Remote manifest unreadable or malformed",
+                "detail": error.to_string(),
+                "updated": 0,
+                "skipped": 0,
+                "failed": 1,
+                "errors": [{
+                    "filename": "manifest.json",
+                    "stage": "manifest_parse",
+                    "detail": error.to_string()
+                }]
+            });
+        }
+    };
+
+    if manifest.schema_version != crate::osu::offsets::MANIFEST_SCHEMA_VERSION {
         return serde_json::json!({
             "status": "error",
-            "code": "manifest_unreadable",
-            "message": "Remote manifest unreadable or malformed",
+            "code": "manifest_schema_unsupported",
+            "message": format!(
+                "Unsupported remote manifest schema_version: {} (expected {})",
+                manifest.schema_version,
+                crate::osu::offsets::MANIFEST_SCHEMA_VERSION
+            ),
             "updated": 0,
-            "skipped": 0
+            "skipped": 0,
+            "failed": 1,
+            "errors": [{
+                "filename": "manifest.json",
+                "stage": "manifest_schema",
+                "detail": format!("schema_version={}", manifest.schema_version)
+            }]
         });
-    };
+    }
+
+    if let Err(error) = manifest.verify_manifest_signature() {
+        return serde_json::json!({
+            "status": "error",
+            "code": "manifest_signature_invalid",
+            "message": "Remote manifest signature verification failed",
+            "detail": error,
+            "updated": 0,
+            "skipped": 0,
+            "failed": 1,
+            "errors": [{
+                "filename": "manifest.json",
+                "stage": "manifest_signature",
+                "detail": error
+            }]
+        });
+    }
 
     let base_url = if let Some((base, _)) = manifest_url.rsplit_once('/') {
         base
@@ -819,57 +1178,140 @@ pub fn check_and_apply_remote_offsets(manifest_url: &str) -> serde_json::Value {
 
     let mut updated_count = 0;
     let mut skipped_count = 0;
-    for table in manifest.tables {
-        let table_url = format!("{base_url}/{}/{}", table.client, table.filename);
-        let mut t_cmd = create_curl_command();
-        t_cmd.arg("-s").arg("-f").arg("-L").arg("--connect-timeout").arg("5").arg(&table_url);
-        let Ok(t_out) = t_cmd.output() else { continue };
-        if !t_out.status.success() { continue };
+    let mut errors: Vec<serde_json::Value> = Vec::new();
 
-        let content = t_out.stdout;
-        // 验签
-        if crate::osu::offsets::verify_table_signature(
+    for table in manifest.tables {
+        if !crate::osu::offsets::is_supported_client(&table.client) {
+            push_offsets_error(
+                &mut errors,
+                &table.filename,
+                "client",
+                format!("unsupported client: {}", table.client),
+            );
+            continue;
+        }
+        if !crate::osu::offsets::is_safe_table_filename(&table.filename) {
+            push_offsets_error(
+                &mut errors,
+                &table.filename,
+                "filename",
+                "unsafe table filename",
+            );
+            continue;
+        }
+
+        let table_url = format!(
+            "{base_url}/{}/{}",
+            remote_table_url_folder(&table.client),
+            table.filename
+        );
+        let content = match download_offsets_bytes(
+            &table_url,
+            crate::osu::offsets::MAX_TABLE_BYTES,
+        ) {
+            Ok(content) => content,
+            Err(detail) => {
+                push_offsets_error(&mut errors, &table.filename, "download", detail);
+                continue;
+            }
+        };
+
+        if let Err(error) = crate::osu::offsets::verify_table_signature(
             &content,
             &table.sha256,
             &table.signature,
             &crate::osu::offsets::ED25519_MASTER_PUBLIC_KEY,
-        ).is_err() {
+        ) {
+            push_offsets_error(&mut errors, &table.filename, "signature", error);
             continue;
         }
 
-        // Schema 校验门 + 版本门：远端表可能比本地/内嵌表更旧——只允许严格更新，
-        // 不允许把刚生成/随包的新表降级覆盖。
-        let remote_version = if table.client == "stable" {
-            let Ok(stable_t) = crate::osu::offsets::StableTable::load(&content) else { continue };
-            if crate::osu::offsets::validate_stable_schema(&stable_t).is_err() { continue };
-            stable_t.version
-        } else if table.client == "lazer" {
-            let Ok(lazer_t) = crate::osu::offsets::OffsetTable::load(&content) else { continue };
-            if crate::osu::offsets::validate_lazer_schema(&lazer_t).is_err() { continue };
-            lazer_t.lazer_version
-        } else {
-            table.game_version.clone()
+        let remote_info = match read_remote_table_info(&table.client, &content) {
+            Ok(info) => info,
+            Err(detail) => {
+                push_offsets_error(&mut errors, &table.filename, "schema", detail);
+                continue;
+            }
         };
-        let local_version = local_table_version(&table.client, &table.filename).unwrap_or_default();
-        if !crate::osu::offsets::version_is_newer(&remote_version, &local_version) {
+
+        if table.revision > 0
+            && remote_info.revision > 0
+            && table.revision != remote_info.revision
+        {
+            push_offsets_error(
+                &mut errors,
+                &table.filename,
+                "revision",
+                format!(
+                    "manifest revision {} != table revision {}",
+                    table.revision, remote_info.revision
+                ),
+            );
+            continue;
+        }
+
+        let remote_revision = if table.revision > 0 {
+            table.revision
+        } else {
+            remote_info.revision
+        };
+        let local_info = local_table_info(&table.client, &table.filename);
+        let should_update = if remote_revision > 0 && local_info.revision > 0 {
+            crate::osu::offsets::revision_is_newer(remote_revision, local_info.revision)
+        } else if table.client == "stable" || table.client == "ppysb" {
+            push_offsets_error(
+                &mut errors,
+                &table.filename,
+                "revision",
+                "stable/ppysb table has no revision; refusing unordered update",
+            );
+            continue;
+        } else {
+            crate::osu::offsets::version_is_newer(&remote_info.version, &local_info.version)
+        };
+
+        if !should_update {
             skipped_count += 1;
             continue;
         }
 
-        // 原子落盘
-        if crate::osu::offsets::save_remote_table(&table.client, &table.filename, &content).is_ok() {
-            updated_count += 1;
+        if let Err(error) =
+            crate::osu::offsets::save_remote_table(&table.client, &table.filename, &content)
+        {
+            push_offsets_error(&mut errors, &table.filename, "write", error.to_string());
+            continue;
         }
+        updated_count += 1;
     }
 
-    serde_json::json!({
-        "status": "ok",
-        "code": "ok",
-        "message": format!(
+    let failed_count = errors.len();
+    let status = if failed_count == 0 {
+        "ok"
+    } else if updated_count > 0 {
+        "partial"
+    } else {
+        "error"
+    };
+    let message = match status {
+        "ok" => format!(
             "Offsets check complete: {updated_count} table(s) updated, {skipped_count} already current"
         ),
+        "partial" => format!(
+            "Offsets check partially completed: {updated_count} updated, {skipped_count} current, {failed_count} failed"
+        ),
+        _ => format!(
+            "Offsets check failed: {failed_count} table(s) could not be updated ({skipped_count} already current)"
+        ),
+    };
+
+    serde_json::json!({
+        "status": status,
+        "code": status,
+        "message": message,
         "updated": updated_count,
-        "skipped": skipped_count
+        "skipped": skipped_count,
+        "failed": failed_count,
+        "errors": errors
     })
 }
 

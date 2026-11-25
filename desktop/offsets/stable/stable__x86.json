@@ -3,6 +3,7 @@
   "client": "stable",
   "version": "f845ef10bf97c3260b818fc02e73e196",
   "arch": "x86",
+  "revision": 20261125,
   "anchors": {
     "statusPtr": {
       "pattern": "48 83 F8 04 73 1E",

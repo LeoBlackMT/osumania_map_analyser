@@ -1,10 +1,22 @@
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use sha2::{Digest, Sha256};
 use ed25519_compact::{PublicKey, Signature};
 
 use super::lazer_table::normalize_version;
 
+/// 当前 manifest schema 版本。3 起要求 manifest 级签名。
+pub const MANIFEST_SCHEMA_VERSION: u32 = 3;
+
+/// 单张远端表允许的最大字节数，避免异常响应把进程内存打满。
+pub const MAX_TABLE_BYTES: usize = 4 * 1024 * 1024;
+
+static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(1);
+
 /// ManiaMapAnalyser 远端表发布主公钥（Ed25519 32 字节）
+///
+/// `tools/offsets-tool` 复制了同一把公钥用于离线校验；轮换时必须同步两处。
 pub const ED25519_MASTER_PUBLIC_KEY: [u8; 32] = [
     206, 229, 44, 102, 228, 179, 117, 67, 18, 115, 220, 52, 238, 212, 17, 70,
     95, 211, 253, 148, 249, 231, 59, 153, 109, 26, 243, 174, 121, 135, 167, 119,
@@ -18,6 +30,9 @@ pub struct RemoteManifestTable {
     pub game_version: String,
     pub runtime_version: String,
     pub arch: String,
+    /// 单调递增的发布修订号；0 表示旧清单没有该字段。
+    #[serde(default)]
+    pub revision: u64,
     pub sha256: String,
     pub signature: String,
 }
@@ -28,6 +43,34 @@ pub struct RemoteManifest {
     pub schema_version: u32,
     pub updated_at: String,
     pub tables: Vec<RemoteManifestTable>,
+    /// manifest 级签名（十六进制或 Base64）。schema 3 起必须存在。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_signature: Option<String>,
+}
+
+impl RemoteManifest {
+    /// 去掉 `manifest_signature` 后的 canonical JSON 字节。
+    pub fn signing_bytes(&self) -> Vec<u8> {
+        let mut copy = self.clone();
+        copy.manifest_signature = None;
+        serde_json::to_vec(&copy).expect("serialize remote manifest")
+    }
+
+    /// 校验 manifest 级签名；同时绑定 `updated_at`、表列表与每张表的元数据。
+    pub fn verify_manifest_signature(&self) -> Result<(), &'static str> {
+        let signature = self
+            .manifest_signature
+            .as_deref()
+            .ok_or("manifest_signature_missing")?;
+        let signature_bytes = decode_signature_str(signature).ok_or("signature_format_error")?;
+        let signature =
+            Signature::from_slice(&signature_bytes).map_err(|_| "signature_length_error")?;
+        let public_key = PublicKey::from_slice(&ED25519_MASTER_PUBLIC_KEY)
+            .map_err(|_| "invalid_public_key")?;
+        public_key
+            .verify(&self.signing_bytes(), &signature)
+            .map_err(|_| "manifest_signature_verification_failed")
+    }
 }
 
 /// 验签函数：同时核验 SHA-256 与 Ed25519 签名
@@ -102,8 +145,41 @@ fn decode_base64(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// 远端更新支持的 client。新增 client 时必须同时补 schema 校验与加载路径。
+pub fn is_supported_client(client: &str) -> bool {
+    matches!(client, "stable" | "lazer" | "ppysb")
+}
+
+/// manifest 中的文件名必须是单一普通文件名，禁止路径分隔符、`.`/`..` 与绝对路径。
+pub fn is_safe_table_filename(filename: &str) -> bool {
+    if filename.is_empty() || filename == "." || filename == ".." {
+        return false;
+    }
+    if filename.contains('/') || filename.contains('\\') {
+        return false;
+    }
+    if !filename
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+    {
+        return false;
+    }
+    let mut components = std::path::Path::new(filename).components();
+    matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none()
+}
+
+/// 修订号是否严格前进。0 视为“无修订号”，由调用方回退到版本比较。
+pub fn revision_is_newer(remote: u64, local: u64) -> bool {
+    remote > 0 && local > 0 && remote > local
+}
+
 /// 本地缓存目录（与 `save_remote_table` 落点一致）。
 pub fn remote_offsets_dir(client: &str) -> PathBuf {
+    debug_assert!(
+        is_supported_client(client),
+        "unsupported offsets client: {client}"
+    );
     let base_dir = if let Ok(appdata) = std::env::var("APPDATA") {
         PathBuf::from(appdata)
     } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
@@ -151,26 +227,58 @@ pub fn version_is_newer(remote: &str, local: &str) -> bool {
     false
 }
 
-/// 将已验签并通过 schema 校验的表原子落盘至本地缓存目录
+/// 将已验签并通过 schema 校验的表原子落盘至本地缓存目录。
+///
+/// `client`/`filename` 必须来自经过白名单校验的 manifest；这里再校验一次，
+/// 防止调用方遗漏时把远端字段直接拼进文件系统路径。
 pub fn save_remote_table(
     client: &str,
     filename: &str,
     content: &[u8],
 ) -> Result<PathBuf, std::io::Error> {
+    if !is_supported_client(client) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("unsupported offsets client: {client}"),
+        ));
+    }
+    if !is_safe_table_filename(filename) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("unsafe offsets filename: {filename}"),
+        ));
+    }
+
     let target_dir = remote_offsets_dir(client);
     std::fs::create_dir_all(&target_dir)?;
 
     let target_file = target_dir.join(filename);
-    let temp_file = target_dir.join(format!("{filename}.tmp-{}", std::process::id()));
-    std::fs::write(&temp_file, content)?;
-    std::fs::rename(&temp_file, &target_file)?;
+    let seq = TEMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp_file = target_dir.join(format!(
+        ".{filename}.tmp-{}-{seq}",
+        std::process::id()
+    ));
+    let mut file = std::fs::File::create(&temp_file)?;
+    if let Err(error) = file.write_all(content).and_then(|_| file.sync_all()) {
+        let _ = std::fs::remove_file(&temp_file);
+        return Err(error);
+    }
+    drop(file);
+    if let Err(error) = std::fs::rename(&temp_file, &target_file) {
+        let _ = std::fs::remove_file(&temp_file);
+        return Err(error);
+    }
 
     Ok(target_file)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::version_is_newer;
+    use super::{
+        is_safe_table_filename, is_supported_client, revision_is_newer, save_remote_table,
+        version_is_newer,
+    };
+    use super::super::lazer_table::lazer_revision_from_version;
 
     #[test]
     fn remote_version_only_moves_forward() {
@@ -183,5 +291,55 @@ mod tests {
         assert!(!version_is_newer("2026-latest", "2026-latest"));
         assert!(!version_is_newer("not-a-version", "2026.1005"));
         assert!(version_is_newer("2026.1005", ""));
+    }
+
+    #[test]
+    fn revision_gate_only_moves_forward() {
+        assert!(revision_is_newer(20261117, 20261115));
+        assert!(!revision_is_newer(20261115, 20261115));
+        assert!(!revision_is_newer(20261115, 20261117));
+        assert!(!revision_is_newer(0, 20261115));
+        assert!(!revision_is_newer(20261115, 0));
+    }
+
+    #[test]
+    fn only_supported_clients_are_accepted() {
+        assert!(is_supported_client("stable"));
+        assert!(is_supported_client("lazer"));
+        assert!(is_supported_client("ppysb"));
+        assert!(!is_supported_client(""));
+        assert!(!is_supported_client("../stable"));
+        assert!(!is_supported_client("STABLE"));
+    }
+
+    #[test]
+    fn table_filenames_must_be_plain_basenames() {
+        assert!(is_safe_table_filename("stable__x86.json"));
+        assert!(is_safe_table_filename("2026.1117.0.0__10.0.15__x64.json"));
+        assert!(!is_safe_table_filename(""));
+        assert!(!is_safe_table_filename("."));
+        assert!(!is_safe_table_filename(".."));
+        assert!(!is_safe_table_filename("../stable__x86.json"));
+        assert!(!is_safe_table_filename("lazer/stable__x86.json"));
+        assert!(!is_safe_table_filename(r"lazer\stable__x86.json"));
+        assert!(!is_safe_table_filename(r"C:\Windows\stable__x86.json"));
+        assert!(!is_safe_table_filename("/tmp/stable__x86.json"));
+        assert!(!is_safe_table_filename("stable?x86.json"));
+        assert!(!is_safe_table_filename("stable x86.json"));
+    }
+
+    #[test]
+    fn lazer_revision_comes_from_the_date_based_version() {
+        assert_eq!(lazer_revision_from_version("2026.1005.0.0"), 20261005);
+        assert_eq!(lazer_revision_from_version("2026.1117.0.0"), 20261117);
+        assert_eq!(lazer_revision_from_version("2027.1010-lazer"), 20271010);
+        assert_eq!(lazer_revision_from_version("not-a-version"), 0);
+    }
+
+    #[test]
+    fn save_rejects_unsafe_remote_fields_before_touching_disk() {
+        assert!(save_remote_table("lazer", "../evil.json", b"x").is_err());
+        assert!(save_remote_table("../lazer", "evil.json", b"x").is_err());
+        assert!(save_remote_table("unknown", "evil.json", b"x").is_err());
     }
 }
