@@ -1,1 +1,0 @@
-Run `cargo test --offline --locked` from `desktop/` to run the tests shipped with the shell. If you also have the project's private Rust test modules, put their original `.rs` files in this directory. Cargo includes each matching module automatically. Their contents stay out of Git.
