@@ -39,9 +39,25 @@ impl SandboxError {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn proton_chart_path(root: &Path, path: &str) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let bytes = path.as_bytes();
+    if bytes.len() < 3 || !bytes[0].is_ascii_alphabetic() || bytes[1..3] != *b":/" {
+        return None;
+    }
+    let steam_apps = root.parent()?.parent()?;
+    let drive = [bytes[0].to_ascii_lowercase(), b':'];
+    let mut host_path = steam_apps.join("compatdata/1512940/pfx/dosdevices");
+    host_path.push(std::ffi::OsStr::from_bytes(&drive));
+    host_path.push(&path[3..]);
+    Some(host_path)
+}
+
 /// 路径沙箱（`screen ∈ {selection, playing, result}` 时必过；`other` 跳过）。
 ///
-/// 顺序固定：`normalize_path` → `canonicalize`（失败即拒）→ 必须
+/// 顺序固定：`normalize_path` → Linux 上解析 Proton 盘符 → `canonicalize`（失败即拒）→ 必须
 /// `starts_with(canonicalize(malody_root)/chart/)` → 后缀 ∈ `{.mc, .osu}`（大小写不敏感）
 /// → `is_file()` → `1 B <= len <= 50 MB`。
 ///
@@ -54,9 +70,12 @@ pub fn sandbox_chart_path(root: &Path, raw_path: &str) -> Result<PathBuf, Sandbo
     if normalized.is_empty() {
         return Err(SandboxError::Unresolvable);
     }
-    let candidate = PathBuf::from(&normalized)
-        .canonicalize()
-        .map_err(|_| SandboxError::Unresolvable)?;
+    let path = Path::new(&normalized);
+    #[cfg(target_os = "linux")]
+    let proton_path = proton_chart_path(&root_canon, &normalized);
+    #[cfg(target_os = "linux")]
+    let path = proton_path.as_deref().unwrap_or(path);
+    let candidate = path.canonicalize().map_err(|_| SandboxError::Unresolvable)?;
     if !candidate.starts_with(&chart_root) {
         return Err(SandboxError::Escape);
     }

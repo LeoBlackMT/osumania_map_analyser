@@ -1,18 +1,12 @@
--- LeosMma 游玩桥（Etterna / StepMania 系主题）。
---
--- 写入 Save/MmaGameplay.txt：进入游玩与离开游玩时各写一次
--- （游玩中零写入，避免 IO 抖动）：
---   playing=1（进入）/ 0（离开）
---   music_seconds=当前位置（进入时）
---   total_seconds=歌曲总长（供壳外推 playing 过期）
---   rate=当前音乐速率
---
--- 安装：把本文件复制到
---   Themes/<你的主题>/BGAnimations/ScreenGameplay overlay/
--- 并在同目录 default.lua 的 return t 前插入：
+-- MMA 游玩状态桥：装载于常驻的 ScreenSystemLayer overlay。
+-- 每 0.25s 检查当前场景，只在进入/离开游玩时写 Save/MmaGameplay.txt。
+-- 即使游戏直接返回选歌而未发送 Off/Out 命令，也会清除 playing。
+-- 将本文件放在系统层 overlay 脚本旁，在其 return t 前加入：
 --   t[#t + 1] = LoadActor("mma_gameplay.lua")
 
 local FILE = "Save/MmaGameplay.txt"
+local CHECK_INTERVAL = 0.25
+local lastPlaying = nil
 
 local function currentRate()
     local rate = 1.0
@@ -29,41 +23,49 @@ local function write(playing)
     local total = 0
     pcall(function()
         local song = GAMESTATE:GetCurrentSong()
-        local sp = GAMESTATE:GetSongPosition()
-        pos = sp:GetMusicSeconds() or 0
-        total = song:GetMusicSeconds() or 0
+        pos = GAMESTATE:GetSongPosition():GetMusicSeconds() or 0
+        total = song:MusicLengthSeconds() or 0
     end)
-    local rate = currentRate()
+    if playing and total <= 0 then
+        return false -- 场景已切换但歌曲尚未就绪，下一次检查再发布。
+    end
     local body = "playing=" .. (playing and 1 or 0)
         .. "\nmusic_seconds=" .. tostring(pos)
         .. "\ntotal_seconds=" .. tostring(total)
-        .. "\nrate=" .. tostring(rate)
+        .. "\nrate=" .. tostring(currentRate())
+    local wrote = false
     pcall(function()
         local f = RageFileUtil.CreateRageFile()
         if f:Open(FILE, 2) then
             f:Write(body)
             f:Close()
+            wrote = true
         end
         f:destroy()
     end)
+    return wrote
 end
 
--- 命令时机说明：Etterna（StepMania 系）对 BGAnimation overlay 顶层 actor，
--- InCommand 并非总在进入游玩时发出（实测 Etterna 0.75 Linux 从不触发），
--- 而 OnCommand 稳定触发；两者并存以保证各主题/平台都写入 playing=1。
--- 离开游玩时 OutCommand 同样未必发出，壳端以 total_seconds/rate 外推
--- + 30s 超时兜底 playing=0，此处仅尽力而为。
-return Def.Actor {
-    InCommand = function(self)
-        write(true)
-    end,
-    OnCommand = function(self)
-        write(true)
-    end,
-    OutCommand = function(self)
-        write(false)
-    end,
-    PlayerJoinedMessageCommand = function(self)
-        write(true)
+local function check()
+    local ok, playing = pcall(function()
+        local screen = SCREENMAN:GetTopScreen()
+        return screen ~= nil and screen:GetName():match("^ScreenGameplay") ~= nil
+    end)
+    if ok and playing ~= lastPlaying and write(playing) then
+        lastPlaying = playing
+    end
+end
+
+return Def.ActorFrame {
+    InitCommand = function(self)
+        local elapsed = 0
+        self:SetUpdateFunction(function(_, delta)
+            elapsed = elapsed + delta
+            if elapsed >= CHECK_INTERVAL then
+                elapsed = 0
+                check()
+            end
+        end)
+        check()
     end,
 }

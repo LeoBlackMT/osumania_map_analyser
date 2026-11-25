@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct EtternaStatus {
     pub alive: bool,
     pub playing: bool,
@@ -97,6 +97,7 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
             let bridge_path = save.join("MmaBridge.txt");
             let gameplay_path = save.join("MmaGameplay.txt");
 
+            let mut next = shared.etterna.lock().unwrap().clone();
             // ── gameplay：playing 外推 ──
             if let (Some(mt), Ok(text)) = (
                 mtime_of(&gameplay_path),
@@ -120,17 +121,12 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                             .duration_since(SystemTime::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as u64;
-                        Some(base + ((total / rate.max(0.01) * 1.2) as u64) + 30_000)
+                        Some(base + ((total / rate.max(0.01) * 1_200.0) as u64) + 30_000)
                     } else {
                         None
                     };
-                    let _current = shared.etterna.lock().unwrap().clone();
-                    *shared.etterna.lock().unwrap() = EtternaStatus {
-                        playing,
-                        playing_expire_at: expire,
-                        alive: bridge_seen || bridge_path.exists(),
-                        .._current
-                    };
+                    next.playing = playing;
+                    next.playing_expire_at = expire;
                 }
             }
 
@@ -178,10 +174,18 @@ pub fn spawn_poller(shared: std::sync::Arc<Shared>) {
                 }
             }
 
-            // alive 与 state 同步（timers 周期推送 state，poller 仅更新字段）
-            {
-                let mut st = shared.etterna.lock().unwrap();
-                st.alive = bridge_seen && bridge_path.exists();
+            next.alive = bridge_seen && bridge_path.exists();
+            let changed = {
+                let mut status = shared.etterna.lock().unwrap();
+                if *status == next {
+                    false
+                } else {
+                    *status = next;
+                    true
+                }
+            };
+            if changed {
+                broadcast(&shared, "state", Some(crate::server::state_frame(&shared)));
             }
         }
     });

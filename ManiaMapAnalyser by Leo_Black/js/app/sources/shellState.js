@@ -129,12 +129,8 @@ function applyMalodyBridgeFields(malody) {
     state.malodyPlaying = Boolean(malody.playing);
     state.malodyEventSeq = Number(malody.eventSeq) || 0;
     state.malodyJudge = malody.judge ?? null;
-    // 桥静默（transport 不再是 bridge）⇒ 桥注入、但尚未被分析取走的谱面文本作废。
-    // "桥静默而无 other 事件"这条路径不会走下面的清空边沿；不作废的话，下一次 osu 触发的
-    // 缓存未命中会拿上一张 Malody 谱面的文本去分析，并把快照写到 osu 的缓存键下。
-    // 只作废**桥通道自己的**待分析文本（归属仍是桥）：Lua 通道有自己的 60s 存活窗口，不受影响。
+    // 静默后不再应答旧请求；谱面原文随身份保存，不会用于下一张 osu 谱。
     if (malody.transport !== "bridge" && state.cardOwner === "malody-bridge") {
-        state.pendingSourceText = null;
         state.pendingSourceRequestId = null;
         state.pendingSourceActive = null;
     }

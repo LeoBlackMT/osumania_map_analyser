@@ -8,9 +8,9 @@
 .DESCRIPTION
     Installs or removes:
       - Etterna :  bridges/etterna/mma_bridge.lua     -> Themes\<theme>\BGAnimations\ScreenSelectMusic decorations\
-                  bridges/etterna/mma_gameplay.lua    -> Themes\<theme>\BGAnimations\ScreenGameplay overlay\
-                  plus one LoadActor line injected before `return t` in each
-                  screen's default.lua.
+                  bridges/etterna/mma_gameplay.lua    -> beside ScreenSystemLayer overlay.lua
+                  (or ScreenSystemLayer overlay\default.lua), with one LoadActor
+                  line injected before `return t` in each selected Lua file.
       - Malody V:  bridges/malody/mma_editor.lua      -> MalodyV\editor\
       - Malody V (in-game song selection, -Game MalodyBridge):
                    the BepInEx 6 IL2CPP be.788 loader archive (winhttp.dll,
@@ -42,9 +42,9 @@
     are tolerated), or read a short how-to-find-the-path hint.
 
     The Etterna theme list is pre-checked: only themes whose structure is
-    complete (both ScreenSelectMusic decorations\default.lua and
-    ScreenGameplay overlay\default.lua exist) are offered for installing into;
-    broken themes like _fallback are listed with the reason they were skipped.
+    complete (ScreenSelectMusic decorations\default.lua plus an existing or
+    inherited ScreenSystemLayer overlay) are offered for installing into;
+    incomplete themes are listed with the reason they were skipped.
     Rebirth is the default when present; installing to ALL themes at once is
     intentionally NOT offered.
 
@@ -244,8 +244,8 @@ This client is not distributed on Steam, so no Steam library is searched.
     ThemeSkippedZh  = "已跳过主题 '{0}'：{1}"
     ReasonNoSel     = 'missing ScreenSelectMusic decorations\default.lua'
     ReasonNoSelZh   = '缺少 ScreenSelectMusic decorations\default.lua'
-    ReasonNoGp      = 'missing ScreenGameplay overlay\default.lua'
-    ReasonNoGpZh    = '缺少 ScreenGameplay overlay\default.lua'
+    ReasonNoState   = 'missing ScreenSystemLayer overlay and fallback'
+    ReasonNoStateZh = '缺少 ScreenSystemLayer overlay 及其回退脚本'
     NoThemes        = 'No installable theme folders found under {0}\Themes'
     NoThemesZh      = '在 {0}\Themes 下未找到可安装的主题目录'
     NoThemesRm      = 'no theme folders found under {0}\Themes - nothing to remove'
@@ -891,23 +891,38 @@ function Get-ThemeSupport {
         $themes = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty Name)
     }
+    $fallback = ''
+    foreach ($candidate in @('ScreenSystemLayer overlay/default.lua', 'ScreenSystemLayer overlay.lua')) {
+        if (Test-Path -LiteralPath (Join-Path $EtternaRoot ('Themes/_fallback/BGAnimations/' + $candidate))) {
+            $fallback = '/Themes/_fallback/BGAnimations/' + $candidate
+            break
+        }
+    }
     $out = @()
     foreach ($t in $themes) {
-        $selDir = Join-Path $EtternaRoot ("Themes\{0}\BGAnimations\ScreenSelectMusic decorations" -f $t)
-        $gpDir = Join-Path $EtternaRoot ("Themes\{0}\BGAnimations\ScreenGameplay overlay" -f $t)
+        $bg = Join-Path $EtternaRoot ("Themes\{0}\BGAnimations" -f $t)
+        $selDir = Join-Path $bg 'ScreenSelectMusic decorations'
         $selLua = Join-Path $selDir 'default.lua'
-        $gpLua = Join-Path $gpDir 'default.lua'
+        $stateLua = Join-Path $bg 'ScreenSystemLayer overlay.lua'
+        $stateDirectoryLua = Join-Path $bg 'ScreenSystemLayer overlay/default.lua'
+        if (-not (Test-Path -LiteralPath $stateLua) -and (Test-Path -LiteralPath $stateDirectoryLua)) {
+            $stateLua = $stateDirectoryLua
+        }
+        $legacyDir = Join-Path $bg 'ScreenGameplay overlay'
         $selOk = Test-Path -LiteralPath $selLua
-        $gpOk = Test-Path -LiteralPath $gpLua
+        $stateOk = (Test-Path -LiteralPath $stateLua) -or ($fallback -ne '')
         $out += [pscustomobject]@{
-            Name          = $t
-            SelectDir     = $selDir
-            GameplayDir   = $gpDir
-            SelectOk      = $selOk
-            GameplayOk    = $gpOk
-            Installable   = ($selOk -and $gpOk)
+            Name = $t
+            SelectDir = $selDir
+            SelectOk = $selOk
             SelectDefault = $selLua
-            GameplayDefault = $gpLua
+            StateDir = Split-Path $stateLua -Parent
+            StateDefault = $stateLua
+            StateOk = $stateOk
+            StateFallback = $fallback
+            LegacyGameplayDir = $legacyDir
+            LegacyGameplayDefault = Join-Path $legacyDir 'default.lua'
+            Installable = ($selOk -and $stateOk)
         }
     }
     return $out
@@ -919,7 +934,7 @@ function Get-InstallableThemes {
     # report skipped themes (why they are not offered)
     foreach ($t in $all) {
         if (-not $t.Installable) {
-            $reason = if (-not $t.SelectOk) { (Get-Text 'ReasonNoSel') } else { (Get-Text 'ReasonNoGp') }
+            $reason = if (-not $t.SelectOk) { (Get-Text 'ReasonNoSel') } else { (Get-Text 'ReasonNoState') }
             Write-Step SKIP ((Get-Text 'ThemeSkipped') -f $t.Name, $reason)
         }
     }
@@ -1110,6 +1125,24 @@ function Clear-ShellConfigValue {
 # Etterna
 # ---------------------------------------------------------------------------
 
+function Remove-LegacyEtternaGameplayBridge {
+    param([pscustomobject]$Info)
+    $target = Join-Path $Info.LegacyGameplayDir 'mma_gameplay.lua'
+    if (Test-Path -LiteralPath $Info.LegacyGameplayDefault) {
+        $raw = [System.IO.File]::ReadAllText($Info.LegacyGameplayDefault)
+        if ($raw -match 'LoadActor\(\s*"mma_gameplay\.lua"\s*\)') {
+            $backup = $Info.LegacyGameplayDefault + '.mma-backup'
+            if (-not (Test-Path -LiteralPath $backup)) {
+                Copy-Item -LiteralPath $Info.LegacyGameplayDefault -Destination $backup
+            }
+            Remove-LoadActorLine -DefaultLua $Info.LegacyGameplayDefault -ActorFile 'mma_gameplay.lua' | Out-Null
+        }
+    }
+    if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Force
+    }
+}
+
 function Install-EtternaBridge {
     Write-Host ''
     Write-Host (Get-Text 'HeaderEtterna') -ForegroundColor Cyan
@@ -1136,31 +1169,39 @@ function Install-EtternaBridge {
         return
     }
 
+    if (-not (Test-Path -LiteralPath $info.StateDefault)) {
+        $base = '-- MMA inherited system-layer wrapper' + "`n" +
+            'local t = Def.ActorFrame { LoadActor("' + $info.StateFallback + '") }' + "`nreturn t`n"
+        [System.IO.File]::WriteAllText($info.StateDefault, $base, (New-Object System.Text.UTF8Encoding($false)))
+    }
     $targets = @(
-        @{ Screen = 'ScreenSelectMusic decorations'; File = 'mma_bridge.lua'; Lua = $info.SelectDefault },
-        @{ Screen = 'ScreenGameplay overlay';        File = 'mma_gameplay.lua'; Lua = $info.GameplayDefault }
+        @{ Dir = $info.SelectDir; File = 'mma_bridge.lua'; Lua = $info.SelectDefault },
+        @{ Dir = $info.StateDir; File = 'mma_gameplay.lua'; Lua = $info.StateDefault }
     )
-    $anyOk = $false
+    $allOk = $true
     foreach ($t in $targets) {
-        $screenDir = Join-Path $root ("Themes\{0}\BGAnimations\{1}" -f $theme, $t.Screen)
+        $screenDir = $t.Dir
         $defaultLua = $t.Lua
         if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
             Write-Step FAIL ((Get-Text 'ScreenDirNo') -f $screenDir)
+            $allOk = $false
             continue
         }
         if (-not (Test-Path -LiteralPath $defaultLua)) {
             Write-Step FAIL ((Get-Text 'LuaMissing') -f $defaultLua)
+            $allOk = $false
             continue
         }
         # copy the bridge file (overwrite on re-run = re-install after theme update)
         Copy-Item -LiteralPath (Join-Path $src $t.File) -Destination (Join-Path $screenDir $t.File) -Force
         Write-Step OK ((Get-Text 'Copied') -f $t.File, $screenDir)
-        if (Add-LoadActorLine -DefaultLua $defaultLua -ActorFile $t.File) {
-            $anyOk = $true
+        if (-not (Add-LoadActorLine -DefaultLua $defaultLua -ActorFile $t.File)) {
+            $allOk = $false
         }
     }
 
-    if ($anyOk) {
+    if ($allOk) {
+        Remove-LegacyEtternaGameplayBridge -Info $info
         Set-ShellConfigValue -Key 'etternaRoot' -Value $root
         Write-Host ''
         Write-Step OK (Get-Text 'EtternaOk')
@@ -1186,7 +1227,7 @@ function Select-Theme {
         $which = Get-ThemeSupport -EtternaRoot $EtternaRoot | Where-Object { $_.Name -eq $ForcedTheme } | Select-Object -First 1
         if ($which) {
             # forced theme exists but is not structurally complete
-            $reasonKey = if (-not $which.SelectOk) { 'ReasonNoSel' } else { 'ReasonNoGp' }
+            $reasonKey = if (-not $which.SelectOk) { 'ReasonNoSel' } else { 'ReasonNoState' }
             Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $ForcedTheme, $EtternaRoot) + ' (' + (Get-Text $reasonKey) + ')'
         } else {
             Write-Step FAIL ((Get-Text 'ThemeNotFound') -f $ForcedTheme, $EtternaRoot)
@@ -1206,12 +1247,12 @@ function Select-Theme {
 
 function Test-ThemeHasBridge {
     param([pscustomobject]$Theme)
-    foreach ($dir in @($Theme.SelectDir, $Theme.GameplayDir)) {
+    foreach ($dir in @($Theme.SelectDir, $Theme.StateDir, $Theme.LegacyGameplayDir)) {
         foreach ($f in @('mma_bridge.lua', 'mma_gameplay.lua')) {
             if (Test-Path -LiteralPath (Join-Path $dir $f)) { return $true }
         }
     }
-    foreach ($lua in @($Theme.SelectDefault, $Theme.GameplayDefault)) {
+    foreach ($lua in @($Theme.SelectDefault, $Theme.StateDefault, $Theme.LegacyGameplayDefault)) {
         if (Test-Path -LiteralPath $lua) {
             $raw = Get-Content -LiteralPath $lua -Raw -ErrorAction SilentlyContinue
             if ($raw -match 'LoadActor\(\s*"mma_(bridge|gameplay)\.lua"\s*\)') { return $true }
@@ -1264,15 +1305,16 @@ function Uninstall-EtternaBridge {
 
 function Uninstall-EtternaTheme {
     param([string]$Root, [string]$Theme)
-    # screen -> file pairing, mirrors the install targets exactly
-    # (each screen only ever holds its own bridge file)
+    $info = Get-ThemeSupport -EtternaRoot $Root | Where-Object { $_.Name -eq $Theme } | Select-Object -First 1
+    if (-not $info) { return }
+    Remove-LegacyEtternaGameplayBridge -Info $info
     $pairs = @(
-        @{ Screen = 'ScreenSelectMusic decorations'; File = 'mma_bridge.lua' },
-        @{ Screen = 'ScreenGameplay overlay';        File = 'mma_gameplay.lua' }
+        @{ Dir = $info.SelectDir; Lua = $info.SelectDefault; File = 'mma_bridge.lua' },
+        @{ Dir = $info.StateDir; Lua = $info.StateDefault; File = 'mma_gameplay.lua' }
     )
     foreach ($pair in $pairs) {
-        $screenDir = Join-Path $Root ("Themes\{0}\BGAnimations\{1}" -f $Theme, $pair.Screen)
-        $defaultLua = Join-Path $screenDir 'default.lua'
+        $screenDir = $pair.Dir
+        $defaultLua = $pair.Lua
         if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
             Write-Step SKIP ((Get-Text 'ScreenDirNo') -f $screenDir)
             continue
@@ -1287,6 +1329,13 @@ function Uninstall-EtternaTheme {
         Remove-LoadActorLine -DefaultLua $defaultLua -ActorFile $pair.File | Out-Null
         # drop the backup file we created (if any)
         $bak = $defaultLua + '.mma-backup'
+        if ((Test-Path -LiteralPath $bak) -and (Test-Path -LiteralPath $defaultLua)) {
+            $base = [System.IO.File]::ReadAllText($bak)
+            if ($base.StartsWith('-- MMA inherited system-layer wrapper') -and
+                ([System.IO.File]::ReadAllText($defaultLua) -eq $base)) {
+                Remove-Item -LiteralPath $defaultLua -Force
+            }
+        }
         if (Test-Path -LiteralPath $bak) {
             Remove-Item -LiteralPath $bak -Force
             Write-Step OK ((Get-Text 'BackupDel') -f $bak)
