@@ -177,7 +177,7 @@ Common command line options:
 5. Open `mma-shell-config.json` next to `mma-shell.exe` and set `etternaRoot` to your Etterna installation folder, e.g. `D:/Games/Etterna`.
 6. Theme updates overwrite these files, so reapply this setup after updating themes.
 
-When upgrading an older bridge, remove its `mma_gameplay.lua` loading line and script from `ScreenGameplay overlay/`. The installer performs this migration automatically. The persistent system layer clears play state when returning to selection or entering results.
+When upgrading an older bridge, remove its `mma_gameplay.lua` loading line and script from `ScreenGameplay overlay/`. The installer follows the selected theme’s `[Global] FallbackTheme` chain, keeps inherited edits in the selected theme, and migrates the legacy hook after both new actors are installed. If either installation fails, it restores the theme scripts and backups from before that attempt. The persistent system layer clears play state when returning to selection or entering results.
 
 ### 2. Malody V Editor Plugin
 

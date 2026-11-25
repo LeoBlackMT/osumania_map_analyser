@@ -32,6 +32,7 @@
 | [2026-11-10-replay-pauses.md](2026-11-10-replay-pauses.md) | 2026-11-10 | feat/replay-pauses（版本保持 3.0.0） | 回放暂停读取：契约 v10→v11（`replay_pauses` / `replay_pauses_sync`、24062 `replayHash`）、`.osr` 尾部只读解析、偏移表新增 `results.score_hash` / `score.score_info` / `score.score_hash`、历史成绩 mods 残留修复、2026.921 表已移除与 2025.816.0 之前的成绩显示 `Pause Data Unavailable` |
 | [2026-11-11-mixed-rc-fusion-routing.md](2026-11-11-mixed-rc-fusion-routing.md) | 2026-11-11 | feat/mixed-rc-fusion-routing | Mixed 4K RC 路由对称融合与 XDC1 分歧兜底：R3' 接入 `Roxy+XDC1` 对称融合与双向 `\|XDC1 − Roxy\| ≥ 0.50` 切 XDC1、低难 C8' `≥ 0.50` 切 XDC1、高段 `Roxy` 越界接入 `XDC1+Azusa` 融合、遥测/反馈胶囊别名对齐及缓存版本 `star-v14→star-v15`（RC MAE `0.2383→0.2075`，LN 零改动） |
 | [2026-11-18-full-card-rd.md](2026-11-18-full-card-rd.md) | 2026-11-18 | feat/full-card-rd（v3.0.3） | 全卡 RD/MR 支持：主分析全卡列变换（RD→MR）、选歌→play 取真实 seed 重算整卡、play/replay→结算冻结、stable/ppysb 内存抓取新增 score_seed 拓扑偏移、契约 v11→v12、缓存 star-v15→star-v16 |
+| [2026-11-25-shell-v13-linux-overlay.md](2026-11-25-shell-v13-linux-overlay.md) | 2026-11-25 | PR #156 | 桌面壳 v13：窗口热区、Linux LaneAcc、实际偏移表状态及升级方式 |
 
 [返回 docs 索引](../README.md)
 
@@ -73,5 +74,6 @@
 | [2026-11-10-replay-pauses.md](2026-11-10-replay-pauses.md) | 2026-11-10 | feat/replay-pauses (version stays 3.0.0) | Replay pauses reading: contract v10→v11 (`replay_pauses` / `replay_pauses_sync`, 24062 `replayHash`), read-only `.osr` tail parsing, offset table adds `results.score_hash` / `score.score_info` / `score.score_hash`, historical score mods residue fix, 2026.921 table removed and scores before 2025.816.0 display `Pause Data Unavailable` |
 | [2026-11-11-mixed-rc-fusion-routing.md](2026-11-11-mixed-rc-fusion-routing.md) | 2026-11-11 | feat/mixed-rc-fusion-routing | Mixed 4K RC symmetric fusion & XDC1 routing: `Roxy+XDC1` symmetric fusion and bidirectional `\|XDC1 − Roxy\| ≥ 0.50` XDC1 switch on R3', C8' low-band `≥ 0.50` XDC1 rescue, `XDC1+Azusa` fusion on R4-Hi, telemetry/feedback capsule aliases, and cache version `star-v14→star-v15` (RC MAE `0.2383→0.2075`, 0 LN changes) |
 | [2026-11-18-full-card-rd.md](2026-11-18-full-card-rd.md) | 2026-11-18 | feat/full-card-rd (v3.0.3) | Full-card Random (RD) and Mirror (MR) column transformation: main analysis applies RD→MR column permutations, song select to play recomputes using actual seed, play/replay to results freezes results, stable/ppysb memory reader adds score_seed offset, contract v11→v12, cache star-v15→star-v16 |
+| [2026-11-25-shell-v13-linux-overlay.md](2026-11-25-shell-v13-linux-overlay.md) | 2026-11-25 | PR #156 | Desktop shell v13: window gestures, Linux LaneAcc, active table status and upgrade steps |
 
 [Back to docs index](../README.md)

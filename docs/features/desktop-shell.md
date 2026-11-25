@@ -142,16 +142,15 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ## 4. 窗口操控（v2 起）
 
-无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`。**整窗移动**用卡片上方的 40px 高拖动条（中间 `⋮⋮` 提示）；**改变尺寸**用窗口四边和四角的 16px 命中区；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
+窗口默认无边框、透明、置顶且可调整大小。用卡片上方的短把手移动窗口，用窗口边缘调整大小；页面缩放保留 WebView 的 `Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-` 操作。
 
 **KDE Wayland 后端选择**：Linux 入口 `desktop/src/main.rs` 在 GTK 初始化和线程启动前，检测 `XDG_SESSION_TYPE=wayland`、`XDG_CURRENT_DESKTOP` 含 `KDE`（冒号分隔，不区分大小写）、`DISPLAY` 非空且未设置 `GDK_BACKEND`，此时设为 `x11,wayland`，通过 XWayland 使用已有的 `start_dragging`、`set_always_on_top` 和窗口位置恢复。该路径在 `WEBKIT_DISABLE_DMABUF_RENDERER`、`WEBKIT_DMABUF_RENDERER_FORCE_SHM` 均未设置时，默认设置 `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`：用共享内存传递合成帧，避开 NVIDIA DMA-BUF 导入导致的透明窗口空白，保留 WebKit 的加速合成与 WebGL。用户显式设置上述渲染变量或 `GDK_BACKEND` 时优先采用用户配置。XWayland 无法连接时回落到原生 GTK Wayland，此时仍受该后端不支持置顶和窗口定位的限制。窗口状态格式不变。此外 `desktop/src/app/kde_overlay.rs` 会在全屏置顶启用时同步 KWin 窗口规则，并将原规则一次性备份到用户状态目录 `ManiaMapAnalyser/backup/kwinrulesrc.before-overlay`。
 
-**页面侧窗口交互（`js/app/ui/windowAffordances.js`，`main.js` 在 `initialize()` 里装配）**：只在 `html.shell-mode` 下启用；浏览器/tosu 模式隐藏把手和缩放区，并清除把手的内联位置、高度与高亮。
+**页面侧窗口交互**：主窗口导航到带 `#mma-shell` 的插件页；本地 24061 页面也显示窗口把手。普通 tosu 页面保留原始布局。窗口布局由 `html.shell-window` 控制，因此 WebSocket 握手和重连不会移动卡片。
 
-- **移动**：把手跟随卡片顶沿，`top = clamp(cardTop - barHeight, 0, innerHeight - barHeight)`。按根 `zoom` 折算 CSS 高度和位置，使实际高度保持 40px；左右留出 16px 边缘缩放区。左键按下只发送 `dragStart`，由壳启动系统移动，不再叠加 `data-tauri-drag-region` 通道。
-- **尺寸**：四边和四角共八个 `.mma-resize-handle` 保持窗口坐标下的 16px 命中宽度，不受页面缩放影响。左键发送 `resizeStart` 和八方向 `direction`（契约 v13），壳经 `Window::start_resize_dragging` 启动系统尺寸调整。提示容器 `pointer-events:none`、`z-index:10000`，只有把手接收事件；其层级高于移动条的 9999，角落优先调整尺寸。
-- **短暂提示**：鼠标进入边缘 16px 范围时点亮对应的 6px 边带，角落同时亮两边；移到移动条时显示整窗描边。新鼠标输入显示提示 350ms，再经 CSS 150ms 淡出；停在原处也会熄灭，卡片布局刷新不延长期限。收到离开、失焦、`pointercancel`、页面隐藏或尺寸变化事件时立即清除提示和计时器；窗口外坐标不点亮边缘。提示熄灭后，移动与缩放命中区仍然可用。
-- **布局刷新**：卡片 `ResizeObserver`、窗口 resize、`<html>`/卡片/`.dashboard` 的 class/style 变化只标记刷新，经 `requestAnimationFrame` 合并，没有轮询。卡片量不到或高于窗口时把手回落顶部。
+- **移动**：卡片上方有独立的 72 × 16px 把手，顶边预留 6px 缩放区。卡片向上延伸时，把手跟随卡片。桥已连接时只发送一次 `dragStart`；握手未完成、断线或发送失败时，鼠标事件交给 Tauri 的 `data-tauri-drag-region`。原生拖动权限仅授予主窗口的启动来源。
+- **调整大小**：四边和四角在窗口外沿 6px 内接收鼠标输入，以契约 v13 的 `resizeStart` 发起系统缩放。卡片在可用宽度内排版，状态行、源圆点和标签保留自己的点击区域。
+- **提示**：鼠标接近边缘 16px 时点亮对应边，悬停把手时显示描边。提示停留 350ms 后淡出；失焦或离开即清除。卡片缩放不会改变把手与缩放区的实际尺寸。
 
 **全局快捷键**（tauri-plugin-global-shortcut，启动时注册，支持范围见下方平台差异）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell-config.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。**平台差异**：Windows（RegisterHotKey）/X11（XGrabKey）为真全局，失焦/穿透均生效；**KDE Wayland 下 XWayland 的 XGrabKey 无法保证在原生 Wayland 窗口获得焦点时触发**——壳窗口聚焦时由页面内默认快捷键兜底（经 control 帧 `toggleTopmost`/`toggleClickThrough`/`close`，见 §3）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存；置顶/穿透以该文件为唯一权威（快捷键、control toggle、5s persister、窗口事件四写通道均先合并磁盘值再写，避免旧内存快照回滚对侧通道的切换）。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
 

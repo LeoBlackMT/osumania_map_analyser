@@ -114,7 +114,6 @@ pub fn mode_for(
 pub struct Inputs<'a> {
     /// `osu::healthy(&ReaderState)`：读取器是否发布了载荷。
     pub reader_alive: bool,
-    pub lazer_lane_acc_ready: bool,
     /// 读取器已连续不健康多久（[`ReaderLiveness::observe`]；`None` = 从未见过健康读数）。
     pub reader_down_ms: Option<u64>,
     /// 读取器的门状态字面量（诊断字段 `gate`）。
@@ -159,7 +158,7 @@ pub fn build(inputs: Inputs<'_>) -> OsuSource {
     let hint_visible = native_reachable(inputs.forced_tosu, inputs.compat_bound);
     OsuSource {
         alive: native,
-        lazer_lane_acc_ready: inputs.lazer_lane_acc_ready,
+        lazer_lane_acc_ready: false,
         lazer_lane_acc_notice: None,
         lazer_score_ready: None,
         transport: OsuTransport {

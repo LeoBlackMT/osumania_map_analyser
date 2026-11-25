@@ -24,7 +24,7 @@
 ## 一、快速开始
 
 - 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。Linux 用户解压后运行`./mma-shell`。
-- Linux x86_64 的 osu!lazer LaneAcc：退出旧壳和 osu!lazer，运行包里的 `./run-lazer.sh`。脚本会复用正在运行的 tosu；尚未启动时会调用用户服务 `tosu.service`。手动启动 tosu 后也可用 `./mma-shell --launch-lazer`。壳默认启动 `PATH` 中的 `osu-lazer`；其他安装方式可把 `MMA_LAZER_EXECUTABLE` 设为游戏可执行文件或 AppImage 的绝对路径。使用直接运行游戏的启动器，以便壳能读取自己启动的游戏。进入 osu!mania 后打开 LaneAcc 标签页。此功能需要与游戏和 .NET 运行时版本匹配的偏移表，已实测两组：osu!lazer 2026.1005.0 搭配 .NET 10.0.12，以及 2026.1117.0 搭配 .NET 10.0.15。
+- Linux x86_64 的 osu!lazer LaneAcc：退出旧壳和 osu!lazer，运行包里的 `./run-lazer.sh`。脚本会复用正在运行的 tosu；尚未启动时会调用用户服务 `tosu.service`。手动启动 tosu 后也可用 `./mma-shell --launch-lazer`。壳默认启动 `PATH` 中的 `osu-lazer`；其他安装方式可把 `MMA_LAZER_EXECUTABLE` 设为游戏可执行文件、AppImage 或 `osu!.dll` 的绝对路径（DLL 由 `dotnet` 启动）。使用直接运行游戏的启动器，以便壳能读取自己启动的游戏。进入 osu!mania 后打开 LaneAcc 标签页。此功能需要与游戏和 .NET 运行时版本匹配的偏移表，已实测两组：osu!lazer 2026.1005.0 搭配 .NET 10.0.12，以及 2026.1117.0 搭配 .NET 10.0.15。
 - 如果你需要在 Etterna 或 Malody V 中使用，请一并在 Release 中下载`bridges.zip`，并解压到与shell同目录下，注意不要嵌套文件夹，确保正确放置。打开bridges目录，运行`install-bridge-zh.bat`（中文）或`install-bridge.bat`（英文）。对于Linux用户，请参照下方“安装桥”章节手动安装 Etterna 与 Malody V 的桥文件。
 - 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。设置的详细说明见[docs/settings.md](settings.md)，预设系统的使用方法见[docs/presets-guide.md](presets-guide.md)。
 - 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
@@ -79,7 +79,7 @@ t[#t + 1] = LoadActor("mma_bridge.lua")
 return t
 ```
 
-2. 把 `bridges/etterna/mma_gameplay.lua` 放在主题的 `BGAnimations/ScreenSystemLayer overlay.lua` 旁，并在该系统层脚本的 `return t` 前加：`t[#t + 1] = LoadActor("mma_gameplay.lua")`。若系统层是目录，则编辑其中的 `default.lua`，并把脚本放在该目录。更新旧桥时，移除旧 `ScreenGameplay overlay/` 内的加载行和脚本；自动安装器会完成迁移。
+2. 把 `bridges/etterna/mma_gameplay.lua` 放在主题的 `BGAnimations/ScreenSystemLayer overlay.lua` 旁，并在该系统层脚本的 `return t` 前加：`t[#t + 1] = LoadActor("mma_gameplay.lua")`。若系统层是目录，则编辑其中的 `default.lua`，并把脚本放在该目录。更新旧桥时，移除旧 `ScreenGameplay overlay/` 内的加载行和脚本；自动安装器会完成迁移，并按主题的 `FallbackTheme` 继承系统层。
 3. 主题更新后必须重装这两个文件（主题包覆盖会删掉它们）。
 4. 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `etternaRoot`（例如 `D:\\Games\\Etterna`）。
 
@@ -166,7 +166,7 @@ This project originally gathered osu! data via tosu. However, as features expand
 ## 1. Quick Start
 
 - Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly. Linux users can extract and run `./mma-shell`.
-- For osu!lazer LaneAcc on x86-64 Linux, close the shell and osu!lazer, then run the packaged `./run-lazer.sh`. It reuses a running tosu or starts the user service `tosu.service`. If you start tosu manually, you can also run `./mma-shell --launch-lazer`. The shell starts `osu-lazer` on your `PATH`. For a different installation, set `MMA_LAZER_EXECUTABLE` to the absolute path of the executable or AppImage. Use a launcher that runs the game as a descendant of the shell. Open the LaneAcc tab in osu!mania. This requires an offset table matching the game and .NET runtime versions. Tested on osu!lazer 2026.1005.0 with .NET 10.0.12 and on 2026.1117.0 with .NET 10.0.15.
+- For osu!lazer LaneAcc on x86-64 Linux, close the shell and osu!lazer, then run the packaged `./run-lazer.sh`. It reuses a running tosu or starts the user service `tosu.service`. If you start tosu manually, you can also run `./mma-shell --launch-lazer`. The shell starts `osu-lazer` on your `PATH`. For a different installation, set `MMA_LAZER_EXECUTABLE` to the absolute path of the executable, AppImage, or `osu!.dll` (launched through `dotnet`). Use a launcher that runs the game as a descendant of the shell. Open the LaneAcc tab in osu!mania. This requires an offset table matching the game and .NET runtime versions. Tested on osu!lazer 2026.1005.0 with .NET 10.0.12 and on 2026.1117.0 with .NET 10.0.15.
 - If you need to use it with Etterna or Malody V, download `bridges.zip` from Releases and extract it into the same directory as the shell (ensure no nested folders). Open the `bridges` directory and run `install-bridge-zh.bat` (Chinese) or `install-bridge.bat` (English). For Linux users, refer to the "Bridges" section below to install bridge files manually.
 - Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, check whether auto-detected game directories are correct; otherwise, fill in the game directories you use to locate beatmaps for analysis. See [docs/settings.md](settings.md) for settings details and [docs/presets-guide.md](presets-guide.md) for preset usage.
 - Once configured, restart the application if needed, and it will be ready to use. In the Malody V editor, click the `MMA Analyze` button manually to analyze. Window controls are described below.

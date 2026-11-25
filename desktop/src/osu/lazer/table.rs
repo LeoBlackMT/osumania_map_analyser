@@ -371,6 +371,7 @@ pub fn load_table(
     for (dir_index, dir) in candidate_dirs.iter().enumerate() {
         for name in &expected_names {
             let expected = dir.join(name);
+            if exact_candidates.iter().any(|(seen, ..)| seen == &expected) { continue; }
             if let Some(Ok(table)) = files.read(&expected).map(|bytes| OffsetTable::load(&bytes)) {
                 if usable(&table).is_ok() {
                     let score = optional_section_score(&table);

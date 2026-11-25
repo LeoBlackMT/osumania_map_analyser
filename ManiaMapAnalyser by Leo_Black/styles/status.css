@@ -147,39 +147,29 @@
 /* 壳窗口移动把手：常显淡提示，悬停时增强；四周尺寸调整区优先命中。
    浏览器模式不可见且不拦截输入。 */
 .mma-drag-bar {
-    position: absolute;
-    top: 0;
-    left: 16px;
-    right: 16px;
-    height: 40px;
-    cursor: move;
-    z-index: 9999;
-    opacity: 0;
-    transition: opacity 0.18s ease;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
-    display: flex;
+    display: none;
+    position: fixed;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(72 * var(--mma-window-unit, 1px));
+    height: calc(16 * var(--mma-window-unit, 1px));
     align-items: center;
     justify-content: center;
-    pointer-events: none;
-}
-html.shell-mode .mma-drag-bar.drag-hover {
-    opacity: 1;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
-}
-html.shell-mode .mma-drag-bar {
-    pointer-events: auto;
-    opacity: 0.35;
-}
-.mma-drag-hint {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 10px;
-    letter-spacing: 4px;
+    cursor: move;
     user-select: none;
+    z-index: 9999;
+}
+html.shell-window .mma-drag-bar { display: flex; }
+.mma-drag-hint {
+    width: calc(28 * var(--mma-window-unit, 1px));
+    height: calc(3 * var(--mma-window-unit, 1px));
+    border-radius: 4px;
+    background: rgba(190, 199, 225, 0.5);
     pointer-events: none;
 }
+.mma-drag-bar.drag-hover .mma-drag-hint { background: var(--text-primary); }
 
-/* 壳窗口边缘提示与尺寸调整命中区。视觉光带不拦截输入，
-   八方向透明把手覆盖窗口内侧 16px；层级高于移动把手，避免顶部拖动抢占缩放。 */
 .mma-edge-hints {
     position: fixed;
     display: none;
@@ -187,32 +177,12 @@ html.shell-mode .mma-drag-bar {
     z-index: 10000;
     pointer-events: none;
 }
-
-html.shell-mode .mma-edge-hints {
-    display: block;
-}
-
-.mma-resize-handle {
-    position: absolute;
-    pointer-events: auto;
-}
-.mma-resize-north, .mma-resize-south {
-    left: 16px;
-    right: 16px;
-    height: 16px;
-    cursor: ns-resize;
-}
-.mma-resize-east, .mma-resize-west {
-    top: 16px;
-    bottom: 16px;
-    width: 16px;
-    cursor: ew-resize;
-}
+html.shell-window .mma-edge-hints { display: block; }
+.mma-resize-handle { position: absolute; pointer-events: auto; }
+.mma-resize-north, .mma-resize-south { left: 6px; right: 6px; height: 6px; cursor: ns-resize; }
+.mma-resize-east, .mma-resize-west { top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
 .mma-resize-northwest, .mma-resize-northeast,
-.mma-resize-southwest, .mma-resize-southeast {
-    width: 16px;
-    height: 16px;
-}
+.mma-resize-southwest, .mma-resize-southeast { width: 6px; height: 6px; }
 .mma-resize-north, .mma-resize-northwest, .mma-resize-northeast { top: 0; }
 .mma-resize-south, .mma-resize-southwest, .mma-resize-southeast { bottom: 0; }
 .mma-resize-west, .mma-resize-northwest, .mma-resize-southwest { left: 0; }
@@ -283,12 +253,21 @@ html.shell-mode .mma-edge-hints {
     opacity: 1;
 }
 
-/* 壳模式（WS 已连）：卡片贴窗口边缘（浏览器模式保持 18px 悬浮） */
-html.shell-mode body {
-    padding: 0;
+/* Reserve the frame outside the content, including at the minimum window width. */
+html.shell-window body {
+    padding: calc(22 * var(--mma-window-unit, 1px)) calc(6 * var(--mma-window-unit, 1px)) calc(6 * var(--mma-window-unit, 1px));
 }
-html.shell-mode .dashboard {
-    max-height: 100vh;
+html.shell-window .dashboard {
+    width: min(475px, 100%);
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: clip;
+}
+html.shell-window .main-card {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .status {

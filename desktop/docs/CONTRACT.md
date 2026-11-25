@@ -119,7 +119,7 @@
     etterna: { alive, playing, playingExpireAt },
     malody:  { alive, transport, screen, playing, eventSeq, judge, pro, turbo },
     malody4: { alive, playing, screen, reason?, judge? },
-    osu:     { alive, lazerLaneAccReady, osuTransport: { mode, host, port, wsPath, filesPath },
+    osu:     { alive, lazerLaneAccReady, lazerScoreReady?, lazerLaneAccNotice?, osuTransport: { mode, host, port, wsPath, filesPath },
                gate?, client?, reason?, degradedFields?,
                phase?, notice?, progress?: { filter, regions, bytes, elapsedMs } }
                                                                  // v6 新增，见 §14；相位三项见下
@@ -139,6 +139,7 @@
 - `errors[]`：壳侧推送错误面（如 payload 超限被丢弃提示），页面 status 行展示。
 - `osu`（v6 新增，见 §14）：`alive` = 原生传输可用（≡ `osuTransport.mode == "native"`）；`osuTransport` = 页面该用的 osu origin（`mode:"tosu"` 时字段仍在下发，但**页面不应用覆盖**，继续用自己设置里的 `wsEndpoint`）；`gate` = 读取器门状态（`idle`/`healthy`/`degraded`/`unhealthy`，仅诊断）；`client` = `stable`/`lazer`（未知不出现）；`reason` = 不可用原因（`osu/model.rs` 的 reason 闭集字面量，正常不出现）；`degradedFields` = 读取器上报的降级字段（正常不出现）。
   - `lazerLaneAccReady`（v13 新增）：boolean，Linux x86_64 osu!lazer 读取器是否已找到游戏对象并附着匹配的判定偏移表。页面在 lazer 模式下据此开启 LaneAcc，`osuTransport` 继续决定谱面和游戏状态的来源。
+  - 可选 `lazerScoreReady`（boolean）来自已附着的表；`lazerLaneAccNotice`（string）是 Linux 读取器给页面的当前诊断。两个字段缺省时沿用旧壳展示逻辑。
   - `degradedFields` 的**内容**（Step 10e 澄清，**契约版本仍为 v6**：字段名与语义都没变，只是写明它对 lazer 是什么）：它是"这一帧哪些载荷字段**没有来源**"的字符串清单，逐条都是 `<载荷字段>:<原因>`（如 `state.name:offsets-missing-screen-name-source`、`files.background:offsets-missing-BeatmapSetInfo.Files`），来源 = 读取器每帧的字段级降级清单——lazer 侧就是 `osu/lazer.rs::read_frame` 的 `gaps`（表缺口、链读失败、值域不符各写各的原因），它经 `osu/invariants.rs::evaluate` **原样并入**门的上报；表整体缺失/不可用时另有一份"因此没有来源"的整表清单（`lazer::missing_table_degraded_fields()`，随 `lazer-offsets-missing:<ver>` 一起下发）。页面只按"键在不在"/字符串前缀消费，不解析原因里的数字。
 - `osu.phase` / `osu.notice` / `osu.progress`（**2026-09-29 追加，契约版本仍为 v6**）：读取器 L0 附着/锚点定址相位的诊断字段，存在的理由是**用户可见现象**——冷启动与游戏重启后，L0 全量锚点扫描要 13–23 s（真机实测 12.6–18.6 s），这期间页面一个帧都收不到，卡片只会"毫无说明地停着"。三者都是**向后兼容扩展**（对页面是"键在不在"的存在性降级；旧页面收到也不消费，故不升 `CONTRACT_VERSION`，同 §8 的 `malody4.reason` 先例）：
   - `phase`（闭集，逐字）：`waiting-for-game`（本会话从没附着过，且失败原因就是 `process-not-found` ⇒ 最可能"游戏没开"）/ `attaching`（目标丢了正在重附着，或失败原因不是"进程不在"）/ `scanning`（已附着、锚点未定址 ⇒ L0 正在跑：缓存验证或全量扫描）/ `healthy`（L1+ 正在出帧 ⇒ **提示必须消失**）/ `unavailable`（锚点已定址但门停帧；说明看 `reason`）。读取线程还没给出结论时不出现。
@@ -478,7 +479,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 ## 20. v12 → v13 差异（窗口系统缩放与 Linux Lazer LaneAcc 就绪位）
 
 - **`control` 新增 `resizeStart` 与 `direction`**：
-  - `action: "resizeStart"`，由页面四边与四角（16px 边缘热区）发起系统尺寸调整，替代单纯边缘猜测；
+  - `action: "resizeStart"`，由页面四边与四角（6px 边缘热区）发起系统尺寸调整，替代单纯边缘猜测；
   - `direction`（`Option<tauri_runtime::ResizeDirection>`）：枚举值严格限定为 `North` / `NorthEast` / `East` / `SouthEast` / `South` / `SouthWest` / `West` / `NorthWest`。缺失或非法值时拒绝本帧，不触发窗口调整；其它 control action 不消费 `direction`。
 - **`sources.osu` 新增 `lazerLaneAccReady`（boolean）**：
   - 当 Linux x86_64 osu!lazer 读取器通过 `/proc/<pid>/mem` 成功附着游戏并验证匹配的 `score` 偏移表时置 `true`（脱离进程时复位 `false`）。

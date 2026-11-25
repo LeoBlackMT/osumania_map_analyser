@@ -70,7 +70,7 @@ export function sendResult(payload) {
 /** 发送窗口控制帧；resizeStart 携带系统缩放方向。 */
 export function sendControl(action, value, direction = null) {
     if (!bridgeOnline()) {
-        return;
+        return false;
     }
     seq += 1;
     const frame = JSON.stringify({
@@ -81,8 +81,9 @@ export function sendControl(action, value, direction = null) {
     });
     try {
         socket.send(frame);
+        return true;
     } catch {
-        // 静默失败
+        return false;
     }
 }
 

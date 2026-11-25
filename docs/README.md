@@ -86,6 +86,7 @@
 | [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | 人类/AI | 回放暂停破坏性说明（契约 v10→v11、`.osr` 尾部只读解析、`replay_pauses`/`replay_pauses_sync`、24062 `replayHash`、偏移表新增三个哈希字段、2026.921 表已移除） |
 | [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | 人类/AI | Mixed 4K RC 路由对称融合与 XDC1 兜底破坏性说明（R3' `Roxy+XDC1` / 双向 `≥0.50` 切 XDC1、低难 C8'、高段 `XDC1+Azusa`、遥测/反馈别名及缓存 `star-v15`） |
 | [breakings/2026-11-18-full-card-rd.md](breakings/2026-11-18-full-card-rd.md) | 人类/AI | 全卡 RD/MR 支持（主分析列变换、选歌→play/历史结算重算、play/replay→结算冻结、stable/ppysb Score.Seed 0x80、契约 v12、缓存 star-v16） |
+| [breakings/2026-11-25-shell-v13-linux-overlay.md](breakings/2026-11-25-shell-v13-linux-overlay.md) | 人类/AI | 桌面壳 v13：窗口热区、Linux LaneAcc、实际偏移表状态及升级方式 |
 
 # English
 
@@ -172,3 +173,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-11-10-replay-pauses.md](breakings/2026-11-10-replay-pauses.md) | Human/AI | Replay-pauses breaking note (contract v10→v11, read-only `.osr` tail parsing, `replay_pauses` / `replay_pauses_sync`, 24062 `replayHash`, three new hash offsets, 2026.921 tables removed) |
 | [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | Human/AI | Mixed 4K RC symmetric fusion & XDC1 routing breaking note (`Roxy+XDC1` / bidirectional `≥0.50` XDC1 switch on R3', C8' low-band XDC1 rescue, `XDC1+Azusa` on R4-Hi, telemetry/feedback capsule aliases, and cache `star-v15`) |
 | [breakings/2026-11-18-full-card-rd.md](breakings/2026-11-18-full-card-rd.md) | Human/AI | Full-card Random (RD) and Mirror (MR) column transformation breaking note (main analysis applies RD→MR column permutations, song select to play recomputes using actual seed, play/replay to results freezes results, stable/ppysb memory reader adds score_seed offset, contract v12, cache star-v16) |
+| [breakings/2026-11-25-shell-v13-linux-overlay.md](breakings/2026-11-25-shell-v13-linux-overlay.md) | Human/AI | Desktop shell v13: window gestures, Linux LaneAcc, active table status and upgrade steps |

@@ -69,13 +69,15 @@ pub(super) fn initialize_topmost(window: &tauri::WebviewWindow, topmost: bool) {
 pub(crate) fn apply_topmost(window: &tauri::WebviewWindow, topmost: bool) {
     let handle = window.app_handle().clone();
     let window = window.clone();
-    let _ = handle.run_on_main_thread(move || {
-        let _ = window.set_always_on_top(topmost);
-        #[cfg(target_os = "linux")]
-        if let Ok(native) = window.gtk_window() {
-            super::kde_overlay::apply(&native, topmost);
-        }
-    });
+    let _ = handle.run_on_main_thread(move || set_topmost_on_main(&window, topmost));
+}
+
+fn set_topmost_on_main(window: &tauri::WebviewWindow, topmost: bool) {
+    let _ = window.set_always_on_top(topmost);
+    #[cfg(target_os = "linux")]
+    if let Ok(native) = window.gtk_window() {
+        super::kde_overlay::apply(&native, topmost);
+    }
 }
 
 /// 切换置顶/穿透：入参为目标值；应用窗口 API 并立即写盘。
@@ -93,7 +95,7 @@ pub fn apply_flag_change(app: &tauri::AppHandle, topmost: Option<bool>, click_th
             return;
         };
         if let Some(v) = topmost {
-            apply_topmost(&window, v);
+            set_topmost_on_main(&window, v);
         }
         if let Some(v) = click_through {
             let _ = window.set_ignore_cursor_events(v);

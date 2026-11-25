@@ -117,7 +117,11 @@ impl AppBuilder {
                     if saved.click_through {
                         let _ = window.set_ignore_cursor_events(true);
                     }
-                    if let Ok(url) = url_text.parse() {
+                    if let Ok(url) = url_text.parse::<tauri::Url>() {
+                        // Only the selected main overlay may start a native drag while WS is offline.
+                        app.add_capability(tauri::ipc::CapabilityBuilder::new("overlay-drag")
+                            .window("main").local(false).remote(url.origin().ascii_serialization())
+                            .permission("core:window:allow-start-dragging"))?;
                         let _ = window.navigate(url);
                     }
                     // 开发用：`--features devtools` 构建 + `MMA_DEVTOOLS=1` 启动时打开

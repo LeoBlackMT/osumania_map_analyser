@@ -218,7 +218,6 @@ fn osu_source(shared: &Shared) -> OsuSource {
         .unwrap_or_else(|| ("127.0.0.1".to_string(), TOSU_DEFAULT_PORT));
     let mut source = osu_source::build(osu_source::Inputs {
         reader_alive,
-        lazer_lane_acc_ready: reader.as_ref().is_some_and(|state| state.lazer_lane_acc_ready),
         reader_down_ms,
         gate: &gate,
         client,
@@ -234,6 +233,7 @@ fn osu_source(shared: &Shared) -> OsuSource {
         progress,
     });
     if let Some(state) = reader {
+        source.lazer_lane_acc_ready = state.lazer_lane_acc_ready;
         source.lazer_score_ready = state.lazer.and_then(|d| d.active_table).map(|t| t.score_ready);
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         { source.lazer_lane_acc_notice = state.reason; }

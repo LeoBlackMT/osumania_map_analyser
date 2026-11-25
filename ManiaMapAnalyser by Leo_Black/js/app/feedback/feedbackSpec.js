@@ -64,8 +64,6 @@ export function feedbackEndpoint() {
 }
 
 /** 壳窗口判定：端口 24061，或壳在导航 URL 上追加的 hash 标记（tosu 在线时页面由 tosu 提供）。 */
-export function isShellRuntime() {
-    if (typeof window === "undefined" || !window.location) return false;
-    if (String(window.location.port) === "24061") return true;
-    return String(window.location.hash || "").replace(/^#/, "") === SHELL_MARKER;
+export function isShellRuntime(location = globalThis.window?.location) {
+    return location?.port === "24061" || location?.hash === `#${SHELL_MARKER}`;
 }

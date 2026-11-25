@@ -1,4 +1,6 @@
 use std::fs::{self, File};
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -80,6 +82,23 @@ impl Source for DiskPe {
     }
 }
 
+// For a managed launch use the entry assembly's directory, not dotnet's install directory.
+fn game_entry(dir: &Path) -> Option<PathBuf> {
+    let exe = fs::read_link(dir.join("exe")).ok()?;
+    match exe.file_name()?.to_str()? {
+        "osu!" => Some(exe),
+        "dotnet" => {
+            let cmd = fs::read(dir.join("cmdline")).ok()?;
+            let mut args = cmd.split(|&b| b == 0).skip(1);
+            let first = args.next()?;
+            let entry = Path::new(OsStr::from_bytes(if first == b"exec" { args.next()? } else { first }));
+            if entry.file_name()? != "osu!.dll" { return None; }
+            if entry.is_absolute() { Some(entry.into()) } else { Some(fs::read_link(dir.join("cwd")).ok()?.join(entry)) }
+        }
+        _ => None,
+    }
+}
+
 fn find_game() -> Result<Option<(PathBuf, PathBuf)>, String> {
     let mut game = None;
     for entry in fs::read_dir("/proc").map_err(|error| error.to_string())?.flatten() {
@@ -87,13 +106,7 @@ fn find_game() -> Result<Option<(PathBuf, PathBuf)>, String> {
             continue;
         }
         let dir = entry.path();
-        if !fs::read_to_string(dir.join("comm")).is_ok_and(|name| name.trim() == "osu!") {
-            continue;
-        }
-        let Ok(exe) = fs::read_link(dir.join("exe")) else { continue };
-        if exe.file_name().and_then(|name| name.to_str()) != Some("osu!") {
-            continue;
-        }
+        let Some(exe) = game_entry(&dir) else { continue };
         if game.is_some() {
             return Err("More than one native osu!lazer process is running".to_string());
         }
@@ -116,7 +129,22 @@ fn attach(proc_dir: PathBuf, exe: &Path) -> Result<Session, String> {
     if info.lazer_version.is_empty() || info.runtime_version.is_empty() {
         return Err("Cannot identify the installed osu!lazer and .NET versions".to_string());
     }
-    let loaded = load_table(&files, env_table_path().as_deref(), &shell_exe_dir(), &info, &|_| false)
+    let desktop = DiskPe::open(&exe.with_file_name("osu!.dll"));
+    let base_hint = std::cell::Cell::new(None);
+    let resolve = |table: &OffsetTable| {
+        if table.mismatch(&info.lazer_version, &info.runtime_version, &info.arch).is_some() || table.score().is_none() {
+            return None;
+        }
+        let fields = Resolved::from_table(table);
+        if let Some(base) = base_hint.get() {
+            return prove_game(&memory, table, &fields, base, desktop.as_ref())
+                .map(|(ty, module)| (base, ty, module));
+        }
+        let live = locate_game(&memory, table, &fields, desktop.as_ref())?;
+        base_hint.set(Some(live.0));
+        Some(live)
+    };
+    let loaded = load_table(&files, env_table_path().as_deref(), &shell_exe_dir(), &info, &|t| resolve(t).is_some())
         .map_err(|_| format!("No matching offset table for osu!lazer {} / .NET {}. Check Remote Updates in Shell Configuration.", info.lazer_version, info.runtime_version))?;
     if loaded.mismatch.is_some() || loaded.table.score().is_none() {
         return Err(format!("LaneAcc needs a matching score offset table for {} / {}", info.lazer_version, info.runtime_version));
@@ -124,8 +152,7 @@ fn attach(proc_dir: PathBuf, exe: &Path) -> Result<Session, String> {
     let table_path = loaded.path;
     let table = loaded.table;
     let fields = Resolved::from_table(&table);
-    let desktop = DiskPe::open(&exe.with_file_name("osu!.dll"));
-    let (game_base, game_type, screen_module) = locate_game(&memory, &table, &fields, desktop.as_ref())
+    let (game_base, game_type, screen_module) = resolve(&table)
         .ok_or("Cannot resolve the osu!lazer game object and screen stack")?;
     Ok(Session { memory, table, fields, game_base, game_type, screen_module, table_path,
         default_files: info.effective_songs_folder().map(PathBuf::from),
@@ -258,8 +285,29 @@ fn launch_game() -> Result<Child, String> {
     if find_game()?.is_some() {
         return Err("osu!lazer is already running. Close it and run the launcher again.".into());
     }
-    let exe = std::env::var_os("MMA_LAZER_EXECUTABLE").unwrap_or_else(|| "osu-lazer".into());
-    Command::new(&exe).spawn().map_err(|e| format!("Cannot start {}: {e}. Set MMA_LAZER_EXECUTABLE to the game executable.", Path::new(&exe).display()))
+    let program = PathBuf::from(std::env::var_os("MMA_LAZER_EXECUTABLE").unwrap_or_else(|| "osu-lazer".into()));
+    // Resolve before changing cwd: package launchers and portable builds can load
+    // assets relative to the installation, even when invoked by name on PATH.
+    use std::os::unix::fs::PermissionsExt;
+    let path = if program.components().count() > 1 || program.file_name() == Some(OsStr::new("osu!.dll")) {
+        Some(std::path::absolute(&program).map_err(|e| e.to_string())?)
+    } else {
+        std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths)
+            .map(|dir| dir.join(&program))
+            .find(|p| p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+            .and_then(|p| std::path::absolute(p).ok()))
+    };
+    let mut cmd = if let Some(path) = path {
+        let mut cmd = if path.file_name() == Some(OsStr::new("osu!.dll")) {
+            let mut cmd = Command::new("dotnet");
+            cmd.arg(&path);
+            cmd
+        } else { Command::new(&path) };
+        let install_path = path.canonicalize().unwrap_or(path);
+        if let Some(dir) = install_path.parent() { cmd.current_dir(dir); }
+        cmd
+    } else { Command::new(&program) };
+    cmd.spawn().map_err(|e| format!("Cannot start {}: {e}. Set MMA_LAZER_EXECUTABLE to the game executable.", program.display()))
 }
 
 pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFrameLog>) {
@@ -302,7 +350,7 @@ pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFra
         };
         launch_error = None;
         last_error = None;
-        crate::server::log::log_at("info", &format!("[osu] Linux LaneAcc attached ({})", session.table.key()));
+        crate::server::log::log_at("info", &format!("[osu] Linux LaneAcc attached ({}; {})", session.table.key(), session.table_path.display()));
         let section = session.table.score().expect("attach requires score offsets");
         let mut hit_state = PollState::default();
         let mut replay_state = ReplayPollState::default();

@@ -883,6 +883,40 @@ function Select-GameRoot {
 # theme support pre-check: only structurally complete themes are installable
 # ---------------------------------------------------------------------------
 
+# Resolve Etterna's [Global] fallback chain without modifying parent themes.
+function Get-InheritedSystemLayer {
+    param([string]$ThemesDir, [string]$Theme, [string[]]$Names)
+    $visited = @{}
+    $loadedBase = $false
+    $name = $Theme
+    while ($name -and $Names -contains $name -and -not $visited.ContainsKey($name)) {
+        $visited[$name] = $true
+        if ($name -ne $Theme) {
+            foreach ($file in @('ScreenSystemLayer overlay.lua', 'ScreenSystemLayer overlay/default.lua')) {
+                if (Test-Path -LiteralPath (Join-Path $ThemesDir "$name/BGAnimations/$file") -PathType Leaf) {
+                    return "/Themes/$name/BGAnimations/$file"
+                }
+            }
+        }
+        $parent = $null
+        $base = $name -eq '_fallback'
+        $inGlobal = $false
+        $metrics = Join-Path $ThemesDir "$name/metrics.ini"
+        if (Test-Path -LiteralPath $metrics -PathType Leaf) {
+            foreach ($line in [IO.File]::ReadLines($metrics)) {
+                if ($line -match '^\s*\[([^\]]+)\]') { $inGlobal = $Matches[1] -eq 'Global'; continue }
+                if (-not $inGlobal) { continue }
+                if ($line -match '^\s*FallbackTheme\s*=(.*)$') { $parent = $Matches[1].Trim() }
+                if ($line -match '^\s*IsBaseTheme\s*=(.*)$') { $base = $Matches[1].Trim() -in @('1','true') }
+            }
+        }
+        $loadedBase = $loadedBase -or $base
+        if ($null -eq $parent -and -not $loadedBase -and $name -ne '_fallback') { $parent = '_fallback' }
+        $name = $parent
+    }
+    return ''
+}
+
 function Get-ThemeSupport {
     param([string]$EtternaRoot)
     $themes = @()
@@ -890,13 +924,6 @@ function Get-ThemeSupport {
     if (Test-Path $dir -PathType Container) {
         $themes = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty Name)
-    }
-    $fallback = ''
-    foreach ($candidate in @('ScreenSystemLayer overlay/default.lua', 'ScreenSystemLayer overlay.lua')) {
-        if (Test-Path -LiteralPath (Join-Path $EtternaRoot ('Themes/_fallback/BGAnimations/' + $candidate))) {
-            $fallback = '/Themes/_fallback/BGAnimations/' + $candidate
-            break
-        }
     }
     $out = @()
     foreach ($t in $themes) {
@@ -910,7 +937,8 @@ function Get-ThemeSupport {
         }
         $legacyDir = Join-Path $bg 'ScreenGameplay overlay'
         $selOk = Test-Path -LiteralPath $selLua
-        $stateOk = (Test-Path -LiteralPath $stateLua) -or ($fallback -ne '')
+        $fallback = Get-InheritedSystemLayer -ThemesDir $dir -Theme $t -Names $themes
+        $stateOk = (Test-Path -LiteralPath $stateLua -PathType Leaf) -or ($fallback -ne '')
         $out += [pscustomobject]@{
             Name = $t
             SelectDir = $selDir
@@ -1169,34 +1197,54 @@ function Install-EtternaBridge {
         return
     }
 
-    if (-not (Test-Path -LiteralPath $info.StateDefault)) {
-        $base = '-- MMA inherited system-layer wrapper' + "`n" +
-            'local t = Def.ActorFrame { LoadActor("' + $info.StateFallback + '") }' + "`nreturn t`n"
-        [System.IO.File]::WriteAllText($info.StateDefault, $base, (New-Object System.Text.UTF8Encoding($false)))
-    }
     $targets = @(
         @{ Dir = $info.SelectDir; File = 'mma_bridge.lua'; Lua = $info.SelectDefault },
         @{ Dir = $info.StateDir; File = 'mma_gameplay.lua'; Lua = $info.StateDefault }
     )
-    $allOk = $true
-    foreach ($t in $targets) {
-        $screenDir = $t.Dir
-        $defaultLua = $t.Lua
-        if (-not (Test-Path -LiteralPath $screenDir -PathType Container)) {
-            Write-Step FAIL ((Get-Text 'ScreenDirNo') -f $screenDir)
-            $allOk = $false
-            continue
+    # Restore only files this attempt touched, including a previous working install.
+    $originals = [ordered]@{}
+    $allOk = $false
+    try {
+        foreach ($t in $targets) {
+            $target = Join-Path $t.Dir $t.File
+            foreach ($path in @($t.Lua, ($t.Lua + '.mma-backup'), $target)) {
+                $originals[$path] = if (Test-Path -LiteralPath $path -PathType Leaf) { ,([IO.File]::ReadAllBytes($path)) } else { $null }
+            }
+            if ($t.Lua -eq $info.StateDefault -and $info.StateFallback) {
+                $parentLua = $info.StateFallback.Replace('\','\\').Replace('"','\"')
+                $base = '-- MMA inherited system-layer wrapper' + [char]10 +
+                    'local t = Def.ActorFrame { LoadActor("' + $parentLua + '") }' + [char]10 + 'return t' + [char]10
+                $encoding = New-Object System.Text.UTF8Encoding($false)
+                if (-not (Test-Path -LiteralPath $t.Lua)) {
+                    [IO.File]::WriteAllText($t.Lua, $base, $encoding)
+                } elseif (Test-Path -LiteralPath ($t.Lua + '.mma-backup') -PathType Leaf) {
+                    # Reinstall can upgrade our old _fallback wrapper. Leave hand-edited theme Lua alone.
+                    $original = [IO.File]::ReadAllText($t.Lua + '.mma-backup')
+                    $installed = $original.Replace('return t', 't[#t + 1] = LoadActor("mma_gameplay.lua")' + [char]10 + 'return t')
+                    if ($original.StartsWith('-- MMA inherited system-layer wrapper' + [char]10) -and
+                        $original -cne $base -and [IO.File]::ReadAllText($t.Lua) -ceq $installed) {
+                        [IO.File]::WriteAllText($t.Lua, $base, $encoding)
+                        [IO.File]::WriteAllText($t.Lua + '.mma-backup', $base, $encoding)
+                    }
+                }
+            }
+            if (-not (Add-LoadActorLine -DefaultLua $t.Lua -ActorFile $t.File)) {
+                throw ((Get-Text 'NoReturnT') -f $t.Lua)
+            }
+            [IO.File]::Copy((Join-Path $src $t.File), $target, $true)
+            Write-Step OK ((Get-Text 'Copied') -f $t.File, $t.Dir)
         }
-        if (-not (Test-Path -LiteralPath $defaultLua)) {
-            Write-Step FAIL ((Get-Text 'LuaMissing') -f $defaultLua)
-            $allOk = $false
-            continue
-        }
-        # copy the bridge file (overwrite on re-run = re-install after theme update)
-        Copy-Item -LiteralPath (Join-Path $src $t.File) -Destination (Join-Path $screenDir $t.File) -Force
-        Write-Step OK ((Get-Text 'Copied') -f $t.File, $screenDir)
-        if (-not (Add-LoadActorLine -DefaultLua $defaultLua -ActorFile $t.File)) {
-            $allOk = $false
+        $allOk = $true
+    } catch {
+        Write-Step FAIL $_.Exception.Message
+        foreach ($path in $originals.Keys) {
+            $exists = Test-Path -LiteralPath $path -PathType Leaf
+            if ($null -eq $originals[$path]) {
+                if ($exists) { Remove-Item -LiteralPath $path -Force }
+            } elseif (-not $exists -or -not [Collections.StructuralComparisons]::StructuralEqualityComparer.Equals(
+                $originals[$path], [IO.File]::ReadAllBytes($path))) {
+                [IO.File]::WriteAllBytes($path, $originals[$path])
+            }
         }
     }
 
@@ -1253,6 +1301,7 @@ function Test-ThemeHasBridge {
         }
     }
     foreach ($lua in @($Theme.SelectDefault, $Theme.StateDefault, $Theme.LegacyGameplayDefault)) {
+        if (Test-Path -LiteralPath ($lua + '.mma-backup') -PathType Leaf) { return $true }
         if (Test-Path -LiteralPath $lua) {
             $raw = Get-Content -LiteralPath $lua -Raw -ErrorAction SilentlyContinue
             if ($raw -match 'LoadActor\(\s*"mma_(bridge|gameplay)\.lua"\s*\)') { return $true }
@@ -1308,6 +1357,8 @@ function Uninstall-EtternaTheme {
     $info = Get-ThemeSupport -EtternaRoot $Root | Where-Object { $_.Name -eq $Theme } | Select-Object -First 1
     if (-not $info) { return }
     Remove-LegacyEtternaGameplayBridge -Info $info
+    $legacyBackup = $info.LegacyGameplayDefault + '.mma-backup'
+    if (Test-Path -LiteralPath $legacyBackup -PathType Leaf) { Remove-Item -LiteralPath $legacyBackup -Force }
     $pairs = @(
         @{ Dir = $info.SelectDir; Lua = $info.SelectDefault; File = 'mma_bridge.lua' },
         @{ Dir = $info.StateDir; Lua = $info.StateDefault; File = 'mma_gameplay.lua' }
