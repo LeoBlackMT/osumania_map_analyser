@@ -3,13 +3,14 @@ use std::thread;
 use std::time::Duration;
 
 use crate::osu::lazer::HitEventBatch;
-use super::Shared;
+use super::{LaneAccHub, Shared};
 
 pub const SNAPSHOT_CHUNK: usize = 2048;
 
-fn deliver(shared: &Shared, batch: HitEventBatch, target: Option<&Sender<String>>) {
+fn deliver_hub(hub: &LaneAccHub<'_>, batch: HitEventBatch, target: Option<&Sender<String>>) {
     super::ws::deliver_laneacc(
-        shared,
+        hub.seq,
+        hub.sinks,
         super::ws::LaneAccBatch {
             kind: "mania_hit_events",
             key: "events",
@@ -23,18 +24,23 @@ fn deliver(shared: &Shared, batch: HitEventBatch, target: Option<&Sender<String>
     );
 }
 
+pub(super) fn sync_hub(hub: &LaneAccHub<'_>, target: &Sender<String>) {
+    let _order = hub.delivery.lock().unwrap();
+    let (pending, snapshot) = hub.hit_events.drain_and_snapshot();
+    deliver_hub(hub, pending, None);
+    deliver_hub(hub, snapshot, Some(target));
+}
+
 pub fn sync(shared: &Shared, target: &Sender<String>) {
-    let _order = shared.laneacc_delivery.lock().unwrap();
-    let (pending, snapshot) = shared.hit_events.drain_and_snapshot();
-    deliver(shared, pending, None);
-    deliver(shared, snapshot, Some(target));
+    sync_hub(&shared.laneacc_hub(), target);
 }
 
 pub fn spawn_sender(shared: Arc<Shared>) {
     thread::spawn(move || loop {
         if shared.hit_events.wait_for_change(Duration::from_millis(100)) {
-            let _order = shared.laneacc_delivery.lock().unwrap();
-            deliver(&shared, shared.hit_events.drain(), None);
+            let hub = shared.laneacc_hub();
+            let _order = hub.delivery.lock().unwrap();
+            deliver_hub(&hub, hub.hit_events.drain(), None);
         }
     });
 }

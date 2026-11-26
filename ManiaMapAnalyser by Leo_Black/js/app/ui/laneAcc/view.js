@@ -703,6 +703,24 @@ export const laneAccView = (() => {
         return (hasResult || pendingFinish !== null) && !state.isInPlayState;
     }
 
+    function readStreamOrder(payload) {
+        const ordered = Number.isSafeInteger(payload?.session)
+            && Number.isSafeInteger(payload?.offset)
+            && payload.offset >= 0;
+        return {
+            ordered,
+            session: ordered ? payload.session : null,
+            offset: ordered ? payload.offset : null,
+        };
+    }
+
+    function hasStreamGap(order, reset, currentSession, targetLength) {
+        if (reset || !order.ordered) return false;
+        const unknownHistory = currentSession === null && targetLength > 0;
+        const switchedSession = currentSession !== null && order.session !== currentSession;
+        return unknownHistory || switchedSession || order.offset > targetLength;
+    }
+
     /**
      * 按 `(session, offset)` 幂等合并壳发来的流式分块（兼容旧壳无 session/offset 字段）：
      * - 新局的 reset 替换上一局，同局重复前缀不截断已有尾部；
@@ -710,25 +728,24 @@ export const laneAccView = (() => {
      *   出现新 `session` 或下标缺口时触发一次全量重同步而不拼接错位数据。
      */
     function mergeOrderedItems(target, currentSession, payload, items) {
-        const ordered = Number.isSafeInteger(payload?.session) && Number.isSafeInteger(payload?.offset)
-            && payload.offset >= 0;
-        const session = ordered ? payload.session : null;
-        const offset = ordered ? payload.offset : null;
-        if (session !== null && currentSession !== null && session < currentSession) {
+        const order = readStreamOrder(payload);
+        if (order.session !== null && currentSession !== null && order.session < currentSession) {
             return { session: currentSession, ignored: true };
         }
-        const reset = Boolean(payload?.reset) && (session === null || session !== currentSession);
-        const unknownHistory = currentSession === null && target.length > 0;
-        if (!reset && ordered && (unknownHistory || (currentSession !== null && session !== currentSession)
-            || offset > target.length)) {
+        const reset = Boolean(payload?.reset) && (order.session === null || order.session !== currentSession);
+        if (hasStreamGap(order, reset, currentSession, target.length)) {
             requestResync();
             return { session: currentSession, ignored: true };
         }
         if (reset) target.length = 0;
-        const skip = offset === null ? 0 : Math.max(0, target.length - offset);
+        const skip = order.offset === null ? 0 : Math.max(0, target.length - order.offset);
         // Legacy shells may send a long replay in a single batch.
         for (let i = skip; i < items.length; i++) target.push(items[i]);
-        return { session: session ?? (reset ? null : currentSession), reset, ignored: !reset && skip >= items.length };
+        return {
+            session: order.session ?? (reset ? null : currentSession),
+            reset,
+            ignored: !reset && skip >= items.length,
+        };
     }
 
     function createFor(chart) {
@@ -762,17 +779,21 @@ export const laneAccView = (() => {
         }
     }
 
-    /** 分析完成：只暂存；若当前没有战报，则显示 100.00% 预览。 */
-    function prepareChart(chart) {
-        // Stable RD 没有可读种子；Lazer RD 有 seed 时在下面按列置换还原。
-        if (randomModBlocked()) {
-            pendingChart = null;
-            activeChart = null;
-            accumulator = null;
+    function failChartPreparation(reason, resetSession = false) {
+        pendingChart = null;
+        activeChart = null;
+        accumulator = null;
+        if (resetSession) {
             hasResult = false;
             sessionActive = false;
-            showError("random");
-            return;
+        }
+        showError(reason);
+    }
+
+    function validateChartInput(chart) {
+        if (randomModBlocked()) {
+            failChartPreparation("random", true);
+            return false;
         }
         applyRandomColumns(chart);
         // 结算后重算可能暂时拿不到谱面原文/解析失败：保留已经冻结的终态，
@@ -780,66 +801,64 @@ export const laneAccView = (() => {
         if (hasResult && (!chart || chart.error)) {
             clearLoading();
             scheduleRender();
-            return;
+            return false;
         }
         if (!isShellRuntime()) {
-            pendingChart = null;
-            activeChart = null;
-            accumulator = null;
-            showError("shell");
-            return;
+            failChartPreparation("shell");
+            return false;
         }
         const err = evaluateError();
         if (err) {
-            pendingChart = null;
-            activeChart = null;
-            accumulator = null;
-            showError(err);
-            return;
+            failChartPreparation(err);
+            return false;
         }
         if (!chart || chart.error) {
             const reason = chart?.error === "keys" ? "keys" : chart?.error === "mode" ? "mania" : "chart";
-            pendingChart = null;
-            activeChart = null;
-            accumulator = null;
-            hasResult = false;
-            sessionActive = false;
-            showError(reason);
-            return;
+            failChartPreparation(reason, true);
+            return false;
         }
         if (chart.columnCount < 4 || chart.columnCount > 18) {
-            pendingChart = null;
-            activeChart = null;
-            accumulator = null;
-            showError("keys");
+            failChartPreparation("keys");
+            return false;
+        }
+        return true;
+    }
+
+    function switchActiveChart(chart) {
+        // 结算后重算可能带一张新谱面对象：先保留本局结算显示，
+        // 等下一次 startSession 再真正切图；否则用户刚看到的转换成绩会被清掉。
+        if (hasResult) {
+            pendingChart = chart;
+            clearLoading();
+            clearError();
+            scheduleRender();
+            return;
+        }
+        // 切图/换难度：旧事件的 note 索引只对旧谱面有效，必须先清空并重建
+        // 累加器；否则未匹配的旧头/尾会按新谱面落成 Miss。
+        clearSessionEvents();
+        pendingChart = chart;
+        pendingFinish = null;
+        frozenCutoff = null;
+        sessionPending = false;
+        sessionActive = Boolean(state.isInPlayState);
+        if (sessionActive) {
+            sessionScoreMode = resolveScoreMode();
+        }
+        hasResult = false;
+        createFor(chart);
+        if (sessionActive) {
+            requestResync();
+        }
+    }
+
+    /** 分析完成：只暂存；若当前没有战报，则显示 100.00% 预览。 */
+    function prepareChart(chart) {
+        if (!validateChartInput(chart)) {
             return;
         }
         if (activeChart && !sameChart(activeChart, chart)) {
-            // 结算后重算可能带一张新谱面对象：先保留本局结算显示，
-            // 等下一次 startSession 再真正切图；否则用户刚看到的转换成绩会被清掉。
-            if (hasResult) {
-                pendingChart = chart;
-                clearLoading();
-                clearError();
-                scheduleRender();
-                return;
-            }
-            // 切图/换难度：旧事件的 note 索引只对旧谱面有效，必须先清空并重建
-            // 累加器；否则未匹配的旧头/尾会按新谱面落成 Miss。
-            clearSessionEvents();
-            pendingChart = chart;
-            pendingFinish = null;
-            frozenCutoff = null;
-            sessionPending = false;
-            sessionActive = Boolean(state.isInPlayState);
-            if (sessionActive) {
-                sessionScoreMode = resolveScoreMode();
-            }
-            hasResult = false;
-            createFor(chart);
-            if (sessionActive) {
-                requestResync();
-            }
+            switchActiveChart(chart);
             return;
         }
         pendingChart = chart;
@@ -850,9 +869,7 @@ export const laneAccView = (() => {
             }
             return;
         }
-        if (!sessionActive && !hasResult) {
-            createFor(chart);
-        } else if (sessionActive && !accumulator) {
+        if ((!sessionActive && !hasResult) || (sessionActive && !accumulator)) {
             createFor(chart);
         } else if (accumulator) {
             accumulator.syncModifiers(options());
@@ -1065,41 +1082,42 @@ export const laneAccView = (() => {
         }
     }
 
+    function collectValidReplayFrames(rawFrames) {
+        const valid = [];
+        for (const frame of rawFrames) {
+            if (Number.isFinite(frame?.time) && Number.isFinite(frame?.keys)) {
+                valid.push({ time: frame.time, keys: frame.keys >>> 0 });
+            }
+        }
+        return valid;
+    }
+
+    function resetLiveReplaySession() {
+        lastRawSolveAt = 0;
+        if (!sessionActive && !state.isInPlayState) return;
+        pendingFinish = null;
+        frozenCutoff = null;
+        hasResult = false;
+        allEvents = false;
+        frozenTopSnapshot = null;
+        if (!activeChart || !accumulator) return;
+        sessionActive = true;
+        rawAccumulator = createAccumulator(activeChart, accumulatorOptions(rawScoreMode(), 300));
+        if (v2TopAccumulator) {
+            v2TopAccumulator = createAccumulator(activeChart, accumulatorOptions("stable-native", 305));
+        }
+    }
+
     function applyReplayFrames(payload) {
         const rawFrames = Array.isArray(payload?.frames) ? payload.frames : [];
         // 结算后壳 detach 会发空 reset；仅在冻结终态且非游玩中保留终态。
-        const emptyReset = Boolean(payload?.reset) && rawFrames.length === 0;
-        if (emptyReset && isFrozenResult()) {
+        if (Boolean(payload?.reset) && rawFrames.length === 0 && isFrozenResult()) {
             return;
         }
-        const validFrames = [];
-        for (const frame of rawFrames) {
-            if (Number.isFinite(frame?.time) && Number.isFinite(frame?.keys)) {
-                validFrames.push({ time: frame.time, keys: frame.keys >>> 0 });
-            }
-        }
-        const merged = mergeOrderedItems(replayFrames, replaySessionId, payload, validFrames);
+        const merged = mergeOrderedItems(replayFrames, replaySessionId, payload, collectValidReplayFrames(rawFrames));
         replaySessionId = merged.session;
-        if (merged.ignored) {
-            return;
-        }
-        if (merged.reset) {
-            lastRawSolveAt = 0;
-            if (sessionActive || state.isInPlayState) {
-                pendingFinish = null;
-                frozenCutoff = null;
-                hasResult = false;
-                allEvents = false;
-                frozenTopSnapshot = null;
-                if (activeChart && accumulator) {
-                    sessionActive = true;
-                    rawAccumulator = createAccumulator(activeChart, accumulatorOptions(rawScoreMode(), 300));
-                    if (v2TopAccumulator) {
-                        v2TopAccumulator = createAccumulator(activeChart, accumulatorOptions("stable-native", 305));
-                    }
-                }
-            }
-        }
+        if (merged.ignored) return;
+        if (merged.reset) resetLiveReplaySession();
         if (accumulator) {
             pump();
         } else {
@@ -1107,55 +1125,54 @@ export const laneAccView = (() => {
         }
     }
 
-    function applyBatch(payload) {
-        if (randomModBlocked()) {
+    function resetLiveHitState() {
+        feedIndex = 0;
+        lastCutoff = -Infinity;
+        allEvents = false;
+        lastRawSolveAt = 0;
+        laneBounds = null;
+        frozenTopSnapshot = null;
+        latestSnapshot = null;
+        if (!sessionActive && !state.isInPlayState) return;
+        pendingFinish = null;
+        frozenCutoff = null;
+        hasResult = false;
+        sessionActive = true;
+    }
+
+    function applyHitBatchToAccumulator(reset) {
+        // Stable V2 的每 note 事件由原始帧自己算；但壳的 native 头判仍要保留，
+        // 用来覆盖 V2 LN 预选把按下沿路由给前一条 LN 的头 miss（分轨才精确）。
+        const mode = activeScoreMode();
+        if (mode === "stable-sim") {
+            pump();
             return;
         }
+        if (reset) accumulator.reset();
+        if (mode === "stable-native") {
+            // Stable per-note 判定已是游戏最终结果：直接应用，不做时钟截断。
+            feedHits(Infinity);
+            scheduleRender();
+            return;
+        }
+        accumulator.syncModifiers(options());
+        pump();
+    }
+
+    function applyBatch(payload) {
+        if (randomModBlocked()) return;
         const batch = Array.isArray(payload) ? { events: payload } : (payload || {});
         const rawEvents = Array.isArray(batch.events) ? batch.events : [];
         // 结算后壳 detach 会发空 reset；仅在冻结终态且非游玩中保留终态。
-        const emptyReset = Boolean(batch.reset) && rawEvents.length === 0;
-        if (emptyReset && isFrozenResult()) {
+        if (Boolean(batch.reset) && rawEvents.length === 0 && isFrozenResult()) {
             return;
         }
         // Buffer original columns even while chart analysis is pending; map MR only at consumption.
         const merged = mergeOrderedItems(hitEvents, hitSessionId, batch, rawEvents);
         hitSessionId = merged.session;
         if (merged.ignored || !accumulator) return;
-        if (merged.reset) {
-            feedIndex = 0;
-            lastCutoff = -Infinity;
-            allEvents = false;
-            lastRawSolveAt = 0;
-            laneBounds = null;
-            frozenTopSnapshot = null;
-            latestSnapshot = null;
-            if (sessionActive || state.isInPlayState) {
-                pendingFinish = null;
-                frozenCutoff = null;
-                hasResult = false;
-                sessionActive = true;
-            }
-        }
-        // Stable V2 的每 note 事件由原始帧自己算；但壳的 native 头判仍要保留，
-        // 用来覆盖 V2 LN 预选把按下沿路由给前一条 LN 的头 miss（分轨才精确）。
-        if (activeScoreMode() === "stable-sim") {
-            pump();
-            return;
-        }
-        const native = activeScoreMode() === "stable-native";
-        if (native) {
-            // Stable per-note 判定已是游戏最终结果：直接应用，不做时钟截断。
-            if (merged.reset) accumulator.reset();
-            feedHits(Infinity);
-            scheduleRender();
-            return;
-        }
-        if (merged.reset) {
-            accumulator.reset();
-        }
-        accumulator.syncModifiers(options());
-        pump();
+        if (merged.reset) resetLiveHitState();
+        applyHitBatchToAccumulator(merged.reset);
     }
 
     /**
