@@ -37,7 +37,7 @@
       - 当lazer更新，内存无法正常读取且开发者尚未发布更新时，使用此功能可快速根据当前运行的Lazer进程尝试生成偏移表。
       - 使用时需要保持Lazer正在运行。你也可以通过`offsets/gen.exe`来生成。
       - **使用方法**：先在游玩/回放界面生成一次，结束后停在结算屏再生成一次。如果缺失，会提示还缺哪一部分。在选歌界面直接生成只能得到基础字段，部分功能会不可用。
-    - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；只有远端版本比本地/随包表更新时才会替换，同版本或更旧的表不会覆盖本地。
+    - **Check Remote Updates**：检查 GitHub 上的偏移表是否有新的更新；按 `revision` 比较，只有远端修订号严格高于本地/随包表时才会替换，同修订或更旧的表不会覆盖本地。若部分表验签、schema 或写入失败，面板会显示失败表名与阶段。
 - **壳专属卡片配置**（Desktop-shell card settings）
   - **Combined Mode**：启用组合模式，组合模式可以同时在屏幕上自定义显示若干个模块，适合在写谱或 OBS 中使用。
     - 启用后可以调整模块数量和显示顺序。在复选框中勾选所需模块。至少需要勾选一个模块。
@@ -231,7 +231,7 @@
       - When lazer updates and memory cannot be read before an official shell/offsets update is released, use this feature to quickly attempt generating an offset table from the currently running Lazer process.
       - Lazer must remain running during generation. You can also generate via `offsets/gen.exe`.
       - **Usage**: generate once during play/replay, then generate again while staying on the result screen after finishing. If something is missing, the page tells you which part is missing. Generating directly from song select only produces the base fields and some features will be unavailable.
-    - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Only a strictly newer remote table replaces the local one; same-version or older tables never overwrite a freshly generated/bundled table.
+    - **Check Remote Updates**: Check whether new offset tables are available on GitHub. Tables are compared by `revision`; only a strictly higher remote revision replaces the local one, and same/older revisions never overwrite a freshly generated/bundled table. If some tables fail signature, schema, or write checks, the panel shows the failing filenames and stage.
 - **Shell-exclusive Card Configuration**:
   - **Combined Mode**: Enables combined mode, allowing multiple modules to be displayed on the screen simultaneously, suitable for charting or OBS usage.
     - Once enabled, you can adjust the number of modules and their display order. Check the boxes for the desired modules. At least one module must be selected.

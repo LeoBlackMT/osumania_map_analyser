@@ -31,7 +31,7 @@
 - desktop/：桌面壳子项目（Tauri v2 + Rust），用于在桌面环境下运行插件。详见 [desktop/README.md](../desktop/README.md)，项目结构 [desktop/docs/architecture.md](../desktop/docs/architecture.md)，壳-页面契约 [desktop/docs/CONTRACT.md](../desktop/docs/CONTRACT.md)。
 - bridges/：游戏桥接项目，包含 Etterna Lua 桥、Malody 编辑器 Lua 桥与 Malody V BepInEx 选曲桥。详见 [bridges/README.md](../bridges/README.md)。
 - backend/：后端项目（Go + SQLite），用于收集匿名使用统计和估计算法反馈数据。详见 [backend/README.md](../backend/README.md)。
-- tools/：离线辅助工具，包括 `lazer-offsets-gen` 偏移表生成器、`malody-v-od-check`、`malody4-od-check`、`i18n-check` 等。详见 [tools/README.md](../tools/README.md)。
+- tools/：离线辅助工具，包括 `lazer-offsets-gen` 偏移表生成器、`offsets-tool` manifest 签名/校验、`malody-v-od-check`、`malody4-od-check`、`i18n-check` 等。详见 [tools/README.md](../tools/README.md)。
 
 ## 插件本体（ManiaMapAnalyser by Leo_Black/）
 
