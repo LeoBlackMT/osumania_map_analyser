@@ -50,6 +50,8 @@ pub struct Shared {
     /// 读取器健康读数的纯记忆（Step 9c 抗抖动窗口的唯一状态；`osu_source::ReaderLiveness`）。
     /// 由 `osu_source()` 每次取值时观测一次 ⇒ 状态帧/监视器两条路径共享同一个窗口。
     pub osu_reader_liveness: Mutex<osu_source::ReaderLiveness>,
+    /// Serializes LaneAcc drain + enqueue with snapshot requests (never held for socket I/O).
+    laneacc_delivery: Mutex<()>,
     /// 本局逐判定事件（LaneAcc / ScoreV1）；读取线程写、WS 发送线程取。
     pub hit_events: Arc<crate::osu::lazer::HitEventLog>,
     pub replay_frames: Arc<crate::osu::lazer::ReplayFrameLog>,
@@ -106,6 +108,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         bridge_listen_ok: Mutex::new(false),
         tosu_online: Mutex::new(false),
         osu_reader_liveness: Mutex::new(osu_source::ReaderLiveness::default()),
+        laneacc_delivery: Mutex::new(()),
         hit_events: Arc::new(crate::osu::lazer::HitEventLog::new()),
         replay_frames: Arc::new(crate::osu::lazer::ReplayFrameLog::new()),
         replay_pauses: Arc::new(replay_pauses::ReplayPausesState::new()),

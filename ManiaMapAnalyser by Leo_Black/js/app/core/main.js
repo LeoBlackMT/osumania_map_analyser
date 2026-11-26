@@ -52,6 +52,7 @@ export async function initialize() {
     initWindowAffordances(document, window, sendControl);
     initContentBarTabs({ onSelect: setTabContentBar });
     laneAccView.init();
+    laneAccView.setResyncHandler?.(sendLaneAccSync);
     await initShellConfig();
     if (typeof window !== "undefined" && window.location?.port === "24061") {
         fetch("http://127.0.0.1:24061/offsets/status")
@@ -146,6 +147,7 @@ export async function initialize() {
         },
         onReplayPauses: applyReplayPauses,
         onHello: (payload) => {
+            laneAccView.beginConnection();
             state.shellContractVersion = Number(payload?.contract) || 0;
             if (state.shellContractVersion < 10) {
                 laneAccView.setUnavailable("contract");

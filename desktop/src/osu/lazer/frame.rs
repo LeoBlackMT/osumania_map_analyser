@@ -264,12 +264,13 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     }
 
     // ⑥ 屏幕栈
-    match read_screen_state(source, table, game_base, &resolved, &mut chain, modules) {
+    let screen_kind = match read_screen_state(source, table, game_base, &resolved, &mut chain, modules) {
         ScreenOutcome::Mapped(state) => {
             snapshot.state_number = Some(state.number);
             snapshot.state_name = Some(state.name.clone());
             // 回放：当前屏幕是 ReplayPlayer（状态名同为 play，只能靠类型名区分）。
             snapshot.replay = state.type_name.contains("ReplayPlayer");
+            classify_lazer_screen(&state.type_name, Some(&state.name))
         }
         ScreenOutcome::Unmapped(type_name) => {
             snapshot.state_name = Some(String::new());
@@ -278,12 +279,14 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
                 &format!("{type_name}-{UNMAPPED_SCREEN_SUFFIX}"),
             ));
             gaps.push(gap("state.number", "screen-type-unmapped"));
+            classify_lazer_screen(&type_name, None)
         }
         ScreenOutcome::Unresolved(reason) => {
             gaps.push(gap("state.name", &reason));
             gaps.push(gap("state.number", &reason));
+            LazerPlayScreen::Other
         }
-    }
+    };
 
     // ⑥b 结算屏判定数：`ResultsScreen.Score` → `ScoreInfo.<StatisticsJson>`。
     //     lazer 没有 stable 那种"候选槽"，判定数只能从表里的 `results` 段读
@@ -311,7 +314,7 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
 
     // ⑥b' 回放哈希（play/回放）：`Player.Score → ScoreInfo.<Hash>`。
     //     只服务"回放暂停"数据面；读不到不降级任何其它字段。
-    if snapshot.state_name.as_deref() == Some("play") {
+    if screen_kind == LazerPlayScreen::Player {
         if let (Some(player), Some(layout)) = (chain.screen_top, layout) {
             snapshot.replay_hash = super::score::read_replay_hash(source, table, player, layout);
         }
@@ -323,7 +326,7 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     // 结算屏的 mods 是否来自该成绩自己的 `ScoreInfo.ModsJson`（含空数组）：
     // 是 ⇒ `read_tick` 不允许再用上一局 play 帧的 mods 覆盖（历史成绩可能属于别的 mod）。
     let mut mods_from_score = false;
-    if snapshot.state_name.as_deref() == Some("play") {
+    if screen_kind == LazerPlayScreen::Player {
         if let Some(screen_top) = chain.screen_top {
             super::mods::probe_once(source, table, screen_top, layout, modules);
             // ModsJson 是 RD seed / 自定义设置最稳的来源；读不到时回退 SelectedMods。
@@ -438,6 +441,7 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
         gaps,
         reidentified,
         mods_from_score,
+        screen_kind,
     })
 }
 

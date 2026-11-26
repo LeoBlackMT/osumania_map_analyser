@@ -52,6 +52,132 @@ pub fn screen_state_for(type_name: &str) -> Option<&'static str> {
         .map(|(_, state)| *state)
 }
 
+/// Lazer 顶层屏幕在 LaneAcc 会话生命周期里的分类。
+///
+/// 与 `SCREEN_STATE_MAP`（面向 tosu 兼容状态名，将 `PlayerLoader` 映射为 `"play"`）刻意解耦：
+/// `PlayerLoader` 不是 `Player`，绝不能拿它解引用 `ScoreProcessor`/`Score`；同时它是新局与
+/// 重试（Retry）的必经屏幕，用来在进入新 `Player` 前清掉上一局滞留在壳里的事件与按键帧。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LazerPlayScreen {
+    Player,
+    PlayerLoader,
+    Results,
+    #[default]
+    Other,
+}
+
+pub fn classify_lazer_screen(type_name: &str, mapped: Option<&str>) -> LazerPlayScreen {
+    if type_name.ends_with("PlayerLoader") {
+        return LazerPlayScreen::PlayerLoader;
+    }
+    match mapped.or_else(|| screen_state_for(type_name)) {
+        Some("play") => LazerPlayScreen::Player,
+        Some("resultScreen") => LazerPlayScreen::Results,
+        _ if type_name.ends_with("ResultsScreen") => LazerPlayScreen::Results,
+        _ => LazerPlayScreen::Other,
+    }
+}
+
+/// 追踪 Lazer 屏幕与选图切换，决定何时清理壳内缓存的 LaneAcc 日志。
+///
+/// - 选歌/菜单 → `PlayerLoader`（新开图或重进同一首歌）：第 1 拍立刻清理，防止 `laneacc_sync`
+///   在 `Player` 创建前把上一首/上一局的残存数据灌回页面；
+/// - 从游玩/结算退入 Loader 时，退出与重试的屏幕相同；保留记录直至看见下一次 Player，
+///   避免用加载时间猜测方向，把中途退出的一局擦掉。
+/// - 选歌/菜单（`Other`）中切换到不同谱面：立刻清理上一首歌残留；
+/// - `Results`（结算屏）：永不清理，保留结算终态与 F5 刷新恢复。
+#[derive(Clone, Debug, Default)]
+pub struct LazerSessionResetTracker {
+    last_screen: LazerPlayScreen,
+    last_played_beatmap: Option<String>,
+    has_session_data: bool,
+}
+
+impl LazerSessionResetTracker {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn observe(&mut self, screen: LazerPlayScreen, beatmap_id: Option<&str>) -> bool {
+        let previous = self.last_screen;
+        self.last_screen = screen;
+        let beatmap_id = beatmap_id.filter(|id| !id.is_empty());
+        let clear = self.has_session_data && match screen {
+            LazerPlayScreen::PlayerLoader => previous == LazerPlayScreen::Other,
+            LazerPlayScreen::Player => previous == LazerPlayScreen::PlayerLoader,
+            LazerPlayScreen::Other => self.last_played_beatmap.as_deref().zip(beatmap_id)
+                .is_some_and(|(old, new)| old != new),
+            LazerPlayScreen::Results => false,
+        };
+        if clear {
+            self.has_session_data = false;
+            self.last_played_beatmap = None;
+        }
+        if screen == LazerPlayScreen::Player {
+            self.has_session_data = true;
+            if let Some(id) = beatmap_id {
+                if self.last_played_beatmap.as_deref() != Some(id) {
+                    self.last_played_beatmap = Some(id.to_owned());
+                }
+            }
+        }
+        clear
+    }
+}
+
+#[cfg(test)]
+mod screen_tracker_tests {
+    use super::*;
+
+    #[test]
+    fn classifies_players_loaders_and_results() {
+        assert_eq!(classify_lazer_screen("osu.Game.Screens.Play.SoloPlayer", None), LazerPlayScreen::Player);
+        assert_eq!(classify_lazer_screen("osu.Game.Screens.Play.ReplayPlayer", None), LazerPlayScreen::Player);
+        assert_eq!(classify_lazer_screen("osu.Game.Screens.Play.PlayerLoader", None), LazerPlayScreen::PlayerLoader);
+        assert_eq!(
+            classify_lazer_screen("osu.Game.Screens.Select.SoloSongSelect+PlayerLoader", None),
+            LazerPlayScreen::PlayerLoader
+        );
+        assert_eq!(
+            classify_lazer_screen("osu.Game.Screens.Ranking.SoloResultsScreen", None),
+            LazerPlayScreen::Results
+        );
+        assert_eq!(
+            classify_lazer_screen("osu.Game.Screens.Select.SoloSongSelect", None),
+            LazerPlayScreen::Other
+        );
+    }
+
+    #[test]
+    fn loader_direction_not_duration_distinguishes_retry_from_exit() {
+        let mut tracker = LazerSessionResetTracker::default();
+        assert!(!tracker.observe(LazerPlayScreen::Player, Some("map-a")));
+        // Even a slow exit via the loader retains the completed run.
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::Other, Some("map-a")));
+        // Re-entering the same map from SongSelect clears immediately on the first loader tick.
+        assert!(tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::Player, Some("map-a")));
+        // A retry is confirmed when the loader enters the next Player.
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-a")));
+        assert!(tracker.observe(LazerPlayScreen::Player, Some("map-a")));
+    }
+
+    #[test]
+    fn song_switch_on_select_clears_but_results_preserves() {
+        let mut tracker = LazerSessionResetTracker::default();
+        assert!(!tracker.observe(LazerPlayScreen::Player, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::Results, Some("map-a")));
+        assert!(!tracker.observe(LazerPlayScreen::Other, Some("map-a")));
+        assert!(tracker.observe(LazerPlayScreen::Other, Some("map-b")));
+        // Once cleared, entering map-b's loader does not emit another clear.
+        assert!(!tracker.observe(LazerPlayScreen::PlayerLoader, Some("map-b")));
+    }
+}
+
 pub const LIVE_TIME_MAX_MS: f64 = 86_400_000.0;
 
 // ---- 表驱动的字段查法 ----

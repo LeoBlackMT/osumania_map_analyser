@@ -59,6 +59,7 @@ pub fn run(
     let mut hit_player: Option<u64> = None;
     let mut hit_state = lazer::score::PollState::default();
     let mut replay_state = lazer::score::ReplayPollState::default();
+    let mut lazer_reset_tracker = lazer::LazerSessionResetTracker::default();
     #[allow(unused_assignments)]
     #[allow(unused_assignments)]
     let mut stable_gameplay: Option<u32> = None;
@@ -433,13 +434,18 @@ pub fn run(
             let client = target.client().unwrap_or(Client::Stable);
             let read = match lazer_attach.as_mut() {
                 Some(attach) => lazer::read_tick(attach, target).map(|frame| {
-                    let state_name = frame.snapshot.state_name.clone();
                     let top = frame.chain.screen_top;
-                    if state_name.as_deref() == Some("play") {
+                    if lazer_reset_tracker.observe(frame.screen_kind, frame.snapshot.checksum.as_deref()) {
+                        hit_state.reset();
+                        replay_state.reset();
+                        hit_log.clear();
+                        replay_log.clear();
+                    }
+                    if frame.screen_kind == lazer::LazerPlayScreen::Player {
                         hit_player = top;
                     } else {
-                        // 离开 play 只停止轮询：保留本局日志与游标，页面继续显示上一局终态。
-                        // 新一局由 Player/ScoreProcessor/List 指针变化或 `_size` 回退触发 reset。
+                        // 离开真实 Player（含 PlayerLoader/Results/SongSelect）停止轮询；
+                        // 新局/Retry/切图由 lazer_reset_tracker 或新 Player 指针触发 reset。
                         hit_player = None;
                     }
                     publish_lazer_state(
@@ -612,6 +618,7 @@ pub fn run(
                     hit_player = None;
                     hit_state = lazer::score::PollState::default();
                     replay_state = lazer::score::ReplayPollState::default();
+                    lazer_reset_tracker.reset();
                     stable_gameplay = None;
                     stable_score = None;
                     stable_od = 8.0;

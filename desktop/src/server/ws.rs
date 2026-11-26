@@ -95,6 +95,46 @@ pub(crate) fn is_loopback_origin(origin: &str) -> bool {
     host.eq_ignore_ascii_case("127.0.0.1") || host.eq_ignore_ascii_case("localhost")
 }
 
+pub(super) struct LaneAccBatch<'a, T> {
+    pub kind: &'a str,
+    pub key: &'a str,
+    pub session: u64,
+    pub offset: usize,
+    pub reset: bool,
+    pub items: &'a [T],
+    pub chunk_size: usize,
+}
+
+/// Both snapshots and broadcasts enter each connection's FIFO under the delivery lock.
+/// Only enqueue here: a slow socket must never block the poller or another client.
+pub(super) fn deliver_laneacc<T: serde::Serialize>(
+    shared: &Shared,
+    batch: LaneAccBatch<'_, T>,
+    target: Option<&mpsc::Sender<String>>,
+) {
+    let send = |index: usize, chunk: &[T]| {
+        let payload = serde_json::json!({
+            "session": batch.session,
+            "offset": batch.offset + index * batch.chunk_size,
+            "reset": batch.reset && index == 0,
+            (batch.key): chunk,
+        });
+        if let Some(tx) = target {
+            let env = crate::frames::Envelope::new(batch.kind, next_seq(shared), Some(payload));
+            let _ = tx.send(serde_json::to_string(&env).unwrap());
+        } else {
+            super::broadcast(shared, batch.kind, Some(payload));
+        }
+    };
+    if batch.reset && batch.items.is_empty() {
+        send(0, batch.items);
+    } else {
+        for (index, chunk) in batch.items.chunks(batch.chunk_size).enumerate() {
+            send(index, chunk);
+        }
+    }
+}
+
 pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
     // 出站排水依赖周期性唤醒：read timeout 让阻塞的 read 周期返回。
     let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
@@ -176,26 +216,8 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                 // laneacc_sync：页面刷新/重连主动要本局全量（只发给这个连接）。
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     if value.get("type").and_then(|v| v.as_str()) == Some("laneacc_sync") {
-                        for text in crate::server::hit_events::snapshot_messages(&shared) {
-                            if ws.send(tungstenite::Message::Text(text)).is_err() {
-                                shared
-                                    .sinks
-                                    .lock()
-                                    .unwrap()
-                                    .retain(|(id, _s)| *id != conn_id);
-                                return;
-                            }
-                        }
-                        for text in crate::server::replay_frames::snapshot_messages(&shared) {
-                            if ws.send(tungstenite::Message::Text(text)).is_err() {
-                                shared
-                                    .sinks
-                                    .lock()
-                                    .unwrap()
-                                    .retain(|(id, _s)| *id != conn_id);
-                                return;
-                            }
-                        }
+                        crate::server::hit_events::sync(&shared, &tx);
+                        crate::server::replay_frames::sync(&shared, &tx);
                         continue;
                     }
                 }
@@ -266,4 +288,156 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
         .lock()
         .unwrap()
         .retain(|(id, _s)| *id != conn_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osu::lazer::{RawHitEvent, RawReplayFrame};
+    use crate::server::{self, hit_events, replay_frames};
+    use serde_json::{json, Value};
+    use std::net::TcpListener;
+
+    fn collect_lane_messages(rx: &mpsc::Receiver<String>, field: &str) -> (usize, usize) {
+        let (mut next_index, mut resets) = (0usize, 0usize);
+        for text in rx.try_iter() {
+            let msg: Value = serde_json::from_str(&text).unwrap();
+            let payload = &msg["payload"];
+            let Some(items) = payload[field].as_array() else {
+                continue;
+            };
+            if payload["reset"] == true {
+                next_index = 0;
+                resets += 1;
+            }
+            assert_eq!(payload["offset"].as_u64(), Some(next_index as u64));
+            for item in items {
+                let marker = if field == "events" {
+                    item["note"].as_u64().unwrap()
+                } else {
+                    item["time"].as_f64().unwrap() as u64
+                };
+                assert_eq!(marker, next_index as u64);
+                next_index += 1;
+            }
+        }
+        (next_index, resets)
+    }
+
+    #[test]
+    fn sync_and_broadcast_preserve_continuous_session_offsets() {
+        let shared = server::new_shared(std::env::temp_dir(), None);
+        let (tx_sync, rx_sync) = mpsc::channel();
+        let (tx_live, rx_live) = mpsc::channel();
+        shared.sinks.lock().unwrap().extend([(1, tx_sync.clone()), (2, tx_live)]);
+
+        let hits: Vec<_> = (0..5000)
+            .map(|i| RawHitEvent { result: 6, note: Some(i), ..RawHitEvent::default() })
+            .collect();
+        shared.hit_events.push(true, &hits[..2000]);
+        for batch in hits[2000..].chunks(500) {
+            shared.hit_events.push(false, batch);
+            hit_events::sync(&shared, &tx_sync);
+        }
+        assert_eq!(collect_lane_messages(&rx_sync, "events"), (5000, 7));
+        assert_eq!(collect_lane_messages(&rx_live, "events"), (5000, 1));
+
+        let frames: Vec<_> = (0..10000)
+            .map(|i| RawReplayFrame { time: i as f64, keys: 0 })
+            .collect();
+        shared.replay_frames.push(true, &frames);
+        replay_frames::sync(&shared, &tx_sync);
+        assert_eq!(collect_lane_messages(&rx_sync, "frames"), (10000, 2));
+        assert_eq!(collect_lane_messages(&rx_live, "frames"), (10000, 1));
+
+        shared.hit_events.clear();
+        hit_events::sync(&shared, &tx_sync);
+        assert_eq!(collect_lane_messages(&rx_sync, "events"), (0, 2));
+        assert_eq!(collect_lane_messages(&rx_live, "events"), (0, 1));
+    }
+
+    #[test]
+    fn ws_laneacc_sync_is_unicast_and_continuous_across_chunks() {
+        let shared = server::new_shared(std::env::temp_dir(), None);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_shared = shared.clone();
+        let accept_thread = std::thread::spawn(move || {
+            let mut workers = Vec::new();
+            for sock in listener.incoming().take(2) {
+                let srv = server_shared.clone();
+                workers.push(std::thread::spawn(move || handle_ws(srv, sock.unwrap())));
+            }
+            for worker in workers {
+                let _ = worker.join();
+            }
+        });
+
+        let connect = || {
+            let stream = TcpStream::connect(addr).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let (mut ws, _) = tungstenite::client(format!("ws://{addr}/ws"), stream).unwrap();
+            let hello: Value = serde_json::from_str(ws.read().unwrap().to_text().unwrap()).unwrap();
+            assert_eq!(hello["type"], "hello");
+            ws
+        };
+        let next_lane = |ws: &mut tungstenite::WebSocket<TcpStream>| -> Value {
+            loop {
+                let v: Value = serde_json::from_str(ws.read().unwrap().to_text().unwrap()).unwrap();
+                if matches!(v["type"].as_str(), Some("mania_hit_events" | "mania_replay_frames")) {
+                    return v;
+                }
+            }
+        };
+
+        let (mut client_a, mut client_b) = (connect(), connect());
+        shared.hit_events.push(true, &[RawHitEvent::default(); 2049]);
+        shared.replay_frames.push(true, &[RawReplayFrame::default(); 4097]);
+        client_a
+            .send(tungstenite::Message::Text(
+                json!({ "type": "laneacc_sync", "v": 13, "seq": 1 }).to_string(),
+            ))
+            .unwrap();
+
+        for (ws, repeats) in [(&mut client_a, 2), (&mut client_b, 1)] {
+            for (field, max_chunk) in [("events", 2048), ("frames", 4096)] {
+                for _ in 0..repeats {
+                    let first = next_lane(ws);
+                    assert_eq!(first["payload"]["reset"], true);
+                    assert_eq!(first["payload"]["offset"], 0);
+                    assert_eq!(first["payload"][field].as_array().unwrap().len(), max_chunk);
+
+                    let second = next_lane(ws);
+                    assert_eq!(second["payload"]["reset"], false);
+                    assert_eq!(second["payload"]["offset"], max_chunk);
+                    assert_eq!(second["payload"][field].as_array().unwrap().len(), 1);
+                }
+            }
+        }
+
+        shared.hit_events.push(false, &[RawHitEvent::default()]);
+        let delta = shared.hit_events.drain();
+        deliver_laneacc(
+            &shared,
+            LaneAccBatch {
+                kind: "mania_hit_events",
+                key: "events",
+                session: delta.session,
+                offset: delta.offset,
+                reset: delta.reset,
+                items: &delta.events,
+                chunk_size: hit_events::SNAPSHOT_CHUNK,
+            },
+            None,
+        );
+        for ws in [&mut client_a, &mut client_b] {
+            let msg = next_lane(ws);
+            assert_eq!(msg["payload"]["offset"], 2049);
+            assert_eq!(msg["payload"]["reset"], false);
+        }
+
+        let _ = client_a.close(None);
+        let _ = client_b.close(None);
+        let _ = accept_thread.join();
+    }
 }

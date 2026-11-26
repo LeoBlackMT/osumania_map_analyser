@@ -10,9 +10,9 @@ use std::time::Duration;
 use super::score::{self, HitEventLog, PollState, ReplayFrameLog, ReplayPollState};
 use super::screen::{read_eetype_identity, read_pe_typedef_name, read_screen_top};
 use super::{
-    env_table_path, load_table, read_u64, screen_state_for, shell_exe_dir, table_probe,
-    target_from_files, try_site, ChainAddrs, RealFiles, Resolved, Source, TargetEnv,
-    MARKER_PATTERN, SITE_DELTAS,
+    classify_lazer_screen, env_table_path, load_table, read_u64, shell_exe_dir, table_probe,
+    target_from_files, try_site, ChainAddrs, LazerPlayScreen, LazerSessionResetTracker, RealFiles,
+    Resolved, Source, TargetEnv, MARKER_PATTERN, SITE_DELTAS,
 };
 use crate::osu::offsets::OffsetTable;
 use crate::osu::{Reader, ATTACH_RETRY, SCAN_RETRY};
@@ -218,15 +218,22 @@ fn prove_game(memory: &ProcessMemory, table: &OffsetTable, fields: &Resolved, ba
 }
 
 impl Session {
-    fn player(&self) -> Option<u64> {
+    fn screen(&self) -> (LazerPlayScreen, Option<u64>) {
         let mut chain = ChainAddrs::default();
-        let top = read_screen_top(&self.memory, &self.table, self.game_base, &self.fields, &mut chain).ok()?;
-        let screen = read_eetype_identity(&self.memory, &self.table, top).ok()?;
+        let Ok(top) = read_screen_top(&self.memory, &self.table, self.game_base, &self.fields, &mut chain) else {
+            return (LazerPlayScreen::Other, None);
+        };
+        let Ok(screen) = read_eetype_identity(&self.memory, &self.table, top) else {
+            return (LazerPlayScreen::Other, None);
+        };
         if screen.module != self.screen_module {
-            return None;
+            return (LazerPlayScreen::Other, None);
         }
-        let name = self.table.runtime_type_name(GAME_ASSEMBLY, screen.rid)?;
-        (self.table.screen_state_for(name).or_else(|| screen_state_for(name)) == Some("play")).then_some(top)
+        let Some(name) = self.table.runtime_type_name(GAME_ASSEMBLY, screen.rid) else {
+            return (LazerPlayScreen::Other, None);
+        };
+        let kind = classify_lazer_screen(name, self.table.screen_state_for(name));
+        (kind, (kind == LazerPlayScreen::Player).then_some(top))
     }
 }
 
@@ -242,13 +249,20 @@ impl Session {
         Some(object)
     }
 
+    fn beatmap_hash(&self, info: u64) -> Option<String> {
+        let f = &self.fields;
+        let layout = f.string_layout().ok()?;
+        let ptr = super::read_ptr_field(&self.memory, info, *f.beatmap_hash.as_ref().ok()?)?;
+        super::read_string(&self.memory, ptr, layout)
+    }
+
     fn chart_path(&self, info: u64) -> Option<PathBuf> {
         use super::{read_ptr_field, read_string, to_lazer_path};
         let f = &self.fields;
         let ptr = |base, field: &Result<i64, crate::osu::offsets::LookupError>|
             read_ptr_field(&self.memory, base, *field.as_ref().ok()?);
         let layout = f.string_layout().ok()?;
-        let hash = read_string(&self.memory, ptr(info, &f.beatmap_hash)?, layout)?;
+        let hash = self.beatmap_hash(info)?;
         let rel = to_lazer_path(&hash)?.replace('\\', "/");
         let live_root = || {
             let storage = ptr(self.game_base, &f.storage)?;
@@ -323,12 +337,26 @@ pub(crate) fn run(reader: Reader, hits: Arc<HitEventLog>, replays: Arc<ReplayFra
             });
         }
         let mut chart_mode = None;
+        let mut cached_hash = None;
+        let mut reset_tracker = LazerSessionResetTracker::default();
         while read_u64(&session.memory, session.game_base) == Some(session.game_type) {
             let mut notice = None;
-            if let Some(player) = session.player() {
+            let (screen_kind, player) = session.screen();
+            let beatmap_info = session.beatmap_info();
+            if cached_hash.as_ref().map(|(ptr, _)| *ptr) != beatmap_info {
+                cached_hash = beatmap_info.and_then(|ptr| session.beatmap_hash(ptr).map(|hash| (ptr, hash)));
+            }
+            if reset_tracker.observe(screen_kind, cached_hash.as_ref().map(|(_, hash)| hash.as_str())) {
+                hit_state.reset();
+                replay_state.reset();
+                hits.clear();
+                replays.clear();
+                chart_mode = None;
+            }
+            if let Some(player) = player {
                 // Cache the mode for this player and beatmap. Never carry that decision
                 // across retries, map changes, or a return to the menu.
-                let key = session.beatmap_info().map(|info| (player, info));
+                let key = beatmap_info.map(|info| (player, info));
                 if key != chart_mode.map(|(k, _)| k) {
                     chart_mode = key.and_then(|k| {
                         let mode = native_mania_chart(&session.chart_path(k.1)?).ok()?;
