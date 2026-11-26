@@ -112,6 +112,7 @@ if [ -d "$root/desktop/offsets" ]; then
     find "$stage/offsets" -type f -name '*.pdb' -delete
 fi
 install -m 0755 "$exe" "$stage/mma-shell"
+install -m 0755 "$script_dir/linux/run.sh" "$script_dir/linux/run-lazer.sh" "$stage/"
 
 # 兜底断言：开发产物与未剥离的 bridges 绝不进包
 forbidden="$(find "$stage" -type d \( -name .tools -o -name tests -o -name node_modules -o -name bridges \))"

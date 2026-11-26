@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v12）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v13）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -9,7 +9,7 @@
 三条边界（DEC-08 / DEC-03 / DEC-04）：
 
 - **只承诺本插件消费的子集**：不承诺完整 tosu 兼容；不实现 tosu 的其它 overlay 面。
-- **Windows only**：Linux 上整条通道以 `platform-unsupported` 优雅不可用（`desktop/src/osu/model.rs:32-33`），浏览器模式与其余三源不受影响。
+- **平台**：完整的原生 osu! 传输（24062）面向 Windows。Linux x86_64 的 osu!lazer 使用 tosu 传输，由壳的[判定读取器](lane-acc.md#2-数据链路)补充 LaneAcc 数据。
 - **只读**：只声明 `ReadProcessMemory` / `VirtualQueryEx` / Toolhelp32；句柄权限恒为 `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`（`desktop/src/osu/win.rs:28`：`0x0010 | 0x0400`），无任何写/挂起/注入 API。dump 采集只存在于 dev-time 工具（§10），产品内不存在。
 
 tosu 保留为兜底传输：读取器不健康、24062 未绑定、或操作者显式逃生时，壳下发 `mode:"tosu"`，页面回到自己设置里的 `wsEndpoint`，行为与无壳时逐字节相同（`desktop/src/server/osu_source.rs:95-112`）。
@@ -51,7 +51,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 
 - **结构常数**（来自我们自己的 P4 探针，`osu/lazer/fields.rs:5,7,8-12`）：12 字节标记模式 `MARKER_PATTERN`、站点位移候选表 `SITE_DELTAS`（首项 `0x24`）、GameBase 多跳 `GAME_BASE_HOPS`（`site → +0x0 → +0x218 → +0x310`）。
 - **偏移表**（来自 `tools/lazer-offsets-gen/`，SOS + IL 双见证）：每个 `Type.Field → offset`、`game_base_vtable`、版本键 `(lazer 版本, runtime 版本, 架构)`。
-- **表梯子**（`desktop/src/osu/lazer/table.rs`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`DEFAULT_LAZER_TABLE_JSON`，`offsets/lazer_table.rs:5` 以 `include_str!` 内嵌，**绝不回落到不存在的状态**）。同键多张表时按可选段完整度（`results` / `score` / `mods`）优先完整表，避免 APPDATA 里的旧版局部生成表遮住壳目录的随包完整表；**跨版本旧表绝不参与补段**（旧偏移不可信）。
+- **表梯子**（`desktop/src/osu/lazer/table.rs`）：① `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` → ② `%APPDATA%\ManiaMapAnalyser\offsets\lazer\`（Linux 为 `$XDG_DATA_HOME/ManiaMapAnalyser/offsets/lazer/` 或 `~/.local/share/ManiaMapAnalyser/offsets/lazer/`，远端更新/用户生成的本地缓存）→ ③ `<壳 exe 目录>\offsets\lazer\<lazer>__<runtime>__<arch>.json` → ④ 同目录兼容旧路径 `<壳 exe 目录>\lazer-offsets\` → ⑤ 编译期内嵌默认表（`DEFAULT_LAZER_TABLE_JSON`，`offsets/lazer_table.rs:5` 以 `include_str!` 内嵌，**绝不回落到不存在的状态**）。同键多张表时按可选段完整度（`results` / `score` / `mods`）优先完整表，避免 APPDATA 里的旧版局部生成表遮住壳目录的随包完整表；**跨版本旧表绝不参与补段**（旧偏移不可信）。
 - **`game_base_vtable` 不是准入条件**：它是运行期 MethodTable 指针（ASLR），跨进程必然不同，只作见证/溯源（`desktop/src/osu/lazer/resolve.rs:220` 的 `vtable_witness_note`）。
 - **L1 结构证明**是跨进程可用的那一版：链能解通 + `[gameBase]` 对齐可读 + 会话内 MT 稳定 + 表侧字段探针（`desktop/src/osu/lazer/resolve.rs` 的 L1 结构证明；`desktop/src/osu/invariants.rs` 的 I-06 lazer 分支）。
 - **`state.name` 的来源**（Step 10f）：屏幕栈 `_array`/`_size` → 屏幕对象的 MethodTable → EEType 的 `token@+0x8` / `loader_module@+0x18` / `Module.image_base@+0xc8` → 从表里的 typedef 名字表解出类型名 → 我们自己的"类型名 → 状态名"映射表（观测集外的类型名**不猜**，报 `<类型名>-not-in-observed-set` 并降级）。
@@ -209,7 +209,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
 
 | 项 | 结论 |
 |---|---|
-| Linux 内存读取 | 不做（DEC-03；`platform-unsupported`） |
+| Linux 内存读取 | x86_64 上支持 osu!lazer LaneAcc，谱面和游戏状态经 tosu 传输 |
 | "已验证 exe 哈希"白名单硬门 | 不做（DEC-05/REJ-02）；`unsupported-build:<hash>` 只是**人工诊断标签**，没有任何哈希白名单会让它自动触发 |
 | 第五来源（`osun:` identity / 独立帧型） | 不做（REJ-03） |
 | 壳内 WS 中继（页面永远只看壳） | 暂缓（REJ-07，DEC-06 的升级路径；固定 24062 就是为它留的） |

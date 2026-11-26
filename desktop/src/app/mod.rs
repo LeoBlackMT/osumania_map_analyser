@@ -2,6 +2,10 @@
 
 pub mod builder;
 pub mod instance;
+#[cfg(target_os = "linux")]
+mod kde_overlay;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) mod lazer_launcher;
 pub mod profile;
 pub mod shortcuts;
 pub mod url;

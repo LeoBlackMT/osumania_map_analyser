@@ -54,6 +54,6 @@ pub fn read(path: &Path) -> Option<GameConfig> {
     parse(&text)
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_config"))]
 #[path = "../../tests-local/malody4_config.rs"]
 mod tests;

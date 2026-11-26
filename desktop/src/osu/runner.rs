@@ -9,8 +9,9 @@
 
 #[allow(unused_imports)]
 use std::sync::Arc;
-use std::thread;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::AtomicU8;
+#[cfg(windows)]
+use std::{sync::atomic::Ordering, thread};
 use crate::osu::invariants::{FrameAction, Gate};
 use crate::osu::model::{Client, Reason, Snapshot};
 use super::*;
@@ -112,6 +113,7 @@ pub fn run(
             anchors = None;
             stable_table = None;
             lazer_attach = None;
+            reader.inner.lock().unwrap().lazer = None;
             osu_cache = None;
             last_scan_fail = None;
             publish_phase(&reader, Phase::Scanning, None, "reason=freeze-window-expired");
@@ -144,6 +146,7 @@ pub fn run(
                     anchors = None;
                     stable_table = None;
                     lazer_attach = None;
+                    reader.inner.lock().unwrap().lazer = None;
                     regions = scan::RegionCache::new();
                     scan_fail_attempt = 0;
                     last_scan_fail = None;
@@ -600,6 +603,7 @@ pub fn run(
                     attached = None;
                     anchors = None;
                     lazer_attach = None;
+                    reader.inner.lock().unwrap().lazer = None;
                     osu_cache = None;
                     previous_live = None;
                     regions = scan::RegionCache::new();
@@ -687,7 +691,16 @@ pub fn run(
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub fn run(
+    reader: Reader,
+    hit_log: Arc<lazer::HitEventLog>,
+    replay_log: Arc<lazer::score::ReplayFrameLog>,
+) {
+    lazer::linux::run(reader, hit_log, replay_log);
+}
+
+#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
 pub fn run(
     reader: Reader,
     _hit_log: Arc<lazer::HitEventLog>,
@@ -697,7 +710,7 @@ pub fn run(
     let outcome = gate.on_anchor_failure(Reason::PlatformUnsupported, 0);
     publish_outcome(&reader, &gate, &outcome, None, None, None);
     loop {
-        thread::sleep(ATTACH_RETRY);
+        std::thread::sleep(ATTACH_RETRY);
     }
 }
 

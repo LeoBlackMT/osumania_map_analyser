@@ -413,12 +413,11 @@ export function resetReworkDisplay(options = {}) {
 /**
  * 清空时的"外部源上下文复位"：清空边沿必须把上一张谱面的上下文一并作废。
  *
- * - `pendingSourceText` 是一次性槽（`fetchBeatmapFile` 取用后立即置 null），残留会让下一次
- *   osu 触发的缓存未命中拿上一张 Malody 谱面的文本去分析；
+ * - 清掉桥帧持有的原文，避免已离场的谱面再触发重算；
  * - `analysisRate` 置 null ⇒ 回落 `state.speedRate`（倍率语义只在桥通道内有效）。
  */
 function resetSourceContext() {
-    state.pendingSourceText = null;
+    if (state.lastBeatmapIdentityInfo?.source) state.lastBeatmapIdentityInfo.externalText = null;
     state.pendingSourceRequestId = null;
     state.pendingSourceActive = null;
     state.externalSourceActive = null;
@@ -483,13 +482,15 @@ export async function fetchBeatmapFile(reason) {
     // 仅靠 requestSeq 不够——它只在新 fetch 开始时推进，换图后的 200ms 防抖窗口里
     // 旧请求仍能拿到新图 body 并按旧 identity 渲染/写缓存。
     const requestEpoch = state.analysisEpoch || 0;
-    mainCardEl?.classList.remove("card-source-stale");
     // 本次分析的谱面身份快照：fetch/worker 期间可能切图，所有原文缓存与
     // 结果缓存键都必须锚在请求开始时的那张图，不能用可变的
     // `state.lastBeatmapIdentity`（否则旧图原文会写进新图键下，之后永远
     // 只显示上一张图的结果）。
     const requestFrame = state.lastBeatmapIdentityInfo
         || parseBeatmapIdentityFrame(state.lastBeatmapIdentity || "");
+    const externalText = requestFrame.externalText;
+    if (requestFrame.source && !externalText) return; // 外部谱面已清除，等下一帧。
+    mainCardEl?.classList.remove("card-source-stale");
     const requestIdentity = requestFrame.identity || state.lastBeatmapIdentity || "";
     // contentKey：hash > folder-qualified path > id > meta。缓存键/原文 LRU 用它，
     // 弱帧合并后同一张文件的键稳定，换文件（hash 变）时键必变。
@@ -742,18 +743,12 @@ export async function fetchBeatmapFile(reason) {
             }
             setEffectiveContentBarForMap(null);
         };
-        // 外部源（Etterna/Malody）注入文本的取用点：无论本轮走不走缓存都先取走并清槽。
-        // 旧写法只在非缓存分支消费——缓存命中的那轮会把文本留在槽里，下一张图
-        // （含切回 osu）可能误用上一张图的外部文本。externalText 同时作为"本轮补跑
-        // 可复用的本地文本"，供下方 auto profile 段回填（见那里的注释）。
-        // ⚠️ 区间跑批不消费待用文本：那份文本属于外部源帧自己的跑批（见文件开头）。
-        const externalText = isSectionRun ? null : state.pendingSourceText;
-        if (!isSectionRun) {
-            state.pendingSourceText = null;
-        }
         if (cached) {
             parsedInfo = cached.parsedInfo;
             applyContentBarOverride(parsedInfo.columnCount);
+        } else if (externalText) {
+            rawText = externalText;
+            contentVerified = true;
         } else if (isSectionRun) {
             // 区间分析：优先复用某次全谱跑批留下的原文（外部源没有可重抓的端点）。
             rawText = getFullChartText(requestContentKey, requestMetaKey);
@@ -784,24 +779,9 @@ export async function fetchBeatmapFile(reason) {
                 clearSection("text-missing", { recompute: true });
                 return;
             }
-        } else if (externalText) {
-            // 文本已由 externalSource 转换并注入，跳过 tosu 抓取。
-            rawText = externalText;
-            if (isStaleRequest()) return;
-            if (!rawText || !rawText.trim()) {
-                throw new Error("Empty external beatmap content.");
-            }
-            // 外部源文本由壳/桥按当前帧直接注入，没有“端点供奉另一张图”的问题；
-            // 视作已校验，保留外部源的结果缓存（其 identity 自带内容摘要）。
-            contentVerified = true;
         } else {
-            // 同图重算（Tab 切换/设置变更）优先复用上次全谱跑批留下的原文：外部源没有
-            // 可重抓的端点；osu 也省一次整谱抓取。原文按 contentKey 存 LRU，换图不会串。
+            // osu 同图重算优先复用原文；外部源已在上面使用当前帧的转换结果。
             rawText = getFullChartText(requestContentKey, requestMetaKey);
-            // 外部源的原文由桥/壳直接注入，LRU 命中同样视为可信（osu 还要过元数据校验）。
-            if (rawText && (state.activeSource ?? "osu") !== "osu") {
-                contentVerified = true;
-            }
             // 缓存的原文也要过一遍内容校验：metaKey 只能证明元信息一致，不能证明文本没被错误写入过。
             if (rawText && !acceptFetchedText(rawText)) {
                 rawText = null;
@@ -809,7 +789,7 @@ export async function fetchBeatmapFile(reason) {
             if (!rawText) {
                 // 壳离线页（24061）无 tosu 数据面且无原生传输时任何 osu 抓取都守卫：Waiting 而非报错。
                 if (isShellOfflinePage
-                    && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive() && !state.pendingSourceText) {
+                    && !state.shellTosuOnline && !state.tosuDataSeen && !isRuntimeOsuOverrideActive()) {
                     setStatus("Waiting for a data source (Etterna/Malody or tosu)...", "ok");
                     return;
                 }
@@ -842,7 +822,7 @@ export async function fetchBeatmapFile(reason) {
 
         // 全谱跑批成功后留存原文：区间跑批切片要用（外部源无端点可重抓）。
         // 缓存命中的那轮 rawText 为 null：绝不能拿 null 覆盖已有原文。
-        if (!isSectionRun && rawText) {
+        if (!isSectionRun && rawText && !externalText) {
             rememberFullChartText(rawText, requestContentKey, requestMetaKey);
         }
         // RD 列置换胶囊与主分析共用同一份 map：从请求开始快照的 transform 和
@@ -1145,15 +1125,6 @@ export async function fetchBeatmapFile(reason) {
             if (profileChanged && ((missingEtterna || missingPattern)
                 || state.contentBar !== beforeContent
                 || state.srText !== beforeSrText)) {
-                // 外部源同样要补跑：它们没有 osu 那种"第二次抓同一张图/命中快照"的兜底，
-                // 但本轮用过的文本本来就在本地（externalText，不经 tosu 抓取）——把同一份
-                // 文本回填待用槽，二次派发即可直接重算，无需任何网络步骤。
-                // 仅在本轮仍是当前请求时回填：新帧会在自己的处理里同步推高
-                // analysisRequestSeq（scheduleRecompute 是同步派发），旧图的文本绝不会
-                // 喂给下一张图；二次派发随即取走该槽，槽位不会滞留。
-                if (externalText && !isStaleRequest()) {
-                    state.pendingSourceText = externalText;
-                }
                 // 二次派发沿用"衍生重算"语义：requestId 已在本函数开头清空，故不会
                 // 再发一帧 result（壳按首帧 requestId 关联）；首帧 result 由下方
                 // finally 无条件发出，stale 不影响 result 帧。
@@ -1605,9 +1576,6 @@ export async function fetchBeatmapFile(reason) {
             const beforeSrText = state.srText;
             const profileChanged = refreshAutoDisplayProfile(resolvedModeTag);
             if (profileChanged && (state.contentBar !== beforeContent || state.srText !== beforeSrText)) {
-                if (externalText && !isStaleRequest()) {
-                    state.pendingSourceText = externalText;
-                }
                 scheduleRecompute("auto profile switched", false);
                 return;
             }
@@ -1702,7 +1670,7 @@ export async function fetchBeatmapFile(reason) {
         // 否则用户在分析完成后才切到 LaneAcc，会命中“Chart text unavailable”，只能切图重载。
         // 复用本轮的 rawText；缓存命中时回落到本图留存的全谱原文。
         {
-            let laneAccText = rawText || getFullChartText(requestContentKey, requestMetaKey);
+            let laneAccText = rawText || externalText || getFullChartText(requestContentKey, requestMetaKey);
             if (!laneAccChart && cached?.laneAccChart) {
                 laneAccChart = cached.laneAccChart;
             }

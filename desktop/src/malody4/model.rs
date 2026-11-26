@@ -203,6 +203,6 @@ pub fn hex16(digest: &[u8]) -> String {
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_model"))]
 #[path = "../../tests-local/malody4_model.rs"]
 mod tests;

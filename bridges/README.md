@@ -69,18 +69,20 @@ ManiaMapAnalyser/
    ```lua
    t[#t + 1] = LoadActor("mma_bridge.lua")
    ```
-3. 将 `etterna/mma_gameplay.lua` 复制到主题的 `BGAnimations/ScreenGameplay overlay/` 目录下。
-4. 打开该目录下的 `default.lua`，在 `return t` 之前添加：
+3. 将 `etterna/mma_gameplay.lua` 放在主题的常驻系统层脚本旁：通常是 `BGAnimations/ScreenSystemLayer overlay.lua`；若系统层是目录，则放在其中的 `default.lua` 旁。
+4. 打开该系统层脚本，在 `return t` 之前添加：
    ```lua
    t[#t + 1] = LoadActor("mma_gameplay.lua")
    ```
 5. 打开 `mma-shell.exe` 同级目录下的 `mma-shell-config.json`，将 `etternaRoot` 修改为游戏安装目录，例如 `D:/Games/Etterna`。
 6. 注意：主题更新会覆盖上述文件，更新主题后需要重新配置。
 
+升级旧桥时，先移除 `ScreenGameplay overlay/default.lua` 中加载 `mma_gameplay.lua` 的行及该目录中的旧脚本。自动安装器会完成迁移；常驻系统层会在返回选歌或进入结算时清除游玩状态。
+
 ### 2. Malody V 编辑器插件
 
 1. 将 `malody/mma_editor.lua` 复制到游戏目录的 `MalodyV/editor/` 下（若目录不存在则创建）。
-2. 在游戏中打开谱面编辑器，通过菜单中的插件功能点击 MMA Analyze 即可向桌面壳发送当前谱面。
+2. 在游戏中打开谱面编辑器，打开浮动工具菜单，点击 `MMA Analyze` 即可向桌面壳发送当前谱面。
 3. 在 `mma-shell-config.json` 中配置 `malodyRoot` 为 Malody V 目录。
 
 ### 3. Malody V 游戏内选曲桥
@@ -167,18 +169,20 @@ Common command line options:
    ```lua
    t[#t + 1] = LoadActor("mma_bridge.lua")
    ```
-3. Copy `etterna/mma_gameplay.lua` to `BGAnimations/ScreenGameplay overlay/` inside your theme directory.
-4. Open `default.lua` in that directory and add this line before `return t`:
+3. Place `etterna/mma_gameplay.lua` beside the theme's persistent system-layer script, usually `BGAnimations/ScreenSystemLayer overlay.lua`; for a directory-based system layer, place it beside that directory's `default.lua`.
+4. Open that system-layer script and add this line before `return t`:
    ```lua
    t[#t + 1] = LoadActor("mma_gameplay.lua")
    ```
 5. Open `mma-shell-config.json` next to `mma-shell.exe` and set `etternaRoot` to your Etterna installation folder, e.g. `D:/Games/Etterna`.
 6. Theme updates overwrite these files, so reapply this setup after updating themes.
 
+When upgrading an older bridge, remove its `mma_gameplay.lua` loading line and script from `ScreenGameplay overlay/`. The installer follows the selected theme’s `[Global] FallbackTheme` chain, keeps inherited edits in the selected theme, and migrates the legacy hook after both new actors are installed. If either installation fails, it restores the theme scripts and backups from before that attempt. The persistent system layer clears play state when returning to selection or entering results.
+
 ### 2. Malody V Editor Plugin
 
 1. Copy `malody/mma_editor.lua` to `MalodyV/editor/` in the game folder (create the directory if missing).
-2. Open the chart editor in Malody V, and trigger MMA Analyze from the plugin menu to send the active chart to the shell.
+2. Open the chart editor in Malody V, and select `MMA Analyze` from the floating tools menu to send the active chart to the shell.
 3. In `mma-shell-config.json`, set `malodyRoot` to your Malody V directory.
 
 ### 3. Malody V In-Game Selection Bridge

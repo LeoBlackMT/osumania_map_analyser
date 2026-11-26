@@ -198,6 +198,7 @@ export function handleSongFrame(payload) {
         } else {
             throw new Error(`未知数据源：${source}`);
         }
+        if (!osuText?.trim()) throw new Error("Empty external beatmap content.");
     } catch (e) {
         if (requestId) {
             sendResult({
@@ -219,7 +220,8 @@ export function handleSongFrame(payload) {
         || parseBeatmapIdentityFrame(previousBeatmapIdentity);
     const previousCvtFlag = state.cvtFlag;
     const nextBeatmapIdentity = String(payload.identity || "");
-    const nextFrame = parseBeatmapIdentityFrame(nextBeatmapIdentity);
+    // 原文属于这一次桥帧（含判定与倍率转换），与身份一起被下一张谱替换。
+    const nextFrame = { ...parseBeatmapIdentityFrame(nextBeatmapIdentity), source, externalText: osuText };
     const identityChanged = previousBeatmapIdentity
         ? !isSameBeatmapIdentityFrames(previousFrame, nextFrame)
         : Boolean(nextBeatmapIdentity);
@@ -234,7 +236,6 @@ export function handleSongFrame(payload) {
             laneAccView.reset();
         }
     }
-    state.pendingSourceText = osuText;
     state.pendingSourceRequestId = requestId;
     state.pendingSourceActive = source;
     state.speedRate = Number(mod.speedRate) || 1;

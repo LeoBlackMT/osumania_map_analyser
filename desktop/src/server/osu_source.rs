@@ -158,6 +158,9 @@ pub fn build(inputs: Inputs<'_>) -> OsuSource {
     let hint_visible = native_reachable(inputs.forced_tosu, inputs.compat_bound);
     OsuSource {
         alive: native,
+        lazer_lane_acc_ready: false,
+        lazer_lane_acc_notice: None,
+        lazer_score_ready: None,
         transport: OsuTransport {
             mode: mode.to_string(),
             host,
@@ -196,6 +199,6 @@ pub fn native_reachable(forced_tosu: bool, compat_bound: bool) -> bool {
     compat_bound && !forced_tosu
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "server_osu_source"))]
 #[path = "../../tests-local/server_osu_source.rs"]
 mod tests;

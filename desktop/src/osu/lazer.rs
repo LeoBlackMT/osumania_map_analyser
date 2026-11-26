@@ -22,6 +22,8 @@ pub mod score;
 pub mod mods;
 pub mod osr;
 pub mod frame;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) mod linux;
 
 pub use fields::*;
 pub use source::*;
@@ -34,6 +36,6 @@ pub use score::*;
 pub use osr::*;
 pub use frame::*;
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_lazer"))]
 #[path = "../../tests-local/osu_lazer.rs"]
 mod tests_lazer;

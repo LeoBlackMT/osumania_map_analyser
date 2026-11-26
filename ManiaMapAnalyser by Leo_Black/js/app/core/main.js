@@ -18,13 +18,13 @@ import { initTriangleField } from "../ui/triangles.js";
 import { initContentBarTabs } from "../ui/contentBarTabs.js";
 import { fetchShellConfig, isShellConfigPayload } from "../net/shellConfigClient.js";
 // 壳窗口可视提示：拖动把手跟随卡片顶沿 + 鼠标靠近窗口边缘时点亮那条边
-// （浏览器/tosu 模式内部自会 no-op，shell-mode 由桥连接后异步挂上）。
+// （普通 tosu 页面不安装窗口把手；壳的原生拖动在 WS 握手前即可用）。
 import { initWindowAffordances } from "../ui/windowAffordances.js";
 // Side-effect import: presets module self-initializes (registers the preset
 // settings-stream listener) on load; it must be loaded exactly once.
 import "../presets/index.js";
 import { initTelemetry, startTelemetryHeartbeat } from "../net/telemetry.js";
-import { initBridgeClient, sendLaneAccSync, sendReplayPausesSync } from "../sources/bridgeClient.js";
+import { initBridgeClient, sendControl, sendLaneAccSync, sendReplayPausesSync } from "../sources/bridgeClient.js";
 import { handleSongFrame } from "../sources/externalSource.js";
 import { applyShellState, applyMalody4Selection } from "../sources/shellState.js";
 import { initSourceManager } from "../sources/sourceManager.js";
@@ -49,7 +49,7 @@ async function initShellConfig() {
 
 export async function initialize() {
     initTriangleField();
-    initWindowAffordances();
+    initWindowAffordances(document, window, sendControl);
     initContentBarTabs({ onSelect: setTabContentBar });
     laneAccView.init();
     await initShellConfig();
@@ -58,7 +58,7 @@ export async function initialize() {
             .then((response) => (response.ok ? response.json() : null))
             .then((body) => {
                 state.laneAccReady = {
-                    lazer: body?.lazer?.score_ready === true,
+                    lazer: body?.lazer?.loaded ? body.lazer.score_ready : null,
                     stable: body?.stable?.replay_frames_ready === true,
                     stableNotes: body?.stable?.notes_ready === true,
                     ppysbActive: body?.ppysb_active === true,

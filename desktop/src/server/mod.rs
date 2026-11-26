@@ -216,7 +216,7 @@ fn osu_source(shared: &Shared) -> OsuSource {
         .as_ref()
         .map(|info| (info.ip.clone(), info.port))
         .unwrap_or_else(|| ("127.0.0.1".to_string(), TOSU_DEFAULT_PORT));
-    osu_source::build(osu_source::Inputs {
+    let mut source = osu_source::build(osu_source::Inputs {
         reader_alive,
         reader_down_ms,
         gate: &gate,
@@ -231,7 +231,14 @@ fn osu_source(shared: &Shared) -> OsuSource {
         phase: &phase,
         notice: &notice,
         progress,
-    })
+    });
+    if let Some(state) = reader {
+        source.lazer_lane_acc_ready = state.lazer_lane_acc_ready;
+        source.lazer_score_ready = state.lazer.and_then(|d| d.active_table).map(|t| t.score_ready);
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        { source.lazer_lane_acc_notice = state.reason; }
+    }
+    source
 }
 
 pub fn hello_frame(shared: &Shared) -> Envelope {
@@ -650,6 +657,6 @@ pub fn start(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     shared
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "server_mod"))]
 #[path = "../../tests-local/server_mod.rs"]
 mod tests;

@@ -12,7 +12,7 @@
 - Etterna 与 Malody V 数据源需要安装对应游戏的桥文件（见下文「安装桥」）。
 - 最低游戏版本：
   - Etterna 0.70+（Linux 需 0.75+ 官方 Linux 版）
-  - Malody V 6.6.43+（仅 Windows）
+  - Malody V 6.6.43+（Windows；Linux 可通过 Steam/Proton 运行）
   - Malody 4.3.7（仅 Windows）
   - osu stable和lazer随更新手动维护，或自动生成。
 - 支持的谱面类型：`.mc` `.ssc` `.sm` `.osu`。
@@ -24,6 +24,7 @@
 ## 一、快速开始
 
 - 从发布页下载带shell的压缩包，解压并放在你喜欢的位置。如果你不使用 tosu，直接运行`mma-shell.exe`即可。Linux 用户解压后运行`./mma-shell`。
+- Linux x86_64 的 osu!lazer LaneAcc：退出旧壳和 osu!lazer，运行包里的 `./run-lazer.sh`。脚本会复用正在运行的 tosu；尚未启动时会调用用户服务 `tosu.service`。手动启动 tosu 后也可用 `./mma-shell --launch-lazer`。壳默认启动 `PATH` 中的 `osu-lazer`；其他安装方式可把 `MMA_LAZER_EXECUTABLE` 设为游戏可执行文件、AppImage 或 `osu!.dll` 的绝对路径（DLL 由 `dotnet` 启动）。使用直接运行游戏的启动器，以便壳能读取自己启动的游戏。进入 osu!mania 后打开 LaneAcc 标签页。此功能需要与游戏和 .NET 运行时版本匹配的偏移表，已实测两组：osu!lazer 2026.1005.0 搭配 .NET 10.0.12，以及 2026.1117.0 搭配 .NET 10.0.15。
 - 如果你需要在 Etterna 或 Malody V 中使用，请一并在 Release 中下载`bridges.zip`，并解压到与shell同目录下，注意不要嵌套文件夹，确保正确放置。打开bridges目录，运行`install-bridge-zh.bat`（中文）或`install-bridge.bat`（英文）。对于Linux用户，请参照下方“安装桥”章节手动安装 Etterna 与 Malody V 的桥文件。
 - 按下`Ctrl+Shift+S`打开设置页，在`Shell Configuration`中检查自动探测游戏目录结果是否正确，否则请填写需要使用的游戏目录，用于寻找谱面进行分析。设置的详细说明见[docs/settings.md](settings.md)，预设系统的使用方法见[docs/presets-guide.md](presets-guide.md)。
 - 完成后，按需重启应用，随后即可正常使用。其中 Malody V 编辑器需要手动点击`MMA Analyze`按钮进行分析。窗口的操作说明见下方。
@@ -33,8 +34,8 @@
 
 | 操作 | 方法 |
 | :---: | :--- |
-| 拖动整个窗口 | 按住窗口顶部拖动条（发光细条，中间有 `⋮⋮` 标志）拖动。鼠标移上去会显示一圈描边，标出即将移动的整扇窗口范围 |
-| 改变窗口大小 | 拖动窗口边缘（无边框，四周可拖）。看不到边界时把鼠标移向窗口边缘，贴近的边会发光 |
+| 拖动整个窗口 | 按住卡片上方带 `⋮⋮` 标志的拖动条拖动。拖动条保持足够高度，缩小页面后也容易抓住；鼠标移上去会短暂显示整窗描边 |
+| 改变窗口大小 | 拖动窗口的四条边或四个角。鼠标移到边缘时会短暂发光，停止移动后约半秒内自动熄灭，不影响继续拖动 |
 | 页面缩放 | 按住 `Ctrl` 滚动鼠标滚轮；或 `Ctrl +` / `Ctrl -`；`Ctrl 0` 复位 |
 | 开关置顶（默认开） | 默认按 `Ctrl+Shift+T`（全局快捷键） |
 | 开关点击穿透（默认关） | 默认按 `Ctrl+Shift+C`（全局快捷键） |
@@ -42,7 +43,9 @@
 | 关闭窗口 | 默认按 `Ctrl+Q`（全局快捷键） |
 | 刷新卡片 | 选中窗口后按下 `F5` |
 
-窗口位置/尺寸/置顶/点击穿透状态自动记忆；标注全局快捷键的操作在窗口失焦或点击穿透时同样有效。
+窗口位置/尺寸/置顶/点击穿透状态自动记忆；在 Windows 和 X11 下，全局快捷键在窗口失焦或点击穿透时同样有效。
+
+在 KDE Wayland 上，壳优先使用 XWayland；连接失败时通过原生 Wayland 打开窗口。要让卡片盖住全屏游戏，使用 KWin 6 和 XWayland，聚焦卡片后按 `Ctrl+Shift+T`。首次修改已有窗口规则时，壳将原文件备份到 `$XDG_STATE_HOME/ManiaMapAnalyser/backup/kwinrulesrc.before-overlay`（默认在 `~/.local/state` 下）。卸载时可在 KDE 系统设置 → 窗口规则中删除 **ManiaMapAnalyser fullscreen overlay**。原生 Wayland 游戏获得焦点时，全局快捷键可能不触发；显式设置的 `GDK_BACKEND` 优先。
 
 ## 三、安装桥
 
@@ -76,7 +79,7 @@ t[#t + 1] = LoadActor("mma_bridge.lua")
 return t
 ```
 
-2. 复制 `bridges/etterna/mma_gameplay.lua` 到 `Etterna/Themes/<你的主题>/BGAnimations/ScreenGameplay overlay/`；同样在 `default.lua` 的 `return t` 前加：`t[#t + 1] = LoadActor("mma_gameplay.lua")`
+2. 把 `bridges/etterna/mma_gameplay.lua` 放在主题的 `BGAnimations/ScreenSystemLayer overlay.lua` 旁，并在该系统层脚本的 `return t` 前加：`t[#t + 1] = LoadActor("mma_gameplay.lua")`。若系统层是目录，则编辑其中的 `default.lua`，并把脚本放在该目录。更新旧桥时，移除旧 `ScreenGameplay overlay/` 内的加载行和脚本；自动安装器会完成迁移，并按主题的 `FallbackTheme` 继承系统层。
 3. 主题更新后必须重装这两个文件（主题包覆盖会删掉它们）。
 4. 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `etternaRoot`（例如 `D:\\Games\\Etterna`）。
 
@@ -84,9 +87,11 @@ return t
 
 Malody V 有两个互不影响的通道，按需选择：
 
+两条通道均分析 `chart/` 目录中的 `.mc`、`.osu` 键盘谱面。Malody 本身能打开的 `.sm`、`.ssc` 暂不在这两条通道的支持范围内。
+
 #### A. 编辑器通道
 
-- 把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/editor/` 中（目录不存在就新建）。随后打开游戏 → 打开谱面编辑器 → MMA Analyze → 卡片显示本谱分析。
+- 把 `bridges/malody/mma_editor.lua` 放到 `MalodyV/editor/` 中（目录不存在就新建）。随后打开游戏 → 打开谱面编辑器 → 浮动工具菜单 → `MMA Analyze` → 卡片显示本谱分析。
 - 或者在游戏编辑器左上角点击按钮 → 插件管理 → 导入。
 - 打开插件目录下的 `mma-shell-config.json` 文件，在设置里填写 `malodyRoot`（例如 `D:\\Steam\\steamapps\\common\\MalodyV`）。一般不用手动填：壳会自动探测正在运行的进程、`MMA_MALODY_ROOT` 环境变量、Steam 库与常见安装路径，当无法正常读取时需要手动填写。
 
@@ -99,6 +104,8 @@ Malody V 有两个互不影响的通道，按需选择：
 5. 卸载：同样的入口选 Uninstall。只删除本安装器记录过的文件；加载器会保留。如需要删除加载器，请手动删除`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version`、`changelog.txt`、`dotnet\`、`BepInEx\`。
 
 > 如果你曾装过 `MalodyInsightBridge.dll` ，安装器会报告并指出两份插件挂在同一批游戏方法上。要改用本方案，请自行备份并删除旧dll再安装。
+
+Linux（Steam/Proton）：按上述目录结构放好加载器、Unity 库和 `BepInEx/plugins/MalodyInsight/MMAMalodySelection.dll`，在 Steam → Malody V → 属性 → 启动选项中填入 `WINEDLLOVERRIDES=winhttp=n,b %command%`。壳设置的 `malodyRoot` 使用 Linux 路径，例如 `/home/<user>/.local/share/Steam/steamapps/common/MalodyV`。若游戏使用独立前缀，启动壳时设置 `STEAM_COMPAT_DATA_PATH`（含 `pfx` 的目录）或 `WINEPREFIX`（含 `dosdevices` 的目录）。先启动壳，再从 Steam 启动游戏；Proton 所需的 Steam Linux Runtime 必须已安装。复制或移动游戏目录后，若游戏索引仍指向旧路径，需要在游戏里重新导入谱面。
 
 ### Malody 4.3.7（无需安装）
 
@@ -147,7 +154,7 @@ This project originally gathered osu! data via tosu. However, as features expand
 - Etterna and Malody V sources require installing their respective bridge files (see "Bridges" below).
 - Minimum game versions:
   - Etterna 0.70+ (Linux requires the official 0.75+ Linux release)
-  - Malody V 6.6.43+ (Windows only)
+  - Malody V 6.6.43+ (Windows; Linux through Steam/Proton)
   - Malody 4.3.7 (Windows only)
   - osu!stable and lazer are manually maintained across updates, or automatically generated.
 - Supported beatmap/chart types: `.mc`, `.ssc`, `.sm`, `.osu`.
@@ -159,6 +166,7 @@ This project originally gathered osu! data via tosu. However, as features expand
 ## 1. Quick Start
 
 - Download the package with shell from the release page, extract it, and place it wherever you like. If you do not use tosu, run `mma-shell.exe` directly. Linux users can extract and run `./mma-shell`.
+- For osu!lazer LaneAcc on x86-64 Linux, close the shell and osu!lazer, then run the packaged `./run-lazer.sh`. It reuses a running tosu or starts the user service `tosu.service`. If you start tosu manually, you can also run `./mma-shell --launch-lazer`. The shell starts `osu-lazer` on your `PATH`. For a different installation, set `MMA_LAZER_EXECUTABLE` to the absolute path of the executable, AppImage, or `osu!.dll` (launched through `dotnet`). Use a launcher that runs the game as a descendant of the shell. Open the LaneAcc tab in osu!mania. This requires an offset table matching the game and .NET runtime versions. Tested on osu!lazer 2026.1005.0 with .NET 10.0.12 and on 2026.1117.0 with .NET 10.0.15.
 - If you need to use it with Etterna or Malody V, download `bridges.zip` from Releases and extract it into the same directory as the shell (ensure no nested folders). Open the `bridges` directory and run `install-bridge-zh.bat` (Chinese) or `install-bridge.bat` (English). For Linux users, refer to the "Bridges" section below to install bridge files manually.
 - Press `Ctrl+Shift+S` to open the settings window. Under `Shell Configuration`, check whether auto-detected game directories are correct; otherwise, fill in the game directories you use to locate beatmaps for analysis. See [docs/settings.md](settings.md) for settings details and [docs/presets-guide.md](presets-guide.md) for preset usage.
 - Once configured, restart the application if needed, and it will be ready to use. In the Malody V editor, click the `MMA Analyze` button manually to analyze. Window controls are described below.
@@ -168,8 +176,8 @@ This project originally gathered osu! data via tosu. However, as features expand
 
 | Action | Method |
 | :---: | :--- |
-| Move window | Drag the top drag bar (the glowing bar with the `⋮⋮` mark). Hovering displays an outline showing the full window boundary |
-| Resize window | Drag any window edge (borderless, draggable on all sides). Hover near an edge to make it glow |
+| Move window | Drag the bar marked `⋮⋮` above the card. Its height stays easy to grab when the page is zoomed out; hovering briefly outlines the full window |
+| Resize window | Drag any of the four edges or four corners. Moving near an edge briefly lights it up; the glow fades within about half a second after movement stops, without affecting dragging |
 | Page zoom | Hold `Ctrl` and scroll mouse wheel; or `Ctrl +` / `Ctrl -`; `Ctrl 0` to reset |
 | Toggle always-on-top (default on) | `Ctrl+Shift+T` by default (global shortcut) |
 | Toggle click-through (default off) | `Ctrl+Shift+C` by default (global shortcut) |
@@ -177,7 +185,9 @@ This project originally gathered osu! data via tosu. However, as features expand
 | Close window | `Ctrl+Q` by default (global shortcut) |
 | Refresh card | Focus the window and press `F5` |
 
-Window position, size, topmost, and click-through states are remembered automatically. Global shortcuts remain active even when the window is unfocused or click-through is enabled.
+Window position, size, topmost, and click-through states are remembered automatically. On Windows and X11, global shortcuts remain active even when the window is unfocused or click-through is enabled.
+
+On KDE Wayland the shell tries XWayland first, then native Wayland. For an overlay above fullscreen games, use KWin 6 with XWayland. Focus the card and press `Ctrl+Shift+T` to toggle it. Before changing existing rules, the shell saves the original file to `$XDG_STATE_HOME/ManiaMapAnalyser/backup/kwinrulesrc.before-overlay` (under `~/.local/state` by default). To uninstall the rule, remove **ManiaMapAnalyser fullscreen overlay** in KDE System Settings → Window Rules. Global shortcuts may not trigger while a native Wayland game is focused. An explicit `GDK_BACKEND` takes precedence.
 
 ## 3. Bridges
 
@@ -211,7 +221,7 @@ t[#t + 1] = LoadActor("mma_bridge.lua")
 return t
 ```
 
-2. Copy `bridges/etterna/mma_gameplay.lua` to `Etterna/Themes/<your_theme>/BGAnimations/ScreenGameplay overlay/`； similarly add `t[#t + 1] = LoadActor("mma_gameplay.lua")` before `return t` in its `default.lua`.
+2. Place `bridges/etterna/mma_gameplay.lua` beside the theme's `BGAnimations/ScreenSystemLayer overlay.lua` and add `t[#t + 1] = LoadActor("mma_gameplay.lua")` before that script's `return t`. For a directory-based system layer, edit its `default.lua` and place the bridge in that directory. When upgrading, remove the old loading line and script from `ScreenGameplay overlay/`; the installer handles this migration automatically.
 3. Reinstall these two files whenever the theme is updated (theme updates overwrite them).
 4. Open `mma-shell-config.json` in the plugin directory and set `etternaRoot` (e.g. `D:\\Games\\Etterna`).
 
@@ -219,9 +229,11 @@ return t
 
 Malody V offers two independent channels; choose as needed:
 
+Both channels analyze `.mc` and `.osu` key charts under the game's `chart/` directory. `.sm` and `.ssc` charts that Malody can open are currently outside these channels' supported formats.
+
 #### A. Editor Channel
 
-- Place `bridges/malody/mma_editor.lua` in `MalodyV/editor/` (create the folder if it does not exist). Then start the game → open the chart editor → click `MMA Analyze` → the card displays analysis for the chart.
+- Place `bridges/malody/mma_editor.lua` in `MalodyV/editor/` (create the folder if it does not exist). Then start the game → open the chart editor → open the floating tools menu → click `MMA Analyze` → the card displays analysis for the chart.
 - Alternatively, click the top-left button in the game editor → Plugin Management → Import.
 - Open `mma-shell-config.json` in the plugin directory and set `malodyRoot` (e.g. `D:\\Steam\\steamapps\\common\\MalodyV`). You usually do not need to set this manually: the shell automatically detects running processes, `MMA_MALODY_ROOT` environment variable, Steam libraries, and common paths. Manual entry is only needed if auto-detection fails.
 
@@ -234,6 +246,8 @@ Malody V offers two independent channels; choose as needed:
 5. Uninstall: Use the same installer menu and select Uninstall. Only files tracked by this installer are removed; the loader is kept. If you want to remove the loader, manually delete `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`, `dotnet\`, and `BepInEx\`.
 
 > If you previously installed `MalodyInsightBridge.dll`, the installer will report that both plugins hook the same game methods. Back up and remove the old DLL before installing this bridge.
+
+Linux (Steam/Proton): place the loader, Unity libraries and `BepInEx/plugins/MalodyInsight/MMAMalodySelection.dll` as described above, then set Steam → Malody V → Properties → Launch Options to `WINEDLLOVERRIDES=winhttp=n,b %command%`. Use the Linux game path for `malodyRoot`, for example `/home/<user>/.local/share/Steam/steamapps/common/MalodyV`. For a separate prefix, set `STEAM_COMPAT_DATA_PATH` (the directory containing `pfx`) or `WINEPREFIX` (the directory containing `dosdevices`) when starting the shell. Start the shell before launching the game through Steam; the Steam Linux Runtime required by Proton must already be installed. After copying or moving the game, reimport charts in-game if the chart index still points at the old directory.
 
 ### Malody 4.3.7 (No Installation Needed)
 

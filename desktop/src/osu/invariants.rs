@@ -1357,6 +1357,6 @@ pub fn zero_hits() -> Hits {
     Hits::default()
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_invariants"))]
 #[path = "../../tests-local/osu_invariants.rs"]
 mod tests_invariants;

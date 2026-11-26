@@ -74,6 +74,14 @@ export function applyShellState(payload) {
     // 契约 v6 / Step 9e：读取器相位诊断（`phase` + 英文提示 `notice` + L0 实测进度）。
     // 旧壳（≤v5）没有 `sources.osu` ⇒ 三个字段保持 null ⇒ 提示模块什么都不做。
     const osu = sources.osu || null;
+    const laneReady = osu?.lazerLaneAccReady === true;
+    const laneNotice = osu?.lazerLaneAccNotice || null;
+    const scoreReady = osu?.lazerScoreReady ?? null;
+    const laneChanged = laneReady !== state.shellLazerLaneAccReady
+        || laneNotice !== state.shellLazerLaneAccNotice || scoreReady !== state.shellLazerScoreReady;
+    state.shellLazerLaneAccReady = laneReady;
+    state.shellLazerLaneAccNotice = laneNotice;
+    state.shellLazerScoreReady = scoreReady;
     const previousOsuPhase = state.shellOsuPhase;
     state.shellOsuPhase = osu && typeof osu.phase === "string" ? osu.phase : null;
     state.shellOsuNotice = osu && typeof osu.notice === "string" ? osu.notice : null;
@@ -94,7 +102,8 @@ export function applyShellState(payload) {
     // 读取器从扫描/附着/不可用回到 healthy：重算当前谱面，清掉掉线期间 24062 的 404。
     // 同一 identity 的后续帧不会触发重算（socketHandlers 的 `!hasStateMismatch` 早退），
     // 所以必须在这里补一次；结果命中缓存时几乎无开销。
-    if (shouldRecomputeAfterOsuReaderRecovery(previousOsuPhase, state.shellOsuPhase, currentRoute())) {
+    if ((laneChanged && state.activeSource === "osu" && String(state.client || "").toLowerCase().includes("lazer"))
+        || shouldRecomputeAfterOsuReaderRecovery(previousOsuPhase, state.shellOsuPhase, currentRoute())) {
         scheduleRecompute("osu-reader-recovered", true);
     }
     // 注意：这里绝不写 state.malody4Alive —— 它是 selection 帧新鲜度的派生值，
@@ -128,12 +137,13 @@ function applyMalodyBridgeFields(malody) {
     state.malodyPlaying = Boolean(malody.playing);
     state.malodyEventSeq = Number(malody.eventSeq) || 0;
     state.malodyJudge = malody.judge ?? null;
-    // 桥静默（transport 不再是 bridge）⇒ 桥注入、但尚未被分析取走的谱面文本作废。
-    // "桥静默而无 other 事件"这条路径不会走下面的清空边沿；不作废的话，下一次 osu 触发的
-    // 缓存未命中会拿上一张 Malody 谱面的文本去分析，并把快照写到 osu 的缓存键下。
-    // 只作废**桥通道自己的**待分析文本（归属仍是桥）：Lua 通道有自己的 60s 存活窗口，不受影响。
+    // 静默时保留卡片，但失效这张桥谱，避免延迟重算分析已离场的游戏。
     if (malody.transport !== "bridge" && state.cardOwner === "malody-bridge") {
-        state.pendingSourceText = null;
+        const frame = state.lastBeatmapIdentityInfo;
+        if (frame?.source === "malody" && frame.externalText) {
+            frame.externalText = null;
+            state.analysisEpoch++;
+        }
         state.pendingSourceRequestId = null;
         state.pendingSourceActive = null;
     }

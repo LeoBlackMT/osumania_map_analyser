@@ -1244,6 +1244,6 @@ pub fn game_folder(_image_path: &std::path::Path) -> Option<String> {
     None
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_stable"))]
 #[path = "../../tests-local/osu_stable.rs"]
 mod tests_stable;

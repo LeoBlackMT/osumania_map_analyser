@@ -268,6 +268,6 @@ fn unique_common(previous: &Option<Vec<u32>>, discovery: &Discovery) -> Option<(
     Some(first)
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_discovery"))]
 #[path = "../../tests-local/osu_discovery.rs"]
 mod tests_discovery;

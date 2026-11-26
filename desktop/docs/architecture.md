@@ -22,7 +22,7 @@
 desktop/src/
 ├── main.rs                        # 极简应用启动入口：便携 profile → 单实例转交 → app::run()
 ├── lib.rs                         # 核心导出与库入口
-├── frames.rs                      # 壳-页面桥帧定义与端口/时限常量 (CONTRACT_VERSION = 12)
+├── frames.rs                      # 壳-页面桥帧定义与端口/时限常量 (CONTRACT_VERSION = 13)
 ├── etterna.rs                     # Etterna 桥轮询 (2Hz 读 MmaBridge.txt / MmaGameplay.txt)
 ├── malodyv.rs                     # Malody V 编辑器文件通道轮询
 ├── settings_window.rs             # 设置窗口 (壳内第二个 OS 窗口，承载 settings.html)
@@ -30,6 +30,8 @@ desktop/src/
 ├── app/                           # 【UI 表现层】Tauri v2 窗口、托盘与快捷键生命周期
 │   ├── builder.rs                 # Tauri AppBuilder 构建与生命周期挂钩
 │   ├── instance.rs                # 单例互斥锁检测与已有实例前台激活
+│   ├── kde_overlay.rs             # KDE Wayland/XWayland 窗口置顶、全屏层级与规则同步
+│   ├── lazer_launcher.rs          # Linux 可选 --launch-lazer 子进程启动器，使读取器可观测内存
 │   ├── shortcuts.rs               # 全局热键解析与绑定 (置顶、穿透、设置、退出)
 │   ├── window_state.rs            # 窗口物理尺寸、位置、穿透与置顶持久化与动态应用
 │   ├── window_events.rs           # 主窗口与设置窗口物理事件监听分流
@@ -75,6 +77,7 @@ desktop/src/
 │   │   ├── types.rs               # ChainAddrs、SessionProof、Resolved、Diagnostics、LazerFrame
 │   │   ├── screen.rs              # EEType 运行时解析与屏幕状态映射
 │   │   ├── resolve.rs             # 站点到 GameBase 多跳解析与 L1 结构证明
+│   │   ├── linux.rs               # Linux x86_64 `/proc/<pid>/mem` osu!lazer LaneAcc 只读读取器
 │   │   ├── table.rs               # 偏移表查找梯子与加载逻辑
 │   │   ├── results.rs             # 结算屏判定数链路（ResultsScreen → ScoreInfo）
 │   │   ├── mods.rs                # 模组自定义设置：mods 段读取与 ScoreInfo.ModsJson 探针
@@ -149,13 +152,13 @@ desktop/src/
 
 ### 3.2 外部通信协议保持严格兼容
 
-前端页面与桌面壳的 WebSocket 通信受 [CONTRACT.md](CONTRACT.md) **v12** 协议保护；页面侧 `bridgeClient.js` 的 `CONTRACT_VERSION`、`desktop/src/frames.rs` 的 `CONTRACT_VERSION` 与 `CONTRACT.md` 必须同号，任一帧字段或语义变更都要三处同步自增。页面接受区间为 `[3,12]`，越界进入终态并停止重连。
+前端页面与桌面壳的 WebSocket 通信受 [CONTRACT.md](CONTRACT.md) **v13** 协议保护；页面侧 `bridgeClient.js` 的 `CONTRACT_VERSION`、`desktop/src/frames.rs` 的 `CONTRACT_VERSION` 与 `CONTRACT.md` 必须同号，任一帧字段或语义变更都要三处同步自增。页面接受区间为 `[3,13]`，越界进入终态并停止重连。
 
 | 通道 | 用途 |
 | --- | --- |
 | **24060 POST** | Malody 编辑器分析入口与 resolve 通道。 |
 | **24061 HTTP** | 页面静态资源托管、`/settings`、`/shell-config`、`/open-settings`、`/show-main`、`/feedback`、`/cover/*`、`/offsets/*` 等本机端点；这些 HTTP 端点不属于帧契约，自身不升契约版本。 |
-| **24061 /ws** | 帧循环：`hello` / `state` / `song` / `settings` / `result` / `control` / `ping`，以及 LaneAcc 与回放数据面：`mania_hit_events`（v9）、`mania_replay_frames`（v10）、`replay_pauses` / `replay_pauses_sync`（v11）。v12 追加 stable/ppysb 的 `play.seed` / `resultsScreen.seed` 字段。 |
+| **24061 /ws** | 帧循环：`hello` / `state` / `song` / `settings` / `result` / `control` / `ping`，以及 LaneAcc 与回放数据面：`mania_hit_events`（v9）、`mania_replay_frames`（v10）、`replay_pauses` / `replay_pauses_sync`（v11）。v12 追加 stable/ppysb 的 `play.seed` / `resultsScreen.seed` 字段；v13 追加 `control.resizeStart`（`direction`）与 `sources.osu.lazerLaneAccReady`。 |
 | **24062** | 壳内 osu 原生读取器的 tosu 兼容子集 origin（`/websocket/v2` + `/files/beatmap/*`），仅在 `sources.osu.mode == "native"` 时被页面使用。 |
 | **17653 POST** | Malody V BepInEx 选曲桥（`POST /selection`）。 |
 

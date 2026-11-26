@@ -17,7 +17,7 @@
 5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
 `desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer,offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v12**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/kde_overlay/lazer_launcher/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer/{...,linux},offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v13**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（app 模块 + config.rs）
 
@@ -46,12 +46,12 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 - **Lazer 数据目录**：壳配置 `lazerStorageRoot`（或 `MMA_LAZER_STORAGE_ROOT`）显式指定**包含 `files` 目录的数据根**（通常 `%APPDATA%\osu`，不是 `osu!.exe` 的安装目录；也可直接选 `...\files`，读取器会归一到父目录）。留空时按 `storage.ini` → 默认 `%APPDATA%\osu\files` 自动探测；修改后需重启壳才重新附着读取器。默认 Lazer 安装不会生成 `storage.ini`，因此该显式选项是默认路径探测失败时的兜底。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
-## 3. 契约 v12 帧
+## 3. 契约 v13 帧
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 12, tosuOnline}`；页面接受 `[3,12]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
-| state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?},**osu{alive,osuTransport{mode,host,port,wsPath,filesPath},gate?,client?,reason?,degradedFields?,phase?,notice?,progress?}**（v6 新增，见 §3d）} |
+| hello | 壳→页 | `{contract: 13, tosuOnline}`；页面接受 `[3,13]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
+| state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?},**osu{alive,lazerLaneAccReady,osuTransport{mode,host,port,wsPath,filesPath},gate?,client?,reason?,degradedFields?,phase?,notice?,progress?}**（v6 新增，见 §3d；`lazerLaneAccReady` 自 v13 起报告 Linux lazer LaneAcc 就绪状态）} |
 | song | 壳→页 | requestId/source/identity/modData{rate,cvtFlag,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`cvtFlag`/`winScale`**（`cvtFlag`/`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0；`cvtFlag` = Malody Holds/Taps → IN/HO） |
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 设置 JSON（在线 = tosu 设置文件内容，离线 = 本地 `mma-settings.json`；壳在来源切换/文件变化/离线 POST 后主动推，设置页离线时另做 pull-on-notify，见 §3c） |
@@ -61,10 +61,10 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 | laneacc_sync | 页→壳 | `{}`（v9；页面刷新/重连取本局全量，只回当前连接） |
 | replay_pauses | 壳→页 | `{hash, pauses, available, speedRate}`（v11；回放暂停，`hash` = 64-hex `.osr` store key，`pauses` = 物理谱面时间 ms，见 §3f） |
 | replay_pauses_sync | 页→壳 | `{}`（v11；页面刷新/重连取当前回放暂停快照，只回当前连接） |
-| control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart, value: bool}`（窗口操控；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
+| control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart\|resizeStart, value?: bool, direction?: Direction}`（窗口操控；`resizeStart` 为 v13 新增并要求 8 方向 `direction`；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
 
-> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 12**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），页面接受区间 `[3,12]`（CONTRACT.md §10/§11.8）。
+> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 13**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），v12 的升级来自 stable/ppysb `play.seed` / `resultsScreen.seed`，v13 的升级来自 `control.resizeStart` 与 `sources.osu.lazerLaneAccReady`，页面接受区间 `[3,13]`（CONTRACT.md §10/§11.8/§20）。
 
 ## 3b. Malody V 选曲桥端点（`127.0.0.1:17653`）
 
@@ -122,7 +122,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
   生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但只会从**同版本**同目录旧表保留该段，避免一键生成
   把 LaneAcc 的表结构覆盖掉。新版本完整流程：先在游玩/回放生成 `score`，再在结算屏生成 `results`；跨版本旧表不参与补段。
-- 只在 `client == lazer` 且 `state.name == play` 时推送；非 play 清空日志并发空 reset。
+- Lazer 在游玩时轮询，离开游玩后保留本局日志。Linux x86_64 仍通过 tosu 获取谱面和时钟，壳报告 `sources.osu.lazerLaneAccReady` 并发送同样的判定事件和回放帧。
 - 功能与公式见 [lane-acc.md](lane-acc.md)，协议细节见 `desktop/docs/CONTRACT.md` §16。
 
 ## 3f. 回放暂停（契约 v11）
@@ -142,11 +142,17 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ## 4. 窗口操控（v2 起）
 
-无边框（decorations:false）、透明、置顶（alwaysOnTop:true）为默认形态；`resizable:true`——**拖拽边缘改窗口尺寸**；**整窗移动**用页面顶部 `data-tauri-drag-region` 拖动把手（22px 发光条，中间 `⋮⋮` 提示）；页面缩放走 WebView 原生（`Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-`）。
+窗口默认无边框、透明、置顶且可调整大小。用卡片上方的短把手移动窗口，用窗口边缘调整大小；页面缩放保留 WebView 的 `Ctrl+滚轮` / `Ctrl+=` / `Ctrl+-` 操作。
 
-**页面侧窗口提示（`js/app/windowAffordances.js`，`main.js` 在 `initialize()` 里装配；只在 `html.shell-mode` 下生效，浏览器/tosu 模式 no-op 且把 inline `top` 复位回 CSS 的 `top:0`）**：① 把手不再固定贴窗口顶端，而是跟随**卡片顶沿**（`top = clamp(cardTop - barHeight, 0, innerHeight - barHeight)`，卡片量不到/高于窗口时回落 0；卡片顶到窗口顶端即常规情况，结果与从前一致），刷新来自卡片 `ResizeObserver` + `window.resize` + `<html>`/卡片/`.dashboard` 的 class/style 变化（extend-upward、bars-*、shell-mode 接入），统一经 `requestAnimationFrame` 合并、不自转；`data-tauri-drag-region` 命中区与 Wayland 兜底的 `dragStart` control 帧都跟着把手走。② 助手元素（模块运行时创建：`.mma-edge-hints` 容器 + 四条 `.mma-edge-*` 边带 + `.mma-window-outline` 描边）在鼠标进入某条边 16px 内时点亮那条边（角落两条同时亮，0.15s 淡入淡出），容器 `position:fixed; inset:0; pointer-events:none`、`z-index:9998`（低于把手的 9999，永不遮住把手）；③ hover 把手时显示整窗细描边。`getBoundingClientRect` 已被根 zoom 缩放，模块按把手自身 rect/offsetHeight 比例折算回 CSS px（鼠标侧 `clientX/clientY` 与 `innerWidth/innerHeight` 同坐标系，无需折算）。
+**KDE Wayland 后端选择**：Linux 入口 `desktop/src/main.rs` 在 GTK 初始化和线程启动前，检测 `XDG_SESSION_TYPE=wayland`、`XDG_CURRENT_DESKTOP` 含 `KDE`（冒号分隔，不区分大小写）、`DISPLAY` 非空且未设置 `GDK_BACKEND`，此时设为 `x11,wayland`，通过 XWayland 使用已有的 `start_dragging`、`set_always_on_top` 和窗口位置恢复。该路径在 `WEBKIT_DISABLE_DMABUF_RENDERER`、`WEBKIT_DMABUF_RENDERER_FORCE_SHM` 均未设置时，默认设置 `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1`：用共享内存传递合成帧，避开 NVIDIA DMA-BUF 导入导致的透明窗口空白，保留 WebKit 的加速合成与 WebGL。用户显式设置上述渲染变量或 `GDK_BACKEND` 时优先采用用户配置。XWayland 无法连接时回落到原生 GTK Wayland，此时仍受该后端不支持置顶和窗口定位的限制。窗口状态格式不变。此外 `desktop/src/app/kde_overlay.rs` 会在全屏置顶启用时同步 KWin 窗口规则，并将原规则一次性备份到用户状态目录 `ManiaMapAnalyser/backup/kwinrulesrc.before-overlay`。
 
-**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，与页面焦点/连接无关，点击穿透时同样生效）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell-config.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。**平台差异**：Windows（RegisterHotKey）/X11（XGrabKey）为真全局，失焦/穿透均生效；**Wayland 会话下 XGrabKey 注册成功但永不触发**——壳窗口聚焦时由页面内快捷键兜底（键位一致，经 control 帧 `toggleTopmost`/`toggleClickThrough`/`close`，见 §3）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存；置顶/穿透以该文件为唯一权威（快捷键、control toggle、5s persister、窗口事件四写通道均先合并磁盘值再写，避免旧内存快照回滚对侧通道的切换）。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
+**页面侧窗口交互**：主窗口导航到带 `#mma-shell` 的插件页；本地 24061 页面也显示窗口把手。普通 tosu 页面保留原始布局。窗口布局由 `html.shell-window` 控制，因此 WebSocket 握手和重连不会移动卡片。
+
+- **移动**：卡片上方有独立的 72 × 16px 把手，顶边预留 6px 缩放区。卡片向上延伸时，把手跟随卡片。桥已连接时只发送一次 `dragStart`；握手未完成、断线或发送失败时，鼠标事件交给 Tauri 的 `data-tauri-drag-region`。原生拖动权限仅授予主窗口的启动来源。
+- **调整大小**：四边和四角在窗口外沿 6px 内接收鼠标输入，以契约 v13 的 `resizeStart` 发起系统缩放。卡片在可用宽度内排版，状态行、源圆点和标签保留自己的点击区域。
+- **提示**：鼠标接近边缘 16px 时点亮对应边，悬停把手时显示描边。提示停留 350ms 后淡出；失焦或离开即清除。卡片缩放不会改变把手与缩放区的实际尺寸。
+
+**全局快捷键**（tauri-plugin-global-shortcut，启动时注册，支持范围见下方平台差异）：默认 `Ctrl+Shift+T` 置顶开关、`Ctrl+Shift+C` 点击穿透开关（`set_ignore_cursor_events`）、`Ctrl+Q` 关闭；**可经 `mma-shell-config.json` 的 `hotkeys` 覆盖**（避免与系统冲突），注册成败写入日志（`shortcut FAILED` 即冲突）。**平台差异**：Windows（RegisterHotKey）/X11（XGrabKey）为真全局，失焦/穿透均生效；**KDE Wayland 下 XWayland 的 XGrabKey 无法保证在原生 Wayland 窗口获得焦点时触发**——壳窗口聚焦时由页面内默认快捷键兜底（经 control 帧 `toggleTopmost`/`toggleClickThrough`/`close`，见 §3）。窗口位置/尺寸/置顶/穿透状态持久化到 `mma-shell-state.json`（exe 旁），启动恢复、切换与关闭时保存；置顶/穿透以该文件为唯一权威（快捷键、control toggle、5s persister、窗口事件四写通道均先合并磁盘值再写，避免旧内存快照回滚对侧通道的切换）。Windows 透明白闪已由 `noRedirectionBitmap` 配置缓解（如仍有白闪属已知抖动）。
 
 **设置窗口（`settings_window.rs`，本轮新增）**：壳内第二个普通 OS 窗口（Tauri label `settings`，标题 `ManiaMapAnalyser — Settings`，默认 1040×720、首次居中、`always_on_top(false)`），承载 24061 的 `settings.html`。三个入口共用 `settings_window::open_or_focus`：全局快捷键 `hotkeys.settings`（默认 `Ctrl+Shift+S`）、CLI `--settings`（单实例启动时在 `setup` 里打开；已有实例时转交 `POST /open-settings` 后 `exit(0)`）、`POST /open-settings`（浏览器/脚本）。`settings.html` 缺失时只记 warn 且**不置标志**（不会出现"显示已开却没有窗口"）；`build()` 失败时复位标志 + 按磁盘恢复主窗置顶并记 error（自愈）。
 
@@ -176,7 +182,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - 开发：`cargo build`（debug 保留控制台输出）。
 - 发布：`cargo build --release`；打包脚本 `release.ps1`（Windows，打 zip）/ `desktop/build-linux.sh`（Linux，打 tar.gz，保留执行位），版本号均读插件 `metadata.txt`，产物落在仓库 `release/{timestamp}-{version}/`（包含带壳完整包与纯插件本体包；**两个平台的带壳包目录结构相同**：插件内容在包根、`mma-shell`/`mma-shell.exe` 与 `index.html` 同级，另有 `bridges/` 与 `offsets/`）；**Windows release 为 GUI 子系统**（`#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`）——正式交付无命令行窗口。
 - **入包规则（两个脚本同一份）**：开发产物一律不入包——`bridges/` 下的 `.tools`（NuGet 包缓存约 97 MB）、`bin`、`obj`、`tests` 按目录名排除；`bridges/malody/bepinex/plugin/` 只发安装素材 `MMAMalodySelection.dll` + `LICENSE` + `NOTICES.md`（安装器只读 DLL，后两者是该 DLL 的 MIT 归属与来源说明），5 个 `.cs`、`.csproj`、`NuGet.Config`、`build.ps1` 都是开发文件。两个脚本随后都断言加载器 `bepinex-il2cpp-788.zip`、`unity-libs/2022.3.62.zip` 与插件 DLL 在包内（前两者是 gitignore 的本地资产，缺一即装不上）。
-- **平台**：Windows 全功能；Linux 支持 Etterna 数据源（0.75+ 官方 Linux 版），Malody V 无 Linux 版（该源仅 Windows）。**Malody 4.3.7 源同样仅 Windows**（`ReadProcessMemory` 与 PE 版本校验是 Win32 语义）：Linux 上该源以 `platform-unsupported` **优雅不可用**，不影响其余三个源与浏览器模式。
+- **平台**：Windows 全功能；Linux 支持 Etterna 数据源（0.75+ 官方 Linux 版），也可接入通过 Steam/Proton 运行的 Malody V，壳将桥上报的 Windows 盘符经该游戏 Proton 前缀解析为 Linux 路径，再执行 `chart/` 目录校验。Malody V 自动桥和编辑器通道只分析 `.mc`/`.osu`；`.sm`/`.ssc` 由 Etterna 源处理。x86_64 Linux 上可通过 `--launch-lazer` / `./run-lazer.sh` 采集 osu!lazer LaneAcc。**Malody 4.3.7 源仍仅 Windows**（`ReadProcessMemory` 与 PE 版本校验为 Win32 语义）：Linux 上该源以 `platform-unsupported` 不可用，不影响其余源与浏览器模式。
 - CI：`.github/workflows/shell-build.yml`——仅当 **main 分支 `desktop/**` 变更**时构建 **Windows + Linux**（release 产物上传 artifact `mma-shell-windows` / `mma-shell-linux`；Linux = ubuntu-24.04 + Tauri 系统依赖）；`workflow_dispatch` 可手动触发。Linux 构建曾因无受众移除，Etterna 0.75 发布官方 Linux 版后恢复（Ubuntu 24.04 VM 全链路实测）。
 
 ## 6. 已知限制与待办
@@ -185,7 +191,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **壳检测不到 tosu 时页面照常分析（页面侧数据面）**：离线页（24061）的数据面门控加入两个页面侧信号——`state.tosuDataSeen`（`socketHandlers.js` 在 `applyBeatmapState` 里置位）与 `state.shellOsuNativeAlive`（契约 v6：原生端点覆盖真的生效）。页面自己的 tosu socket 收到过载荷、或壳的原生端点覆盖已激活，就放行（`analysis.js` 的两处离线门控与 `sourceManager.js:130,197`），因此"tosu 在跑、但壳没有 `tosu.env`（探测不到 `tosuOnline`）"的机器上卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；同时 1.2s 的延迟初始重算不再白等（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，tosu 载荷一到 `scheduleRecompute` 就清掉它并在 200ms 内计算）。
 
-**契约 v12 与版本号（当前状态）**：桥契约已升到 **v12**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`，v12 = stable/ppysb `play.seed` / `resultsScreen.seed`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.3`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,12]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
+**契约 v13 与版本号（当前状态）**：桥契约已升到 **v13**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`，v12 = stable/ppysb `play.seed` / `resultsScreen.seed`，v13 = 窗口 8 方向缩放 `control.resizeStart` 与 Linux lazer LaneAcc 就绪位 `sources.osu.lazerLaneAccReady`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.3`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,13]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
 **本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时按阶梯静默重试（最长约 25 s，覆盖一次读取器重扫）；④ lazer 目标上的字段缺口（背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-11 更新：lazer 的 mods、`resultsScreen.hits` 与 `play.hits` 均已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段，`play.hits` 走 `score.score_result_counts`；一键生成只在同版本内保留旧表的 `score`/`results` 段；lazer 更新后需在新版本游玩/回放与结算屏分别生成，跨版本旧表不参与补段；仅缺背景/音频，见 osu-native-source.md §6.3。）
 

@@ -619,12 +619,54 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
     if path == "/offsets/status" {
         let stable_table = crate::osu::offsets::find_stable_table(None);
         let ppysb_table = crate::osu::offsets::find_stable_table_variant(None, "ppysb");
-        let (lazer_table, lazer_source) = latest_lazer_table();
+        let lazer_default = crate::osu::offsets::default_lazer_table();
+        let state = crate::osu::instance().map(|r| r.latest());
+        let active_diag = state.as_ref().and_then(|s| s.lazer.as_ref());
+        let active = active_diag.and_then(|d| d.active_table.as_ref());
+        let bundled = crate::osu::lazer::TableStatus::from(&lazer_default);
+        #[allow(unused_mut)]
+        let mut lazer = if let Some(table) = active {
+            let source = active_diag
+                .and_then(|d| d.table_path.as_deref())
+                .filter(|path| !path.is_empty() && *path != "<embedded>")
+                .unwrap_or("embedded");
+            serde_json::json!({
+                "client": "lazer",
+                "version": table.version,
+                "revision": crate::osu::offsets::lazer_revision_from_version(&table.version),
+                "runtime_version": table.runtime_version,
+                "arch": table.arch,
+                "source": source,
+                "types_count": table.types_count,
+                "score_ready": table.score_ready,
+                "loaded": true,
+                "bundled": bundled
+            })
+        } else {
+            let (lazer_table, lazer_source) = latest_lazer_table();
+            serde_json::json!({
+                "client": "lazer",
+                "version": lazer_table.lazer_version,
+                "revision": lazer_table.revision(),
+                "runtime_version": lazer_table.runtime_version,
+                "arch": lazer_table.arch,
+                "source": lazer_source,
+                "types_count": lazer_table.types.len(),
+                "score_ready": lazer_table.score().is_some(),
+                "loaded": false,
+                "bundled": bundled
+            })
+        };
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            lazer["notice"] = serde_json::json!(state.as_ref().and_then(|s| s.reason.as_deref()));
+        }
         let stable_source = stable_table_source("stable");
         let ppysb_source = stable_table_source("ppysb");
-        let gen_ready = find_gen_executable(&shared).is_some();
+        let gen_ready = cfg!(windows) && find_gen_executable(&shared).is_some();
         let body = serde_json::json!({
             "status": "ok",
+            "generator_supported": cfg!(windows),
             "generator_ready": gen_ready,
             "ppysb_active": crate::osu::runner::ACTIVE_STABLE_VARIANT.load(std::sync::atomic::Ordering::Relaxed) == 1,
             "stable": {
@@ -649,17 +691,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
                 "replay_frames_ready": ppysb_table.as_ref().map(|t| t.topology.replay.is_some()).unwrap_or(false),
                 "notes_ready": ppysb_table.as_ref().map(|t| t.topology.notes.is_some()).unwrap_or(false)
             },
-            "lazer": {
-                "client": "lazer",
-                "version": lazer_table.lazer_version,
-                "revision": lazer_table.revision(),
-                "runtime_version": lazer_table.runtime_version,
-                "arch": lazer_table.arch,
-                "source": lazer_source,
-                "types_count": lazer_table.types.len(),
-                "score_ready": lazer_table.score().is_some(),
-                "loaded": true
-            }
+            "lazer": lazer
         });
         respond_json(&mut stream, 200, &body.to_string());
         return;
@@ -667,6 +699,10 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
 
     // POST /offsets/generate：一键免 SDK 活体自校验生成偏移表（P2 Topic 9）
     if method == "POST" && path == "/offsets/generate" {
+        if !cfg!(windows) {
+            respond_json(&mut stream, 400, r#"{"status":"error","code":"unsupported_os","message":"Live generation requires Windows. Use Check Remote Updates on Linux."}"#);
+            return;
+        }
         let gen_exe = find_gen_executable(&shared);
         let Some(gen_exe_path) = gen_exe else {
             respond_json(
@@ -688,23 +724,7 @@ fn handle_http(shared: Arc<Shared>, mut stream: TcpStream, head: &str, body: &st
             .parent()
             .map(|p| p.join("lazer"))
             .filter(|p| p.is_dir());
-        if let Some(out_dir) = local_lazer {
-            cmd.arg("--out").arg(out_dir);
-        } else if let Ok(appdata) = std::env::var("APPDATA") {
-            let out_dir = std::path::PathBuf::from(appdata)
-                .join("ManiaMapAnalyser")
-                .join("offsets")
-                .join("lazer");
-            cmd.arg("--out").arg(out_dir);
-        } else if let Ok(home) = std::env::var("HOME") {
-            let out_dir = std::path::PathBuf::from(home)
-                .join(".local")
-                .join("share")
-                .join("ManiaMapAnalyser")
-                .join("offsets")
-                .join("lazer");
-            cmd.arg("--out").arg(out_dir);
-        }
+        cmd.arg("--out").arg(local_lazer.unwrap_or_else(|| crate::osu::offsets::remote_offsets_dir("lazer")));
 
         match cmd.output() {
             Ok(output) => {

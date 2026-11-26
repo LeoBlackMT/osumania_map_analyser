@@ -301,7 +301,7 @@ export const laneAccView = (() => {
         if (nodes.stage) nodes.stage.hidden = true;
         if (nodes.error) {
             nodes.error.hidden = false;
-            nodes.error.textContent = ERROR_TEXT[key] || ERROR_TEXT.shell;
+            nodes.error.textContent = (key === "laneNotice" && state.shellLazerLaneAccNotice) || ERROR_TEXT[key] || ERROR_TEXT.shell;
         }
     }
 
@@ -661,7 +661,8 @@ export const laneAccView = (() => {
             return "ppysb";
         }
         if (client.includes("lazer")) {
-            if (state.laneAccReady?.lazer === false) {
+            if (state.shellLazerLaneAccNotice) return "laneNotice";
+            if ((state.shellLazerScoreReady ?? state.laneAccReady?.lazer) === false) {
                 return "offsets";
             }
         } else if (client.includes("stable")) {
@@ -674,7 +675,8 @@ export const laneAccView = (() => {
         } else if (client) {
             return "lazer";
         }
-        if (state.externalBridgeAvailable && state.shellOsuNativeAlive === false) {
+        const lazerReaderReady = client.includes("lazer") && state.shellLazerLaneAccReady;
+        if (state.externalBridgeAvailable && !state.shellOsuNativeAlive && !lazerReaderReady) {
             return "native";
         }
         if (activeChart && (activeChart.columnCount < 4 || activeChart.columnCount > 18)) {

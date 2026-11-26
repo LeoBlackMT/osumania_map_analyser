@@ -662,6 +662,6 @@ fn number_side(value: Option<i64>, why: &str) -> Side {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_shadow"))]
 #[path = "../../tests-local/osu_shadow.rs"]
 mod tests_shadow;

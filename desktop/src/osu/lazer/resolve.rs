@@ -237,12 +237,15 @@ fn clock_chain_probe(
     resolved: &Resolved,
     game_base: u64,
 ) -> Result<Option<String>, String> {
-    let (Ok(clock_offset), Ok(track_offset), Ok(time_offset)) = (
-        resolved.beatmap_clock.clone(),
-        resolved.beatmap_track_clock.clone(),
-        resolved.beatmap_clock_time.clone(),
-    ) else {
-        // 旧表/局部表可以没有时钟段；这不是本次结构证明的必填项。
+    use crate::osu::offsets::LookupError;
+    let offsets = [&resolved.beatmap_clock, &resolved.beatmap_track_clock, &resolved.beatmap_clock_time];
+    let [Ok(&clock_offset), Ok(&track_offset), Ok(&time_offset)] = offsets.map(Result::as_ref) else {
+        // A legacy table may omit the clock. A supplied but invalid offset is not an omitted field.
+        for error in offsets.iter().filter_map(|offset| offset.as_ref().err()) {
+            if matches!(error, LookupError::OutOfRange(..) | LookupError::Ambiguous(..)) {
+                return Err(format!("invalid beatmap clock: {error}"));
+            }
+        }
         return Ok(None);
     };
 

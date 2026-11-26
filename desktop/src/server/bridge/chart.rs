@@ -39,9 +39,34 @@ impl SandboxError {
     }
 }
 
+/// Translate a path supplied by Malody. Callers enforce their own canonical root.
+pub(crate) fn host_chart_path(_root: &Path, normalized: &str) -> PathBuf {
+    #[cfg(target_os = "linux")]
+    if let Some((drive, tail)) = normalized.split_once(":/") {
+        if drive.len() == 1 && drive.as_bytes()[0].is_ascii_alphabetic() {
+            let drive = format!("{}:", drive.to_ascii_lowercase());
+            let steam_prefix = |root: &Path| root.parent().and_then(Path::parent)
+                .map(|apps| apps.join("compatdata/1512940/pfx")).filter(|p| p.is_dir());
+            let prefix = std::env::var_os("STEAM_COMPAT_DATA_PATH")
+                .map(PathBuf::from).filter(|p| p.is_absolute()).map(|p| p.join("pfx"))
+                .or_else(|| std::env::var_os("WINEPREFIX").map(PathBuf::from).filter(|p| p.is_absolute()))
+                // A symlink may be inside steamapps/common or point into it.
+                .or_else(|| steam_prefix(_root))
+                .or_else(|| _root.canonicalize().ok().and_then(|real| steam_prefix(&real)));
+            if let Some(prefix) = prefix {
+                let mapped = prefix.join("dosdevices").join(&drive);
+                if mapped.is_dir() { return mapped.join(tail.trim_start_matches('/')); }
+            }
+            // Wine's default Z: is the host filesystem. The caller still verifies containment.
+            if drive == "z:" { return Path::new("/").join(tail.trim_start_matches('/')); }
+        }
+    }
+    PathBuf::from(normalized)
+}
+
 /// 路径沙箱（`screen ∈ {selection, playing, result}` 时必过；`other` 跳过）。
 ///
-/// 顺序固定：`normalize_path` → `canonicalize`（失败即拒）→ 必须
+/// 顺序固定：`normalize_path` → Linux 上解析 Proton 盘符 → `canonicalize`（失败即拒）→ 必须
 /// `starts_with(canonicalize(malody_root)/chart/)` → 后缀 ∈ `{.mc, .osu}`（大小写不敏感）
 /// → `is_file()` → `1 B <= len <= 50 MB`。
 ///
@@ -54,9 +79,7 @@ pub fn sandbox_chart_path(root: &Path, raw_path: &str) -> Result<PathBuf, Sandbo
     if normalized.is_empty() {
         return Err(SandboxError::Unresolvable);
     }
-    let candidate = PathBuf::from(&normalized)
-        .canonicalize()
-        .map_err(|_| SandboxError::Unresolvable)?;
+    let candidate = host_chart_path(root, &normalized).canonicalize().map_err(|_| SandboxError::Unresolvable)?;
     if !candidate.starts_with(&chart_root) {
         return Err(SandboxError::Escape);
     }

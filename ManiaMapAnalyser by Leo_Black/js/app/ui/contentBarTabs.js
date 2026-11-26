@@ -22,6 +22,10 @@ function clearIdleFadeTimer() {
 
 function idleFadeSchedule() {
     clearIdleFadeTimer();
+    if (mainCardEl?.matches(":hover") || contentBarTabsEl?.matches(":focus-within")) {
+        contentBarTabsEl?.classList.remove("is-idle");
+        return;
+    }
     idleFadeTimerId = setTimeout(() => {
         idleFadeTimerId = 0;
         if (contentBarTabsEl && !contentBarTabsEl.hidden) {
@@ -69,8 +73,10 @@ export function initContentBarTabs({ onSelect } = {}) {
         for (const type of ["pointerenter", "pointermove", "pointerdown"]) {
             mainCardEl.addEventListener(type, markTabsActivity, { passive: true });
         }
+        mainCardEl.addEventListener("pointerleave", idleFadeSchedule, { passive: true });
     }
     contentBarTabsEl.addEventListener("focusin", markTabsActivity);
+    contentBarTabsEl.addEventListener("focusout", idleFadeSchedule);
 }
 
 /** 同步 Tab 栏可见性与激活态；非壳/Combined/None 时隐藏。 */

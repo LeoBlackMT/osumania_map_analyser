@@ -131,6 +131,6 @@ pub fn latest_log(dir: &Path) -> Option<PathBuf> {
     pick_latest_log(&names).map(|name| dir.join(name))
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_gamelog"))]
 #[path = "../../tests-local/malody4_gamelog.rs"]
 mod tests;

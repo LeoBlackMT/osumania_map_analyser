@@ -1,33 +1,16 @@
 /**
- * 壳窗口的可视提示（浏览器专属；只在 html.shell-mode 下生效，浏览器/tosu 模式行为不变）。
- *
- * 1. **拖动把手贴卡片顶沿**：把手是窗口级的（index.html 的 `.mma-drag-bar`，CSS 固定 `top:0`）。
- *    `reverseCardExtendDirection`（卡片贴底、向上生长）时卡片可能比窗口矮，把手会浮在卡片
- *    上方的空白里、看着和卡片脱节；这里改成「卡片顶沿之上一个把手高度」并钳进窗口。
- *    卡片顶到窗口顶端（常规情况）时结果仍是 `top:0`，与改动前完全一致；
- *    量不到卡片时同样回落到 `top:0`。
- * 2. **窗口边缘发光**：窗口透明无边框，用户看不到可拖拽的尺寸边界（Tauri 的 resize 边框在
- *    窗口四周 4~8px）。鼠标进入某条边 16px 内就点亮那条边（角落两条同时亮），移开即灭。
- * 3. **hover 把手时的一圈细描边**：提示"即将移动的是整扇窗口"。
- *
- * 全部纯视觉：提示容器 `position: fixed`、`pointer-events: none`，不参与布局、不拦输入。
- * 拖动把手仍是唯一可命中的元素（CSS `html.shell-mode .mma-drag-bar { pointer-events: auto }`），
- * 它跟着卡片走 ⇒ `data-tauri-drag-region` 的命中区与 Wayland 兜底的 `dragStart` control 帧
- * （页面 bootstrap index.js 的 mousedown）都落在用户看到的那条光带上。
- *
- * 位置计算在窗口坐标系：鼠标用 `clientX/clientY` 与 `window.innerWidth/innerHeight` 比较
- * （两者都按根 zoom 之前的坐标）；卡片用 `getBoundingClientRect()`（已被根 zoom 缩放），
- * 按把手自身的 rect/offsetHeight 比例折算回 CSS px。zoom=1（默认）时就是直接比较。
- *
- * 刷新时机：卡片 ResizeObserver + `window.resize` + `<html>`/卡片/`.dashboard` 的
- * class/style 变化（extend-upward、bars-* 模式切换、shell-mode 接入）；全部经
- * requestAnimationFrame 合并，每帧最多执行一次，不自转、不轮询。
+ * 壳窗口的移动把手、尺寸调整命中区与边缘提示。
+ * 把手跟随卡片顶沿；四边/四角经桥调用系统缩放，浏览器模式不拦截输入。
+ * 位置更新合并到一帧；提示短暂显示，收到离开事件或交给系统拖动时立即清除。
  */
+import { isShellRuntime } from "../feedback/feedbackSpec.js";
 
-/** 拖动把手高度（styles/status.css 的 `.mma-drag-bar` height: 22px）。 */
-export const DRAG_BAR_HEIGHT = 22;
+/** 拖动把手高度（与 styles/status.css 一致）。 */
+export const DRAG_BAR_HEIGHT = 16;
 /** 边缘点亮判定带宽度（px）。 */
 export const EDGE_BAND = 16;
+/** 一次鼠标输入后的提示时长，另有 CSS 的 150ms 淡出。 */
+const HINT_DURATION_MS = 350;
 /** 四个窗口边缘；同时也是 edgeFor() 的返回顺序。 */
 const EDGES = ["top", "right", "bottom", "left"];
 
@@ -60,7 +43,9 @@ export function computeBarTop(cardTop, barHeight, windowHeight) {
  * @returns {string[]} EDGES 的子集，按 top → right → bottom → left 排序；窗口中间返回空数组。
  */
 export function edgeFor(x, y, width, height, band = EDGE_BAND) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)
+        || !Number.isFinite(width) || !Number.isFinite(height)
+        || x < 0 || y < 0 || x >= width || y >= height) {
         return [];
     }
     const reach = Number.isFinite(band) && band > 0 ? band : EDGE_BAND;
@@ -68,7 +53,7 @@ export function edgeFor(x, y, width, height, band = EDGE_BAND) {
     if (y <= reach) {
         edges.push("top");
     }
-    // 远端两条边要求窗口尺寸有效：尺寸量不到（0/NaN）时不能把 x/y >= -16 判成命中。
+    // 远端两条边要求窗口尺寸大于判定带。
     if (Number.isFinite(width) && width > reach && x >= width - reach) {
         edges.push("right");
     }
@@ -81,10 +66,7 @@ export function edgeFor(x, y, width, height, band = EDGE_BAND) {
     return edges;
 }
 
-/**
- * 建提示容器与四条边带（模块自建：index.html 保持原样；fixed + pointer-events:none，
- * 不参与页面布局）。
- */
+/** 建立边缘提示及八方向的尺寸调整命中区。 */
 function buildHints(doc) {
     const root = doc.createElement("div");
     root.className = "mma-edge-hints";
@@ -94,22 +76,53 @@ function buildHints(doc) {
     outline.className = "mma-window-outline";
     root.appendChild(outline);
 
+    const bands = {};
     for (const edge of EDGES) {
         const band = doc.createElement("span");
         band.className = `mma-edge mma-edge-${edge}`;
         root.appendChild(band);
+        bands[edge] = band;
+    }
+
+    for (const direction of ["North", "NorthEast", "East", "SouthEast", "South", "SouthWest", "West", "NorthWest"]) {
+        const handle = doc.createElement("span");
+        handle.className = `mma-resize-handle mma-resize-${direction.toLowerCase()}`;
+        handle.setAttribute("data-direction", direction);
+        root.appendChild(handle);
     }
 
     const parent = doc.body || doc.documentElement;
     if (parent) {
         parent.appendChild(root);
     }
-    return root;
+    return { hints: root, bands };
+}
+
+function layoutGrip(doc, win, bar, card, hints) {
+    const zoom = win.getComputedStyle?.(doc.documentElement)?.zoom;
+    const number = Number.parseFloat(zoom);
+    const factor = String(zoom).trim().endsWith("%") ? number / 100 : number;
+    const scale = Number.isFinite(factor) && factor > 0 ? factor : 1;
+    const unit = 1 / scale;
+    doc.body?.style?.setProperty?.("--mma-window-unit", `${unit}px`);
+    const height = DRAG_BAR_HEIGHT * unit;
+    bar.style.height = `${height}px`;
+    hints.style.zoom = String(unit);
+    const rect = card?.getBoundingClientRect?.();
+    const top = computeBarTop(rect?.top / scale, height, win.innerHeight / scale);
+    bar.style.top = `${Math.max(6 * unit, top)}px`;
+    if (rect) bar.style.left = `${(rect.left + rect.width / 2) / scale}px`;
+}
+
+function windowTiming(win) {
+    const later = win.setTimeout?.bind(win) ?? globalThis.setTimeout;
+    const cancel = win.clearTimeout?.bind(win) ?? globalThis.clearTimeout;
+    const nextFrame = win.requestAnimationFrame?.bind(win) ?? ((fn) => later(fn, 16));
+    return { later, cancel, nextFrame };
 }
 
 /**
- * 装配壳窗口提示。浏览器/tosu 模式同样调用（壳连接是异步的，html.shell-mode 之后才出现）——
- * 非壳模式下的每帧工作只是一次 classList 判断 + `top` 复位，不做任何布局读取。
+ * 壳窗口在桥握手前即可使用原生拖动；普通 tosu 页面不安装命中区。
  *
  * @param {Document} [doc] 页面文档（测试可注入）。
  * @param {Window} [win] 页面窗口（测试可注入）。
@@ -118,64 +131,49 @@ function buildHints(doc) {
 export function initWindowAffordances(
     doc = typeof document !== "undefined" ? document : null,
     win = typeof window !== "undefined" ? window : null,
+    sendControl = () => false,
 ) {
     if (!doc || !win || typeof doc.querySelector !== "function"
         || typeof win.addEventListener !== "function") {
         return null;
     }
+    if (!isShellRuntime(win.location) || !doc.documentElement?.classList?.add) return null;
+    const { later, cancel, nextFrame } = windowTiming(win);
     const bar = doc.querySelector(".mma-drag-bar");
     if (!bar) {
         return null;
     }
+    doc.documentElement.classList.add("shell-window");
 
     const card = doc.querySelector(".main-card");
-    const hints = buildHints(doc);
-    const bands = {};
-    for (const edge of EDGES) {
-        bands[edge] = hints.querySelector(`.mma-edge-${edge}`);
-    }
+    const { hints, bands } = buildHints(doc);
 
     let pointer = null; // 最近一次鼠标位置（窗口坐标）
     let frame = 0;
     let barDirty = true;
     let edgeDirty = true;
-
-    function isShell() {
-        return Boolean(doc.documentElement && doc.documentElement.classList
-            && doc.documentElement.classList.contains("shell-mode"));
-    }
-
-    /** 把手的 top：非壳模式清掉 inline 值，回到 CSS 的 top:0（与改动前一致）。 */
-    function applyBarTop() {
-        if (!isShell()) {
-            bar.style.top = "";
-            return;
-        }
-        const barHeight = Number(bar.offsetHeight) || DRAG_BAR_HEIGHT;
-        const barRect = typeof bar.getBoundingClientRect === "function"
-            ? bar.getBoundingClientRect()
-            : null;
-        // 根 zoom（index.js 的页面缩放）会让 rect 比 offsetHeight 大同样的倍数；
-        // 取不到就按 1 处理（zoom 不存在时即直接比较）。
-        const scale = barRect && Number(barRect.height) > 0 ? Number(barRect.height) / barHeight : 1;
-        const rect = card && typeof card.getBoundingClientRect === "function"
-            ? card.getBoundingClientRect()
-            : null;
-        const cardTop = rect ? Number(rect.top) / scale : Number.NaN;
-        const windowHeight = (Number(win.innerHeight) || 0) / scale;
-        bar.style.top = `${Math.round(computeBarTop(cardTop, barHeight, windowHeight))}px`;
-    }
+    let hintDirty = false;
+    let hintTimer = 0;
 
     /** 四条边带的亮灭：按最近一次鼠标位置重算（离开窗口 = 全灭）。 */
     function applyEdges() {
-        const active = new Set(isShell() && pointer
+        const active = new Set(pointer
             ? edgeFor(pointer.x, pointer.y, Number(win.innerWidth) || 0, Number(win.innerHeight) || 0)
             : []);
+        const overBar = Boolean(pointer?.overBar);
+        bar.classList?.toggle?.("drag-hover", overBar);
+        hints.classList?.toggle?.("drag-active", overBar);
         for (const edge of EDGES) {
             const band = bands[edge];
-            if (band && band.classList) {
-                band.classList.toggle("active", active.has(edge));
-            }
+            band.classList?.toggle?.("active", active.has(edge));
+        }
+        // 只有新的鼠标输入延长提示；卡片布局刷新不延长高亮。
+        if (hintDirty) {
+            hintDirty = false;
+            cancel(hintTimer);
+            hintTimer = active.size || overBar
+                ? later(clearPointer, HINT_DURATION_MS)
+                : 0;
         }
     }
 
@@ -183,11 +181,11 @@ export function initWindowAffordances(
         if (frame) {
             return;
         }
-        frame = requestAnimationFrame(() => {
+        frame = nextFrame(() => {
             frame = 0;
             if (barDirty) {
                 barDirty = false;
-                applyBarTop();
+                layoutGrip(doc, win, bar, card, hints);
             }
             if (edgeDirty) {
                 edgeDirty = false;
@@ -198,37 +196,86 @@ export function initWindowAffordances(
 
     function scheduleBar() {
         barDirty = true;
+        edgeDirty = true;
         schedule();
     }
 
     function onPointerMove(event) {
-        pointer = { x: Number(event.clientX), y: Number(event.clientY) };
+        pointer = {
+            x: Number(event.clientX),
+            y: Number(event.clientY),
+            overBar: event.target?.closest?.(".mma-drag-bar") === bar,
+        };
+        hintDirty = true;
         edgeDirty = true;
         schedule();
+    }
+
+    function clearDragHover() {
+        bar.classList?.remove?.("drag-hover");
+        hints.classList?.remove?.("drag-active");
     }
 
     function clearPointer() {
+        cancel(hintTimer);
+        hintTimer = 0;
+        hintDirty = false;
         pointer = null;
-        edgeDirty = true;
-        schedule();
+        edgeDirty = false;
+        clearDragHover();
+        for (const band of Object.values(bands)) {
+            band?.classList?.remove?.("active");
+        }
     }
 
-    if (typeof bar.addEventListener === "function") {
-        bar.addEventListener("mouseenter", () => hints.classList.toggle("drag-active", true));
-        bar.addEventListener("mouseleave", () => hints.classList.toggle("drag-active", false));
+    function startGesture(event, action, direction = null) {
+        if (event.button !== 0) {
+            return;
+        }
+        clearPointer();
+        if (sendControl(action, null, direction)) {
+            event.preventDefault();
+            event.stopPropagation(); // A delivered WS gesture must not also reach Tauri.
+        }
     }
+
+    bar.addEventListener?.("mouseenter", onPointerMove);
+    bar.addEventListener?.("mouseleave", clearPointer);
+    bar.addEventListener?.("mousedown", (event) => startGesture(event, "dragStart"));
+    hints.addEventListener?.("mousedown", (event) => {
+        const handle = event.target?.closest?.(".mma-resize-handle");
+        if (handle) {
+            startGesture(event, "resizeStart", handle.dataset.direction);
+        }
+    });
     win.addEventListener("mousemove", onPointerMove);
-    doc.addEventListener("mouseleave", clearPointer);
-    win.addEventListener("resize", scheduleBar);
+    doc.addEventListener?.("mouseleave", clearPointer);
+    doc.documentElement.addEventListener?.("pointerleave", clearPointer);
+    doc.addEventListener?.("mouseout", (event) => {
+        if (!event.relatedTarget) {
+            clearPointer();
+        }
+    });
+    win.addEventListener("blur", clearPointer);
+    win.addEventListener("pointercancel", clearPointer);
+    doc.addEventListener?.("visibilitychange", () => {
+        if (doc.hidden) {
+            clearPointer();
+        }
+    });
+    win.addEventListener("resize", () => {
+        clearPointer();
+        scheduleBar();
+    });
 
-    if (typeof ResizeObserver === "function" && card) {
-        new ResizeObserver(scheduleBar).observe(card);
+    if (typeof win.ResizeObserver === "function" && card) {
+        new win.ResizeObserver(scheduleBar).observe(card);
     }
-    if (typeof MutationObserver === "function") {
+    if (typeof win.MutationObserver === "function") {
         // 只看这三个节点的 class/style：extend-upward 在 .dashboard 上，
-        // shell-mode 在 <html> 上，bars-* / card-hidden-by-play / 卡片 CSS 变量在卡片上。
+        // 根 zoom 在 <html> 上，bars-* / card-hidden-by-play / 卡片 CSS 变量在卡片上。
         // 不订阅子树，避免图/进度条的逐帧属性写入把每帧都变成一次布局读取。
-        const mutations = new MutationObserver(scheduleBar);
+        const mutations = new win.MutationObserver(scheduleBar);
         for (const node of [doc.documentElement, card, doc.querySelector(".dashboard")]) {
             if (node) {
                 mutations.observe(node, { attributes: true, attributeFilter: ["class", "style"] });

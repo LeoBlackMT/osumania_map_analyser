@@ -1943,6 +1943,7 @@ name = "mma-shell"
 version = "0.1.0"
 dependencies = [
  "ed25519-compact",
+ "gtk",
  "lzma-rs",
  "md-5",
  "serde",
@@ -1951,6 +1952,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",
+ "tauri-runtime",
  "tiny_http",
  "tungstenite",
  "winreg",

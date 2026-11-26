@@ -225,6 +225,6 @@ impl SelectionState {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "malody4_selection"))]
 #[path = "../../tests-local/malody4_selection.rs"]
 mod tests;

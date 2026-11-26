@@ -311,6 +311,9 @@ export const state = {
     runtimeOsuHost: "",
     // 壳 `sources.osu` 的传输位：native 传输可用（sourceManager 的败方门控据此把 osu 当活源）。
     shellOsuNativeAlive: false,
+    shellLazerLaneAccReady: false,
+    shellLazerLaneAccNotice: null,
+    shellLazerScoreReady: null,
     // 壳 `sources.osu` 的相位诊断（契约 v6 / Step 9e）：`waiting-for-game` / `attaching` /
     // `scanning` / `healthy` / `unavailable`。提示句 `notice` 由**壳**给（英文），
     // 页面只渲染它、不做自己的文案；`shellOsuProgress` 只作诊断（算子可读，页面不渲染）。

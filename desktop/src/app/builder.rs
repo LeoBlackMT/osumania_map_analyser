@@ -8,7 +8,7 @@ use crate::settings_window;
 use super::shortcuts::register_global_shortcuts;
 use super::url::startup_url;
 use super::window_events::{handle_window_event, APP_INITIALIZED};
-use super::window_state::{spawn_window_state_watchdog, WINDOW_STATE};
+use super::window_state::{initialize_topmost, spawn_window_state_watchdog, WINDOW_STATE};
 
 /// 检查窗口矩形是否与任意可用显示器有重叠（防止断开显示器或分辨率改变后窗口落在虚空中）。
 pub fn is_window_visible_on_any_monitor(
@@ -91,6 +91,8 @@ impl AppBuilder {
 
                 let shared = server::start(plugin_dir.clone(), tosu);
                 server::set_app_handle(&shared, app.handle().clone());
+                #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+                super::lazer_launcher::launch_if_requested();
 
                 if let Some(window) = app.get_webview_window("main") {
                     server::set_main_window(&shared, window.clone());
@@ -113,11 +115,15 @@ impl AppBuilder {
                     }
                     let _ = window.set_size(tauri::PhysicalSize::new(saved.w, saved.h));
                     *WINDOW_STATE.lock().unwrap() = saved.clone();
-                    let _ = window.set_always_on_top(saved.topmost);
+                    initialize_topmost(&window, saved.topmost);
                     if saved.click_through {
                         let _ = window.set_ignore_cursor_events(true);
                     }
-                    if let Ok(url) = url_text.parse() {
+                    if let Ok(url) = url_text.parse::<tauri::Url>() {
+                        // Only the selected main overlay may start a native drag while WS is offline.
+                        app.add_capability(tauri::ipc::CapabilityBuilder::new("overlay-drag")
+                            .window("main").local(false).remote(url.origin().ascii_serialization())
+                            .permission("core:window:allow-start-dragging"))?;
                         let _ = window.navigate(url);
                     }
                     // 开发用：`--features devtools` 构建 + `MMA_DEVTOOLS=1` 启动时打开

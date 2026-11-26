@@ -1,9 +1,9 @@
-// 壳-页面桥帧定义（CONTRACT.md 契约版本 12 的直接实现）。
+// 壳-页面桥帧定义（CONTRACT.md 契约版本 13 的直接实现）。
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const CONTRACT_VERSION: u32 = 12;
+pub const CONTRACT_VERSION: u32 = 13;
 pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 pub const POST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOSU_PROBE_INTERVAL: Duration = Duration::from_secs(30);
@@ -190,6 +190,12 @@ pub struct OsuScanProgress {
 #[serde(rename_all = "camelCase")]
 pub struct OsuSource {
     pub alive: bool,
+    /// Linux lazer can supply LaneAcc events alongside the tosu transport.
+    pub lazer_lane_acc_ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lazer_lane_acc_notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lazer_score_ready: Option<bool>,
     /// 字段名 = 契约里的 `osuTransport`（结构体名 `OsuTransport` 为避免与字段同名而分开）。
     #[serde(rename = "osuTransport")]
     pub transport: OsuTransport,
@@ -315,12 +321,13 @@ pub struct HitEventItem {
     pub offset: f64,
 }
 
-// 页面 → 壳控制帧（契约 v2：窗口操控）。
+// 页面 → 壳控制帧（v13 增加 resizeStart 的 direction）。
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ControlInbound {
     pub action: String,
     pub value: Option<bool>,
+    pub direction: Option<tauri_runtime::ResizeDirection>,
 }
 
 // Malody 编辑器 POST 载荷。

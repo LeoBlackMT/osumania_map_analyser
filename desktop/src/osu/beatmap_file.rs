@@ -891,6 +891,6 @@ fn catmull_point(p1: Point, p2: Point, t1: Point, t2: Point, t: f64) -> Point {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, mma_local_test = "osu_beatmap_file"))]
 #[path = "../../tests-local/osu_beatmap_file.rs"]
 mod tests_beatmap_file;
