@@ -249,30 +249,118 @@ mod tests {
     }
 
     #[test]
-    fn bundled_manifest_references_packaged_tables() {
+    fn bundled_manifest_is_valid_and_matches_packaged_tables() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("offsets");
+        let manifest_bytes = std::fs::read(root.join("manifest.json"))
+            .expect("read packaged offsets/manifest.json");
+        assert!(
+            !manifest_bytes.windows(2).any(|pair| pair == b"\r\n"),
+            "manifest.json must use LF line endings"
+        );
         let manifest: RemoteManifest =
-            serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
-        assert_eq!(manifest.schema_version, 2);
-        assert!(!manifest.tables.is_empty());
-        for table in manifest.tables {
-            let path = root.join(&table.client).join(&table.filename);
-            assert!(path.is_file(), "missing packaged table: {}", path.display());
-        }
-    }
+            serde_json::from_slice(&manifest_bytes).expect("parse packaged manifest");
+        assert_eq!(manifest.schema_version, 3);
+        manifest
+            .verify_manifest_signature()
+            .expect("manifest signature check");
+        assert!(!manifest.tables.is_empty(), "manifest must not be empty");
 
-    #[test]
-    fn bundled_lazer_tables_match_release_signatures() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("offsets");
-        let manifest: RemoteManifest =
-            serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
-        let mut checked_embedded = false;
-        for entry in manifest.tables.iter().filter(|t| t.client == "lazer") {
-            let bytes = std::fs::read(root.join(&entry.client).join(&entry.filename)).unwrap();
-            verify_table_signature(&bytes, &entry.sha256, &entry.signature, &ED25519_MASTER_PUBLIC_KEY)
-                .unwrap_or_else(|why| panic!("{}: {why}", entry.filename));
-            checked_embedded |= bytes == DEFAULT_LAZER_TABLE_JSON.as_bytes();
+        let mut seen = std::collections::HashSet::new();
+        for table in &manifest.tables {
+            assert!(
+                is_supported_client(&table.client),
+                "unsupported manifest client: {}",
+                table.client
+            );
+            assert!(
+                is_safe_table_filename(&table.filename),
+                "unsafe manifest filename: {}",
+                table.filename
+            );
+            assert!(
+                seen.insert((table.client.clone(), table.filename.clone())),
+                "duplicate manifest table: {}/{}",
+                table.client,
+                table.filename
+            );
+
+            let mut path = root.join(&table.client).join(&table.filename);
+            if !path.is_file() && table.client == "ppysb" {
+                path = root.join("stable").join(&table.filename);
+            }
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|error| panic!("read packaged table {}: {error}", path.display()));
+            assert!(
+                !bytes.windows(2).any(|pair| pair == b"\r\n"),
+                "packaged table must use LF line endings: {}",
+                path.display()
+            );
+            verify_table_signature(
+                &bytes,
+                &table.sha256,
+                &table.signature,
+                &ED25519_MASTER_PUBLIC_KEY,
+            )
+            .unwrap_or_else(|error| {
+                panic!("signature check failed for {}: {error}", path.display())
+            });
+
+            let table_revision = match table.client.as_str() {
+                "lazer" => OffsetTable::load(&bytes)
+                    .expect("load lazer table")
+                    .revision(),
+                "stable" | "ppysb" => StableTable::load(&bytes)
+                    .expect("load stable table")
+                    .revision,
+                other => panic!("unsupported manifest client: {other}"),
+            };
+            assert_eq!(
+                table.revision, table_revision,
+                "manifest revision does not match table content: {}",
+                path.display()
+            );
         }
-        assert!(checked_embedded, "embedded lazer table missing from signed manifest");
+
+        let stable_manifest_names: std::collections::HashSet<&str> = manifest
+            .tables
+            .iter()
+            .filter(|table| table.client == "stable" || table.client == "ppysb")
+            .map(|table| table.filename.as_str())
+            .collect();
+        for required in ["stable__x86.json", "ppysb__x86.json"] {
+            assert!(
+                stable_manifest_names.contains(required),
+                "manifest is missing packaged stable table: {required}"
+            );
+        }
+
+        let mut manifest_lazer_keys = std::collections::HashSet::new();
+        for table in manifest.tables.iter().filter(|table| table.client == "lazer") {
+            let bytes = std::fs::read(root.join("lazer").join(&table.filename))
+                .unwrap_or_else(|error| panic!("read lazer table {}: {error}", table.filename));
+            let table = OffsetTable::load(&bytes).expect("load lazer table");
+            manifest_lazer_keys.insert((
+                table.lazer_version,
+                table.runtime_version,
+                table.arch,
+            ));
+        }
+        for entry in std::fs::read_dir(root.join("lazer")).expect("read lazer offsets dir") {
+            let path = entry.expect("read lazer offsets entry").path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let bytes = std::fs::read(&path).expect("read lazer table");
+            let table = OffsetTable::load(&bytes).expect("load lazer table");
+            assert!(
+                manifest_lazer_keys.contains(&(
+                    table.lazer_version,
+                    table.runtime_version,
+                    table.arch
+                )),
+                "manifest is missing packaged lazer table: {}",
+                path.display()
+            );
+        }
     }
 }

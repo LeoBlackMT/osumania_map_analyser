@@ -3,6 +3,17 @@
 > 本目录存放仓库的辅助开发脚本，不参与插件运行时（插件运行不依赖 Node 等任何外部运行时）。
 > This folder holds helper scripts for repository maintenance. They are NOT part of the plugin runtime (the plugin itself never requires Node or any external runtime).
 
+## offsets-tool（偏移表 manifest 离线签名/校验）
+
+用于维护 `desktop/offsets/manifest.json`：`sign` 扫描 `desktop/offsets` 下的 stable/ppysb/lazer 表，生成带 `revision`、SHA-256 与 Ed25519 签名的 manifest；`verify` 只读校验随包 manifest 与所有表。签名 seed 只从 `--seed-file` 或 `MMA_OFFSETS_SIGNING_SEED` 读取，不打印、不入库。
+
+```powershell
+cargo run --manifest-path tools/offsets-tool/Cargo.toml -- verify --root desktop/offsets
+cargo run --manifest-path tools/offsets-tool/Cargo.toml -- sign --root desktop/offsets --seed-file .secrets/offsets-seed.txt
+```
+
+Offline signer / verifier for `desktop/offsets/manifest.json`. `sign` scans stable/ppysb/lazer tables, adds monotonic `revision` fields, and writes SHA-256 + Ed25519 signatures. `verify` is read-only. The seed is read only from `--seed-file` or `MMA_OFFSETS_SIGNING_SEED`; it is never printed or committed.
+
 ## patch-minaclac-msd-cap.mjs（MSD 上限突破补丁）
 
 ### 这个脚本是做什么的（What it does）

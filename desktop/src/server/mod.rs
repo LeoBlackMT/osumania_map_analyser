@@ -494,10 +494,18 @@ pub fn spawn_timers(shared: Arc<Shared>) {
             let outcome = http::check_and_apply_remote_offsets(http::REMOTE_OFFSETS_MANIFEST);
             let updated = outcome.get("updated").and_then(serde_json::Value::as_u64).unwrap_or(0);
             let skipped = outcome.get("skipped").and_then(serde_json::Value::as_u64).unwrap_or(0);
-            if updated > 0 || skipped > 0 {
+            let failed = outcome.get("failed").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            let status = outcome
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown");
+            if status != "ok" || updated > 0 || skipped > 0 {
+                let level = if status == "ok" || status == "busy" { "info" } else { "warn" };
                 log::log_at(
-                    "info",
-                    &format!("offsets: daily check updated {updated}, skipped {skipped} table(s)"),
+                    level,
+                    &format!(
+                        "offsets: daily check status={status} updated={updated} skipped={skipped} failed={failed}"
+                    ),
                 );
             }
             thread::sleep(Duration::from_secs(24 * 60 * 60));

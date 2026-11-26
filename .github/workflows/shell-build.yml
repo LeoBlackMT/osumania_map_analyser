@@ -68,6 +68,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - name: Verify offsets manifest
+        run: cargo run --locked --manifest-path tools/offsets-tool/Cargo.toml -- verify --root desktop/offsets
       - name: Test PR build
         if: github.event_name == 'pull_request'
         working-directory: desktop

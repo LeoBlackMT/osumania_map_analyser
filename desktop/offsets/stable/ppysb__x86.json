@@ -3,6 +3,7 @@
   "client": "ppysb",
   "version": "ppysb-latest",
   "arch": "x86",
+  "revision": 20261125,
   "anchors": {
     "statusPtr": {
       "pattern": "48 83 F8 04 73 0E",

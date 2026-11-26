@@ -51,7 +51,7 @@ desktop/build-linux.sh
 
 ### 4. GitHub Actions
 
-`.github/workflows/shell-build.yml` 在 Windows 和 Linux 上用开发配置测试 PR。推送到 main 或手动构建时，只有正式构建步骤读取原有 `MMA_FEEDBACK_SIGNING_SEED`；校验通过后才构建并上传发行产物。玩家端和反馈服务端继续使用既有密钥配置。
+`.github/workflows/shell-build.yml` 在 Windows 和 Linux 上用开发配置测试 PR（Linux 侧另执行 offsets manifest 校验）。推送到 main 或手动构建时，只有正式构建步骤读取原有 `MMA_FEEDBACK_SIGNING_SEED`；校验通过后才构建并上传发行产物。玩家端和反馈服务端继续使用既有密钥配置。
 
 ### 5. 验证
 
@@ -114,7 +114,7 @@ desktop/build-linux.sh
 
 ### 4. GitHub Actions
 
-`.github/workflows/shell-build.yml` tests PRs on Windows and Linux with the development configuration. For main pushes and manual builds, only the release build step receives the existing `MMA_FEEDBACK_SIGNING_SEED`. It validates the seed before compiling and uploading a release artifact. Existing clients and the feedback server keep their signing configuration.
+`.github/workflows/shell-build.yml` tests PRs on Windows and Linux with the development configuration (and runs offsets manifest verification on Linux). For main pushes and manual builds, only the release build step receives the existing `MMA_FEEDBACK_SIGNING_SEED`. It validates the seed before compiling and uploading a release artifact. Existing clients and the feedback server keep their signing configuration.
 
 ### 5. Verification
 

@@ -236,19 +236,49 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         offsetsActionMsg = t("ui.shell.offsets.checking", "Checking remote manifest and verifying signatures…");
         offsetsActionKind = "saving";
         render();
-        const result = await requestJson(OFFSETS_UPDATE_URL, { method: "POST" });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 150_000);
+        const result = await requestJson(OFFSETS_UPDATE_URL, {
+            method: "POST",
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
         if (!result.ok) {
-            offsetsActionMsg = `${t("ui.shell.offsets.updateFailed", "Update failed")}: ${offsetsErrorMessage(result.body, result.error, result.status)}`;
-            offsetsActionKind = "error";
+            if (result.error && result.error.name === "AbortError") {
+                offsetsActionMsg = t(
+                    "ui.shell.offsets.updateTimeout",
+                    "Offsets update timed out; keeping existing local offsets.",
+                );
+                offsetsActionKind = "error";
+            } else {
+                offsetsActionMsg = `${t("ui.shell.offsets.updateFailed", "Update failed")}: ${offsetsErrorMessage(result.body, result.error, result.status)}`;
+                offsetsActionKind = "error";
+            }
         } else {
             const code = result.body && result.body.code;
+            const status = result.body && result.body.status;
             const updated = result.body && typeof result.body.updated === "number" ? result.body.updated : 0;
             const skipped = result.body && typeof result.body.skipped === "number" ? result.body.skipped : 0;
-            if (code === "network_unavailable" || (result.body && result.body.status === "offline_fallback")) {
+            const failed = result.body && typeof result.body.failed === "number" ? result.body.failed : 0;
+            if (status === "busy") {
+                offsetsActionMsg = t(
+                    "ui.shell.offsets.updateBusy",
+                    "Another offsets update is already running.",
+                );
+                offsetsActionKind = "info";
+            } else if (code === "network_unavailable" || status === "offline_fallback") {
                 offsetsActionMsg = t("ui.shell.offsets.networkUnavailable", "Network unavailable or remote host unreachable; keeping existing local offsets.");
                 offsetsActionKind = "info";
             } else if (code === "manifest_unreadable" || (result.body && result.body.message === "Remote manifest unreadable or malformed")) {
                 offsetsActionMsg = t("ui.shell.offsets.manifestUnreadable", "The remote manifest is unreadable or malformed; keeping existing local offsets.");
+                offsetsActionKind = "error";
+            } else if (status === "partial" || status === "error" || failed > 0) {
+                const detail = offsetsErrorDetail(result.body);
+                offsetsActionMsg = tf(
+                    "ui.shell.offsets.updatePartial",
+                    { updated, skipped, failed, detail },
+                    `Offsets check finished with ${failed} failure(s): ${detail || "see shell log"}`,
+                );
                 offsetsActionKind = "error";
             } else if (code === "ok") {
                 offsetsActionMsg = tf(
@@ -268,6 +298,19 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         }
         await fetchOffsetsStatus();
         render();
+    }
+
+    function offsetsErrorDetail(body) {
+        const errors = body && Array.isArray(body.errors) ? body.errors : [];
+        return errors
+            .slice(0, 3)
+            .map((entry) => {
+                const filename = entry && entry.filename ? entry.filename : "manifest.json";
+                const stage = entry && entry.stage ? entry.stage : "error";
+                const detail = entry && entry.detail ? `: ${entry.detail}` : "";
+                return `${filename} (${stage})${detail}`;
+            })
+            .join("; ");
     }
 
     /** GET /shell-config → config + resolved; a 400 renders a read-only notice. */
@@ -752,8 +795,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         wrap.appendChild(header);
 
         const stableInfo = offsetsInfo.stable || {};
+        const stableRevision = stableInfo.revision ? `, rev ${stableInfo.revision}` : "";
+        const stableSource = stableInfo.source && stableInfo.source !== "embedded"
+            ? `, ${t("ui.shell.offsets.sourceFile", "local file")}`
+            : `, ${t("ui.shell.offsets.sourceEmbedded", "bundled")}`;
         const stableDesc = stableInfo.loaded
-            ? `${t("ui.shell.offsets.active", "Active")} (${stableInfo.anchors_count || 7} ${t("ui.shell.offsets.anchors", "anchors")}, ${stableInfo.arch || "x86"})`
+            ? `${t("ui.shell.offsets.active", "Active")} (${stableInfo.anchors_count || 7} ${t("ui.shell.offsets.anchors", "anchors")}, ${stableInfo.arch || "x86"}${stableRevision}${stableSource})`
             : t("ui.shell.offsets.fallbackDesc", "Fallback table active");
         const stableBadge = document.createElement("span");
         stableBadge.className = `shell-config-badge ${stableInfo.loaded ? "badge-ok" : "badge-warn"}`;
@@ -762,8 +809,12 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
 
         const lazerInfo = offsetsInfo.lazer || {};
         const generatedSections = lastGeneratedSections ? ` · ${sectionStateText(lastGeneratedSections)}` : "";
-        const tableDesc = `v${lazerInfo.version || "?"} / .NET ${lazerInfo.runtime_version || "?"}`;
-        const lazerDesc = [tableDesc + generatedSections, lazerInfo.notice].filter(Boolean).join(" · ");
+        const lazerRevision = lazerInfo.revision ? `, rev ${lazerInfo.revision}` : "";
+        const lazerSource = lazerInfo.source && lazerInfo.source !== "embedded"
+            ? `, ${t("ui.shell.offsets.sourceFile", "local file")}`
+            : `, ${t("ui.shell.offsets.sourceEmbedded", "bundled")}`;
+        const tableDesc = `v${lazerInfo.version || "?"} (.NET ${lazerInfo.runtime_version || "?"}, ${lazerInfo.types_count || 0} types${lazerRevision}${lazerSource})${generatedSections}`;
+        const lazerDesc = [tableDesc, lazerInfo.notice].filter(Boolean).join(" · ");
         const lazerBadge = document.createElement("span");
         lazerBadge.className = `shell-config-badge ${lazerInfo.loaded ? "badge-ok" : "badge-warn"}`;
         lazerBadge.textContent = lazerInfo.loaded ? t("ui.shell.offsets.active", "Active") : t("ui.shell.offsets.bundled", "Bundled");
@@ -788,6 +839,7 @@ export function createShellConfigPanel({ root, fetchImpl = (url, init) => fetch(
         updateBtn.className = "settings-action-btn";
         updateBtn.textContent = t("ui.shell.offsets.update", "Check Remote Updates");
         updateBtn.title = t("ui.shell.offsets.updateHint", "Verify Ed25519 signed manifest and sync updated tables");
+        updateBtn.disabled = offsetsActionKind === "saving";
         updateBtn.addEventListener("click", () => updateOffsets());
         actionsWrap.appendChild(updateBtn);
 

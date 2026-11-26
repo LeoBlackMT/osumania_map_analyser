@@ -87,6 +87,7 @@
 | [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | 人类/AI | Mixed 4K RC 路由对称融合与 XDC1 兜底破坏性说明（R3' `Roxy+XDC1` / 双向 `≥0.50` 切 XDC1、低难 C8'、高段 `XDC1+Azusa`、遥测/反馈别名及缓存 `star-v15`） |
 | [breakings/2026-11-18-full-card-rd.md](breakings/2026-11-18-full-card-rd.md) | 人类/AI | 全卡 RD/MR 支持（主分析列变换、选歌→play/历史结算重算、play/replay→结算冻结、stable/ppysb Score.Seed 0x80、契约 v12、缓存 star-v16） |
 | [breakings/2026-11-25-shell-v13-linux-overlay.md](breakings/2026-11-25-shell-v13-linux-overlay.md) | 人类/AI | 桌面壳 v13：窗口热区、Linux LaneAcc、实际偏移表状态及升级方式 |
+| [breakings/2026-11-26-offsets-manifest-v3.md](breakings/2026-11-26-offsets-manifest-v3.md) | 人类/AI | 偏移表远端更新加固（manifest schema 3 + `manifest_signature`、单调 revision 门、stable/ppysb revision、LF 规范、client/filename 白名单、超时/重试/大小上限、逐表错误状态、只读测试与 offsets-tool CI 校验） |
 
 # English
 
@@ -174,3 +175,4 @@ Use the links to jump to the corresponding document. For documents with the same
 | [breakings/2026-11-11-mixed-rc-fusion-routing.md](breakings/2026-11-11-mixed-rc-fusion-routing.md) | Human/AI | Mixed 4K RC symmetric fusion & XDC1 routing breaking note (`Roxy+XDC1` / bidirectional `≥0.50` XDC1 switch on R3', C8' low-band XDC1 rescue, `XDC1+Azusa` on R4-Hi, telemetry/feedback capsule aliases, and cache `star-v15`) |
 | [breakings/2026-11-18-full-card-rd.md](breakings/2026-11-18-full-card-rd.md) | Human/AI | Full-card Random (RD) and Mirror (MR) column transformation breaking note (main analysis applies RD→MR column permutations, song select to play recomputes using actual seed, play/replay to results freezes results, stable/ppysb memory reader adds score_seed offset, contract v12, cache star-v16) |
 | [breakings/2026-11-25-shell-v13-linux-overlay.md](breakings/2026-11-25-shell-v13-linux-overlay.md) | Human/AI | Desktop shell v13: window gestures, Linux LaneAcc, active table status and upgrade steps |
+| [breakings/2026-11-26-offsets-manifest-v3.md](breakings/2026-11-26-offsets-manifest-v3.md) | Human/AI | Offset remote-update hardening (manifest schema 3 + `manifest_signature`, monotonic revision gate, stable/ppysb revisions, LF enforcement, client/filename allowlist, timeout/retry/size limits, per-table error statuses, read-only test, and offsets-tool CI verification) |

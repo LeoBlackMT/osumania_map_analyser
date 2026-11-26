@@ -31,6 +31,7 @@ desktop/src/
 │   ├── builder.rs                 # Tauri AppBuilder 构建与生命周期挂钩
 │   ├── instance.rs                # 单例互斥锁检测与已有实例前台激活
 │   ├── kde_overlay.rs             # KDE Wayland/XWayland 窗口置顶、全屏层级与规则同步
+│   ├── lazer_launcher.rs          # Linux 可选 --launch-lazer 子进程启动器，使读取器可观测内存
 │   ├── shortcuts.rs               # 全局热键解析与绑定 (置顶、穿透、设置、退出)
 │   ├── window_state.rs            # 窗口物理尺寸、位置、穿透与置顶持久化与动态应用
 │   ├── window_events.rs           # 主窗口与设置窗口物理事件监听分流
@@ -89,7 +90,7 @@ desktop/src/
 │   │   ├── lazer_table.rs         # OffsetTable、RuntimeSection、就近回落
 │   │   ├── stable_table.rs        # StableTable、StableTopology、本地梯子发现
 │   │   ├── validation.rs          # 纯数据 Schema 安全与合理性校验器
-│   │   └── remote.rs              # Ed25519 签名验证、清单解析与原子落盘
+│   │   └── remote.rs              # Ed25519 签名验证、revision 门、清单解析、路径白名单与原子落盘
 │   ├── invariants.rs              # L1/L2 不变量、健康状态机与字段级冻结（L0 在 mod.rs，L3 影子在 shadow.rs）
 │   ├── stable.rs                  # 32 位 stable 内存读取、多跳链解析、hits 抽取
 │   ├── anchor_cache.rs            # 锚点特征码缓存池与复核
