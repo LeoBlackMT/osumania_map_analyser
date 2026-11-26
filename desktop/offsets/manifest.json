@@ -1,24 +1,16 @@
 {
-  "schema_version": 2,
-  "updated_at": "2026-11-19T17:10:00Z",
+  "schema_version": 3,
+  "updated_at": "2026-11-25T11:29:14Z",
   "tables": [
-    {
-      "filename": "stable__x86.json",
-      "client": "stable",
-      "game_version": "2026-latest",
-      "runtime_version": "CLRv4",
-      "arch": "x86",
-      "sha256": "7ff9e2e11de6343629ecd0210600c130bd13f05a42f85ca5031680f7809f12c3",
-      "signature": "1a09e0bf1040aa7948857f67fa743f44de0ec628cba48e199cef0084147e66713f29878b1d8568583aa91376e91d68d80d531e817f5932ff90b3eec9516a0706"
-    },
     {
       "filename": "2026.1005.0.0__10.0.12__x64.json",
       "client": "lazer",
       "game_version": "2026.1005.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
-      "sha256": "5a1ae84225484e0d965adb5e6aa0c29ec665dc0bf02048c22c48e0a9a270defd",
-      "signature": "6e25d6502cdd31193d4aa042d0f73633668fdf2a7e35ee84a9f93159a06f92f04da1e1cd993b60a4d173983ed52f0ba75f95e11da8143af4e809f3f67b6c9f07"
+      "revision": 20261005,
+      "sha256": "950330fba5bff63edfb8be0630c6d0e7a043a7add49d56d07c81b2b7a3836e66",
+      "signature": "1c0073368e4fd3a493513ae1561d19697559c231ea784217f8f6d952bafa87c48a4db17c32316f2363b952c42078ccfe86db812804211982eed15567d71fff05"
     },
     {
       "filename": "2026.1115.0.0__10.0.12__x64.json",
@@ -26,6 +18,7 @@
       "game_version": "2026.1115.0.0",
       "runtime_version": "10.0.12",
       "arch": "x64",
+      "revision": 20261115,
       "sha256": "44d902e9bf20a90b01819cf8ee59f82e34e6f7bb902e5e4c0ec216f805785c09",
       "signature": "fabfbbbe3385c3bbce6371adbee2a770933a6b19ec5575be4e6d988c955d808008cd8c24ae34b6bf4a96e5322310efcbe83fe278b0f656f94ab25ef9023c0a0f"
     },
@@ -35,8 +28,30 @@
       "game_version": "2026.1117.0.0",
       "runtime_version": "10.0.15",
       "arch": "x64",
-      "sha256": "a2d0a31707b8e1d227b7c5a2b275ccf459c709508104e24b9e95391e4c4f5676",
-      "signature": "0c209d00fda3c858c706df4f08de4a93c47ca1d7bd41131986d1a90791bd7d2b61e815fa47155acdd114d9a0c40f79cbd2588f53592d6042a5f23e0e2ad42804"
+      "revision": 20261117,
+      "sha256": "dfaa67989f5b20895137780cf30cdb61eff58e21724b71df90b4e6053f9f2366",
+      "signature": "7ea1c3b51e7b911bfe0b99cc81b8e959d6ca61c73e4738e565012779ab3e3ac8d736394027eec10644da2ce5e2430e28145ad64668cd7e1a4c6b4ff4e56fc001"
+    },
+    {
+      "filename": "ppysb__x86.json",
+      "client": "ppysb",
+      "game_version": "ppysb-latest",
+      "runtime_version": "CLRv4",
+      "arch": "x86",
+      "revision": 20261125,
+      "sha256": "44bb6ba5367956f73e2cdc14dd3673f911a9909711a558b1ab5d55548c18d499",
+      "signature": "d48b9e886f3c99a982cc25f1948171587f9538daaf62be49956cef16f15bc8df260129734364a4bfd0f2aafd91b306e64c137cc3cac3741642205beb7e184c09"
+    },
+    {
+      "filename": "stable__x86.json",
+      "client": "stable",
+      "game_version": "f845ef10bf97c3260b818fc02e73e196",
+      "runtime_version": "CLRv4",
+      "arch": "x86",
+      "revision": 20261125,
+      "sha256": "8a2b57625df2998e7b4ae3c49a06d8b5d5ec78ee664fd97f4d5c7e1f6693c17a",
+      "signature": "7b5ed56fe574868b19db53c549c7697fa90fd908cc0bd1f92a8edd5215cff6d6714e5e4e61916051d61d63401be7acfb13379b9825877e4b8f1f4b99893ace0a"
     }
-  ]
+  ],
+  "manifest_signature": "4668d5d07be920b4b602cbcce437f08e105dc5478f66137bb0fbd0ea4a97cd5b4f2654b32034bc36e02b26112ef7e0501b6cf8a5f7be41835a668889cb3abe01"
 }

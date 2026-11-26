@@ -11,6 +11,16 @@
 osu!lazer 偏移表是由 `tools/lazer-offsets-gen`（或桌面壳内置的 Live Generator）采集并生成的 JSON 数据表。
 表包含基础元数据、版本校验标识（`version`、`file_version`、`clr_version`、`vtable`）、多跳解引用链以及活体探针段（`results`、`mods`、`score`）。
 
+### 1.0 发布修订号（`revision`）
+
+远端更新使用单调递增的 `revision` 而不是字符串版本做先后判断：
+
+- stable / ppysb 表在 JSON 顶层携带 `"revision": <u64>`；旧表缺省为 `0`。
+- lazer 表不额外存 `revision`，由 `lazer_version` 推导：`2026.1117` → `20261117`（`lazer_table::lazer_revision_from_version`）。
+- `manifest.json` 的 schema_version 为 `3`，除每张表的 `signature` 外还必须有 `manifest_signature`；它签的是去掉该字段后的 canonical JSON，用于绑定 `updated_at`、表列表与每张表的元数据。
+- `manifest.json` 的每张表也带 `revision`，必须与表内容一致；远端更新先比较 revision，再决定是否落盘。
+- 远端更新只接受 `client` 为 `stable` / `lazer` / `ppysb`、文件名是单一 basename 的清单条目；manifest 与表 JSON 必须保持 LF 字节，签名按精确字节校验。
+
 ### 1.1 播放时钟链（`beatmap.time.live`）
 
 图表进度线与载荷里的 `beatmap.time.live` 共用同一条链：

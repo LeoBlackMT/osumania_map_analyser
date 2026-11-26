@@ -249,57 +249,118 @@ mod tests {
     }
 
     #[test]
-    fn test_master_keypair_and_manifest_generation() {
-        use ed25519_compact::{Seed, KeyPair};
-        let seed_bytes = [
-            0x4d, 0x4d, 0x41, 0x5f, 0x4f, 0x46, 0x46, 0x53, // "MMA_OFFS"
-            0x45, 0x54, 0x53, 0x5f, 0x4d, 0x41, 0x53, 0x54, // "ETS_MAST"
-            0x45, 0x52, 0x5f, 0x53, 0x45, 0x45, 0x44, 0x5f, // "ER_SEED_"
-            0x32, 0x30, 0x32, 0x36, 0x31, 0x30, 0x30, 0x38, // "20261008"
-        ];
-        let seed = Seed::from_slice(&seed_bytes).unwrap();
-        let keypair = KeyPair::from_seed(seed);
-        assert_eq!(keypair.pk.as_ref(), &ED25519_MASTER_PUBLIC_KEY);
+    fn bundled_manifest_is_valid_and_matches_packaged_tables() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("offsets");
+        let manifest_bytes = std::fs::read(root.join("manifest.json"))
+            .expect("read packaged offsets/manifest.json");
+        assert!(
+            !manifest_bytes.windows(2).any(|pair| pair == b"\r\n"),
+            "manifest.json must use LF line endings"
+        );
+        let manifest: RemoteManifest =
+            serde_json::from_slice(&manifest_bytes).expect("parse packaged manifest");
+        assert_eq!(manifest.schema_version, 3);
+        manifest
+            .verify_manifest_signature()
+            .expect("manifest signature check");
+        assert!(!manifest.tables.is_empty(), "manifest must not be empty");
 
-        let table_files = [
-            ("stable", "stable__x86.json", "stable", "x86", "2026-latest", "CLRv4"),
-            ("lazer", "2026.1005.0.0__10.0.12__x64.json", "lazer", "x64", "2026.1005.0.0", "10.0.12"),
-        ];
+        let mut seen = std::collections::HashSet::new();
+        for table in &manifest.tables {
+            assert!(
+                is_supported_client(&table.client),
+                "unsupported manifest client: {}",
+                table.client
+            );
+            assert!(
+                is_safe_table_filename(&table.filename),
+                "unsafe manifest filename: {}",
+                table.filename
+            );
+            assert!(
+                seen.insert((table.client.clone(), table.filename.clone())),
+                "duplicate manifest table: {}/{}",
+                table.client,
+                table.filename
+            );
 
-        let mut manifest_tables = Vec::new();
-        for (sub_dir, file_name, client, arch, g_ver, r_ver) in &table_files {
-            let path = PathBuf::from("offsets").join(sub_dir).join(file_name);
-            if path.exists() {
-                let bytes = std::fs::read(&path).unwrap();
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
-                let sha256_hex = format!("{:x}", hasher.finalize());
-                let sig = keypair.sk.sign(&bytes, None);
-                let sig_hex: String = sig.as_ref().iter().map(|b| format!("{b:02x}")).collect();
-
-                // 验证自洽
-                assert!(verify_table_signature(&bytes, &sha256_hex, &sig_hex, &ED25519_MASTER_PUBLIC_KEY).is_ok());
-
-                manifest_tables.push(RemoteManifestTable {
-                    filename: file_name.to_string(),
-                    client: client.to_string(),
-                    game_version: g_ver.to_string(),
-                    runtime_version: r_ver.to_string(),
-                    arch: arch.to_string(),
-                    sha256: sha256_hex,
-                    signature: sig_hex,
-                });
+            let mut path = root.join(&table.client).join(&table.filename);
+            if !path.is_file() && table.client == "ppysb" {
+                path = root.join("stable").join(&table.filename);
             }
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|error| panic!("read packaged table {}: {error}", path.display()));
+            assert!(
+                !bytes.windows(2).any(|pair| pair == b"\r\n"),
+                "packaged table must use LF line endings: {}",
+                path.display()
+            );
+            verify_table_signature(
+                &bytes,
+                &table.sha256,
+                &table.signature,
+                &ED25519_MASTER_PUBLIC_KEY,
+            )
+            .unwrap_or_else(|error| {
+                panic!("signature check failed for {}: {error}", path.display())
+            });
+
+            let table_revision = match table.client.as_str() {
+                "lazer" => OffsetTable::load(&bytes)
+                    .expect("load lazer table")
+                    .revision(),
+                "stable" | "ppysb" => StableTable::load(&bytes)
+                    .expect("load stable table")
+                    .revision,
+                other => panic!("unsupported manifest client: {other}"),
+            };
+            assert_eq!(
+                table.revision, table_revision,
+                "manifest revision does not match table content: {}",
+                path.display()
+            );
         }
 
-        if !manifest_tables.is_empty() {
-            let manifest = RemoteManifest {
-                schema_version: 2,
-                updated_at: "2026-10-08T12:00:00Z".to_string(),
-                tables: manifest_tables,
-            };
-            let json = serde_json::to_string_pretty(&manifest).unwrap();
-            let _ = std::fs::write("offsets/manifest.json", json);
+        let stable_manifest_names: std::collections::HashSet<&str> = manifest
+            .tables
+            .iter()
+            .filter(|table| table.client == "stable" || table.client == "ppysb")
+            .map(|table| table.filename.as_str())
+            .collect();
+        for required in ["stable__x86.json", "ppysb__x86.json"] {
+            assert!(
+                stable_manifest_names.contains(required),
+                "manifest is missing packaged stable table: {required}"
+            );
+        }
+
+        let mut manifest_lazer_keys = std::collections::HashSet::new();
+        for table in manifest.tables.iter().filter(|table| table.client == "lazer") {
+            let bytes = std::fs::read(root.join("lazer").join(&table.filename))
+                .unwrap_or_else(|error| panic!("read lazer table {}: {error}", table.filename));
+            let table = OffsetTable::load(&bytes).expect("load lazer table");
+            manifest_lazer_keys.insert((
+                table.lazer_version,
+                table.runtime_version,
+                table.arch,
+            ));
+        }
+        for entry in std::fs::read_dir(root.join("lazer")).expect("read lazer offsets dir") {
+            let path = entry.expect("read lazer offsets entry").path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let bytes = std::fs::read(&path).expect("read lazer table");
+            let table = OffsetTable::load(&bytes).expect("load lazer table");
+            assert!(
+                manifest_lazer_keys.contains(&(
+                    table.lazer_version,
+                    table.runtime_version,
+                    table.arch
+                )),
+                "manifest is missing packaged lazer table: {}",
+                path.display()
+            );
         }
     }
 }

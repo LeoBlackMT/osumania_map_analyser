@@ -473,6 +473,11 @@ impl OffsetTable {
         self.score.as_ref().filter(|section| section.usable())
     }
 
+    /// 由 `YYYY.MMDD[.build]` 版本号得到单调修订号（如 2026.1117 -> 20261117）。
+    pub fn revision(&self) -> u64 {
+        lazer_revision_from_version(&self.lazer_version)
+    }
+
     pub fn runtime_entry(&self, group: &str, name: &str) -> Option<&RuntimeEntry> {
         self.runtime.as_ref()?.entry(group, name)
     }
@@ -645,6 +650,21 @@ impl<'a> ValidationPolicy<'a> {
     pub fn validate(&self, table: &OffsetTable) -> bool {
         (self.validate)(table)
     }
+}
+
+pub fn lazer_revision_from_version(version: &str) -> u64 {
+    let normalized = normalize_version(version);
+    let mut parts = normalized.split('.');
+    let Some(year) = parts.next().and_then(|part| part.parse::<u64>().ok()) else {
+        return 0;
+    };
+    let Some(month_day) = parts.next().and_then(|part| part.parse::<u64>().ok()) else {
+        return 0;
+    };
+    if year == 0 || month_day == 0 {
+        return 0;
+    }
+    year * 10_000 + month_day
 }
 
 pub fn normalize_version(v: &str) -> String {

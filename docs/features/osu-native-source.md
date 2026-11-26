@@ -68,7 +68,7 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
 1. **统一数据表目录（`desktop/offsets/`）**：
    - `desktop/offsets/stable/stable__x86.json`：包含 stable 的 7 枚锚点、特征字节码（含通配符 `??`）、相对位移与验证信息。
    - `desktop/offsets/lazer/*.json`：包含 lazer 的类型字段偏移映射、游戏版本、运行时版本与架构。
-   - `desktop/offsets/manifest.json`：各表的 SHA-256 与 Ed25519 签名清单。
+   - `desktop/offsets/manifest.json`：schema 3 清单，含每表 `revision`、SHA-256、表级 Ed25519 签名，以及绑定清单元数据的 `manifest_signature`。
 2. **纯数据红线与 Schema 严格校验**：
    - 内存特征表为纯静态 JSON，**严禁包含任何可执行代码、宏或脚本语义**（解析器防御性拦截包含 `<script>`、`eval`、`javascript:` 等字符串）。
    - 严格类型与范围校验（`validate_stable_schema`, `validate_lazer_schema`）：校验 pattern 字符合法性、签名长度（`4..=64` 字节）、位移合理范围（`±1048576` 字节）、字符串字段长度限制（≤256 字符），任何非法结构立即拒绝加载。
@@ -78,12 +78,14 @@ lazer 是托管进程（osu! 每周级更新），**字段偏移只能从目标�
    - **活体自校验门禁**：生成后立即在运行中游戏的真实内存上执行解引用多跳验证：`site → GameBase → Beatmap → WorkingBeatmap → BeatmapInfo → MD5Hash`，唯有验证出 32 字符合法十六进制哈希并成功解析屏幕栈顶部状态名，才允许落盘。
    - **分段保留**：`results` / `score` / `mods` 只在对应界面（结算屏 / play / 选歌）才能测到；生成器只会把**同版本**同目录旧表中本次未测到的段补回新表，避免在选歌页一键生成时把 LaneAcc 或结算反馈的段覆盖掉；跨版本旧表不参与。
    - 提供 HTTP 端点 `POST /offsets/generate` 与壳设置页一键按钮。
-4. **Ed25519 签名远端表与静默离线回落**：
+4. **Ed25519 签名远端表、revision 门与可见失败**：
    - 壳内固化 Master 公钥（32 字节 Ed25519 公钥）。
-   - 提供 `POST /offsets/update` 端点，从官方源获取 `manifest.json`，在本地用 Master 公钥验证每张表的数字签名与 SHA-256 哈希。
-   - 校验通过后**先比较版本**：只有远端版本严格新于本地（AppData 缓存与内嵌表的较大者）才原子写入本地缓存目录（`%APPDATA%\ManiaMapAnalyser\offsets\`）；同版本或更旧的远端表只计为 `skipped`，不会把刚生成/随包的新表降级覆盖。若无网络或校验失败，静默使用随包或编译期内嵌表，零报错打扰用户。
+   - 提供 `POST /offsets/update` 端点，从官方源获取 `manifest.json`；schema 3 要求 `manifest_signature`（对去掉该字段后的 canonical JSON 签名，绑定 `updated_at`、表列表与每张表的元数据），并逐表校验 SHA-256 与 Ed25519 签名。
+   - 清单只接受 `client` 为 `stable` / `lazer` / `ppysb`，`filename` 必须是安全 basename；表 JSON 与 manifest 必须保持 LF；下载带连接/总超时、重试与大小上限。
+   - 版本门使用单调 `revision`：stable/ppysb 的 revision 写在表 JSON 内，lazer 由 `lazer_version` 推导；只有远端 revision 严格更高时才原子写入 `%APPDATA%\ManiaMapAnalyser\offsets\`，相等或更旧只计 `skipped`。手动按钮与每日检查共用更新锁。
+   - 下载、验签、schema、revision 或写盘失败会按表返回 `partial` / `error`（含失败文件名与阶段），不再静默成功；无网络时返回 `offline_fallback` 并保留本地/随包表。
 5. **stable 维护者专用探测生成器**：
-   - `tools/stable-offsets-gen/main.rs`：针对 32 位 `osu!.exe` 执行签名扫描与自证验证，全自动导出符合 `mma-offset-v2` 格式的稳定版特征表。
+   - `tools/stable-offsets-gen/main.rs`：针对 32 位 `osu!.exe` 执行签名扫描与自证验证，全自动导出符合 `mma-offset-v2` 格式的稳定版特征表；生成时写入当前 UTC 日期作为 `revision`，同一天多次发布可用 `--revision` 手动递增。
 6. **L3 影子比对（仅开发期）**：
    - 默认关闭；仅设置 `MMA_OSU_COMPARE=1` 时由 `osu/compare.rs` 启动，用于开发期对拍，不提供设置页入口或 HTTP 端点。
 
@@ -334,7 +336,7 @@ rustc --edition 2021 -O -A dead_code -o %TEMP%\lazer-offsets-gen.exe tools/lazer
 - **运行位置**：在受限的工作区上下文里 Toolhelp32 只能看到自己那一族进程（表现为"游戏没在跑"）——**从工作区外（如 `%TEMP%`）或普通 shell 启动**即可正常发现游戏（与壳自身的 B2 结论同族）。
 - **两见证规则（出表的硬判据）**：每个 offset 必须同时有 ① **SOS 行**（`dumpobj` 打印的 `Offset`，来自真实 dump，中间件里带 transcript 与逐字命令）**且** ② **IL 结构行**（同一字段在 lazer 安装目录的托管程序集元数据里的存在性 + `instance`/`static` + 字段类型 + 显式布局偏移）；第三个见证是 **dump 字节解引用**（引用类型比指针、原始类型比内容、结构体比"字段自身地址 = 对象地址 + Offset"——它同时机械证明了"SOS 的 Offset 基准 = 对象地址"）。两边对不上 ⇒ **丢弃该字段**并在 `emit-report-*.txt` 里逐条列出，绝不"取其一"；元数据推导的偏移**永不作为偏移发布**。另有拒绝门：fixture 未显式放行、`provenance` 非 `dump`、`deref_checked=0`、模块版本不一致（可 `--allow-version-mismatch` 放行但写进 `evidence`）。
 - **版本键**：表按 **`(lazer 版本, runtime 版本, 架构)`** 建键，文件名 `<lazer>__<runtime>__<arch>.json`（本机 = `2026.1005.0.0__10.0.12__x64.json`）。runtime 版本变了 ⇒ **新表另存一份**，旧表保留（回落梯子靠它）；`arch` 不同 ⇒ **永不回落**（`offsets.rs` 的架构不匹配不回落）。
-- **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与签名 `manifest.json`，用户亦可通过设置页活体生成或检查远端更新。
+- **表落点**：`<壳 exe 目录>\offsets\<client>\<同名文件>`（以及兼容旧路径 `<壳 exe 目录>\lazer-offsets\`；也可用 `$MMA_OFFSETS_DIR` 或 `$MMA_LAZER_OFFSETS` 指向显式位置）。在 P2 中，`release.ps1` 会自动编译随包分发的 `gen.exe` 并完整拷贝 `offsets/` 目录与 schema 3 签名 `manifest.json`，用户亦可通过设置页活体生成或检查远端更新；远端更新失败会在设置页显示具体表名与阶段。
 - **自测**：`%TEMP%\lazer-offsets-gen.exe self-test --fixtures tools/lazer-offsets-gen/fixtures --work %TEMP%\lazer-offsets-gen-selftest`（不需要 lazer / dump / 分析器；当前 **35/35**），跑的是真实代码路径（合成 minidump → 锚点扫描 → 链走法 → dump 字节自证 → SOS 中间件装配 → emit 双见证）。
 - **刷新前先看差分**：`il --diff <上一版清单>` 的 `ADDED/REMOVED/CHANGED` 段就是"这次更新到底变了什么"，再对照 `emit-report` 的 `omitted` 清单。要发布新字段时改 `spec.rs::WANTED` 后**只重跑 `emit`**（中间件里存了每个被 dump 对象的全部字段行，不必重采 dump）。
 

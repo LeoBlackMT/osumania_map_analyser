@@ -1,2 +1,6 @@
 # The Linux packager runs inside Docker; a CRLF checkout breaks bash with `$'\r'`.
 desktop/build-linux.sh text eol=lf
+
+# Offset tables and the manifest are signed as exact bytes; LF is canonical.
+desktop/offsets/*.json text eol=lf
+desktop/offsets/**/*.json text eol=lf
