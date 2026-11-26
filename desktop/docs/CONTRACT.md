@@ -403,14 +403,15 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - `result`：lazer `HitResult` 原始枚举（0 None / 1 Miss / 2 Meh / 3 Ok / 4 Good / 5 Great /
   6 Perfect / 7–12 Tick/Bonus / 13 IgnoreMiss / 14 IgnoreHit / 15 ComboBreak / 16 SliderTailHit）。
 - `offset`：毫秒，3 位小数，游戏时钟域。
-- 壳只在 `client == lazer` 且 `state.name == play` 且表有 `score` 段时推送；非 play 时清空日志并
-  发一个空 `reset:true`。全量快照 ≤2048 条/帧分块，避免 5MB 帧上限。
+- lazer 仅从真实 Player 采样。新局或重试允许空 reset；结算保留本局记录，供重连恢复。判定快照每帧最多 2048 条。
 - 事件来自 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；`HitEvent` 布局
   由 live 实测钉住：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`，
   `Column@HitObject+0x48`（2026.1005.0.0）。表缺 `score` 段 ⇒ 不发帧，页面显示占位。
 
 `laneacc_sync`：页面在 `hello` 之后（以及刷新/重连）发送；壳把**当前连接**的全量快照按
 ≤2048 条/帧回放，首帧 `reset:true`。不向其它连接广播，避免重复大包。
+
+同一连接上的快照和广播按入队顺序发送。判定与原始帧的 payload 可分别携带 `session`（当前壳进程中、各流独立的代号）与 `offset`（本块首条记录从零开始的下标，区别于判定事件内以毫秒计的 `offset`）。重叠部分只应用一次；下标有缺口则发送 `laneacc_sync`。这些是 v13 的可选元数据：缺省时沿用原有 reset/追加语义，旧页面可忽略。
 
 兼容矩阵：
 - v10 壳 + v7 页：旧页不识别 `mania_hit_events` / `mania_replay_frames`，忽略帧；LaneAcc 不可用（旧页没有该卡片）。
