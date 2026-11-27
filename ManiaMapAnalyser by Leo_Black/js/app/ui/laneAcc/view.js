@@ -85,6 +85,8 @@ export const laneAccView = (() => {
     let frozenCutoff = null;
     let hasResult = false;
     let sessionScoreMode = null;
+    let pendingSessionContext = null;
+    let frozenRunContext = null;
     let renderHandle = 0;
     let laneButtons = [];
     let laneKey = "";
@@ -150,30 +152,40 @@ export const laneAccView = (() => {
         activeAnimations.set(element, anim);
     }
 
+    function sourceState() {
+        return frozenRunContext || state;
+    }
+
     function options() {
-        const odFlag = state.odFlag ?? null;
+        const src = sourceState();
+        const odFlag = src.odFlag ?? null;
         // 桥源（Malody/Etterna）的 odFlag 已是折算后的等效 OD：不再叠加 HR/EZ 倍率。
-        const odResolved = state.activeSource !== "osu"
+        const odResolved = src.activeSource !== "osu"
             && odFlag != null && odFlag !== ""
             && Number.isFinite(Number(odFlag));
         return {
             spaceMode: spaceModeSetting,
-            speedRate: state.speedRate || 1.0,
-            mods: Array.isArray(state.modCodes) ? state.modCodes : [],
+            speedRate: src.speedRate || 1.0,
+            mods: Array.isArray(src.modCodes) ? src.modCodes : [],
             odFlag,
             odResolved,
         };
     }
 
-    /** 分轨/左右手的数据源：Stable V1 用壳直读的 per-note；Stable V2 用原始帧自己算。 */
-    function resolveScoreMode() {
-        const client = String(state.client || "").toLowerCase();
+    function resolveScoreModeFor(clientValue, modCodes) {
+        const client = String(clientValue || "").toLowerCase();
         if (client.includes("stable")) {
-            const mods = Array.isArray(state.modCodes) ? state.modCodes : [];
+            const mods = Array.isArray(modCodes) ? modCodes : [];
             const scoreV2 = mods.some((mod) => /^(SV2|V2)$/i.test(String(mod)));
             return scoreV2 ? "stable-sim" : "stable-native";
         }
         return "lazer";
+    }
+
+    /** 分轨/左右手的数据源：Stable V1 用壳直读的 per-note；Stable V2 用原始帧自己算。 */
+    function resolveScoreMode() {
+        const src = sourceState();
+        return resolveScoreModeFor(src.client, src.modCodes);
     }
 
     /** 本局开始时的模式；结算屏 mods 抖动时保持本局方向，不能 SV2→SV1。 */
@@ -196,31 +208,70 @@ export const laneAccView = (() => {
     }
 
     function currentMods() {
-        return Array.isArray(state.modCodes) ? state.modCodes : [];
+        const src = sourceState();
+        return Array.isArray(src.modCodes) ? src.modCodes : [];
     }
 
     function hasRandomMod() {
         return currentMods().some((mod) => /^(RD|RANDOM)$/i.test(String(mod)));
     }
 
-    /** Lazer/Stable 有实际 seed 才支持 RD；stable 由壳读 Score.Seed。 */
-    function randomSeed() {
-        if (state.randomSeed == null || state.randomSeed === "") {
+    function normalizeRandomSeed(rawSeed, clientValue, modContext) {
+        if (rawSeed == null || rawSeed === "") {
             return null;
         }
-        const seed = Number(state.randomSeed);
+        const seed = Number(rawSeed);
         if (!Number.isInteger(seed) || seed < -2147483648 || seed > 2147483647) {
             return null;
         }
         // stable/ppysb 的 play 阶段 Score.Seed 可能还没写入（通常为 0）；
         // 不能把占位 0 当成实际 RD seed，否则 LaneAcc 会用假映射。
         if (seed === 0
-            && /^(stable|ppysb)$/i.test(String(state.client || ""))
-            && state.modContext !== "results"
-            && state.modContext !== "freeze") {
+            && /^(stable|ppysb)$/i.test(String(clientValue || ""))
+            && modContext !== "results"
+            && modContext !== "freeze") {
             return null;
         }
         return seed;
+    }
+
+    /** Lazer/Stable 有实际 seed 才支持 RD；stable 由壳读 Score.Seed。 */
+    function randomSeed() {
+        const src = sourceState();
+        return normalizeRandomSeed(src.randomSeed, src.client, src.modContext);
+    }
+
+    function captureRunContext(fallbackRandomSeed = null) {
+        const modCodes = Array.isArray(state.modCodes) ? [...state.modCodes] : [];
+        const client = state.client ?? null;
+        const modContext = state.modContext ?? null;
+        return {
+            client,
+            modCodes,
+            speedRate: state.speedRate || 1.0,
+            odFlag: state.odFlag ?? null,
+            randomSeed: normalizeRandomSeed(state.randomSeed, client, modContext) ?? fallbackRandomSeed ?? null,
+            modContext,
+            activeSource: state.activeSource ?? "osu",
+            scoreMode: resolveScoreModeFor(client, modCodes),
+        };
+    }
+
+    function refreshPendingContext() {
+        if (sessionPending && state.isInPlayState) {
+            pendingSessionContext = captureRunContext(pendingSessionContext?.randomSeed ?? null);
+        }
+    }
+
+    function adoptPendingResultSeed(context) {
+        if (!context || state.modContext !== "freeze") {
+            return;
+        }
+        const seed = normalizeRandomSeed(state.randomSeed, context.client, state.modContext);
+        if (seed != null) {
+            context.randomSeed = seed;
+            context.modContext = state.modContext;
+        }
     }
 
     function randomModBlocked() {
@@ -232,7 +283,14 @@ export const laneAccView = (() => {
     /** Lazer/Stable RD：谱面列按实际 seed 变换；native 事件/帧保持游戏列。 */
     function applyRandomColumns(chart) {
         const mode = activeScoreMode();
-        if (!chart || (mode !== "lazer" && !mode.startsWith("stable")) || !hasRandomMod()) {
+        if (!chart || (mode !== "lazer" && !mode.startsWith("stable"))) {
+            return;
+        }
+        if (!hasRandomMod()) {
+            if (chart.__rdOriginalColumns) {
+                chart.columns.set(chart.__rdOriginalColumns);
+                delete chart.__randomSeed;
+            }
             return;
         }
         const seed = randomSeed();
@@ -644,7 +702,7 @@ export const laneAccView = (() => {
         if (contract > 0 && contract < 10) {
             return "contract";
         }
-        const client = String(state.client || "").toLowerCase();
+        const client = String(sourceState().client || "").toLowerCase();
         if (state.laneAccReady?.ppysbActive === true || client.includes("ppysb")) {
             return "ppysb";
         }
@@ -696,7 +754,7 @@ export const laneAccView = (() => {
     }
 
     /**
-     * 只在“已冻结终态且当前不在游玩中”时忽略空 reset（例如结算屏/中途退选歌时壳 detach）。
+     * “已冻结终态且当前不在游玩中”为真时忽略一切后续判定/回放批次（含切场次新 session 非空包与 detach 空 reset）。
      * 游玩中（含 Retry 前奏 0 事件 / 0 帧）收到的空 reset 是新局开始的信号，必须立刻清空。
      */
     function isFrozenResult() {
@@ -786,6 +844,11 @@ export const laneAccView = (() => {
         if (resetSession) {
             hasResult = false;
             sessionActive = false;
+            sessionPending = false;
+            pendingFinish = null;
+            pendingSessionContext = null;
+            frozenRunContext = null;
+            sessionScoreMode = null;
         }
         showError(reason);
     }
@@ -839,12 +902,12 @@ export const laneAccView = (() => {
         clearSessionEvents();
         pendingChart = chart;
         pendingFinish = null;
+        pendingSessionContext = null;
+        frozenRunContext = null;
         frozenCutoff = null;
         sessionPending = false;
         sessionActive = Boolean(state.isInPlayState);
-        if (sessionActive) {
-            sessionScoreMode = resolveScoreMode();
-        }
+        sessionScoreMode = sessionActive ? resolveScoreMode() : null;
         hasResult = false;
         createFor(chart);
         if (sessionActive) {
@@ -854,17 +917,22 @@ export const laneAccView = (() => {
 
     /** 分析完成：只暂存；若当前没有战报，则显示 100.00% 预览。 */
     function prepareChart(chart) {
+        const ending = pendingFinish;
+        if (ending?.context) {
+            if (ending.complete) adoptPendingResultSeed(ending.context);
+            frozenRunContext = ending.context;
+        }
         if (!validateChartInput(chart)) {
+            if (ending) frozenRunContext = null;
             return;
         }
-        if (activeChart && !sameChart(activeChart, chart)) {
+        if (!ending && activeChart && !sameChart(activeChart, chart)) {
             switchActiveChart(chart);
             return;
         }
         pendingChart = chart;
-        if (sessionPending || (state.isInPlayState && !sessionActive && !hasResult)) {
-            const ending = pendingFinish;
-            if (startSession({ keepBuffered: true }) && ending) {
+        if (sessionPending || ending || (state.isInPlayState && !sessionActive && !hasResult)) {
+            if (startSession({ keepBuffered: true, context: ending?.context ?? null }) && ending) {
                 finishSession(ending.complete, ending.cutoff);
             }
             return;
@@ -882,13 +950,17 @@ export const laneAccView = (() => {
     }
 
     /** 进入 play：采纳 pending 谱面并清空本局。 */
-    function startSession({ keepBuffered = false } = {}) {
+    function startSession({ keepBuffered = false, context = null } = {}) {
         pendingFinish = null;
+        pendingSessionContext = null;
         frozenCutoff = null;
-        // 新一局的方向取当前 client；不能沿用上一局结算时的 sessionScoreMode。
-        sessionScoreMode = resolveScoreMode();
+        frozenRunContext = context;
+        // 新一局的方向取当前 client（或延迟结算快照）；不能沿用上一局的 sessionScoreMode。
+        sessionScoreMode = context?.scoreMode || resolveScoreMode();
         if (randomModBlocked()) {
+            frozenRunContext = null;
             sessionPending = false;
+            sessionScoreMode = null;
             showError("random");
             return false;
         }
@@ -902,6 +974,7 @@ export const laneAccView = (() => {
             if (!keepBuffered) {
                 clearSessionEvents();
             }
+            pendingSessionContext = context || captureRunContext();
             return false;
         }
         // 谱面分析可能早于 RD/seed 的 mods 包到达；进入 play 时再确认一次，
@@ -929,7 +1002,7 @@ export const laneAccView = (() => {
     }
 
     /** 当前播放位置（chart ms）；尚无时钟时返回 -Infinity（不喂任何判定）。 */
-    function currentCutoff() {
+    function currentCutoff(speedRate = sourceState().speedRate) {
         if (frozenCutoff !== null) return frozenCutoff;
         if (allEvents) {
             return Infinity;
@@ -937,7 +1010,7 @@ export const laneAccView = (() => {
         // state.songTimeMs 是显示轴（物理 / speedRate），而 LaneAcc 的事件、
         // ReplayFrame 与谱面时间都是物理轴；必须换算后再比较，否则 DT/自定义 >1x
         // 会把判定整体推迟 rate 倍（HT <1x 则会让 stable V2 提前判 Miss）。
-        const live = toChartTime(state.songTimeMs, state.speedRate);
+        const live = toChartTime(state.songTimeMs, speedRate);
         return Number.isFinite(live) ? live : -Infinity;
     }
 
@@ -1096,10 +1169,13 @@ export const laneAccView = (() => {
         lastRawSolveAt = 0;
         if (!sessionActive && !state.isInPlayState) return;
         pendingFinish = null;
+        pendingSessionContext = sessionPending ? captureRunContext(pendingSessionContext?.randomSeed ?? null) : null;
+        frozenRunContext = null;
         frozenCutoff = null;
         hasResult = false;
         allEvents = false;
         frozenTopSnapshot = null;
+        sessionScoreMode = resolveScoreMode();
         if (!activeChart || !accumulator) return;
         sessionActive = true;
         rawAccumulator = createAccumulator(activeChart, accumulatorOptions(rawScoreMode(), 300));
@@ -1109,11 +1185,11 @@ export const laneAccView = (() => {
     }
 
     function applyReplayFrames(payload) {
+        // 冻结终态（含等待谱面分析的 pendingFinish）期间丢弃所有后续批次，
+        // 包括切换场次携带的非空新 session 帧。
+        if (isFrozenResult()) return;
+        refreshPendingContext();
         const rawFrames = Array.isArray(payload?.frames) ? payload.frames : [];
-        // 结算后壳 detach 会发空 reset；仅在冻结终态且非游玩中保留终态。
-        if (Boolean(payload?.reset) && rawFrames.length === 0 && isFrozenResult()) {
-            return;
-        }
         const merged = mergeOrderedItems(replayFrames, replaySessionId, payload, collectValidReplayFrames(rawFrames));
         replaySessionId = merged.session;
         if (merged.ignored) return;
@@ -1135,9 +1211,12 @@ export const laneAccView = (() => {
         latestSnapshot = null;
         if (!sessionActive && !state.isInPlayState) return;
         pendingFinish = null;
+        pendingSessionContext = sessionPending ? captureRunContext(pendingSessionContext?.randomSeed ?? null) : null;
+        frozenRunContext = null;
         frozenCutoff = null;
         hasResult = false;
         sessionActive = true;
+        sessionScoreMode = resolveScoreMode();
     }
 
     function applyHitBatchToAccumulator(reset) {
@@ -1160,13 +1239,13 @@ export const laneAccView = (() => {
     }
 
     function applyBatch(payload) {
+        // 冻结终态（含等待谱面分析的 pendingFinish）期间丢弃所有后续批次，
+        // 包括切换场次携带的非空新 session 帧。
+        if (isFrozenResult()) return;
+        refreshPendingContext();
         if (randomModBlocked()) return;
         const batch = Array.isArray(payload) ? { events: payload } : (payload || {});
         const rawEvents = Array.isArray(batch.events) ? batch.events : [];
-        // 结算后壳 detach 会发空 reset；仅在冻结终态且非游玩中保留终态。
-        if (Boolean(batch.reset) && rawEvents.length === 0 && isFrozenResult()) {
-            return;
-        }
         // Buffer original columns even while chart analysis is pending; map MR only at consumption.
         const merged = mergeOrderedItems(hitEvents, hitSessionId, batch, rawEvents);
         hitSessionId = merged.session;
@@ -1182,9 +1261,13 @@ export const laneAccView = (() => {
      * SV1 结算；中途退到选歌必须 `complete=false`，否则当前时钟之后的
      * 未游玩 note 会被 framesToSv1Events 当成“已到期”全部记 Miss。
      */
-    function finishSession(complete = true, cutoff = complete ? Infinity : currentCutoff()) {
+    function finishSession(complete = true, cutoff) {
         if (!accumulator) {
-            if (sessionPending) pendingFinish = { complete, cutoff };
+            if (sessionPending) {
+                const context = captureRunContext(pendingSessionContext?.randomSeed ?? null);
+                const resolvedCutoff = cutoff ?? (complete ? Infinity : currentCutoff(context.speedRate));
+                pendingFinish = { complete, cutoff: resolvedCutoff, context };
+            }
             return;
         }
         // 结算补齐全谱面会把 live 未收到的尾段记成 miss；正常 Stable 的
@@ -1192,7 +1275,7 @@ export const laneAccView = (() => {
         if (complete && v2TopAccumulator) {
             frozenTopSnapshot = v2TopAccumulator.snapshot();
         }
-        frozenCutoff = cutoff;
+        frozenCutoff = cutoff ?? (complete ? Infinity : currentCutoff());
         allEvents = complete;
         pump();
         rawAccumulator?.finish();
@@ -1200,6 +1283,7 @@ export const laneAccView = (() => {
         accumulator.finish();
         sessionPending = false;
         sessionActive = false;
+        pendingSessionContext = null;
         hasResult = true;
         scheduleRender();
     }
@@ -1235,6 +1319,8 @@ export const laneAccView = (() => {
 
     function reset() {
         pendingFinish = null;
+        pendingSessionContext = null;
+        frozenRunContext = null;
         frozenCutoff = null;
         sessionActive = false;
         sessionPending = false;

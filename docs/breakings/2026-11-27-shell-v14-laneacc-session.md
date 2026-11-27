@@ -1,0 +1,23 @@
+# 桌面壳 v14：LaneAcc 流有序元数据与 PlayerLoader 重试隔离 / Desktop shell v14: LaneAcc stream ordering and PlayerLoader retry isolation
+
+## 中文
+
+1. **改了什么。** 壳与页面的 WebSocket 契约由 v13 升至 **v14**（页面接受区间同步更新为 `[3,14]`）：
+   - `mania_hit_events` 与 `mania_replay_frames` 的 payload 新增可选流有序元数据 `session`（当前壳进程中、各流独立的局次代号）与 `offset`（本块首条记录从零开始的数组下标）；`laneacc_sync` 同一连接上的快照（判定事件 ≤2048 条/帧、原始按键帧 ≤4096 条/帧）与实时增量通过同一排队通道按入队顺序发送。
+   - osu!lazer 读取器将游玩屏幕拆分为真实 `Player` 与重试/加载过渡 `PlayerLoader`：进入 `PlayerLoader` 不再视为真实游玩态，既不从其读取空的 `HitEvents` 覆盖当前局、也不在其中保留上一局的 `play.mods`，并在退出 `Player` 进入 `PlayerLoader` 或重新开局时复位 LaneAcc 判定/回放帧日志；`read_replay_frame` 恢复单帧 `Actions` 瞬态不可读时的 key-up 回退（同时仍拒绝非法的 `_size`），`poll_replay` 在未耗尽重试次数前不再跳过列表中部或尾部的可读/瞬态失败帧。
+   - 页面 `view.js` 对已冻结终态（含等待延迟谱面分析的 `pendingFinish`）丢弃所有后续到达的批次（包括切换场次携带的非空新 `session` 数据），并在创建 `pendingFinish` 时快照 `sessionScoreMode` 与谱面变换输入（`modCodes`/`randomSeed`/`speedRate`/`odFlag`/`client`/`modContext`/`activeSource`），待延迟 `prepareChart` 完成时再按该快照完成重放与冻结。
+2. **为什么改。** 此前 `PlayerLoader` 会被当成 `Player`：重试过快时空 `HitEvents` 或遗留上一局的数据会在前端新旧交叉，而断线重连并发回放的全量快照与增量帧若不带 `session`/`offset` 且分路排队，可能出现前缀重叠或乱序错位；另外冻结终态原先只拦截空 `reset`，当不同 `session` 的非空数据或延迟到达的 `prepareChart` 遇上切出游玩后的状态变化时，会篡改已打完或待冻结的成绩。
+3. **影响谁。** 桌面壳下消费 osu!lazer / osu!stable LaneAcc 的页面与 24061 `/ws` 客户端（Windows 与 Linux 共享）。普通浏览器模式、历史成绩逻辑与其余游戏源保持不变。
+4. **如何升级。** 将桌面壳（`desktop/src/frames.rs` `CONTRACT_VERSION = 14`）与前端资源（`bridgeClient.js` `CONTRACT_VERSION = 14`）一同更新。页面接受契约 `3–14`：v14 页可兼容 v13 壳（缺省 `session`/`offset` 时退回原有的 `reset`/追加语义），而 v14 壳与旧 v13 页面握手会因 `contract` 越界进入终态提示（必须同包更新）。
+5. **如何验证。** Rust 读取器与 `/ws` 单测覆盖 `PlayerLoader` vs `Player`、`play.mods` 清除、replay mid-list 重试与非法 `_size` 拒绝、key-up 回退以及单连接按序投递；JS 状态机验证覆盖冻结终态拒收非空新 `session` 帧与 `pendingFinish` 在状态切换后延迟 `prepareChart` 的完整还原，并完成 Windows / Linux 双平台壳构建检查。
+
+## English
+
+1. **What changed.** Shell–page contract bumps from v13 to **v14** (accepted range `[3,14]`):
+   - `mania_hit_events` and `mania_replay_frames` payloads carry optional stream-ordering metadata `session` (per-stream monotonically incremented session id within a shell process) and `offset` (zero-based slice start index); `laneacc_sync` snapshots (≤2048 events per frame, ≤4096 replay frames per frame) and live broadcasts serialize through the same per-connection delivery queue.
+   - The osu!lazer reader distinguishes real `Player` screens from `PlayerLoader` retry transitions: `PlayerLoader` is no longer treated as active `Player` gameplay, stops retaining stale `play.mods`, and resets hit/replay logs upon leaving `Player` or retrying; `read_replay_frame` restores key-up (`keys = 0`) fallback when `Actions` is transiently unreadable while still rejecting out-of-range `_size`, and `poll_replay` stops advancing `state.len` past mid-list or trailing unreadable frames until retries exhaust.
+   - Page-side `view.js` guards frozen results (including deferred `pendingFinish`) against all late/subsequent batches (including non-empty batches from newer sessions), and snapshots `sessionScoreMode` plus chart-transform inputs (`modCodes`, `randomSeed`, `speedRate`, `odFlag`, `client`, `modContext`, `activeSource`) when `pendingFinish` is created so deferred `prepareChart` replays and freezes against the ended run's exact context.
+2. **Why.** Treating `PlayerLoader` as `Player` caused retry transitions to leak stale logs or `play.mods`, while concurrent snapshots and live deltas needed per-connection ordering and `(session, offset)` deduplication to avoid corrupting streams across reconnects/retries. Guarding only empty resets left frozen or deferred-finish runs exposed to non-empty new-session packets and post-exit state mutations.
+3. **Who is affected.** Desktop shell users running osu!lazer / osu!stable LaneAcc on Windows and Linux, and `/ws` contract consumers. Browser mode (no shell) and other game sources are unchanged.
+4. **How to upgrade.** Deploy the desktop shell (`desktop/src/frames.rs` `CONTRACT_VERSION = 14`) and frontend assets (`bridgeClient.js` `CONTRACT_VERSION = 14`) together. The v14 page accepts contracts `3–14` (falling back to legacy `reset`/append when `session`/`offset` are absent on older shells), while a v14 shell paired with a v13 page fails the handshake contract range check.
+5. **Verification.** Rust unit tests cover `PlayerLoader` vs `Player`, `play.mods` clearing, replay mid-list retry without skipping, key-up fallback vs invalid `_size` rejection, and per-connection ordered chunk delivery; JS tests verify frozen guards against non-empty new-session batches and full context restoration across delayed `prepareChart` after exiting play, alongside Windows/Linux CI shell builds.

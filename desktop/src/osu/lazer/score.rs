@@ -535,16 +535,30 @@ fn read_replay_frame(
         return None;
     }
     let mut keys = 0u32;
-    // Null or empty Actions is a genuine key-up frame. An unreadable list is not.
-    let actions = read_u64(source, field_addr(frame, section.replay_actions)?)?;
-    if actions != 0 {
-        let size = read_i32(source, field_addr(actions, section.actions_size)?)?;
-        if !(0..=32).contains(&size) { return None; }
-        if size > 0 {
-            let data = read_ptr_field(source, actions, section.actions_items)?;
-            for i in 0..size {
-                let action = read_i32(source, data.checked_add(ARRAY_DATA + (i as u64) * 4)?)?;
-                if (0..=19).contains(&action) { keys |= 1 << action; }
+    // Null Actions is a genuine key-up frame; transiently unreadable Actions falls back to keys=0,
+    // while structurally invalid list headers (out-of-range size) are rejected.
+    if let Some(actions) = field_addr(frame, section.replay_actions).and_then(|addr| read_u64(source, addr)) {
+        if actions != 0 {
+            if let Some(size) = field_addr(actions, section.actions_size).and_then(|addr| read_i32(source, addr)) {
+                if !(0..=32).contains(&size) {
+                    return None;
+                }
+                if size > 0 {
+                    if let Some(data) = read_ptr_field(source, actions, section.actions_items) {
+                        for i in 0..size {
+                            let Some(addr) = data.checked_add(ARRAY_DATA + (i as u64) * 4) else {
+                                break;
+                            };
+                            let Some(action) = read_i32(source, addr) else {
+                                keys = 0;
+                                break;
+                            };
+                            if (0..=19).contains(&action) {
+                                keys |= 1 << action;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -588,19 +602,27 @@ pub fn poll_replay(
     let reset = state.score != score || state.replay != replay || state.list != list || size < state.len;
     let start = if reset { 0 } else { state.len };
     let mut frames = Vec::with_capacity(size.saturating_sub(start));
-    let mut trailing_failed = false;
+    let mut failed_at = None;
     for index in start..size {
         match read_replay_frame(source, section, items, index) {
             Some(frame) => frames.push(frame),
             None => {
-                if index == size - 1 && state.failures < 3 {
-                    trailing_failed = true;
+                if state.failures < 3 {
+                    failed_at = Some(index);
                     break;
                 }
             }
         }
     }
-    if trailing_failed {
+    if let Some(failed_index) = failed_at {
+        if !frames.is_empty() {
+            log.push(reset, &frames);
+            state.score = score;
+            state.replay = replay;
+            state.list = list;
+            state.len = failed_index;
+            state.failures = 0;
+        }
         return fail_replay(state, log, "replay-frame-invalid");
     }
     if reset {
@@ -1000,6 +1022,59 @@ mod tests {
             assert_eq!(state.len, 0);
         }
         assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(0));
+        assert_eq!(state.len, 1);
+    }
+
+    #[test]
+    fn poll_replay_retries_mid_list_unreadable_frame_without_skipping() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 3);
+        write_replay_frame(&mut mem, 0, 10.0, &[0], false);
+        write_replay_frame(&mut mem, 1, f64::NAN, &[], true);
+        write_replay_frame(&mut mem, 2, 30.0, &[2], false);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        // Prefix up to index 1 is preserved; cursor stops at index 1 instead of skipping to 3.
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Err("replay-frame-invalid"));
+        assert_eq!(state.len, 1);
+        let b1 = log.drain();
+        assert!(b1.reset);
+        assert_eq!(b1.frames, vec![RawReplayFrame { time: 10.0, keys: 0b0001 }]);
+
+        // Once frame 1 finishes writing, poll_replay resumes at index 1 with no gap.
+        write_replay_frame(&mut mem, 1, 20.0, &[1], false);
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(2));
+        assert_eq!(state.len, 3);
+        let b2 = log.drain();
+        assert!(!b2.reset);
+        assert_eq!(b2.offset, 1);
+        assert_eq!(b2.frames, vec![
+            RawReplayFrame { time: 20.0, keys: 0b0010 },
+            RawReplayFrame { time: 30.0, keys: 0b0100 },
+        ]);
+    }
+
+    #[test]
+    fn poll_replay_falls_back_to_key_up_when_actions_unreadable_but_rejects_bad_size() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 1);
+        write_replay_frame(&mut mem, 0, 40.0, &[], true);
+        // Point Actions outside Mem bounds to simulate transiently unreadable list memory.
+        mem.write_u64(0x9000 + 0x18, 0x10_0000);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(1));
+        assert_eq!(log.drain().frames, vec![RawReplayFrame { time: 40.0, keys: 0 }]);
+
+        // Structurally invalid Actions size (> 32) must still fail rather than fabricate key-up.
+        wire_replay(&mut mem, 2);
+        write_replay_frame(&mut mem, 1, 50.0, &[0], false);
+        mem.write_i32(0xA000 + 0x40 + 0x10, 99);
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Err("replay-frame-invalid"));
         assert_eq!(state.len, 1);
     }
 }

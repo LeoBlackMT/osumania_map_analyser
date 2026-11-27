@@ -448,7 +448,7 @@ mod tests {
                     let hello = serde_json::to_string(&crate::frames::Envelope::new(
                         "hello",
                         next_seq_in(&srv.seq),
-                        Some(json!({ "contract": 13 })),
+                        Some(json!({ "contract": 14 })),
                     ))
                     .unwrap();
                     serve_ws_connection(&env, sock.unwrap(), vec![hello], srv.as_ref());

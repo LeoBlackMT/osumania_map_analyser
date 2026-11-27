@@ -390,8 +390,8 @@ pub fn read_frame(input: FrameInput<'_>) -> Result<LazerFrame, Reason> {
     // ⑥d 局内游玩判定数：`Player.ScoreProcessor.ScoreResultCounts` 字典。
     //     游玩进行中，`ScoreProcessor` 实时累加命中判定到 `ScoreResultCounts`；
     //     若读取成功则发布 `snapshot.play_hits = Some(hits)`，
-    //     允许全零（开局刚进图未打击）。失败或非 play 态不发布。
-    if snapshot.is_play_state() {
+    //     允许全零（开局刚进图未打击）。失败或非真实 Player 态不发布。
+    if screen_kind == LazerPlayScreen::Player {
         let mut play_hits_read = None;
         if let Some(player) = chain.screen_top {
             if let Some(score_sec) = table.score() {
@@ -789,7 +789,7 @@ pub fn read_tick(
     let mods_from_score = frame.mods_from_score;
     let replay_result = frame.snapshot.replay;
     if carry_lazer_mods(
-        frame.snapshot.state_name.as_deref(),
+        frame.screen_kind,
         &mut frame.snapshot.lazer_mods,
         &mut frame.snapshot.lazer_mods_complete,
         &mut attach.last_lazer_mods,
@@ -804,26 +804,26 @@ pub fn read_tick(
     Ok(frame)
 }
 
-/// 把 play 帧的 `SelectedMods` 带到结算屏（lazer 会在结算时清空它）。
+/// 把真实 `Player` 帧的 `SelectedMods` 带到结算屏（lazer 会在结算时清空它）。
 ///
-/// 返回 `true` 表示结算屏且没有任何 play 帧可证明 mods，调用方补一条 gap。
+/// 返回 `true` 表示结算屏且没有任何真实 `Player` 帧可证明 mods，调用方补一条 gap。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn carry_lazer_mods(
-    state: Option<&str>,
+    screen_kind: LazerPlayScreen,
     mods: &mut Option<Vec<LazerMod>>,
     complete: &mut bool,
     last: &mut Option<(Vec<LazerMod>, bool)>,
     mods_from_score: bool,
     replay: bool,
 ) -> bool {
-    match state {
-        Some("play") => {
+    match screen_kind {
+        LazerPlayScreen::Player => {
             if let Some(current) = mods.as_ref() {
                 *last = Some((current.clone(), *complete));
             }
             false
         }
-        Some("resultScreen") => {
+        LazerPlayScreen::Results => {
             // 结算屏自己带了该成绩的 `ScoreInfo.ModsJson`（历史成绩 / 回放）⇒ 以它为准。
             // 绝不能把上一局 play 的 mods 套到别的成绩上（1.3x 残留 bug）。
             if mods_from_score || replay {
@@ -849,8 +849,8 @@ fn carry_lazer_mods(
                 }
             }
         }
-        // 离开 play/result（选歌、菜单、编辑器…）⇒ 上一局的 mods 立即失效。
-        _ => {
+        // 离开真实 Player/Results（含 PlayerLoader、选歌、菜单）⇒ 上一局的 mods 立即失效。
+        LazerPlayScreen::PlayerLoader | LazerPlayScreen::Other => {
             *last = None;
             false
         }
@@ -1178,7 +1178,7 @@ mod tests {
         let mut play_mods = Some(vec![dt.clone()]);
         let mut play_complete = true;
         assert!(!carry_lazer_mods(
-            Some("play"),
+            LazerPlayScreen::Player,
             &mut play_mods,
             &mut play_complete,
             &mut last,
@@ -1186,11 +1186,32 @@ mod tests {
             false,
         ));
 
-        // 结算屏上 SelectedMods 为空 → 用 play 帧的 DT（不能变成 NM）。
+        // PlayerLoader 不得写入也不得跨屏延续上一局的 mods。
+        let mut loader_mods = Some(Vec::new());
+        let mut loader_complete = true;
+        assert!(!carry_lazer_mods(
+            LazerPlayScreen::PlayerLoader,
+            &mut loader_mods,
+            &mut loader_complete,
+            &mut last,
+            false,
+            false,
+        ));
+        assert!(last.is_none());
+
+        // 恢复真实 Player 记录后，结算屏上 SelectedMods 为空 → 用 play 帧的 DT（不能变成 NM）。
+        assert!(!carry_lazer_mods(
+            LazerPlayScreen::Player,
+            &mut play_mods,
+            &mut play_complete,
+            &mut last,
+            false,
+            false,
+        ));
         let mut result_mods = Some(Vec::new());
         let mut result_complete = true;
         assert!(!carry_lazer_mods(
-            Some("resultScreen"),
+            LazerPlayScreen::Results,
             &mut result_mods,
             &mut result_complete,
             &mut last,
@@ -1204,7 +1225,7 @@ mod tests {
         let mut own_mods = Some(Vec::new());
         let mut own_complete = true;
         assert!(!carry_lazer_mods(
-            Some("resultScreen"),
+            LazerPlayScreen::Results,
             &mut own_mods,
             &mut own_complete,
             &mut last,
@@ -1219,7 +1240,7 @@ mod tests {
         let mut replay_mods = Some(Vec::new());
         let mut replay_complete = true;
         assert!(!carry_lazer_mods(
-            Some("resultScreen"),
+            LazerPlayScreen::Results,
             &mut replay_mods,
             &mut replay_complete,
             &mut last,
@@ -1232,7 +1253,7 @@ mod tests {
         // 离开 play/result（选歌等）⇒ 上一局 mods 立即失效。
         last = Some((vec![dt.clone()], true));
         assert!(!carry_lazer_mods(
-            Some("selectPlay"),
+            LazerPlayScreen::Other,
             &mut replay_mods,
             &mut replay_complete,
             &mut last,
@@ -1246,7 +1267,7 @@ mod tests {
         let mut empty = None;
         let mut empty_complete = true;
         assert!(carry_lazer_mods(
-            Some("resultScreen"),
+            LazerPlayScreen::Results,
             &mut empty,
             &mut empty_complete,
             &mut no_last,

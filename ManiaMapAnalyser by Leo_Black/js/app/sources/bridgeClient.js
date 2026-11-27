@@ -8,7 +8,7 @@ import { state } from "../core/appContext.js";
 const BRIDGE_WS_URL = "ws://127.0.0.1:24061/ws";
 const RECONNECT_DELAY_MS = 3000;
 /** 页面实现的契约版本（= 发送帧的信封 `v`）。 */
-const CONTRACT_VERSION = 13;
+const CONTRACT_VERSION = 14;
 /**
  * 页面接受的最低壳契约版本（兼容矩阵见 CONTRACT.md §11.8）。
  *
@@ -21,7 +21,9 @@ const CONTRACT_VERSION = 13;
  * `cvtFlag`（Malody Holds/Taps → osu! IN/HO）；**v9** 新增 `mania_hit_events` 下行与
  * `laneacc_sync` 上行（LaneAcc / ScoreV1）；**v11** 新增 `replay_pauses` 下行与
  * `replay_pauses_sync` 上行（回放暂停）；**v12** 新增 Stable/ppysb `RD` seed；
- * **v13** 新增 `control` `resizeStart`（`direction`）与 `sources.osu.lazerLaneAccReady`。
+ * **v13** 新增 `control` `resizeStart`（`direction`）与 `sources.osu.lazerLaneAccReady`；
+ * **v14** 为 `mania_hit_events` / `mania_replay_frames` 新增可选 `session` / `offset`
+ * 元数据与有序 `laneacc_sync` 投递，并区分 `PlayerLoader` 与真实 `Player` 重试重置。
  * 页面按字段**逐个存在性**降级，不按版本号分支。握手版本在 `MIN_ACCEPTED_CONTRACT` 到
  * `CONTRACT_VERSION` 之外才算不匹配。
  *
