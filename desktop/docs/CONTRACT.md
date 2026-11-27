@@ -13,7 +13,7 @@
 > v10→v11 变更：新增 **`replay_pauses` 下行**与 **`replay_pauses_sync` 上行**（`.osr` 尾部 `scoreInfo` 解析出的回放暂停），24062 兼容 origin 新增 `replayHash` 校验字段。详情见 §18。
 > v11→v12 变更：stable/ppysb 新增可选 `play.seed` / `resultsScreen.seed`（RD 全卡重算用）；lazer 的 seed 仍来自 `mods.array[].settings.seed`。详情见 §19。
 > v12→v13 变更：`control` 新增 `resizeStart` 与可选 8 方向 `direction`（由页面四边/四角把手启动系统尺寸调整）；`sources.osu` 新增 `lazerLaneAccReady`（指示 Linux osu!lazer LaneAcc 读取器就绪状态，允许页面通过 tosu 取得谱面和游戏状态同时消费壳发送的逐轨判定与回放帧）。详情见 §20。
-> v13→v14 变更：`mania_hit_events` 与 `mania_replay_frames` 载荷新增可选有序元数据 `session` / `offset`；同连接上的 `laneacc_sync` 快照与实时增量在同一排队通道按入队顺序发送，原始帧快照上限明确为 ≤4096 帧/块；osu!lazer 仅将真实 `Player` 视为游玩采样态（不把 `PlayerLoader` 当成 `Player`），重试/离开 `Player` 后复位日志与 `play.mods`。详情见 §21。
+> v13→v14 变更：`mania_hit_events` 与 `mania_replay_frames` 载荷新增可选有序元数据 `session` / `offset`；同连接上的 `laneacc_sync` 快照与实时增量在同一排队通道按入队顺序发送，原始帧快照上限明确为 ≤4096 帧/块；osu!lazer 仅在真实 `Player` 采样；经 `PlayerLoader` 退出时保留本局日志供结算和重连，重开或换图时复位日志。详情见 §21。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
@@ -407,7 +407,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - `result`：lazer `HitResult` 原始枚举（0 None / 1 Miss / 2 Meh / 3 Ok / 4 Good / 5 Great /
   6 Perfect / 7–12 Tick/Bonus / 13 IgnoreMiss / 14 IgnoreHit / 15 ComboBreak / 16 SliderTailHit）。
 - `offset`（事件内）：毫秒，3 位小数，游戏时钟域。
-- lazer 仅从真实 `Player`（不含 `PlayerLoader`）采样；退出 `Player`、进入 `PlayerLoader` 或重试时清空日志。结算保留本局记录，供重连恢复。判定快照每帧最多 2048 条，原始回放帧快照每帧最多 4096 条。
+- lazer 仅从真实 `Player` 采样。经 `PlayerLoader` 退出、结算或返回原谱面时保留本局日志供重连恢复；在 `Other → PlayerLoader` 开始新局、`PlayerLoader → Player` 重试，或在 `Other` 切换谱面时复位日志。判定快照每帧最多 2048 条，原始回放帧快照每帧最多 4096 条。
 - 事件来自 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；`HitEvent` 布局
   由 live 实测钉住：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`，
   `Column@HitObject+0x48`（2026.1005.0.0）。表缺 `score` 段 ⇒ 不发帧，页面显示占位。
@@ -501,11 +501,11 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   - `offset`（integer，可选，从 0 开始）：本块首条记录在当前局流中的数组下标（区别于判定事件内的毫秒字段 `offset`）；页面据此对重叠前缀幂等去重，并在出现连续缺口时触发 `laneacc_sync`。
   - **单连接序列化发送**：同一连接上的 `laneacc_sync` 全量快照与实时增量/重置经过同一排队通道按入队顺序投递；判定快照每帧 ≤2048 条，原始回放帧快照每帧 ≤4096 帧，首帧 `reset:true`。
 - **osu!lazer `PlayerLoader` 隔离与重试复位**：
-  - 壳区分真实 `Player` 与重试/加载过渡 `PlayerLoader`（仅 `screen_kind == Player` 轮询判定事件/回放帧并采样 `play.hits`；进入 `PlayerLoader` 时清空 `play.mods` 与上一局 LaneAcc 日志，不读取半途空的 `HitEvents` 污染上一局或新局）。
+  - 壳只在 `Player` 轮询判定/回放帧并采样 `play.hits`。`PlayerLoader` 和 `Other` 清除旧 `play.mods`，`Results` 可沿用本局 mods。经 `PlayerLoader` 退出时保留本局日志；`Other → PlayerLoader`、`PlayerLoader → Player` 重试或 `Other` 切图时复位日志。
   - `read_replay_frame` 对合法长度范围（`0..=32`）内瞬态不可读的 `Actions` 保留 key-up（`keys = 0`）回退，越界 `_size` 仍拒绝整帧；`poll_replay` 在未耗尽重试上限前停在首条不可读帧下标（含列表中部），不跳过未读帧。
-- **页面侧冻结终态与延迟 `pendingFinish` 保护**：
-  - 冻结终态（含等待谱面分析完成的 `pendingFinish`）在非游玩中丢弃所有后续判定与回放帧批次（含携带非空数据的新 `session` 切换包）；
-  - `pendingFinish` 创建时快照 `sessionScoreMode` 与谱面变换参数（`modCodes`/`randomSeed`/`speedRate`/`odFlag`/`client`/`modContext`/`activeSource`），确保退出游玩后延迟到达的 `prepareChart` 仍按结束那局的规则完成重放与冻结。
+- **页面侧延迟结算与冻结终态**：
+  - `pendingFinish` 等待谱面期间，判定与回放帧各自只接收退出前在当前连接上已确认的 `session`；照常按 `offset` 去重，同局缺块时请求 `laneacc_sync`。旧壳缺少流代号，或重连清除了流代号时，沿用退出前已缓存的记录。完成冻结后，非游玩期间停止接收两个流的后续批次。
+  - `pendingFinish` 创建时保存结束位置、计分模式和谱面变换参数（`modCodes`/`randomSeed`/`speedRate`/`odFlag`/`client`/`modContext`/`activeSource`）；谱面校验通过后，`prepareChart` 用本局快照重放缓存并冻结结果；校验失败则丢弃待结算会话及缓存。
 - **兼容矩阵**：
   - v14 壳 + v13 页 ⇒ `hello.contract` 越界进入终态提示（**必须同包更新**）；
   - v13 壳 + v14 页 ⇒ 页面接受（在 `[3,14]` 内），v13 壳缺省 `session`/`offset` 时页面退回原有的 `reset`/追加语义。

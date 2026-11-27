@@ -17,7 +17,7 @@
 5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
 `desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/kde_overlay/lazer_launcher/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer/{...,linux},offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v13**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/kde_overlay/lazer_launcher/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer/{...,linux},offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v14**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（app 模块 + config.rs）
 
@@ -122,7 +122,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
   生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但只会从**同版本**同目录旧表保留该段，避免一键生成
   把 LaneAcc 的表结构覆盖掉。新版本完整流程：先在游玩/回放生成 `score`，再在结算屏生成 `results`；跨版本旧表不参与补段。
-- Lazer 仅在真实 `Player` 游玩屏幕轮询并保留本局日志（`PlayerLoader` 重试/加载过渡不再被当成 `Player`，既不读取空事件，也不在其中延续上一局的 `play.mods`，重开/切出时清空上一局判定与回放帧日志）。Linux x86_64 仍通过 tosu 获取谱面和时钟，壳报告 `sources.osu.lazerLaneAccReady` 并发送同样的判定事件和回放帧。
+- Lazer 仅在真实 `Player` 轮询判定与回放帧。经 `PlayerLoader` 退出时保留本局日志供结算和重连；从选曲等 `Other` 屏进入 `PlayerLoader`、从 `PlayerLoader` 重回 `Player` 或在 `Other` 切图时复位日志。`PlayerLoader` 和 `Other` 清除旧 `play.mods`。Linux x86_64 仍通过 tosu 获取谱面和时钟，壳报告 `sources.osu.lazerLaneAccReady` 并发送同样的判定事件和回放帧。
 - 功能与公式见 [lane-acc.md](lane-acc.md)，协议细节见 `desktop/docs/CONTRACT.md` §16。
 
 ## 3f. 回放暂停（契约 v11）

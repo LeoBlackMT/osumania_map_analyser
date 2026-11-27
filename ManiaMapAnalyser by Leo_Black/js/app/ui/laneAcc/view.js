@@ -289,6 +289,8 @@ export const laneAccView = (() => {
         if (!hasRandomMod()) {
             if (chart.__rdOriginalColumns) {
                 chart.columns.set(chart.__rdOriginalColumns);
+                remapChartColumns(chart, Array.from({ length: chart.columnCount }, (_, col) => col));
+                delete chart.__rdOriginalColumns;
                 delete chart.__randomSeed;
             }
             return;
@@ -753,12 +755,12 @@ export const laneAccView = (() => {
         }
     }
 
-    /**
-     * “已冻结终态且当前不在游玩中”为真时忽略一切后续判定/回放批次（含切场次新 session 非空包与 detach 空 reset）。
-     * 游玩中（含 Retry 前奏 0 事件 / 0 帧）收到的空 reset 是新局开始的信号，必须立刻清空。
-     */
-    function isFrozenResult() {
-        return (hasResult || pendingFinish !== null) && !state.isInPlayState;
+    function canAcceptStreamBatch(payload, currentSession) {
+        if (state.isInPlayState) return true;
+        if (hasResult) return false;
+        if (!pendingFinish) return true;
+        // 等待谱面时只续接本连接已经确认的局次；重连后 session 可能被新壳复用。
+        return currentSession !== null && readStreamOrder(payload).session === currentSession;
     }
 
     function readStreamOrder(payload) {
@@ -841,7 +843,9 @@ export const laneAccView = (() => {
         pendingChart = null;
         activeChart = null;
         accumulator = null;
-        if (resetSession) {
+        if (resetSession || pendingFinish) {
+            // 待结算谱面校验失败后，本局记录不能交给下一张谱面。
+            if (pendingFinish) clearSessionEvents();
             hasResult = false;
             sessionActive = false;
             sessionPending = false;
@@ -923,7 +927,6 @@ export const laneAccView = (() => {
             frozenRunContext = ending.context;
         }
         if (!validateChartInput(chart)) {
-            if (ending) frozenRunContext = null;
             return;
         }
         if (!ending && activeChart && !sameChart(activeChart, chart)) {
@@ -1185,9 +1188,7 @@ export const laneAccView = (() => {
     }
 
     function applyReplayFrames(payload) {
-        // 冻结终态（含等待谱面分析的 pendingFinish）期间丢弃所有后续批次，
-        // 包括切换场次携带的非空新 session 帧。
-        if (isFrozenResult()) return;
+        if (!canAcceptStreamBatch(payload, replaySessionId)) return;
         refreshPendingContext();
         const rawFrames = Array.isArray(payload?.frames) ? payload.frames : [];
         const merged = mergeOrderedItems(replayFrames, replaySessionId, payload, collectValidReplayFrames(rawFrames));
@@ -1239,12 +1240,11 @@ export const laneAccView = (() => {
     }
 
     function applyBatch(payload) {
-        // 冻结终态（含等待谱面分析的 pendingFinish）期间丢弃所有后续批次，
-        // 包括切换场次携带的非空新 session 帧。
-        if (isFrozenResult()) return;
-        refreshPendingContext();
-        if (randomModBlocked()) return;
         const batch = Array.isArray(payload) ? { events: payload } : (payload || {});
+        if (!canAcceptStreamBatch(batch, hitSessionId)) return;
+        refreshPendingContext();
+        // 退出 play 可能已清除实时 RD seed；延迟结算在 prepareChart 时用本局快照校验。
+        if (!pendingFinish && randomModBlocked()) return;
         const rawEvents = Array.isArray(batch.events) ? batch.events : [];
         // Buffer original columns even while chart analysis is pending; map MR only at consumption.
         const merged = mergeOrderedItems(hitEvents, hitSessionId, batch, rawEvents);
