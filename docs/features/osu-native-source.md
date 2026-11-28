@@ -1,6 +1,6 @@
 # osu! 原生源（osu native source）
 
-> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v13）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
+> 面向 AI 的技术文档。人类安装/使用说明见 [docs/shell-guide.md](../shell-guide.md)；多源整体架构、路由与传输层一句话概览见 [multi-source.md](multi-source.md)；壳侧帧契约（契约 v14）见 `desktop/docs/CONTRACT.md`；lazer 偏移表生成器的完整手册见 `tools/lazer-offsets-gen/README.md`。
 
 ## 1. 定位
 
@@ -175,7 +175,7 @@ osu: { alive, osuTransport: { mode, host, port, wsPath, filesPath },
     `[score+0x54]` 非零补位（V1 局它也非零）。
   - 表可选段：`topology.replay`（原始帧）与 `topology.notes`（per-note）；旧表缺段 ⇒
     顶部占位 / 分轨提示更新偏移表。`stable__x86.json` 两段都有；
-- 页面刷新/重连发 `laneacc_sync`，壳只向当前连接回放全量（≤2048 条/帧，首帧 reset）。
+- 页面刷新/重连发 `laneacc_sync`，壳只向当前连接按入队顺序回放全量（判定事件 ≤2048 条/帧、原始帧 ≤4096 帧/块，首帧 reset，带可选 `session` / `offset` 元数据）。
 - 详细公式与 UI 见 [lane-acc.md](lane-acc.md)。
 
 ## 6. 能力边界

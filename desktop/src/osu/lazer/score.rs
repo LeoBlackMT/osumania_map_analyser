@@ -22,7 +22,7 @@ use serde::Serialize;
 
 use crate::osu::model::Hits;
 use crate::osu::offsets::{OffsetTable, ScoreSection};
-use super::source::{is_store_hash, read_f64, read_i32, read_ptr_field, read_string, Source, StringLayout};
+use super::source::{field_addr, read_u64, is_store_hash, read_f64, read_i32, read_ptr_field, read_string, Source, StringLayout};
 
 /// `List<T>` 的内部布局（.NET x64）。
 const LIST_ITEMS: i64 = 0x08;
@@ -49,6 +49,8 @@ pub struct RawHitEvent {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HitEventBatch {
     pub reset: bool,
+    pub session: u64,
+    pub offset: usize,
     pub events: Vec<RawHitEvent>,
 }
 
@@ -60,6 +62,10 @@ struct Inner {
     pending: Vec<RawHitEvent>,
     /// 下一次 `drain` 必须发 `reset:true` + 全量。
     reset_pending: bool,
+    /// 会话代号：每次 `reset` / `clear` 单调自增，供页面识别跨局迟到增量。
+    session: u64,
+    /// 已通过 `drain` 发出的事件条数，用于给增量打精确 `offset` 实现幂等去重。
+    sent_len: usize,
 }
 
 /// 壳内的事件日志：读取线程写入，发送线程按 100ms 合并取走。
@@ -88,6 +94,8 @@ impl HitEventLog {
             inner.events.clear();
             inner.pending.clear();
             inner.reset_pending = true;
+            inner.session = inner.session.wrapping_add(1);
+            inner.sent_len = 0;
         }
         inner.events.extend_from_slice(events);
         inner.pending.extend_from_slice(events);
@@ -100,23 +108,46 @@ impl HitEventLog {
         inner.events.clear();
         inner.pending.clear();
         inner.reset_pending = true;
+        inner.session = inner.session.wrapping_add(1);
+        inner.sent_len = 0;
         self.cv.notify_all();
     }
 
     /// 取走增量；若有待发的 reset，则返回全量（`reset:true`）。
     pub fn drain(&self) -> HitEventBatch {
         let mut inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Self::take_pending(&mut inner)
+    }
+
+    /// Snapshot and pending broadcast share one log position, even if a poll arrives during delivery.
+    pub fn drain_and_snapshot(&self) -> (HitEventBatch, HitEventBatch) {
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let snapshot = HitEventBatch {
+            reset: true, session: inner.session, offset: 0, events: inner.events.clone(),
+        };
+        (Self::take_pending(&mut inner), snapshot)
+    }
+
+    fn take_pending(inner: &mut Inner) -> HitEventBatch {
         if inner.reset_pending {
             inner.reset_pending = false;
             inner.pending.clear();
+            inner.sent_len = inner.events.len();
             HitEventBatch {
                 reset: true,
+                session: inner.session,
+                offset: 0,
                 events: inner.events.clone(),
             }
         } else {
+            let events = std::mem::take(&mut inner.pending);
+            let offset = inner.sent_len;
+            inner.sent_len = inner.sent_len.saturating_add(events.len());
             HitEventBatch {
                 reset: false,
-                events: std::mem::take(&mut inner.pending),
+                session: inner.session,
+                offset,
+                events,
             }
         }
     }
@@ -126,6 +157,8 @@ impl HitEventLog {
         let inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         HitEventBatch {
             reset: true,
+            session: inner.session,
+            offset: 0,
             events: inner.events.clone(),
         }
     }
@@ -198,6 +231,8 @@ pub struct RawReplayFrame {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ReplayFrameBatch {
     pub reset: bool,
+    pub session: u64,
+    pub offset: usize,
     pub frames: Vec<RawReplayFrame>,
 }
 
@@ -206,6 +241,8 @@ struct ReplayInner {
     frames: Vec<RawReplayFrame>,
     pending: Vec<RawReplayFrame>,
     reset_pending: bool,
+    session: u64,
+    sent_len: usize,
 }
 
 /// 原始 ReplayFrame 日志；与 `HitEventLog` 同样的 100ms 合并/全量快照语义。
@@ -234,6 +271,8 @@ impl ReplayFrameLog {
             inner.frames.clear();
             inner.pending.clear();
             inner.reset_pending = true;
+            inner.session = inner.session.wrapping_add(1);
+            inner.sent_len = 0;
         }
         inner.frames.extend_from_slice(frames);
         inner.pending.extend_from_slice(frames);
@@ -245,22 +284,45 @@ impl ReplayFrameLog {
         inner.frames.clear();
         inner.pending.clear();
         inner.reset_pending = true;
+        inner.session = inner.session.wrapping_add(1);
+        inner.sent_len = 0;
         self.cv.notify_all();
     }
 
     pub fn drain(&self) -> ReplayFrameBatch {
         let mut inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Self::take_pending(&mut inner)
+    }
+
+    /// Snapshot and pending broadcast share one log position, even if a poll arrives during delivery.
+    pub fn drain_and_snapshot(&self) -> (ReplayFrameBatch, ReplayFrameBatch) {
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let snapshot = ReplayFrameBatch {
+            reset: true, session: inner.session, offset: 0, frames: inner.frames.clone(),
+        };
+        (Self::take_pending(&mut inner), snapshot)
+    }
+
+    fn take_pending(inner: &mut ReplayInner) -> ReplayFrameBatch {
         if inner.reset_pending {
             inner.reset_pending = false;
             inner.pending.clear();
+            inner.sent_len = inner.frames.len();
             ReplayFrameBatch {
                 reset: true,
+                session: inner.session,
+                offset: 0,
                 frames: inner.frames.clone(),
             }
         } else {
+            let frames = std::mem::take(&mut inner.pending);
+            let offset = inner.sent_len;
+            inner.sent_len = inner.sent_len.saturating_add(frames.len());
             ReplayFrameBatch {
                 reset: false,
-                frames: std::mem::take(&mut inner.pending),
+                session: inner.session,
+                offset,
+                frames,
             }
         }
     }
@@ -269,6 +331,8 @@ impl ReplayFrameLog {
         let inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         ReplayFrameBatch {
             reset: true,
+            session: inner.session,
+            offset: 0,
             frames: inner.frames.clone(),
         }
     }
@@ -296,6 +360,16 @@ pub struct ReplayPollState {
     failures: u32,
 }
 
+impl ReplayPollState {
+    pub fn reset(&mut self) {
+        self.score = 0;
+        self.replay = 0;
+        self.list = 0;
+        self.len = 0;
+        self.failures = 0;
+    }
+}
+
 /// 单次 `poll` 的会话游标；由 runner 持有，跨拍复用。
 #[derive(Clone, Debug, Default)]
 pub struct PollState {
@@ -307,8 +381,7 @@ pub struct PollState {
 }
 
 impl PollState {
-    #[allow(dead_code)]
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.player = 0;
         self.score_processor = 0;
         self.list = 0;
@@ -437,6 +510,61 @@ pub fn read_replay_hash(
     is_store_hash(&text).then(|| text.to_lowercase())
 }
 
+fn fail_replay(
+    state: &mut ReplayPollState,
+    log: &ReplayFrameLog,
+    reason: &'static str,
+) -> Result<usize, &'static str> {
+    state.failures = state.failures.saturating_add(1);
+    if state.failures >= MAX_FAILURES {
+        log.clear();
+        state.reset();
+    }
+    Err(reason)
+}
+
+fn read_replay_frame(
+    source: &dyn Source,
+    section: &ScoreSection,
+    items: u64,
+    index: usize,
+) -> Option<RawReplayFrame> {
+    let frame = read_ptr_field(source, items, (ARRAY_DATA as i64) + (index as i64) * 8)?;
+    let time = read_f64(source, field_addr(frame, section.replay_time)?)?;
+    if !time.is_finite() {
+        return None;
+    }
+    let mut keys = 0u32;
+    // Null Actions is a genuine key-up frame; transiently unreadable Actions falls back to keys=0,
+    // while structurally invalid list headers (out-of-range size) are rejected.
+    if let Some(actions) = field_addr(frame, section.replay_actions).and_then(|addr| read_u64(source, addr)) {
+        if actions != 0 {
+            if let Some(size) = field_addr(actions, section.actions_size).and_then(|addr| read_i32(source, addr)) {
+                if !(0..=32).contains(&size) {
+                    return None;
+                }
+                if size > 0 {
+                    if let Some(data) = read_ptr_field(source, actions, section.actions_items) {
+                        for i in 0..size {
+                            let Some(addr) = data.checked_add(ARRAY_DATA + (i as u64) * 4) else {
+                                break;
+                            };
+                            let Some(action) = read_i32(source, addr) else {
+                                keys = 0;
+                                break;
+                            };
+                            if (0..=19).contains(&action) {
+                                keys |= 1 << action;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some(RawReplayFrame { time, keys })
+}
+
 /// 读一拍原始 ReplayFrame（`Player.Score.Replay.Frames`）。
 /// 旧表没有 replay 段时直接返回 0；有则按 `_size` 增量读取。
 pub fn poll_replay(
@@ -450,55 +578,52 @@ pub fn poll_replay(
         return Ok(0);
     }
     let Some(score) = read_ptr_field(source, player, section.player_score) else {
-        return Err("replay-score-unreadable");
+        return fail_replay(state, log, "replay-score-unreadable");
     };
     let Some(replay) = read_ptr_field(source, score, section.score_replay) else {
-        return Err("replay-object-unreadable");
+        return fail_replay(state, log, "replay-object-unreadable");
     };
     let Some(list) = read_ptr_field(source, replay, section.replay_frames) else {
-        return Err("replay-frames-unreadable");
+        return fail_replay(state, log, "replay-frames-unreadable");
     };
     let Some(items) = read_ptr_field(source, list, LIST_ITEMS) else {
-        return Err("replay-items-unreadable");
+        return fail_replay(state, log, "replay-items-unreadable");
     };
     let Some(size) = read_i32(source, list + LIST_SIZE as u64) else {
-        return Err("replay-size-unreadable");
+        return fail_replay(state, log, "replay-size-unreadable");
     };
     let Some(capacity) = read_i32(source, items + ARRAY_LENGTH as u64) else {
-        return Err("replay-capacity-unreadable");
+        return fail_replay(state, log, "replay-capacity-unreadable");
     };
     if size < 0 || capacity < size || size > MAX_EVENTS {
-        return Err("replay-size-invalid");
+        return fail_replay(state, log, "replay-size-invalid");
     }
     let size = size as usize;
     let reset = state.score != score || state.replay != replay || state.list != list || size < state.len;
     let start = if reset { 0 } else { state.len };
     let mut frames = Vec::with_capacity(size.saturating_sub(start));
+    let mut failed_at = None;
     for index in start..size {
-        let Some(frame) = read_ptr_field(source, items, (ARRAY_DATA as i64) + (index as i64) * 8) else {
-            continue;
-        };
-        let Some(time) = read_f64(source, frame + section.replay_time as u64) else {
-            continue;
-        };
-        if !time.is_finite() {
-            continue;
-        }
-        let mut keys = 0u32;
-        if let Some(actions) = read_ptr_field(source, frame, section.replay_actions) {
-            if let Some(action_items) = read_ptr_field(source, actions, section.actions_items) {
-                if let Some(action_size) = read_i32(source, actions + section.actions_size as u64) {
-                    for i in 0..action_size.clamp(0, 32) {
-                        if let Some(action) = read_i32(source, action_items + ARRAY_DATA + (i as u64) * 4) {
-                            if (0..=19).contains(&action) {
-                                keys |= 1 << (action as u32);
-                            }
-                        }
-                    }
+        match read_replay_frame(source, section, items, index) {
+            Some(frame) => frames.push(frame),
+            None => {
+                if state.failures < 3 {
+                    failed_at = Some(index);
+                    break;
                 }
             }
         }
-        frames.push(RawReplayFrame { time, keys });
+    }
+    if let Some(failed_index) = failed_at {
+        if !frames.is_empty() {
+            log.push(reset, &frames);
+            state.score = score;
+            state.replay = replay;
+            state.list = list;
+            state.len = failed_index;
+            state.failures = 0;
+        }
+        return fail_replay(state, log, "replay-frame-invalid");
     }
     if reset {
         log.push(true, &frames);
@@ -733,5 +858,223 @@ mod tests {
         log.push(false, &events);
         let log_hits = log.current_hits();
         assert_eq!(log_hits, hits);
+    }
+
+    #[test]
+    fn log_tracks_session_and_offset_across_resets_and_deltas() {
+        let log = HitEventLog::new();
+        let e1 = RawHitEvent { col: 0, result: 6, offset: 0.0, note: None };
+        let e2 = RawHitEvent { col: 1, result: 5, offset: 1.0, note: None };
+        let e3 = RawHitEvent { col: 2, result: 6, offset: 2.0, note: None };
+
+        log.push(true, &[e1]);
+        let b1 = log.drain();
+        assert!(b1.reset);
+        assert_eq!(b1.session, 1);
+        assert_eq!(b1.offset, 0);
+        assert_eq!(b1.events.len(), 1);
+
+        log.push(false, &[e2, e3]);
+        let snap = log.snapshot();
+        assert!(snap.reset);
+        assert_eq!(snap.session, 1);
+        assert_eq!(snap.offset, 0);
+        assert_eq!(snap.events.len(), 3);
+
+        let b2 = log.drain();
+        assert!(!b2.reset);
+        assert_eq!(b2.session, 1);
+        assert_eq!(b2.offset, 1);
+        assert_eq!(b2.events.len(), 2);
+
+        // Retry / clear bumps session and resets offset to 0.
+        log.clear();
+        let b3 = log.drain();
+        assert!(b3.reset);
+        assert_eq!(b3.session, 2);
+        assert_eq!(b3.offset, 0);
+        assert!(b3.events.is_empty());
+
+        log.push(false, &[e1]);
+        let b4 = log.drain();
+        assert!(!b4.reset);
+        assert_eq!(b4.session, 2);
+        assert_eq!(b4.offset, 0);
+        assert_eq!(b4.events.len(), 1);
+    }
+
+    #[test]
+    fn replay_log_tracks_session_and_offset_across_retry() {
+        let log = ReplayFrameLog::new();
+        let f1 = RawReplayFrame { time: -200.0, keys: 0 };
+        let f2 = RawReplayFrame { time: 100.0, keys: 1 };
+        let f3 = RawReplayFrame { time: 200.0, keys: 2 };
+
+        log.push(true, &[f1, f2]);
+        let b1 = log.drain();
+        assert!(b1.reset);
+        assert_eq!(b1.session, 1);
+        assert_eq!(b1.offset, 0);
+        assert_eq!(b1.frames.len(), 2);
+
+        log.push(false, &[f3]);
+        let b2 = log.drain();
+        assert!(!b2.reset);
+        assert_eq!(b2.session, 1);
+        assert_eq!(b2.offset, 2);
+        assert_eq!(b2.frames.len(), 1);
+
+        log.push(true, &[]);
+        let b3 = log.drain();
+        assert!(b3.reset);
+        assert_eq!(b3.session, 2);
+        assert_eq!(b3.offset, 0);
+        assert!(b3.frames.is_empty());
+    }
+
+    fn replay_section() -> ScoreSection {
+        ScoreSection {
+            player_score: 0x480,
+            score_replay: 0x10,
+            replay_frames: 0x08,
+            replay_time: 0x10,
+            replay_actions: 0x18,
+            actions_items: 0x08,
+            actions_size: 0x10,
+            ..section()
+        }
+    }
+
+    fn wire_replay(mem: &mut Mem, count: i32) {
+        const SCORE: u64 = 0x5000;
+        const REPLAY: u64 = 0x5800;
+        const RLIST: u64 = 0x6000;
+        const RITEMS: u64 = 0x7000;
+        mem.write_u64(PLAYER + 0x480, SCORE);
+        mem.write_u64(SCORE + 0x10, REPLAY);
+        mem.write_u64(REPLAY + 0x08, RLIST);
+        mem.write_u64(RLIST + 8, RITEMS);
+        mem.write_i32(RLIST + 16, count);
+        mem.write_i32(RITEMS + 8, count.max(1));
+    }
+
+    fn write_replay_frame(mem: &mut Mem, index: usize, time: f64, actions: &[i32], null_actions: bool) {
+        const RITEMS: u64 = 0x7000;
+        const FRAMES: u64 = 0x9000;
+        const ACTIONS: u64 = 0xA000;
+        const ACTION_DATA: u64 = 0xB000;
+        let frame = FRAMES + 0x40 * index as u64;
+        mem.write_u64(RITEMS + 0x10 + 8 * index as u64, frame);
+        mem.write_f64(frame + 0x10, time);
+        if null_actions {
+            mem.write_u64(frame + 0x18, 0);
+            return;
+        }
+        let act_obj = ACTIONS + 0x40 * index as u64;
+        let act_items = ACTION_DATA + 0x80 * index as u64;
+        mem.write_u64(frame + 0x18, act_obj);
+        mem.write_u64(act_obj + 0x08, act_items);
+        mem.write_i32(act_obj + 0x10, actions.len() as i32);
+        for (i, &action) in actions.iter().enumerate() {
+            mem.write_i32(act_items + 0x10 + 4 * i as u64, action);
+        }
+    }
+
+    #[test]
+    fn poll_replay_reads_frames_and_accepts_null_actions() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 2);
+        write_replay_frame(&mut mem, 0, -100.0, &[], true);
+        write_replay_frame(&mut mem, 1, 150.0, &[0, 3], false);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(2));
+        let b1 = log.drain();
+        assert!(b1.reset);
+        assert_eq!(b1.frames, vec![
+            RawReplayFrame { time: -100.0, keys: 0 },
+            RawReplayFrame { time: 150.0, keys: 0b1001 },
+        ]);
+
+        wire_replay(&mut mem, 3);
+        write_replay_frame(&mut mem, 2, 200.0, &[1], false);
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(1));
+        let b2 = log.drain();
+        assert!(!b2.reset);
+        assert_eq!(b2.offset, 2);
+        assert_eq!(b2.frames, vec![RawReplayFrame { time: 200.0, keys: 0b0010 }]);
+    }
+
+    #[test]
+    fn poll_replay_retries_trailing_invalid_frame_then_skips() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 1);
+        // NaN timestamp simulates a partially initialized trailing frame.
+        write_replay_frame(&mut mem, 0, f64::NAN, &[], true);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        for _ in 0..3 {
+            assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Err("replay-frame-invalid"));
+            assert_eq!(state.len, 0);
+        }
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(0));
+        assert_eq!(state.len, 1);
+    }
+
+    #[test]
+    fn poll_replay_retries_mid_list_unreadable_frame_without_skipping() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 3);
+        write_replay_frame(&mut mem, 0, 10.0, &[0], false);
+        write_replay_frame(&mut mem, 1, f64::NAN, &[], true);
+        write_replay_frame(&mut mem, 2, 30.0, &[2], false);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        // Prefix up to index 1 is preserved; cursor stops at index 1 instead of skipping to 3.
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Err("replay-frame-invalid"));
+        assert_eq!(state.len, 1);
+        let b1 = log.drain();
+        assert!(b1.reset);
+        assert_eq!(b1.frames, vec![RawReplayFrame { time: 10.0, keys: 0b0001 }]);
+
+        // Once frame 1 finishes writing, poll_replay resumes at index 1 with no gap.
+        write_replay_frame(&mut mem, 1, 20.0, &[1], false);
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(2));
+        assert_eq!(state.len, 3);
+        let b2 = log.drain();
+        assert!(!b2.reset);
+        assert_eq!(b2.offset, 1);
+        assert_eq!(b2.frames, vec![
+            RawReplayFrame { time: 20.0, keys: 0b0010 },
+            RawReplayFrame { time: 30.0, keys: 0b0100 },
+        ]);
+    }
+
+    #[test]
+    fn poll_replay_falls_back_to_key_up_when_actions_unreadable_but_rejects_bad_size() {
+        let mut mem = Mem::new();
+        let sec = replay_section();
+        wire_replay(&mut mem, 1);
+        write_replay_frame(&mut mem, 0, 40.0, &[], true);
+        // Point Actions outside Mem bounds to simulate transiently unreadable list memory.
+        mem.write_u64(0x9000 + 0x18, 0x10_0000);
+        let log = ReplayFrameLog::new();
+        let mut state = ReplayPollState::default();
+
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Ok(1));
+        assert_eq!(log.drain().frames, vec![RawReplayFrame { time: 40.0, keys: 0 }]);
+
+        // Structurally invalid Actions size (> 32) must still fail rather than fabricate key-up.
+        wire_replay(&mut mem, 2);
+        write_replay_frame(&mut mem, 1, 50.0, &[0], false);
+        mem.write_i32(0xA000 + 0x40 + 0x10, 99);
+        assert_eq!(poll_replay(&mem, &sec, PLAYER, &log, &mut state), Err("replay-frame-invalid"));
+        assert_eq!(state.len, 1);
     }
 }

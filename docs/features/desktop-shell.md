@@ -17,7 +17,7 @@
 5. **osu 原生读取器**（只读内存，250 ms 一拍）：当 Stable/ppy.sb 与 Lazer 或多个 osu 进程同时存在时，优先选择**前台窗口所属 PID**；同一客户端仍有多个无法区分的目标时保留 multiple-instances，不按内存大小猜。
 `desktop/src/osu/**` 按**位数**分派客户端（stable = 32 位签名扫描 / lazer = 64 位偏移表驱动），L0–L3 四层门后由 `osu/packet.rs` 组装 tosu v2 形状载荷，经 24062 供页面消费。**只声明读内存 API**（`PROCESS_VM_READ | PROCESS_QUERY_INFORMATION`），不注入、不写、不挂起。完整架构/失败语义/操作手册见 [osu-native-source.md](osu-native-source.md)。
 
-模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/kde_overlay/lazer_launcher/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer/{...,linux},offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v13**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
+模块：`desktop/src/{main,config,frames,etterna,malodyv,settings_window}.rs` + `app/`（builder/instance/kde_overlay/lazer_launcher/profile/url/shortcuts/window_events/window_state） + `feedback/` + `malody4/{mod,anchor,library,gamelog,selection,config,model,spec,settings,runtime}` + `osu/{mod,win,scan,patterns,discovery,anchor_cache,stable,lazer/{...,linux},offsets,beatmap_file,keys,packet,model,invariants,shadow,compare}` + `server/`（mod/http/ws/post/log/bridge/**osu_compat**/**osu_source**/hit_events/replay_frames/replay_pauses） + `sys/`；契约 `desktop/docs/CONTRACT.md`（**v14**）。窗口内插件数据面还有一个**独立本机端点**：`127.0.0.1:17653` 的 `POST /selection`，由 Malody V 游戏内选曲桥（BepInEx 插件）推送（见 §3b）。
 
 ## 2. 启动流程（app 模块 + config.rs）
 
@@ -46,25 +46,25 @@ setup：单实例且带 --settings → settings_window::open_or_focus（主窗�
 - **Lazer 数据目录**：壳配置 `lazerStorageRoot`（或 `MMA_LAZER_STORAGE_ROOT`）显式指定**包含 `files` 目录的数据根**（通常 `%APPDATA%\osu`，不是 `osu!.exe` 的安装目录；也可直接选 `...\files`，读取器会归一到父目录）。留空时按 `storage.ini` → 默认 `%APPDATA%\osu\files` 自动探测；修改后需重启壳才重新附着读取器。默认 Lazer 安装不会生成 `storage.ini`，因此该显式选项是默认路径探测失败时的兜底。
 - **Malody 4.3.7 根**：解析链顺序为「运行中的进程目录（只要求同目录有 `malody.exe`，不做版本校验，以便版本不符能如实报 `target-mismatch:*`）→ `MMA_MALODY4_ROOT` → 壳配置 `malody4Root` → tosu 设置同键 → 启发候选」。前四级一律"非空即采纳"；第五级是**唯一做版本校验**的一级，候选是**绝对路径**且仅在 PE 三重校验通过时采纳，故"留空 `malody4Root`"不等于关断（要关断请把 `MMA_MALODY4_ROOT` 指向不存在的路径）。`root-not-configured` 只表示整条链走完仍为 `None`。
 
-## 3. 契约 v13 帧
+## 3. 契约 v14 帧
 
 | 帧 | 方向 | 载荷要点 |
 | --- | --- | --- |
-| hello | 壳→页 | `{contract: 13, tosuOnline}`；页面接受 `[3,13]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
+| hello | 壳→页 | `{contract: 14, tosuOnline}`；页面接受 `[3,14]`，越界=终态（页面停止重连并提示）。**壳升版而页面不升会让 `sendControl` 一起失效**（拖动把手与置顶/穿透/关闭快捷键），两处常量必须同步 |
 | state | 壳→页 | tosuOnline/errors/sources{etterna{alive,playing,playingExpireAt},**malody{alive,transport,screen,playing,eventSeq,judge,pro,turbo}**,malody4{alive,playing,screen,reason?,judge?},**osu{alive,lazerLaneAccReady,osuTransport{mode,host,port,wsPath,filesPath},gate?,client?,reason?,degradedFields?,phase?,notice?,progress?}**（v6 新增，见 §3d；`lazerLaneAccReady` 自 v13 起报告 Linux lazer LaneAcc 就绪状态）} |
 | song | 壳→页 | requestId/source/identity/modData{rate,cvtFlag,...}/meta{...judge?}/cover/rawText；**桥通道另带 `screen`/`judge`/`pro`/`turbo`/`cvtFlag`/`winScale`**（`cvtFlag`/`winScale` 可为 `null`＝未知，页面据此关闭动态 OD 而非假定 1.0；`cvtFlag` = Malody Holds/Taps → IN/HO） |
 | malody4_selection | 壳→页 | `{path, speed_rate, screen, sequence, event, version, chart_hash, source}`；`event ∈ anchor-changed/scene-changed/heartbeat/hidden`，`path` 为空 = hidden（未选中/不可用），原因另经 `sources.malody4.reason` 与壳日志给出 |
 | settings | 双向 | 设置 JSON（在线 = tosu 设置文件内容，离线 = 本地 `mma-settings.json`；壳在来源切换/文件变化/离线 POST 后主动推，设置页离线时另做 pull-on-notify，见 §3c） |
 | result | 页→壳 | requestId/statusHint/errors/activeSource/star/pattern/updatedAt |
-| mania_hit_events | 壳→页 | `{reset, events:[{col,result,offset}]}`（v9；LaneAcc 逐判定，≤2048 条/帧分块；Lazer `hitEvents` / **Stable per-note judgement**） |
-| mania_replay_frames | 壳→页 | `{reset, frames:[{time,keys}]}`（v10；LaneAcc 原始按键帧，≤4096 帧/分块；Lazer `Player.Score.Replay.Frames` / **Stable `Score+0x34`**） |
-| laneacc_sync | 页→壳 | `{}`（v9；页面刷新/重连取本局全量，只回当前连接） |
+| mania_hit_events | 壳→页 | `{reset, session?, offset?, events:[{col,result,offset}]}`（v9，v14 加 `session`/`offset`；LaneAcc 逐判定，≤2048 条/帧分块；Lazer `hitEvents` / **Stable per-note judgement**） |
+| mania_replay_frames | 壳→页 | `{reset, session?, offset?, frames:[{time,keys}]}`（v10，v14 加 `session`/`offset`；LaneAcc 原始按键帧，≤4096 帧/分块；Lazer `Player.Score.Replay.Frames` / **Stable `Score+0x34`**） |
+| laneacc_sync | 页→壳 | `{}`（v9；页面刷新/重连取本局全量，只回当前连接，v14 起与广播共队按序发送） |
 | replay_pauses | 壳→页 | `{hash, pauses, available, speedRate}`（v11；回放暂停，`hash` = 64-hex `.osr` store key，`pauses` = 物理谱面时间 ms，见 §3f） |
 | replay_pauses_sync | 页→壳 | `{}`（v11；页面刷新/重连取当前回放暂停快照，只回当前连接） |
 | control | 页→壳 | `{action: toggleTopmost\|toggleClickThrough\|alwaysOnTop\|clickThrough\|close\|dragStart\|resizeStart, value?: bool, direction?: Direction}`（窗口操控；`resizeStart` 为 v13 新增并要求 8 方向 `direction`；toggle 为 Wayland 页面内快捷键兜底，状态以 `mma-shell-state.json` 为权威） |
 | ping | 双向 | 15s keepalive |
 
-> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 13**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），v12 的升级来自 stable/ppysb `play.seed` / `resultsScreen.seed`，v13 的升级来自 `control.resizeStart` 与 `sources.osu.lazerLaneAccReady`，页面接受区间 `[3,13]`（CONTRACT.md §10/§11.8/§20）。
+> **本机 HTTP 面不属于帧契约**：§3c 的 `/settings`、`/shell-config`、`/open-settings` 与静态服务是壳内的本机 HTTP 端点，没有帧型、没有 `{v, type, seq}` 信封、也不新增 `state`/`song` 字段，因此**它们自身不升契约版本**（CONTRACT.md §13）。壳的 `CONTRACT_VERSION` 与页面 `bridgeClient.js` 的同名常量**当前都是 14**——v10 的升级来自 LaneAcc 的 `mania_hit_events` / `mania_replay_frames` / `laneacc_sync`（§3e），v11 的升级来自回放暂停的 `replay_pauses` / `replay_pauses_sync`（§3f），v12 的升级来自 stable/ppysb `play.seed` / `resultsScreen.seed`，v13 的升级来自 `control.resizeStart` 与 `sources.osu.lazerLaneAccReady`，v14 的升级来自 `session`/`offset` 流有序元数据、`laneacc_sync` 与广播单通道按序发送及 `PlayerLoader` 重试隔离，页面接受区间 `[3,14]`（CONTRACT.md §10/§11.8/§20/§21）。
 
 ## 3b. Malody V 选曲桥端点（`127.0.0.1:17653`）
 
@@ -108,21 +108,21 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - **字段级冻结 / 身份保持**：冻结时 WS 只发 `client`+`state`、文件路由 404；身份指针瞬态失败时（<2.5 s）改发**最后一张好图**的 `beatmap` 块、文件路由供奉同一张图（200）；`unhealthy` 一帧不发。详见 [osu-native-source.md](osu-native-source.md) §7.3。
 - **完整架构、reason 闭集、健康机（L0–L3）、两本操作手册与自检清单**：见 [osu-native-source.md](osu-native-source.md)。
 
-## 3e. LaneAcc 判定事件与原始帧（契约 v10）
+## 3e. LaneAcc 判定事件与原始帧（契约 v10 / v14）
 
-- 下行 `mania_hit_events`：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用。
+- 下行 `mania_hit_events`：`{reset, session?, offset?, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用（v14 起可携带各流独立代号 `session` 与块起始下标 `offset` 供去重和缺口检出）。
   - Lazer：`ScoreProcessor.hitEvents`；Stable **V1**：`gameplay+0xDC` 的 `List<Note>`（`+0x9C` 列、
     `+0x5C` judgement、`+0xA4/+0xA8` press/release、`+0xA0` hold，`offset=0`），
     **分轨/左右手用游戏自己的判定**。Stable **V2** 不用 note-list 的 `+0x5C`/`+0xA8`；
     页面从原始帧自己算每 note 头/尾。
-- 下行 `mania_replay_frames`：Lazer `Player.Score.Replay.Frames` / Stable `Score+0x34`；
+- 下行 `mania_replay_frames`：`{reset, session?, offset?, frames:[{time,keys}]}`，来源为 Lazer `Player.Score.Replay.Frames` / Stable `Score+0x34`；
   顶部 ScoreV1 转换 + Stable V2 分轨/左右手用。
-- 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（≤2048 条/帧分块，首帧 reset）。
+- 上行 `laneacc_sync`：页面刷新/重连时只向当前连接回放本局全量（判定事件 ≤2048 条/帧、原始帧 ≤4096 帧/块分片，首帧 reset，v14 起与广播共用单连接排队顺序发送）。
 - 壳读取 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；表 `score` 段缺失时
   不发帧。`HitEvent` 布局来自 live 实测（TimeOffset@0x10 / Result@0x18 / HitObject@0x00）。
   生成器在选歌/结算等非 play 状态不会重新测 `score` 段，但只会从**同版本**同目录旧表保留该段，避免一键生成
   把 LaneAcc 的表结构覆盖掉。新版本完整流程：先在游玩/回放生成 `score`，再在结算屏生成 `results`；跨版本旧表不参与补段。
-- Lazer 在游玩时轮询，离开游玩后保留本局日志。Linux x86_64 仍通过 tosu 获取谱面和时钟，壳报告 `sources.osu.lazerLaneAccReady` 并发送同样的判定事件和回放帧。
+- Lazer 仅在真实 `Player` 轮询判定与回放帧。经 `PlayerLoader` 退出时保留本局日志供结算和重连；从选曲等 `Other` 屏进入 `PlayerLoader`、从 `PlayerLoader` 重回 `Player` 或在 `Other` 切图时复位日志。`PlayerLoader` 和 `Other` 清除旧 `play.mods`。Linux x86_64 仍通过 tosu 获取谱面和时钟，壳报告 `sources.osu.lazerLaneAccReady` 并发送同样的判定事件和回放帧。
 - 功能与公式见 [lane-acc.md](lane-acc.md)，协议细节见 `desktop/docs/CONTRACT.md` §16。
 
 ## 3f. 回放暂停（契约 v11）
@@ -191,7 +191,7 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 **壳检测不到 tosu 时页面照常分析（页面侧数据面）**：离线页（24061）的数据面门控加入两个页面侧信号——`state.tosuDataSeen`（`socketHandlers.js` 在 `applyBeatmapState` 里置位）与 `state.shellOsuNativeAlive`（契约 v6：原生端点覆盖真的生效）。页面自己的 tosu socket 收到过载荷、或壳的原生端点覆盖已激活，就放行（`analysis.js` 的两处离线门控与 `sourceManager.js:130,197`），因此"tosu 在跑、但壳没有 `tosu.env`（探测不到 `tosuOnline`）"的机器上卡片不再停在 `Waiting for a data source (Etterna/Malody or tosu)...`；同时 1.2s 的延迟初始重算不再白等（`main.js` 把兜底定时器登记在 `state.recalcTimerId` 上，tosu 载荷一到 `scheduleRecompute` 就清掉它并在 200ms 内计算）。
 
-**契约 v13 与版本号（当前状态）**：桥契约已升到 **v13**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`，v12 = stable/ppysb `play.seed` / `resultsScreen.seed`，v13 = 窗口 8 方向缩放 `control.resizeStart` 与 Linux lazer LaneAcc 就绪位 `sources.osu.lazerLaneAccReady`），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.3`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,13]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
+**契约 v14 与版本号（当前状态）**：桥契约已升到 **v14**（v3→…→v10；v7 = Malody Holds/Taps 的 `cvtFlag`，v8 = LaneAcc 逐判定事件（未发布），v9 = 命名统一（上行帧 `laneacc_sync`），v10 = 原始 ReplayFrame，v11 = 回放暂停 `replay_pauses` / `replay_pauses_sync`，v12 = stable/ppysb `play.seed` / `resultsScreen.seed`，v13 = 窗口 8 方向缩放 `control.resizeStart` 与 Linux lazer LaneAcc 就绪位 `sources.osu.lazerLaneAccReady`，v14 = LaneAcc `session`/`offset` 流有序元数据、单连接有序 `laneacc_sync` 投递与 `PlayerLoader` 重试隔离），v6 = `sources.osu` 端点下发 + 24062 兼容 origin + 壳主窗策略，见 §3d。`_VERSION`（`index.js:4`）与 `metadata.txt` `Version` **当前均为 `3.0.3`**——契约升级本身**不要求**插件版本号变化（版本号只随插件功能/发布节奏走）。页面接受区间 `[3,14]`：**使用陈旧 tosu 静态页的壳用户**在 hello 握手会因 `contract` 越界进入终态（页面提示更新插件并停止重连），外部源与原生传输全部不可用——这类用户必须**更新插件文件**。
 
 **本次改动带来的壳侧可见行为变化（摘要，详见 [osu-native-source.md](osu-native-source.md) 与 `docs/breakings/2026-09-30-osu-native-memory.md`）**：① 主窗缺省落 24061（`osuTransport:"tosu"` 才恢复旧策略）；② 冷启动/游戏重启后卡片会有 13–23 s 的扫描提示（`#osu-scan-hint`）；③ 抓谱面文件在壳原生端点上瞬态失败时按阶梯静默重试（最长约 25 s，覆盖一次读取器重扫）；④ lazer 目标上的字段缺口（背景/音频），逐条进 `sources.osu.degradedFields`；⑤ `offsets/`（包含 stable 与 lazer 偏移表及签名清单）随壳分发，`release.ps1` 自动带上它并编译 `gen.exe`。（2026-11 更新：lazer 的 mods、`resultsScreen.hits` 与 `play.hits` 均已可用——mods 走 `SelectedMods` 链，`resultsScreen.hits` 走表新增的 `results` 段，`play.hits` 走 `score.score_result_counts`；一键生成只在同版本内保留旧表的 `score`/`results` 段；lazer 更新后需在新版本游玩/回放与结算屏分别生成，跨版本旧表不参与补段；仅缺背景/音频，见 osu-native-source.md §6.3。）
 

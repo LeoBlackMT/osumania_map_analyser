@@ -1,6 +1,6 @@
 # 壳-页面桥契约（CONTRACT.md）
 
-> 版本：**13**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
+> 版本：**14**（变更即 v→v+1 重冻结；hello 帧 `contract` 字段 = 本版本号，页面不匹配则呈现终态提示并停止重连）。
 > v1→v2 变更：新增 control 帧（窗口操控）与 diag 诊断旁路；所有 song 帧携带 requestId（POST `m{seq}` / Malody 文件通道 `r{seq}` / Etterna 轮询 `e{seq}`，v1 仅 POST 有）；result 帧字段对齐实现（`star`/`pattern`/`activeSource`/`updatedAt`，移除未实现的 `msd`/`graph`）；Origin/Host 校验改为 loopback host 精确匹配。
 > v2→v3 变更：新增第四数据源 **Malody 4.3.7 原生客户端**（零注入只读观察通道）——新增 `malody4_selection` 帧（八型）；`source` 枚举新增 `"malody4"`；`requestId` 新增 `n{seq}` 前缀；`identity` 新增 `mdy4:{md5}`；`sources` 新增 `malody4{alive,playing,screen,reason?,judge?}`；`meta` 新增可选 `judge`（Malody 4 判定档字母）。
 > v3→v4 变更：Malody V 通道新增**游戏内选曲桥**（BepInEx 插件 `POST /selection` → 壳 17653）——`sources.malody` 由 `{alive}` 扩为 `{alive,transport,screen,playing,eventSeq,judge}`；`song` 帧新增 `screen` / `judge` / `winScale`（仅桥通道携带）；`requestId` 新增 `b{eventSeq}`（真实事件）与 `b{eventSeq}r{k}`（重连补发）前缀；`identity` 的桥通道带 `u` 后缀（`mdy:…:{contentMd5}u`）；新增端口 **17653**；详情见 §11。**注**：v4 当时装的是上游插件，v5 起改为本仓库自建的 fork（§12），上面的历史描述保留原样。
@@ -13,12 +13,13 @@
 > v10→v11 变更：新增 **`replay_pauses` 下行**与 **`replay_pauses_sync` 上行**（`.osr` 尾部 `scoreInfo` 解析出的回放暂停），24062 兼容 origin 新增 `replayHash` 校验字段。详情见 §18。
 > v11→v12 变更：stable/ppysb 新增可选 `play.seed` / `resultsScreen.seed`（RD 全卡重算用）；lazer 的 seed 仍来自 `mods.array[].settings.seed`。详情见 §19。
 > v12→v13 变更：`control` 新增 `resizeStart` 与可选 8 方向 `direction`（由页面四边/四角把手启动系统尺寸调整）；`sources.osu` 新增 `lazerLaneAccReady`（指示 Linux osu!lazer LaneAcc 读取器就绪状态，允许页面通过 tosu 取得谱面和游戏状态同时消费壳发送的逐轨判定与回放帧）。详情见 §20。
+> v13→v14 变更：`mania_hit_events` 与 `mania_replay_frames` 载荷新增可选有序元数据 `session` / `offset`；同连接上的 `laneacc_sync` 快照与实时增量在同一排队通道按入队顺序发送，原始帧快照上限明确为 ≤4096 帧/块；osu!lazer 仅在真实 `Player` 采样；经 `PlayerLoader` 退出时保留本局日志供结算和重连，重开或换图时复位日志。详情见 §21。
 > 定位：`desktop/` 与插件页面之间的协议实现规范（桌面壳内部文档，不入 docs/ 公开索引；文档 `docs/features/desktop-shell.md` 引用本文件，不复制）。
 
 ## 0. 帧信封
 
 - 传输：壳 24061 单 listener 上的 WebSocket `/ws`；壳校验 Origin 仅 loopback——解析 Origin 的 host 段**精确匹配** `127.0.0.1` / `localhost` / `[::1]`（子串匹配会放过 `localhost.evil.com` 类域）；24061 HTTP 侧同样校验 Host 头仅本机 24061。**17653 是另一个独立 listener（Malody 选曲桥的入站面向游戏插件，不是页面通道），只认 `POST /selection`，Host 头必须精确等于 `127.0.0.1:17653` / `localhost:17653` / `[::1]:17653`，且**任何** `Origin` 头出现即 403（见 §11）。**
-- 帧：`{v: 13, type, seq}`；`seq` 单向前递增。
+- 帧：`{v: 14, type, seq}`；`seq` 单向前递增。
 - type 全集（十三型职责语义闭合）：
   | type | 方向 | 职责 |
   |---|---|---|
@@ -30,9 +31,9 @@
   | result | 页→壳 | 分析结果（成功/失败/路由拒绝，见 §4） |
   | ping | 壳→页 | keepalive，间隔 15s；页面据此检测壳存活 |
   | control | 页→壳 | 窗口操控（v2 新增，v13 扩展）：`{action, value?, direction?}`，action ∈ `close` / `alwaysOnTop` / `clickThrough` / `dragStart` / `resizeStart` / `toggleTopmost` / `toggleClickThrough`。`resizeStart`（v13）要求 `direction` 为八个系统方向之一（`North` / `NorthEast` / `East` / `SouthEast` / `South` / `SouthWest` / `West` / `NorthWest`）；缺省不启动缩放，非法方向拒绝该帧（其它动作不消费该字段）。toggle 以 `mma-shell-state.json` 为权威读-翻-写，主线程执行；窗口操作由 `server/ws.rs handle_control` 执行 |
-  | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增）：`{reset, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块。生产者：Lazer `ScoreProcessor.hitEvents` 或 **Stable V1 per-note judgement**（列+档位，`offset=0`）；Stable V2 不消费该帧 |
-  | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增）：`{reset, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，以及 Stable V2 的每 note 头/尾分轨，全量快照 ≤4096 条/帧分块 |
-  | laneacc_sync | 页→壳 | 页面刷新/重连取本局全量（v9 新增）：`{}`；壳把 `mania_hit_events` / `mania_replay_frames` 全量快照发给当前连接 |
+  | mania_hit_events | 壳→页 | 局内逐判定事件（v9 新增，v14 加有序元数据）：`{reset, session?, offset?, events:[{col,result,offset}]}`；`reset:true` = 先清空再应用；事件按 100ms 合并，全量快照 ≤2048 条/帧分块。生产者：Lazer `ScoreProcessor.hitEvents` 或 **Stable V1 per-note judgement**（列+档位，`offset=0`）；Stable V2 不消费该帧 |
+  | mania_replay_frames | 壳→页 | 原始 ReplayFrame（v10 新增，v14 加有序元数据）：`{reset, session?, offset?, frames:[{time, keys}]}`；`time` 为 ms，`keys` 为 ManiaAction 位掩码（Key1=bit0）；用于 Stable ScoreV1 的原始按键帧重算，以及 Stable V2 的每 note 头/尾分轨，全量快照 ≤4096 条/帧分块 |
+  | laneacc_sync | 页→壳 | 页面刷新/重连取本局全量（v9 新增）：`{}`；壳把 `mania_hit_events` / `mania_replay_frames` 全量快照发给当前连接（v14 起与广播按同一通道入队顺序发送） |
   | replay_pauses | 壳→页 | 回放暂停（v11 新增）：`{hash, pauses, available, speedRate}`；`pauses` 为物理谱面时间 ms，`available:false` = 拿不到；见 §18 |
   | replay_pauses_sync | 页→壳 | 页面在 `hello` 后或刷新/重连时取当前回放暂停快照（v11 新增）：`{}`；壳只回当前连接一条，无状态回空帧；见 §18 |
 
@@ -247,7 +248,8 @@
 
 | 壳 `hello.contract` | 页面行为 |
 |---|---|
-| `13` | 全功能：包含 `control.resizeStart` 与通过 tosu 传输使用 Linux lazer LaneAcc（`lazerLaneAccReady`） |
+| `14` | 全功能：包含 LaneAcc `session`/`offset` 流有序元数据、单连接有序 `laneacc_sync` 与 osu!lazer `PlayerLoader` 重试隔离（见 §21） |
+| `13` | 接受：包含 `control.resizeStart` 与 `lazerLaneAccReady`，无 v14 `session`/`offset`（页面退回原有 `reset`/追加语义） |
 | `12` | 接受：包含 stable/ppysb `seed`、回放暂停与原生传输下 LaneAcc，不识别 `resizeStart` 与 `lazerLaneAccReady` |
 | `11` | 接受：包含回放暂停（`replay_pauses` / `replay_pauses_sync`）与 LaneAcc |
 | `10` | 接受：LaneAcc 原始回放帧与全量刷新可用，无回放暂停与 `resizeStart` |
@@ -258,9 +260,9 @@
 | `5` | 接受：`sources.osu` 缺席 ⇒ 页面继续用 `wsEndpoint`（tosu 传输）；`sources.malody` 八字段齐全 |
 | `4` | 接受：`sources.malody` 无 `pro`/`turbo`，桥帧也无这两个字段；`winScale` 恒为数值（旧语义）。页面据此关闭动态 OD 并说明原因 |
 | `3` | 接受：`state.sources.malody` 只有 `alive`（`transport`/`screen`/`playing`/`eventSeq`/`judge` 一律 `undefined`），桥通道的 `song` 帧也没有 `screen`/`judge`/`winScale` ⇒ 页面不得进入桥的场景/清空/判定路径，退回"Lua 通道 + 旧形态" |
-| `< 3` 或 `> 13` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
+| `< 3` 或 `> 14` | 终态：呈现「契约版本不匹配，请更新插件」并停止重连（防无限握手） |
 
-即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 13`，区间为 `[3,13]`。
+即：`MIN_ACCEPTED_CONTRACT = 3`、`CONTRACT_VERSION = 14`，区间为 `[3,14]`。
 
 > ⚠️ **两个常量必须同步升版**：壳升而页面不升，`hello` 被判越界 ⇒ `contractOk` 为假 ⇒ `bridgeOnline()` 为假 ⇒ 除了数据帧不通，`sendControl()` 也会在首行返回，**窗口拖动把手与置顶/穿透/关闭快捷键一起静默失效**。这是本契约里唯一一处"只升一侧就出事"的地方。
 
@@ -291,7 +293,7 @@
 
 §0–§12 描述的是 `/ws` 上的帧协议。壳的 24061 上还有一层**本机 HTTP 面**（插件页静态服务 + `/settings`、`/shell-config`、`/open-settings`），它**没有帧型、没有 `{v, type, seq}` 信封、也不新增或改动任何帧字段**，因此**不参与契约版本**：
 
-> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 13**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），v11 的升级来自 `replay_pauses` / `replay_pauses_sync`（§18），v12 的升级来自 `play.seed` / `resultsScreen.seed`（§19），v13 的升级来自 `control.resizeStart` 与 `sources.osu.lazerLaneAccReady`（§20），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,13]`（§11.8）。
+> **本机 HTTP 面不属于帧契约，`CONTRACT_VERSION` 当前为 14**（`desktop/src/frames.rs`）——本机 HTTP 面自身**不升版本**（`/settings`、`/shell-config`、`/open-settings`、`/cover` 与静态文件都没有帧型）；v10 的升级来自 `/ws` 上的 `mania_replay_frames`（§17），v11 的升级来自 `replay_pauses` / `replay_pauses_sync`（§18），v12 的升级来自 `play.seed` / `resultsScreen.seed`（§19），v13 的升级来自 `control.resizeStart` 与 `sources.osu.lazerLaneAccReady`（§20），v14 的升级来自 LaneAcc `session`/`offset` 流有序元数据、单连接有序 `laneacc_sync` 与 `PlayerLoader` 重试隔离（§21），页面 `bridgeClient.js` 的常量与之同升，接受区间为 `[3,14]`（§11.8）。
 
 Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Host 头放行），其余 403；设置页与端点同源（24061），故设置页无需 CORS。**例外**：`/feedback`（跨源 POST 需预检）与 `GET /shell-config`（`24050#mma-shell` 的跨源初始读取）显式允许 `http://{127.0.0.1,localhost}:{24050,24061}` 与 `http://tauri.localhost`（不带 `*`）。
 
@@ -386,11 +388,13 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 
 ```json
 {
-  "v": 13,
+  "v": 14,
   "type": "mania_hit_events",
   "seq": 123,
   "payload": {
     "reset": true,
+    "session": 2,
+    "offset": 0,
     "events": [
       { "col": 0, "result": 6, "offset": -1.234 },
       { "col": 3, "result": 1, "offset": 158.0 }
@@ -402,15 +406,15 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - `reset:true`：先清空页面累加器，再应用本帧 `events`；分块全量快照只有首帧 `reset:true`。
 - `result`：lazer `HitResult` 原始枚举（0 None / 1 Miss / 2 Meh / 3 Ok / 4 Good / 5 Great /
   6 Perfect / 7–12 Tick/Bonus / 13 IgnoreMiss / 14 IgnoreHit / 15 ComboBreak / 16 SliderTailHit）。
-- `offset`：毫秒，3 位小数，游戏时钟域。
-- 壳只在 `client == lazer` 且 `state.name == play` 且表有 `score` 段时推送；非 play 时清空日志并
-  发一个空 `reset:true`。全量快照 ≤2048 条/帧分块，避免 5MB 帧上限。
+- `offset`（事件内）：毫秒，3 位小数，游戏时钟域。
+- lazer 仅从真实 `Player` 采样。经 `PlayerLoader` 退出、结算或返回原谱面时保留本局日志供重连恢复；在 `Other → PlayerLoader` 开始新局、`PlayerLoader → Player` 重试，或在 `Other` 切换谱面时复位日志。判定快照每帧最多 2048 条，原始回放帧快照每帧最多 4096 条。
 - 事件来自 `Player → ScoreProcessor.hitEvents`（`List<HitEvent>`，stride 0x40）；`HitEvent` 布局
   由 live 实测钉住：`TimeOffset@0x10`、`Result@0x18`、`HitObject@0x00`，
   `Column@HitObject+0x48`（2026.1005.0.0）。表缺 `score` 段 ⇒ 不发帧，页面显示占位。
 
-`laneacc_sync`：页面在 `hello` 之后（以及刷新/重连）发送；壳把**当前连接**的全量快照按
-≤2048 条/帧回放，首帧 `reset:true`。不向其它连接广播，避免重复大包。
+`laneacc_sync`：页面在 `hello` 之后（以及刷新/重连）发送；壳把**当前连接**的全量快照按判定事件 ≤2048 条/帧、原始帧 ≤4096 条/帧回放，首帧 `reset:true`。不向其它连接广播，避免重复大包。
+
+同一连接上的快照和广播按入队顺序通过同一排队通道发送。判定与原始帧的 payload 自 v14 起可分别携带 `session`（当前壳进程中、各流独立的代号）与 `offset`（本块首条记录从零开始的数组下标，区别于判定事件内以毫秒计的 `offset`）。重叠部分只应用一次；下标有缺口则发送 `laneacc_sync`。缺省时沿用原有 reset/追加语义，兼容旧壳（见 §21）。
 
 兼容矩阵：
 - v10 壳 + v7 页：旧页不识别 `mania_hit_events` / `mania_replay_frames`，忽略帧；LaneAcc 不可用（旧页没有该卡片）。
@@ -489,3 +493,19 @@ Host 头只放行 `127.0.0.1:24061` / `localhost:24061` / `[::1]:24061`（无 Ho
 - **兼容矩阵**：
   - v13 壳 + v12 页 ⇒ `hello.contract` 越界进入终态提示（**必须同包更新**）；
   - v12 壳 + v13 页 ⇒ 页面接受（在 `[3,13]` 内），但旧壳无 `lazerLaneAccReady` 且不识别 `resizeStart`（Windows 依赖原生边框缩放不受影响，Linux 侧无法在 tosu 传输下开启 lazer LaneAcc）。
+
+## 21. v13 → v14 差异（LaneAcc 流有序元数据与 PlayerLoader 隔离）
+
+- **`mania_hit_events` 与 `mania_replay_frames` 新增可选流有序元数据**：
+  - `session`（integer，可选）：当前壳进程内、判定流与回放帧流各自单调递增的局次代号；用于丢弃迟到的旧局包并在切换场次或重连时识别流变更。
+  - `offset`（integer，可选，从 0 开始）：本块首条记录在当前局流中的数组下标（区别于判定事件内的毫秒字段 `offset`）；页面据此对重叠前缀幂等去重，并在出现连续缺口时触发 `laneacc_sync`。
+  - **单连接序列化发送**：同一连接上的 `laneacc_sync` 全量快照与实时增量/重置经过同一排队通道按入队顺序投递；判定快照每帧 ≤2048 条，原始回放帧快照每帧 ≤4096 帧，首帧 `reset:true`。
+- **osu!lazer `PlayerLoader` 隔离与重试复位**：
+  - 壳只在 `Player` 轮询判定/回放帧并采样 `play.hits`。`PlayerLoader` 和 `Other` 清除旧 `play.mods`，`Results` 可沿用本局 mods。经 `PlayerLoader` 退出时保留本局日志；`Other → PlayerLoader`、`PlayerLoader → Player` 重试或 `Other` 切图时复位日志。
+  - `read_replay_frame` 对合法长度范围（`0..=32`）内瞬态不可读的 `Actions` 保留 key-up（`keys = 0`）回退，越界 `_size` 仍拒绝整帧；`poll_replay` 在未耗尽重试上限前停在首条不可读帧下标（含列表中部），不跳过未读帧。
+- **页面侧延迟结算与冻结终态**：
+  - `pendingFinish` 等待谱面期间，判定与回放帧各自只接收退出前在当前连接上已确认的 `session`；照常按 `offset` 去重，同局缺块时请求 `laneacc_sync`。旧壳缺少流代号，或重连清除了流代号时，沿用退出前已缓存的记录。完成冻结后，非游玩期间停止接收两个流的后续批次。
+  - `pendingFinish` 创建时保存结束位置、计分模式和谱面变换参数（`modCodes`/`randomSeed`/`speedRate`/`odFlag`/`client`/`modContext`/`activeSource`）；谱面校验通过后，`prepareChart` 用本局快照重放缓存并冻结结果；校验失败则丢弃待结算会话及缓存。
+- **兼容矩阵**：
+  - v14 壳 + v13 页 ⇒ `hello.contract` 越界进入终态提示（**必须同包更新**）；
+  - v13 壳 + v14 页 ⇒ 页面接受（在 `[3,14]` 内），v13 壳缺省 `session`/`offset` 时页面退回原有的 `reset`/追加语义。

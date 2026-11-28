@@ -50,6 +50,8 @@ pub struct Shared {
     /// 读取器健康读数的纯记忆（Step 9c 抗抖动窗口的唯一状态；`osu_source::ReaderLiveness`）。
     /// 由 `osu_source()` 每次取值时观测一次 ⇒ 状态帧/监视器两条路径共享同一个窗口。
     pub osu_reader_liveness: Mutex<osu_source::ReaderLiveness>,
+    /// Serializes LaneAcc drain + enqueue with snapshot requests (never held for socket I/O).
+    laneacc_delivery: Mutex<()>,
     /// 本局逐判定事件（LaneAcc / ScoreV1）；读取线程写、WS 发送线程取。
     pub hit_events: Arc<crate::osu::lazer::HitEventLog>,
     pub replay_frames: Arc<crate::osu::lazer::ReplayFrameLog>,
@@ -106,6 +108,7 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
         bridge_listen_ok: Mutex::new(false),
         tosu_online: Mutex::new(false),
         osu_reader_liveness: Mutex::new(osu_source::ReaderLiveness::default()),
+        laneacc_delivery: Mutex::new(()),
         hit_events: Arc::new(crate::osu::lazer::HitEventLog::new()),
         replay_frames: Arc::new(crate::osu::lazer::ReplayFrameLog::new()),
         replay_pauses: Arc::new(replay_pauses::ReplayPausesState::new()),
@@ -118,17 +121,50 @@ pub fn new_shared(plugin_dir: PathBuf, tosu: Option<TosuInfo>) -> Arc<Shared> {
     })
 }
 
-pub fn next_seq(shared: &Shared) -> u64 {
-    shared.seq.fetch_add(1, Ordering::Relaxed) + 1
+pub(super) struct LaneAccHub<'a> {
+    pub seq: &'a AtomicU64,
+    pub sinks: &'a Mutex<Vec<(u64, mpsc::Sender<String>)>>,
+    pub delivery: &'a Mutex<()>,
+    pub hit_events: &'a crate::osu::lazer::HitEventLog,
+    pub replay_frames: &'a crate::osu::lazer::ReplayFrameLog,
 }
 
-pub fn broadcast(shared: &Shared, frame_type: &str, payload: Option<serde_json::Value>) {
-    let env = Envelope::new(frame_type, next_seq(shared), payload);
+impl Shared {
+    pub(super) fn laneacc_hub(&self) -> LaneAccHub<'_> {
+        LaneAccHub {
+            seq: &self.seq,
+            sinks: &self.sinks,
+            delivery: &self.laneacc_delivery,
+            hit_events: &self.hit_events,
+            replay_frames: &self.replay_frames,
+        }
+    }
+}
+
+pub(super) fn next_seq_in(seq: &AtomicU64) -> u64 {
+    seq.fetch_add(1, Ordering::Relaxed) + 1
+}
+
+pub fn next_seq(shared: &Shared) -> u64 {
+    next_seq_in(&shared.seq)
+}
+
+pub(super) fn broadcast_to(
+    seq: &AtomicU64,
+    sinks: &Mutex<Vec<(u64, mpsc::Sender<String>)>>,
+    frame_type: &str,
+    payload: Option<serde_json::Value>,
+) {
+    let env = Envelope::new(frame_type, next_seq_in(seq), payload);
     let text = serde_json::to_string(&env).unwrap_or_default();
-    let sinks = shared.sinks.lock().unwrap();
+    let sinks = sinks.lock().unwrap();
     for (_id, sink) in sinks.iter() {
         let _ = sink.send(text.clone());
     }
+}
+
+pub fn broadcast(shared: &Shared, frame_type: &str, payload: Option<serde_json::Value>) {
+    broadcast_to(&shared.seq, &shared.sinks, frame_type, payload);
 }
 
 /// state 帧的薄封装：**先全部克隆再组装**，组装本身在 `malody4::build_state_frame`

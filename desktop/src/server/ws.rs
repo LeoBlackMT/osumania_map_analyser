@@ -2,9 +2,13 @@
 // 逻辑从原 server.rs 拆分。
 
 use crate::frames::{ControlInbound, ResultInbound};
-use crate::server::{hello_frame, log::log_at, next_seq, Shared};
+use crate::server::{broadcast_to, hello_frame, log::log_at, next_seq_in, Shared};
+use std::collections::HashMap;
 use std::net::TcpStream;
-use std::sync::{mpsc, Arc};
+use std::sync::{
+    atomic::AtomicU64,
+    mpsc, Arc, Mutex,
+};
 use std::time::Duration;
 use tauri::Manager;
 
@@ -95,10 +99,80 @@ pub(crate) fn is_loopback_origin(origin: &str) -> bool {
     host.eq_ignore_ascii_case("127.0.0.1") || host.eq_ignore_ascii_case("localhost")
 }
 
-pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
+pub(super) struct LaneAccBatch<'a, T> {
+    pub kind: &'a str,
+    pub key: &'a str,
+    pub session: u64,
+    pub offset: usize,
+    pub reset: bool,
+    pub items: &'a [T],
+    pub chunk_size: usize,
+}
+
+/// Both snapshots and broadcasts enter each connection's FIFO under the delivery lock.
+/// Only enqueue here: a slow socket must never block the poller or another client.
+pub(super) fn deliver_laneacc<T: serde::Serialize>(
+    seq: &AtomicU64,
+    sinks: &Mutex<Vec<(u64, mpsc::Sender<String>)>>,
+    batch: LaneAccBatch<'_, T>,
+    target: Option<&mpsc::Sender<String>>,
+) {
+    let send = |index: usize, chunk: &[T]| {
+        let payload = serde_json::json!({
+            "session": batch.session,
+            "offset": batch.offset + index * batch.chunk_size,
+            "reset": batch.reset && index == 0,
+            (batch.key): chunk,
+        });
+        if let Some(tx) = target {
+            let env = crate::frames::Envelope::new(batch.kind, next_seq_in(seq), Some(payload));
+            let _ = tx.send(serde_json::to_string(&env).unwrap());
+        } else {
+            broadcast_to(seq, sinks, batch.kind, Some(payload));
+        }
+    };
+    if batch.reset && batch.items.is_empty() {
+        send(0, batch.items);
+    } else {
+        for (index, chunk) in batch.items.chunks(batch.chunk_size).enumerate() {
+            send(index, chunk);
+        }
+    }
+}
+
+struct WsLoopEnv<'a> {
+    seq: &'a AtomicU64,
+    sinks: &'a Mutex<Vec<(u64, mpsc::Sender<String>)>>,
+    pending: &'a Mutex<HashMap<String, mpsc::Sender<String>>>,
+}
+
+trait WsHooks {
+    fn on_laneacc_sync(&self, tx: &mpsc::Sender<String>);
+    fn on_replay_pauses_sync(&self) -> Vec<String>;
+    fn on_control(&self, ctrl: &ControlInbound);
+}
+
+struct SharedWsHooks<'a>(&'a Shared);
+
+impl WsHooks for SharedWsHooks<'_> {
+    fn on_laneacc_sync(&self, tx: &mpsc::Sender<String>) {
+        crate::server::hit_events::sync(self.0, tx);
+        crate::server::replay_frames::sync(self.0, tx);
+    }
+
+    fn on_replay_pauses_sync(&self) -> Vec<String> {
+        crate::server::replay_pauses::snapshot_messages(self.0)
+    }
+
+    fn on_control(&self, ctrl: &ControlInbound) {
+        handle_control(self.0, ctrl);
+    }
+}
+
+fn accept_loopback_ws(stream: TcpStream) -> Option<tungstenite::WebSocket<TcpStream>> {
     // 出站排水依赖周期性唤醒：read timeout 让阻塞的 read 周期返回。
     let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
-    let Ok(mut ws) = tungstenite::accept_hdr(
+    tungstenite::accept_hdr(
         stream,
         |req: &tungstenite::handshake::server::Request,
          resp: tungstenite::handshake::server::Response| {
@@ -117,26 +191,28 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                     .unwrap())
             }
         },
-    ) else {
+    )
+    .ok()
+}
+
+fn serve_ws_connection(
+    env: &WsLoopEnv<'_>,
+    stream: TcpStream,
+    initial_frames: Vec<String>,
+    hooks: &dyn WsHooks,
+) {
+    let Some(mut ws) = accept_loopback_ws(stream) else {
         return;
     };
     let (tx, rx) = mpsc::channel::<String>();
-    let conn_id = next_seq(&shared);
-    shared.sinks.lock().unwrap().push((conn_id, tx.clone()));
-    let _ = ws.send(tungstenite::Message::Text(
-        serde_json::to_string(&hello_frame(&shared)).unwrap_or_default(),
-    ));
-    // 重连补发（契约 v4，只发给**这个**连接）：一帧 state + （桥在选曲/游玩/结算态时）
-    // 当前谱面的 song 帧。song 帧只在真实事件时广播一次，而 broadcast 只发给已注册的
-    // sink ⇒ 页面刷新 / WS 重连 / 先开游戏后开壳时，当前选中的谱面否则再也不会被送来
-    // （旧通道"偶发 No Data"的正面修复）。
-    for text in crate::server::bridge::reconnect_messages(&shared) {
+    let conn_id = next_seq_in(env.seq);
+    env.sinks.lock().unwrap().push((conn_id, tx.clone()));
+    let remove_sink = || {
+        env.sinks.lock().unwrap().retain(|(id, _s)| *id != conn_id);
+    };
+    for text in initial_frames {
         if ws.send(tungstenite::Message::Text(text)).is_err() {
-            shared
-                .sinks
-                .lock()
-                .unwrap()
-                .retain(|(id, _s)| *id != conn_id);
+            remove_sink();
             return;
         }
     }
@@ -144,11 +220,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
     loop {
         while let Ok(text) = rx.try_recv() {
             if ws.send(tungstenite::Message::Text(text)).is_err() {
-                shared
-                    .sinks
-                    .lock()
-                    .unwrap()
-                    .retain(|(id, _s)| *id != conn_id);
+                remove_sink();
                 return;
             }
         }
@@ -162,68 +234,42 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
             Ok(tungstenite::Message::Text(text)) => {
                 // diag 帧（页面诊断回传）
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if value.get("type").and_then(|v| v.as_str()) == Some("diag") {
-                        if let Some(msg) = value
-                            .get("payload")
-                            .and_then(|p| p.get("message"))
-                            .and_then(|m| m.as_str())
-                        {
-                            log_at("debug", &format!("page diag: {}", msg));
-                        }
-                        continue;
-                    }
-                }
-                // laneacc_sync：页面刷新/重连主动要本局全量（只发给这个连接）。
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if value.get("type").and_then(|v| v.as_str()) == Some("laneacc_sync") {
-                        for text in crate::server::hit_events::snapshot_messages(&shared) {
-                            if ws.send(tungstenite::Message::Text(text)).is_err() {
-                                shared
-                                    .sinks
-                                    .lock()
-                                    .unwrap()
-                                    .retain(|(id, _s)| *id != conn_id);
-                                return;
+                    match value.get("type").and_then(|v| v.as_str()) {
+                        Some("diag") => {
+                            if let Some(msg) = value
+                                .get("payload")
+                                .and_then(|p| p.get("message"))
+                                .and_then(|m| m.as_str())
+                            {
+                                log_at("debug", &format!("page diag: {}", msg));
                             }
+                            continue;
                         }
-                        for text in crate::server::replay_frames::snapshot_messages(&shared) {
-                            if ws.send(tungstenite::Message::Text(text)).is_err() {
-                                shared
-                                    .sinks
-                                    .lock()
-                                    .unwrap()
-                                    .retain(|(id, _s)| *id != conn_id);
-                                return;
+                        // laneacc_sync：页面刷新/重连主动要本局全量（只发给这个连接）。
+                        Some("laneacc_sync") => {
+                            hooks.on_laneacc_sync(&tx);
+                            continue;
+                        }
+                        // replay_pauses_sync：页面刷新/重连主动要当前回放的暂停数据（只发给这个连接）。
+                        Some("replay_pauses_sync") => {
+                            for text in hooks.on_replay_pauses_sync() {
+                                if ws.send(tungstenite::Message::Text(text)).is_err() {
+                                    remove_sink();
+                                    return;
+                                }
                             }
+                            continue;
                         }
-                        continue;
-                    }
-                }
-                // replay_pauses_sync：页面刷新/重连主动要当前回放的暂停数据（只发给这个连接）。
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if value.get("type").and_then(|v| v.as_str()) == Some("replay_pauses_sync") {
-                        for text in crate::server::replay_pauses::snapshot_messages(&shared) {
-                            if ws.send(tungstenite::Message::Text(text)).is_err() {
-                                shared
-                                    .sinks
-                                    .lock()
-                                    .unwrap()
-                                    .retain(|(id, _s)| *id != conn_id);
-                                return;
+                        // control 帧（契约 v2）：页面 → 壳窗口控制。
+                        Some("control") => {
+                            if let Some(payload) = value.get("payload") {
+                                if let Ok(ctrl) = serde_json::from_value::<ControlInbound>(payload.clone()) {
+                                    hooks.on_control(&ctrl);
+                                }
                             }
+                            continue;
                         }
-                        continue;
-                    }
-                }
-                // control 帧（契约 v2）：页面 → 壳窗口控制。
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if value.get("type").and_then(|v| v.as_str()) == Some("control") {
-                        if let Some(payload) = value.get("payload") {
-                            if let Ok(ctrl) = serde_json::from_value::<ControlInbound>(payload.clone()) {
-                                handle_control(&shared, &ctrl);
-                            }
-                        }
-                        continue;
+                        _ => {}
                     }
                 }
                 // result 帧按 Envelope 包裹（payload 内层）；兼容裸帧两种情况。
@@ -251,7 +297,7 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
                         ));
                     }
                     if let Some(rid) = inbound.request_id {
-                        if let Some(tx) = shared.pending.lock().unwrap().remove(&rid) {
+                        if let Some(tx) = env.pending.lock().unwrap().remove(&rid) {
                             let _ = tx.send(text);
                         }
                     }
@@ -261,9 +307,224 @@ pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
             _ => {}
         }
     }
-    shared
-        .sinks
-        .lock()
-        .unwrap()
-        .retain(|(id, _s)| *id != conn_id);
+    remove_sink();
+}
+
+pub fn handle_ws(shared: Arc<Shared>, stream: TcpStream) {
+    let mut initial_frames = vec![serde_json::to_string(&hello_frame(&shared)).unwrap_or_default()];
+    // 重连补发（契约 v4，只发给**这个**连接）：一帧 state + （桥在选曲/游玩/结算态时）
+    // 当前谱面的 song 帧。song 帧只在真实事件时广播一次，而 broadcast 只发给已注册的
+    // sink ⇒ 页面刷新 / WS 重连 / 先开游戏后开壳时，当前选中的谱面否则再也不会被送来
+    // （旧通道"偶发 No Data"的正面修复）。
+    initial_frames.extend(crate::server::bridge::reconnect_messages(&shared));
+    let env = WsLoopEnv {
+        seq: &shared.seq,
+        sinks: &shared.sinks,
+        pending: &shared.pending,
+    };
+    serve_ws_connection(&env, stream, initial_frames, &SharedWsHooks(&shared));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osu::lazer::{HitEventLog, RawHitEvent, RawReplayFrame, ReplayFrameLog};
+    use crate::server::{hit_events, replay_frames, LaneAccHub};
+    use serde_json::{json, Value};
+    use std::net::TcpListener;
+
+    // Pure-Rust stand-in for Shared: referencing Shared or handle_control pulls tauri/muda
+    // into the Windows --lib test binary, which lacks the bin target's ComCtl32 v6 manifest.
+    #[derive(Default)]
+    struct TestHub {
+        seq: AtomicU64,
+        sinks: Mutex<Vec<(u64, mpsc::Sender<String>)>>,
+        pending: Mutex<HashMap<String, mpsc::Sender<String>>>,
+        delivery: Mutex<()>,
+        hit_events: HitEventLog,
+        replay_frames: ReplayFrameLog,
+    }
+
+    impl TestHub {
+        fn hub(&self) -> LaneAccHub<'_> {
+            LaneAccHub {
+                seq: &self.seq,
+                sinks: &self.sinks,
+                delivery: &self.delivery,
+                hit_events: &self.hit_events,
+                replay_frames: &self.replay_frames,
+            }
+        }
+    }
+
+    impl WsHooks for TestHub {
+        fn on_laneacc_sync(&self, tx: &mpsc::Sender<String>) {
+            let hub = self.hub();
+            hit_events::sync_hub(&hub, tx);
+            replay_frames::sync_hub(&hub, tx);
+        }
+
+        fn on_replay_pauses_sync(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn on_control(&self, _ctrl: &ControlInbound) {}
+    }
+
+    fn collect_lane_messages(rx: &mpsc::Receiver<String>, field: &str) -> (usize, usize) {
+        let (mut next_index, mut resets) = (0usize, 0usize);
+        for text in rx.try_iter() {
+            let msg: Value = serde_json::from_str(&text).unwrap();
+            let payload = &msg["payload"];
+            let Some(items) = payload[field].as_array() else {
+                continue;
+            };
+            if payload["reset"] == true {
+                next_index = 0;
+                resets += 1;
+            }
+            assert_eq!(payload["offset"].as_u64(), Some(next_index as u64));
+            for item in items {
+                let marker = if field == "events" {
+                    item["note"].as_u64().unwrap()
+                } else {
+                    item["time"].as_f64().unwrap() as u64
+                };
+                assert_eq!(marker, next_index as u64);
+                next_index += 1;
+            }
+        }
+        (next_index, resets)
+    }
+
+    #[test]
+    fn sync_and_broadcast_preserve_continuous_session_offsets() {
+        let state = TestHub::default();
+        let (tx_sync, rx_sync) = mpsc::channel();
+        let (tx_live, rx_live) = mpsc::channel();
+        state.sinks.lock().unwrap().extend([(1, tx_sync.clone()), (2, tx_live)]);
+
+        let hits: Vec<_> = (0..5000)
+            .map(|i| RawHitEvent { result: 6, note: Some(i), ..RawHitEvent::default() })
+            .collect();
+        state.hit_events.push(true, &hits[..2000]);
+        for batch in hits[2000..].chunks(500) {
+            state.hit_events.push(false, batch);
+            hit_events::sync_hub(&state.hub(), &tx_sync);
+        }
+        assert_eq!(collect_lane_messages(&rx_sync, "events"), (5000, 7));
+        assert_eq!(collect_lane_messages(&rx_live, "events"), (5000, 1));
+
+        let frames: Vec<_> = (0..10000)
+            .map(|i| RawReplayFrame { time: i as f64, keys: 0 })
+            .collect();
+        state.replay_frames.push(true, &frames);
+        replay_frames::sync_hub(&state.hub(), &tx_sync);
+        assert_eq!(collect_lane_messages(&rx_sync, "frames"), (10000, 2));
+        assert_eq!(collect_lane_messages(&rx_live, "frames"), (10000, 1));
+
+        state.hit_events.clear();
+        hit_events::sync_hub(&state.hub(), &tx_sync);
+        assert_eq!(collect_lane_messages(&rx_sync, "events"), (0, 2));
+        assert_eq!(collect_lane_messages(&rx_live, "events"), (0, 1));
+    }
+
+    #[test]
+    fn ws_laneacc_sync_is_unicast_and_continuous_across_chunks() {
+        let state = Arc::new(TestHub::default());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_state = state.clone();
+        let accept_thread = std::thread::spawn(move || {
+            let mut workers = Vec::new();
+            for sock in listener.incoming().take(2) {
+                let srv = server_state.clone();
+                workers.push(std::thread::spawn(move || {
+                    let env = WsLoopEnv {
+                        seq: &srv.seq,
+                        sinks: &srv.sinks,
+                        pending: &srv.pending,
+                    };
+                    let hello = serde_json::to_string(&crate::frames::Envelope::new(
+                        "hello",
+                        next_seq_in(&srv.seq),
+                        Some(json!({ "contract": 14 })),
+                    ))
+                    .unwrap();
+                    serve_ws_connection(&env, sock.unwrap(), vec![hello], srv.as_ref());
+                }));
+            }
+            for worker in workers {
+                let _ = worker.join();
+            }
+        });
+
+        let connect = || {
+            let stream = TcpStream::connect(addr).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let (mut ws, _) = tungstenite::client(format!("ws://{addr}/ws"), stream).unwrap();
+            let hello: Value = serde_json::from_str(ws.read().unwrap().to_text().unwrap()).unwrap();
+            assert_eq!(hello["type"], "hello");
+            ws
+        };
+        let next_lane = |ws: &mut tungstenite::WebSocket<TcpStream>| -> Value {
+            loop {
+                let v: Value = serde_json::from_str(ws.read().unwrap().to_text().unwrap()).unwrap();
+                if matches!(v["type"].as_str(), Some("mania_hit_events" | "mania_replay_frames")) {
+                    return v;
+                }
+            }
+        };
+
+        let (mut client_a, mut client_b) = (connect(), connect());
+        state.hit_events.push(true, &[RawHitEvent::default(); 2049]);
+        state.replay_frames.push(true, &[RawReplayFrame::default(); 4097]);
+        client_a
+            .send(tungstenite::Message::Text(
+                json!({ "type": "laneacc_sync", "v": 13, "seq": 1 }).to_string(),
+            ))
+            .unwrap();
+
+        for (ws, repeats) in [(&mut client_a, 2), (&mut client_b, 1)] {
+            for (field, max_chunk) in [("events", 2048), ("frames", 4096)] {
+                for _ in 0..repeats {
+                    let first = next_lane(ws);
+                    assert_eq!(first["payload"]["reset"], true);
+                    assert_eq!(first["payload"]["offset"], 0);
+                    assert_eq!(first["payload"][field].as_array().unwrap().len(), max_chunk);
+
+                    let second = next_lane(ws);
+                    assert_eq!(second["payload"]["reset"], false);
+                    assert_eq!(second["payload"]["offset"], max_chunk);
+                    assert_eq!(second["payload"][field].as_array().unwrap().len(), 1);
+                }
+            }
+        }
+
+        state.hit_events.push(false, &[RawHitEvent::default()]);
+        let delta = state.hit_events.drain();
+        deliver_laneacc(
+            &state.seq,
+            &state.sinks,
+            LaneAccBatch {
+                kind: "mania_hit_events",
+                key: "events",
+                session: delta.session,
+                offset: delta.offset,
+                reset: delta.reset,
+                items: &delta.events,
+                chunk_size: hit_events::SNAPSHOT_CHUNK,
+            },
+            None,
+        );
+        for ws in [&mut client_a, &mut client_b] {
+            let msg = next_lane(ws);
+            assert_eq!(msg["payload"]["offset"], 2049);
+            assert_eq!(msg["payload"]["reset"], false);
+        }
+
+        let _ = client_a.close(None);
+        let _ = client_b.close(None);
+        let _ = accept_thread.join();
+    }
 }

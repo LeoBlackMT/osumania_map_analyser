@@ -34,6 +34,7 @@
 | [2026-11-18-full-card-rd.md](2026-11-18-full-card-rd.md) | 2026-11-18 | feat/full-card-rd（v3.0.3） | 全卡 RD/MR 支持：主分析全卡列变换（RD→MR）、选歌→play 取真实 seed 重算整卡、play/replay→结算冻结、stable/ppysb 内存抓取新增 score_seed 拓扑偏移、契约 v11→v12、缓存 star-v15→star-v16 |
 | [2026-11-25-shell-v13-linux-overlay.md](2026-11-25-shell-v13-linux-overlay.md) | 2026-11-25 | PR #156 | 桌面壳 v13：窗口热区、Linux LaneAcc、实际偏移表状态及升级方式 |
 | [2026-11-26-offsets-manifest-v3.md](2026-11-26-offsets-manifest-v3.md) | 2026-11-26 | fix/offsets-remote-update | 偏移表远端更新加固：manifest schema 3 + `manifest_signature`、单调 `revision` 版本门、stable/ppysb revision、LF 规范、client/filename 白名单、下载超时/重试/大小上限、逐表错误状态、只读 manifest 测试、`tools/offsets-tool` 与 CI 校验 |
+| [2026-11-27-shell-v14-laneacc-session.md](2026-11-27-shell-v14-laneacc-session.md) | 2026-11-27 | PR #158 (v14) | 桌面壳 v14：LaneAcc 流 `session`/`offset` 有序元数据、`laneacc_sync` 与广播按序投递、`PlayerLoader` 与真实 `Player` 隔离（退出/重试复位与 `play.mods` 清除）、replay mid-list 重试与 key-up 回退、前端冻结终态与 `pendingFinish` 上下文快照 |
 
 [返回 docs 索引](../README.md)
 
@@ -77,5 +78,6 @@
 | [2026-11-18-full-card-rd.md](2026-11-18-full-card-rd.md) | 2026-11-18 | feat/full-card-rd (v3.0.3) | Full-card Random (RD) and Mirror (MR) column transformation: main analysis applies RD→MR column permutations, song select to play recomputes using actual seed, play/replay to results freezes results, stable/ppysb memory reader adds score_seed offset, contract v11→v12, cache star-v15→star-v16 |
 | [2026-11-25-shell-v13-linux-overlay.md](2026-11-25-shell-v13-linux-overlay.md) | 2026-11-25 | PR #156 | Desktop shell v13: window gestures, Linux LaneAcc, active table status and upgrade steps |
 | [2026-11-26-offsets-manifest-v3.md](2026-11-26-offsets-manifest-v3.md) | 2026-11-26 | fix/offsets-remote-update | Offset remote-update hardening: manifest schema 3 + `manifest_signature`, monotonic `revision` gate, stable/ppysb revisions, LF enforcement, client/filename allowlist, download timeouts/retries/size limits, per-table error statuses, read-only manifest test, `tools/offsets-tool`, and CI verification |
+| [2026-11-27-shell-v14-laneacc-session.md](2026-11-27-shell-v14-laneacc-session.md) | 2026-11-27 | PR #158 (v14) | Desktop shell v14: LaneAcc `session`/`offset` stream ordering, per-connection ordered `laneacc_sync`, `PlayerLoader` vs real `Player` retry isolation (log reset & `play.mods` clearing), replay mid-list retry & key-up fallback, frozen-result & `pendingFinish` context snapshot |
 
 [Back to docs index](../README.md)

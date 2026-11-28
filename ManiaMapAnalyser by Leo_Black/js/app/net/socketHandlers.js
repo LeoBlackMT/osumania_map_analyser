@@ -217,7 +217,10 @@ function updateSongTimeState(data) {
     // 图表插值速率随即变 0，下一包再跳一大步 → 游标 10→11→10→11 抖动。
     // 只有时钟真的前进/回跳时才滚动基准；重复样本继续沿用上一次正向速率。
     const movedForward = scaledLiveTimeMs > previousTime;
-    const jumped = Math.abs(scaledLiveTimeMs - previousTime) > SONG_TIME_JUMP_THRESHOLD_MS;
+    // 游玩中大幅倒退（>250ms）即视为重试/倒带：即使在开局 2 秒内秒按重试
+    // （如 1500ms → -200ms，未超过 2000ms 跳变阈值），也不能让 songTimeMs 卡死在旧值。
+    const rewoundInPlay = state.isInPlayState && (previousTime - scaledLiveTimeMs) > 250;
+    const jumped = Math.abs(scaledLiveTimeMs - previousTime) > SONG_TIME_JUMP_THRESHOLD_MS || rewoundInPlay;
     if (movedForward || jumped) {
         state.prevSongTimeMs = previousTime;
         state.prevSongTimeReceiveTs = state.songTimeReceiveTs;

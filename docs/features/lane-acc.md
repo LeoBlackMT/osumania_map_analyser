@@ -149,10 +149,8 @@ LaneAcc 不再在进入 play/回放时把全部判定一次性应用。`view.js`
 - 游玩/回放过程中判定数和 ScoreV1 逐步增加；
 - 回放不再开局冻结为最终值，seek 回跳时重建并重放到新位置；
 - 真正进入结算屏才调用 `finishSession(true)` 强制应用全量并冻结；中途退回选歌/选曲界面调用 `finishSession(false)`，只按当前 `songTimeMs` 冻结，未到达的 note 不会补成 Miss。
-- 结算边沿即使丢失 play 前态，只要 LaneAcc 会话仍存活（`sessionActive` / 已冻结终态），也按“刚打完”冻结并保留；
-  会话/终态期间收到壳 detach 的空 `mania_replay_frames` / `mania_hit_events` reset 一律忽略，等下一局
-  `startSession` 再清，避免进入结算时把卡片清空。
-- 全量快照按 2048 条分块到达；谱面模型尚未准备好时先排队，`prepareChart` 建好累加器后再按 reset/events 顺序回放，不能只保留最后一块。
+- 游玩中收到新局的空 reset 时清除对应数据流。若结束时谱面仍在分析，等待期间继续接收当前连接上已确认属于本局的判定和按键尾段；谱面就绪后，用本局参数和结束位置回放缓存，再冻结成绩。旧壳或重连后无法确认局次时，使用退出前已缓存的记录。谱面校验失败时丢弃待结算记录，避免重放到下一张谱面。
+- 判定和按键快照分别按每块最多 2048、4096 条发送。谱面尚未就绪时缓存原始记录；支持流代号与起始下标的壳会标记每一块，让页面跳过重复记录并在缺块时请求全量。
 - 切图/换难度时按 `chart.identity + columnCount + noteCount + OD + 首尾时间` 检测谱面变化，清空 hitEvents/replayFrames 并重建累加器；旧谱面的事件不会按新 note 索引落成 Miss，卡片从 100.00% 重新开始。
 - **2026-11-11 修复**：此前直接把 `songTimeMs`（显示轴）与物理轴事件/帧比较，DT/NC/自定义 >1x 时判定整体滞后 `rate` 倍（回放中最明显），HT/DC <1x 时 Stable V2 会把未来音符提前判 Miss。现在 `pump`、`framesToStableV2Events`、`framesToSv1Events`、`rebuildRawAccumulator` 共用换算后的物理时间。
 
@@ -247,7 +245,7 @@ Stable 不是“内存里没有逐 note 信息”，而是需要读 `Score` 与 
 - **RD**：Lazer 从 `ScoreInfo.ModsJson.settings.seed` 读实际种子；stable/ppysb 由壳读 `Score.Seed`（`topology.score_seed=0x80`），LaneAcc 使用 stable 的拒绝采样置换（含 dual-stage 首列规则）。
   stable/ppysb 的 play 阶段 `Score.Seed` 可能仍是 0；该值视为不可用，LaneAcc 显示不可用而不是套用 seed 0 的假映射，结算帧拿到真实 seed 后再计算。
   用 `ManiaModRandom` 的 .NET seeded `System.Random` 列置换还原任意键数（4K–18K）。
-  LaneAcc 的 chart 必须在进入 play/回放前完成 RD 重排；原始帧 keys 与游戏列一致，直接交给 SV1。
+  LaneAcc 的 chart 必须在进入 play/回放前完成 RD 重排；移除 RD 时从原始列恢复音符位置，并重建按列索引的判定位置表。原始帧 keys 与游戏列一致，直接交给 SV1。
   `startSession` 会再次确认 RD 映射，避免谱面分析早于 mods/seed 包时 chart 仍停在原始列，出现
   “分轨正常、ScoreV1 错位”。
   回放播放时 `Player.Score` 是 `LegacyDatabasedScore` 子类，壳按 `osu.Game.Scoring.*Score`
